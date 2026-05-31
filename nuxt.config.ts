@@ -35,4 +35,14 @@ export default defineNuxtConfig({
       }
     })(),
   },
+
+  // Pre-bundle CJS-only dependency in dev to avoid ESM default export issues.
+  // @udn-digital-center/common-components 內部 import 的 vue-scrollto 為 CJS，
+  // 需在此預打包成 ESM（並把 vue-scrollto 裝成直接相依），否則 dev 會報
+  // "does not provide an export named 'default'"。
+  vite: {
+    optimizeDeps: {
+      include: ["vue-scrollto"],
+    },
+  },
 });
