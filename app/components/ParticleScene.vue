@@ -53,6 +53,32 @@ onMounted(() => {
   const SPREAD_Y = 260;
   const SPREAD_Z = 80;
 
+  const PALETTE = [
+    [0x0E, 0x9D, 0xA8],
+    [0x2B, 0xCF, 0xE0],
+    [0x4F, 0xB8, 0xC4],
+    [0x7A, 0xD9, 0xDE],
+    [0xB9, 0xEF, 0xEC],
+    [0x0D, 0x5A, 0x6F],
+  ].map(([r, g, b]) => [r! / 255, g! / 255, b! / 255]);
+
+  const fillRandomColorsAndSizes = (
+    count: number,
+    sizeMin: number,
+    sizeMax: number,
+  ) => {
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      const c = PALETTE[Math.floor(Math.random() * PALETTE.length)]!;
+      colors[i * 3] = c[0]!;
+      colors[i * 3 + 1] = c[1]!;
+      colors[i * 3 + 2] = c[2]!;
+      sizes[i] = sizeMin + Math.random() * (sizeMax - sizeMin);
+    }
+    return { colors, sizes };
+  };
+
   const nodeBase = new Float32Array(NODE_COUNT * 3);
   const nodePos = new Float32Array(NODE_COUNT * 3);
   const nodeVel = new Float32Array(NODE_COUNT * 3);
@@ -75,35 +101,46 @@ onMounted(() => {
   const nodeReveal = new Float32Array(NODE_COUNT);
   for (let i = 0; i < NODE_COUNT; i++) nodeReveal[i] = i / NODE_COUNT;
   nodeGeom.setAttribute('aReveal', new THREE.BufferAttribute(nodeReveal, 1));
+  const nodeAttrs = fillRandomColorsAndSizes(NODE_COUNT, 2, 18);
+  nodeGeom.setAttribute('aColor', new THREE.BufferAttribute(nodeAttrs.colors, 3));
+  nodeGeom.setAttribute('aSize', new THREE.BufferAttribute(nodeAttrs.sizes, 1));
 
   const nodeMat = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
     uniforms: {
       uProgress: { value: 0 },
+      uTime: { value: 0 },
       uPixelRatio: { value: renderer.getPixelRatio() },
     },
     vertexShader: /* glsl */ `
       attribute float aReveal;
+      attribute vec3 aColor;
+      attribute float aSize;
       uniform float uProgress;
+      uniform float uTime;
       uniform float uPixelRatio;
       varying float vAlpha;
+      varying vec3 vColor;
       void main() {
         float reveal = smoothstep(aReveal, aReveal + 0.15, uProgress);
         vAlpha = reveal;
+        vColor = aColor;
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = (6.0 + reveal * 4.0) * uPixelRatio * (300.0 / -mv.z);
+        float breath = 1.0 + 0.25 * sin(uTime * 1.6 + aSize * 7.0);
+        gl_PointSize = aSize * breath * reveal * uPixelRatio * (300.0 / -mv.z);
       }
     `,
     fragmentShader: /* glsl */ `
       varying float vAlpha;
+      varying vec3 vColor;
       void main() {
         vec2 c = gl_PointCoord - 0.5;
         float d = length(c);
         if (d > 0.5) discard;
         float edge = smoothstep(0.5, 0.35, d);
-        gl_FragColor = vec4(vec3(1.0), edge * vAlpha);
+        gl_FragColor = vec4(vColor, edge * vAlpha);
       }
     `,
   });
@@ -181,6 +218,9 @@ onMounted(() => {
   textGeom.setAttribute('aTarget', new THREE.BufferAttribute(textTarget, 3));
   textGeom.setAttribute('aStart', new THREE.BufferAttribute(textStart, 3));
   textGeom.setAttribute('aOrder', new THREE.BufferAttribute(textOrder, 1));
+  const textAttrs = fillRandomColorsAndSizes(TEXT_COUNT, 0.8, 6.0);
+  textGeom.setAttribute('aColor', new THREE.BufferAttribute(textAttrs.colors, 3));
+  textGeom.setAttribute('aSize', new THREE.BufferAttribute(textAttrs.sizes, 1));
 
   const textMat = new THREE.ShaderMaterial({
     transparent: true,
@@ -195,11 +235,14 @@ onMounted(() => {
       attribute vec3 aTarget;
       attribute vec3 aStart;
       attribute float aOrder;
+      attribute vec3 aColor;
+      attribute float aSize;
       uniform float uProgress;
       uniform float uTime;
       uniform vec3 uMouse;
       uniform float uPixelRatio;
       varying float vAlpha;
+      varying vec3 vColor;
 
       void main() {
         float local = smoothstep(aOrder, aOrder + 0.1, uProgress);
@@ -211,17 +254,20 @@ onMounted(() => {
         pos.xy += normalize(toMouse.xy + 0.0001) * force * 60.0;
 
         vAlpha = local;
+        vColor = aColor;
         vec4 mv = modelViewMatrix * vec4(pos, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = 2.5 * uPixelRatio * (300.0 / -mv.z);
+        float breath = 1.0 + 0.3 * sin(uTime * 2.0 + aSize * 9.0);
+        gl_PointSize = aSize * breath * uPixelRatio * (300.0 / -mv.z);
       }
     `,
     fragmentShader: /* glsl */ `
       varying float vAlpha;
+      varying vec3 vColor;
       void main() {
         vec2 c = gl_PointCoord - 0.5;
         if (length(c) > 0.5) discard;
-        gl_FragColor = vec4(vec3(1.0), vAlpha);
+        gl_FragColor = vec4(vColor, vAlpha);
       }
     `,
   });
@@ -239,6 +285,7 @@ onMounted(() => {
   const animate = () => {
     const dt = clock.getDelta();
     const t = clock.getElapsedTime();
+    nodeMat.uniforms.uTime!.value = t;
     textMat.uniforms.uTime!.value = t;
     textMat.uniforms.uMouse!.value.copy(mouse);
 
