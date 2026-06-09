@@ -1,5 +1,7 @@
 <template>
-  <div ref="wrapRef" class="stage" />
+  <div ref="wrapRef" class="stage">
+    <button class="go" :disabled="morphed" @click="onGo">GO</button>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -8,6 +10,14 @@ import * as THREE from 'three';
 import { gsap } from 'gsap';
 
 const wrapRef = ref<HTMLDivElement | null>(null);
+const morphed = ref(false);
+let morphFn: (() => void) | null = null;
+
+const onGo = () => {
+  if (morphed.value) return;
+  morphed.value = true;
+  morphFn?.();
+};
 
 onMounted(() => {
   const wrap = wrapRef.value;
@@ -111,6 +121,7 @@ onMounted(() => {
     uniforms: {
       uProgress: { value: 0 },
       uTime: { value: 0 },
+      uBgMode: { value: 0 },
       uPixelRatio: { value: renderer.getPixelRatio() },
     },
     vertexShader: /* glsl */ `
@@ -119,17 +130,19 @@ onMounted(() => {
       attribute float aSize;
       uniform float uProgress;
       uniform float uTime;
+      uniform float uBgMode;
       uniform float uPixelRatio;
       varying float vAlpha;
       varying vec3 vColor;
       void main() {
         float reveal = smoothstep(aReveal, aReveal + 0.15, uProgress);
-        vAlpha = reveal;
+        float scale = mix(1.0, 0.45, uBgMode);
+        vAlpha = reveal * mix(1.0, 0.7, uBgMode);
         vColor = aColor;
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mv;
         float breath = 1.0 + 0.25 * sin(uTime * 1.6 + aSize * 7.0);
-        gl_PointSize = aSize * breath * reveal * uPixelRatio * (300.0 / -mv.z);
+        gl_PointSize = aSize * breath * reveal * scale * uPixelRatio * (300.0 / -mv.z);
       }
     `,
     fragmentShader: /* glsl */ `
@@ -191,10 +204,26 @@ onMounted(() => {
     return pts;
   };
 
-  const raw = sampleText('75');
-  const TEXT_COUNT = raw.length / 3;
-  const textTarget = new Float32Array(raw);
-  const textStart = new Float32Array(raw.length);
+  const raw75 = sampleText('75');
+  const rawAI = sampleText('AI');
+  const count75 = raw75.length / 3;
+  const countAI = rawAI.length / 3;
+  const TEXT_COUNT = Math.max(count75, countAI);
+
+  const resampleTo = (src: number[], srcCount: number) => {
+    const out = new Float32Array(TEXT_COUNT * 3);
+    for (let i = 0; i < TEXT_COUNT; i++) {
+      const s = i % srcCount;
+      out[i * 3] = src[s * 3] ?? 0;
+      out[i * 3 + 1] = src[s * 3 + 1] ?? 0;
+      out[i * 3 + 2] = src[s * 3 + 2] ?? 0;
+    }
+    return out;
+  };
+
+  const textTarget = resampleTo(raw75, count75);
+  const textTargetAI = resampleTo(rawAI, countAI);
+  const textStart = new Float32Array(TEXT_COUNT * 3);
   const textOrder = new Float32Array(TEXT_COUNT);
 
   // draw-order by x so reveal feels like left-to-right strokes
@@ -216,6 +245,7 @@ onMounted(() => {
   const textGeom = new THREE.BufferGeometry();
   textGeom.setAttribute('position', new THREE.BufferAttribute(textStart.slice(), 3));
   textGeom.setAttribute('aTarget', new THREE.BufferAttribute(textTarget, 3));
+  textGeom.setAttribute('aTargetAI', new THREE.BufferAttribute(textTargetAI, 3));
   textGeom.setAttribute('aStart', new THREE.BufferAttribute(textStart, 3));
   textGeom.setAttribute('aOrder', new THREE.BufferAttribute(textOrder, 1));
   const textAttrs = fillRandomColorsAndSizes(TEXT_COUNT, 0.8, 6.0);
@@ -228,17 +258,20 @@ onMounted(() => {
     uniforms: {
       uProgress: { value: 0 },
       uTime: { value: 0 },
+      uMorph: { value: 0 },
       uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
       uPixelRatio: { value: renderer.getPixelRatio() },
     },
     vertexShader: /* glsl */ `
       attribute vec3 aTarget;
+      attribute vec3 aTargetAI;
       attribute vec3 aStart;
       attribute float aOrder;
       attribute vec3 aColor;
       attribute float aSize;
       uniform float uProgress;
       uniform float uTime;
+      uniform float uMorph;
       uniform vec3 uMouse;
       uniform float uPixelRatio;
       varying float vAlpha;
@@ -246,7 +279,8 @@ onMounted(() => {
 
       void main() {
         float local = smoothstep(aOrder, aOrder + 0.1, uProgress);
-        vec3 pos = mix(aStart, aTarget, local);
+        vec3 target = mix(aTarget, aTargetAI, uMorph);
+        vec3 pos = mix(aStart, target, local);
 
         vec3 toMouse = pos - uMouse;
         float d = length(toMouse.xy);
@@ -279,6 +313,12 @@ onMounted(() => {
   gsap.to(linkMat, { opacity: 0.25, duration: 2.5, delay: 0.5 });
   gsap.to(textMat.uniforms.uProgress!, { value: 1, duration: 3, delay: 0.5, ease: 'power2.inOut' });
 
+  morphFn = () => {
+    gsap.to(textMat.uniforms.uMorph!, { value: 1, duration: 1.6, ease: 'power2.inOut' });
+    gsap.to(nodeMat.uniforms.uBgMode!, { value: 1, duration: 1.6, ease: 'power2.inOut' });
+    gsap.to(linkMat, { opacity: 0, duration: 1.0, ease: 'power2.inOut' });
+  };
+
   const clock = new THREE.Clock();
   let raf = 0;
 
@@ -296,9 +336,10 @@ onMounted(() => {
       let y = pa[i3 + 1] + nodeVel[i3 + 1] * dt * 60;
       let z = pa[i3 + 2] + nodeVel[i3 + 2] * dt * 60;
 
-      x += (nodeBase[i3] - x) * 0.005;
-      y += (nodeBase[i3 + 1] - y) * 0.005;
-      z += (nodeBase[i3 + 2] - z) * 0.005;
+      const homing = 0.005 * (1 - nodeMat.uniforms.uBgMode!.value);
+      x += (nodeBase[i3] - x) * homing;
+      y += (nodeBase[i3 + 1] - y) * homing;
+      z += (nodeBase[i3 + 2] - z) * homing;
 
       const dx = x - mouse.x;
       const dy = y - mouse.y;
@@ -374,10 +415,39 @@ onMounted(() => {
 
 <style scoped>
 .stage {
+  position: relative;
   width: 100vw;
   height: 100vh;
   background: #000;
   overflow: hidden;
   cursor: crosshair;
+}
+
+.go {
+  position: absolute;
+  right: 32px;
+  bottom: 32px;
+  z-index: 1;
+  padding: 12px 28px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: #fff;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, opacity 0.3s;
+}
+
+.go:hover:not(:disabled) {
+  background: #fff;
+  color: #000;
+}
+
+.go:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 </style>
