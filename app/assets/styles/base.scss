@@ -1,0 +1,19 @@
+:root {
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+html {
+  // Figma design system：主字體 Noto Sans TC（weight 300 / 400 / 700）
+  font-family: 'Noto Sans TC', sans-serif;
+  font-style: normal;
+  line-height: 150%;
+}
