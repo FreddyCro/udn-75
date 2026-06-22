@@ -50,7 +50,7 @@ useSeoMeta({
           <p class="story-section__body">{{ section.body }}</p>
         </section>
       </OrangeCore>
-      <!-- <MetaballsReveal />
+      <MetaballsReveal />
       <section class="glitch-demo">
         <GlitchImage
           class="glitch-demo__item"
@@ -60,7 +60,7 @@ useSeoMeta({
           bg-color="#ffffff"
           alt="Glitch 收斂進場示意圖"
         />
-      </section> -->
+      </section>
     </main>
     <AppFooter />
   </div>
