@@ -8,7 +8,8 @@
 // @ts-nocheck
 import * as THREE from 'three';
 import { gsap } from 'gsap';
-import portraitUrl from '~/assets/img/einstein.png';
+import portraitUrl from '~/assets/img/face.png';
+// import portraitUrl from '~/assets/img/einstein.png';
 
 const props = defineProps({
   /** 人像圖片（需含透明背景，alpha 即輪廓遮罩） */
@@ -22,8 +23,12 @@ const props = defineProps({
   color: { type: String, default: '#88beef' },
   /** 採樣間距（px），越小越密 */
   sampleStep: { type: Number, default: 6 },
-  /** 圖片 px → world 單位的縮放 */
-  worldScale: { type: Number, default: 1.3 },
+  /** 目標框寬（world 單位）：圖以 contain 方式塞入，正規化 render 大小 */
+  fitWidth: { type: Number, default: 500 },
+  /** 目標框高（world 單位）：圖以 contain 方式塞入，正規化 render 大小 */
+  fitHeight: { type: Number, default: 500 },
+  /** 貼合後的額外縮放倍率（手動微調用；1 = 純貼合目標框） */
+  worldScale: { type: Number, default: 1.0 },
   /** 亮部最低採樣機率（0 會讓亮部完全消失） */
   minDensity: { type: Number, default: 0.8 },
   /** 暗度 → 機率的 gamma，越大暗部對比越強 */
@@ -154,7 +159,9 @@ onMounted(() => {
     ctx.drawImage(img, 0, 0);
     const data = ctx.getImageData(0, 0, W, H).data;
 
-    const scale = props.worldScale;
+    // contain-fit：把圖（W×H）等比例塞進目標框（fitWidth×fitHeight），正規化 render 大小，
+    // 與圖片解析度、視窗 aspect 脫鉤（換圖不爆框）
+    const scale = Math.min(props.fitWidth / W, props.fitHeight / H) * props.worldScale;
     const positions: number[] = [];
     const sizes: number[] = [];
     const darks: number[] = [];
