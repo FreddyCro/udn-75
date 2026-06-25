@@ -89,6 +89,7 @@ useSeoMeta({
           alt="Glitch 收斂進場示意圖"
         />
       </section>
+      <ShowcaseGallery />
     </main>
     <!-- <AppFooter /> -->
   </div>
