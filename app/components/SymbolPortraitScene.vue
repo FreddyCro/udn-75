@@ -3,6 +3,16 @@
     <button class="go" @click="dispersed = !dispersed">
       {{ dispersed ? '集合' : '分散' }}
     </button>
+    <!-- 彩蛋：定位/透明度由 JS 每幀控制；內容走 slot（預設純文字） -->
+    <div ref="eggRef" class="egg" aria-hidden="true">
+      <slot
+        name="phrase"
+        :index="activeEgg"
+        :text="activeEgg >= 0 ? phrases[activeEgg] : ''"
+      >
+        {{ activeEgg >= 0 ? phrases[activeEgg] : '' }}
+      </slot>
+    </div>
   </div>
 </template>
 
@@ -87,9 +97,25 @@ const props = defineProps({
   autoMouse: { type: Boolean, default: false },
   /** 自動游標遊走速度倍率 */
   autoMouseSpeed: { type: Number, default: 1.0 },
+
+  // ---------- 彩蛋：宮格 → 句子 ----------
+  /** 句子陣列：index 以 row-major 對應宮格（空字串或不足格數的格子不顯示） */
+  phrases: {
+    type: Array as () => string[],
+    default: () => ['1', '2', '3', '4', '5', '6'],
+  },
+  /** 宮格欄數（橫向切幾格） */
+  gridCols: { type: Number, default: 3 },
+  /** 宮格列數（縱向切幾格） */
+  gridRows: { type: Number, default: 2 },
+  /** 彩蛋文字顏色 */
+  phraseColor: { type: String, default: '#ffffff' },
 });
 
 const wrapRef = ref<HTMLDivElement | null>(null);
+const eggRef = ref<HTMLDivElement | null>(null);
+// 目前游標所在宮格 index（-1 = 無），只在換格時更新 → slot 內容僅換格才 re-render
+const activeEgg = ref(-1);
 // 兩種狀態：false = 集合（人像）/ true = 分散（散場漂浮）。
 // v-model 由父層決定預設值並隨意切換；元件內按鈕也只是翻轉它。
 const dispersed = defineModel<boolean>('dispersed', { default: false });
@@ -197,7 +223,9 @@ onMounted(() => {
   let geom: THREE.BufferGeometry | null = null;
   let mat: THREE.ShaderMaterial | null = null;
   let unmounted = false;
-  // 自動游標遊走半徑（buildFromImage 依人像實際範圍設定）
+  // 人像半寬高 + 自動游標遊走半徑（buildFromImage 依人像實際範圍設定）
+  let halfW = 0;
+  let halfH = 0;
   let roamX = 150;
   let roamY = 150;
 
@@ -216,9 +244,11 @@ onMounted(() => {
     // 與圖片解析度、視窗 aspect 脫鉤（換圖不爆框）
     const scale =
       Math.min(props.fitWidth / W, props.fitHeight / H) * props.worldScale;
-    // 自動游標在人像範圍的 ~70% 內遊走（人像置中於原點，半寬高 = W*scale/2、H*scale/2）
-    roamX = ((W * scale) / 2) * 0.7;
-    roamY = ((H * scale) / 2) * 0.7;
+    // 人像置中於原點，半寬高 = W*scale/2、H*scale/2；自動游標在 ~70% 內遊走
+    halfW = (W * scale) / 2;
+    halfH = (H * scale) / 2;
+    roamX = halfW * 0.7;
+    roamY = halfH * 0.7;
     const positions: number[] = [];
     const sizes: number[] = [];
     const darks: number[] = [];
@@ -511,6 +541,11 @@ onMounted(() => {
   const clock = new THREE.Clock();
   let raf = 0;
   let prevT = 0;
+  // 彩蛋：world → 螢幕像素投影用；viewW/H 隨 resize 更新
+  const proj = new THREE.Vector3();
+  let viewW = width;
+  let viewH = height;
+  if (eggRef.value) eggRef.value.style.color = props.phraseColor;
 
   const animate = () => {
     const t = clock.getElapsedTime();
@@ -539,6 +574,36 @@ onMounted(() => {
       mat.uniforms.uMouse!.value.copy(smoothMouse);
       mat.uniforms.uMouseInfluence!.value = influence;
     }
+
+    // 彩蛋：算游標所在宮格 → 顯示對應句子（只在集合狀態、influence 夠高時）
+    const eggEl = eggRef.value;
+    if (eggEl && halfW > 0) {
+      let idx = -1;
+      if (!dispersed.value && influence > 0.4 && props.phrases.length) {
+        const nx = (smoothMouse.x + halfW) / (2 * halfW); // 0..1 左→右
+        const ny = (halfH - smoothMouse.y) / (2 * halfH); // 0..1 上→下
+        if (nx >= 0 && nx < 1 && ny >= 0 && ny < 1) {
+          const col = Math.min(props.gridCols - 1, Math.floor(nx * props.gridCols));
+          const row = Math.min(props.gridRows - 1, Math.floor(ny * props.gridRows));
+          const i = row * props.gridCols + col;
+          if (i < props.phrases.length && props.phrases[i]) idx = i;
+        }
+      }
+      if (idx !== activeEgg.value) activeEgg.value = idx; // 僅換格才觸發 re-render
+      if (idx >= 0) {
+        proj.copy(smoothMouse).project(camera);
+        const sx = (proj.x * 0.5 + 0.5) * viewW;
+        const sy = (-proj.y * 0.5 + 0.5) * viewH;
+        const flip = sx > viewW * 0.6; // 靠右緣則翻到游標左側避免溢出
+        eggEl.style.transform =
+          `translate(${sx + (flip ? -20 : 20)}px, ${sy}px) translateY(-50%)` +
+          (flip ? ' translateX(-100%)' : '');
+        eggEl.style.opacity = String(Math.min(1, influence));
+      } else {
+        eggEl.style.opacity = '0';
+      }
+    }
+
     renderer.render(scene, camera);
     raf = requestAnimationFrame(animate);
   };
@@ -547,6 +612,8 @@ onMounted(() => {
   const onResize = () => {
     const w = wrap.clientWidth;
     const h = wrap.clientHeight;
+    viewW = w;
+    viewH = h;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
@@ -578,6 +645,23 @@ onMounted(() => {
   background: #fff;
   overflow: hidden;
   cursor: crosshair;
+}
+
+/* 彩蛋文字：定位/透明度由 JS 每幀以 transform/opacity 控制 */
+.egg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  max-width: 16em;
+  font-size: clamp(14px, 1.4vw, 20px);
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  will-change: transform, opacity;
 }
 
 .go {

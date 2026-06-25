@@ -15,6 +15,16 @@ const ASSETS_PATH = config.public.APP_ASSETS_PATH;
 // 改這裡決定預設狀態；之後任何地方 symbolDispersed.value = !symbolDispersed.value 即可切換
 const symbolDispersed = ref(false);
 
+// 彩蛋句子（row-major 對應宮格）
+const symbolPhrases = [
+  '逼真 AI 詐騙究竟如何分辨？',
+  'AI 算力是否耗盡電力資源？',
+  'AI 可以協助翻轉人口老化外流嗎？',
+  '無法被 AI 取代的核心能力是什麼？',
+  'AI 讓老後生活更便利還是更孤單？',
+  '不學 AI 就會被時代淘汰嗎？',
+];
+
 useSeoMeta({
   title: meta.metaTitle,
   description: meta.metaDesc,
@@ -38,6 +48,7 @@ useSeoMeta({
       <!-- :auto-mouse="true" -->
       <SymbolPortraitScene
         v-model:dispersed="symbolDispersed"
+        :phrases="symbolPhrases"
         :hole-radius="25"
         :max-particles="6000"
         :color="['#77c6e0', '#d1f4ff', '#ffffff']"
