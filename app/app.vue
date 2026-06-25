@@ -31,7 +31,7 @@ useSeoMeta({
     <!-- <AppHeader /> -->
     <main class="main-content">
       <!-- <ParticleScene /> -->
-      <SymbolPortraitScene :hole-radius="25" />
+      <SymbolPortraitScene :hole-radius="25" :max-particles="6000" />
       <OrangeCore>
         <section
           v-for="(section, i) in story.sections"

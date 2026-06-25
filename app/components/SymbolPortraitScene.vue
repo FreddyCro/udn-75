@@ -1,6 +1,8 @@
 <template>
   <div ref="wrapRef" class="stage">
-    <button class="go" :disabled="dispersed" @click="onDisperse">DISPERSE</button>
+    <button class="go" :disabled="dispersed" @click="onDisperse">
+      DISPERSE
+    </button>
   </div>
 </template>
 
@@ -48,7 +50,10 @@ const props = defineProps({
   /** 散場（disperse）動畫秒數 */
   disperseDuration: { type: Number, default: 2.2 },
   /** 散場擴散範圍 [x, y, z] */
-  disperseSpread: { type: Array as () => number[], default: () => [900, 520, 240] },
+  disperseSpread: {
+    type: Array as () => number[],
+    default: () => [900, 520, 240],
+  },
 
   // ---------- 無互動時的整體漂浮 ----------
   /** 整體漂浮幅度（全部 symbol 同步隨機遊走，做出「整片在飄」） */
@@ -66,11 +71,13 @@ const props = defineProps({
 
   // ---------- 整體避讓（symbol 群閃避游標） ----------
   /** 游標越遠，整群往反方向（遠離游標）位移的最大量（微微一動） */
-  groupShift: { type: Number, default: 28 },
+  groupShift: { type: Number, default: 11 },
   /** 此距離內（游標貼近/重疊群中心）不位移，以保留中心環形真空 */
   groupShiftNear: { type: Number, default: 120 },
   /** 游標離群中心到此距離時達最大位移、之後停住 */
   groupShiftFar: { type: Number, default: 380 },
+  /** 滑鼠互動平滑速度：越大越跟手、越小越柔（進入/移動/離開都會緩動，不瞬移） */
+  mouseEase: { type: Number, default: 8 },
 });
 
 const wrapRef = ref<HTMLDivElement | null>(null);
@@ -125,7 +132,10 @@ onMounted(() => {
   wrap.appendChild(renderer.domElement);
 
   // ---------- mouse (world coords on z=0 plane) ----------
-  const mouse = new THREE.Vector3(9999, 9999, 0);
+  const mouse = new THREE.Vector3(9999, 9999, 0); // 原始目標（最後命中點）
+  const smoothMouse = new THREE.Vector3(9999, 9999, 0); // 緩動後餵給 shader 的座標
+  let targetInfluence = 0; // 目標影響強度（進入=1 / 離開=0）
+  let influence = 0; // 緩動後的影響強度，shader 以此淡入淡出整段互動
   const ndc = new THREE.Vector2();
   const raycaster = new THREE.Raycaster();
   const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
@@ -136,9 +146,15 @@ onMounted(() => {
     ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(ndc, camera);
-    if (raycaster.ray.intersectPlane(plane, hit)) mouse.copy(hit);
+    if (raycaster.ray.intersectPlane(plane, hit)) {
+      mouse.copy(hit);
+      targetInfluence = 1;
+    }
   };
-  const onLeave = () => mouse.set(9999, 9999, 0);
+  // 離開只把影響淡出，不把座標拉回 9999（否則真空會橫掃到角落）
+  const onLeave = () => {
+    targetInfluence = 0;
+  };
   renderer.domElement.addEventListener('pointermove', onMove);
   renderer.domElement.addEventListener('pointerleave', onLeave);
 
@@ -161,7 +177,8 @@ onMounted(() => {
 
     // contain-fit：把圖（W×H）等比例塞進目標框（fitWidth×fitHeight），正規化 render 大小，
     // 與圖片解析度、視窗 aspect 脫鉤（換圖不爆框）
-    const scale = Math.min(props.fitWidth / W, props.fitHeight / H) * props.worldScale;
+    const scale =
+      Math.min(props.fitWidth / W, props.fitHeight / H) * props.worldScale;
     const positions: number[] = [];
     const sizes: number[] = [];
     const darks: number[] = [];
@@ -176,7 +193,9 @@ onMounted(() => {
           for (let dx = 0; dx < step && x + dx < W; dx++) {
             const i = ((y + dy) * W + (x + dx)) * 4;
             lumSum +=
-              (0.299 * (data[i] ?? 0) + 0.587 * (data[i + 1] ?? 0) + 0.114 * (data[i + 2] ?? 0)) /
+              (0.299 * (data[i] ?? 0) +
+                0.587 * (data[i + 1] ?? 0) +
+                0.114 * (data[i + 2] ?? 0)) /
               255;
             aSum += (data[i + 3] ?? 0) / 255;
             n++;
@@ -186,9 +205,15 @@ onMounted(() => {
         if (a < 0.5) continue; // 透明背景 = 輪廓外
         const dark = Math.min(1, (1 - lumSum / n) * props.darkBoost);
         const prob =
-          (props.minDensity + (1 - props.minDensity) * Math.pow(dark, props.densityGamma)) * a;
+          (props.minDensity +
+            (1 - props.minDensity) * Math.pow(dark, props.densityGamma)) *
+          a;
         if (Math.random() > prob) continue;
-        positions.push((x - W / 2) * scale, -(y - H / 2) * scale, (Math.random() - 0.5) * 8);
+        positions.push(
+          (x - W / 2) * scale,
+          -(y - H / 2) * scale,
+          (Math.random() - 0.5) * 8,
+        );
         sizes.push(props.sizeMin + (props.sizeMax - props.sizeMin) * dark);
         darks.push(dark);
       }
@@ -246,7 +271,10 @@ onMounted(() => {
     geom.setAttribute('aFloat', new THREE.BufferAttribute(floatPos, 3));
     geom.setAttribute('aOrder', new THREE.BufferAttribute(order, 1));
     geom.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
-    geom.setAttribute('aDark', new THREE.BufferAttribute(new Float32Array(darks), 1));
+    geom.setAttribute(
+      'aDark',
+      new THREE.BufferAttribute(new Float32Array(darks), 1),
+    );
     geom.setAttribute('aGlyph', new THREE.BufferAttribute(glyph, 1));
     geom.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
 
@@ -258,6 +286,7 @@ onMounted(() => {
         uTime: { value: 0 },
         uDisperse: { value: 0 },
         uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
+        uMouseInfluence: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
         uFloatAmp: { value: props.floatAmp },
         uFloatMicro: { value: props.floatMicro },
@@ -285,6 +314,7 @@ onMounted(() => {
         uniform float uTime;
         uniform float uDisperse;
         uniform vec3 uMouse;
+        uniform float uMouseInfluence;
         uniform float uPixelRatio;
         uniform float uGlyphCount;
         uniform float uFloatAmp;
@@ -328,10 +358,9 @@ onMounted(() => {
 
           // 整體避讓：以游標到群中心(原點)的距離決定整群往反方向(遠離游標)的平移量，
           // uGroupNear 內(重疊)≈0 以保留中心環形真空、到 uGroupFar 達上限即停。
-          // active 過濾無游標(9999 哨兵)；散場後關閉。
+          // uMouseInfluence 由 JS 緩動(進入/離開淡入淡出)；散場後關閉。
           float dCenter = length(uMouse.xy);
-          float onScreen = 1.0 - smoothstep(2000.0, 4000.0, dCenter);
-          float shiftAmt = uGroupShift * smoothstep(uGroupNear, uGroupFar, dCenter) * onScreen * (1.0 - uDisperse);
+          float shiftAmt = uGroupShift * smoothstep(uGroupNear, uGroupFar, dCenter) * uMouseInfluence * (1.0 - uDisperse);
           pos.xy += normalize(-uMouse.xy + 0.0001) * shiftAmt;
 
           // 滑鼠真空（斥力）：圈內(uHoleRadius)清空、推到邊界；圈外在 uHoleSpread 範圍內
@@ -340,7 +369,7 @@ onMounted(() => {
           float dm = length(fromMouse.xy) + 0.0001;
           float clear = max(uHoleRadius - dm, 0.0);
           float spread = smoothstep(uHoleRadius + uHoleSpread, uHoleRadius, dm) * uHoleSpread * 0.5;
-          float push = (clear + spread) * (1.0 - uDisperse);
+          float push = (clear + spread) * uMouseInfluence * (1.0 - uDisperse);
           pos.xy += (fromMouse.xy / dm) * push;
 
           // 隨機換字閃爍：每 1/3 秒抽一次，少數粒子暫時換成別的字元
@@ -385,7 +414,11 @@ onMounted(() => {
     tryReveal();
 
     disperseFn = () => {
-      gsap.to(mat!.uniforms.uDisperse, { value: 1, duration: props.disperseDuration, ease: 'power2.inOut' });
+      gsap.to(mat!.uniforms.uDisperse, {
+        value: 1,
+        duration: props.disperseDuration,
+        ease: 'power2.inOut',
+      });
     };
   };
 
@@ -395,7 +428,11 @@ onMounted(() => {
   const tryReveal = () => {
     if (!inView || !mat || revealStarted) return;
     revealStarted = true;
-    gsap.to(mat.uniforms.uProgress, { value: 1, duration: props.revealDuration, ease: 'power2.inOut' });
+    gsap.to(mat.uniforms.uProgress, {
+      value: 1,
+      duration: props.revealDuration,
+      ease: 'power2.inOut',
+    });
   };
   const observer = new IntersectionObserver(
     (entries) => {
@@ -417,12 +454,24 @@ onMounted(() => {
 
   const clock = new THREE.Clock();
   let raf = 0;
+  let prevT = 0;
 
   const animate = () => {
     const t = clock.getElapsedTime();
+    const dt = Math.min(t - prevT, 0.1); // clamp 避免分頁切回時大跳
+    prevT = t;
+    // 與幀率無關的指數緩動係數
+    const k = 1 - Math.exp(-props.mouseEase * dt);
+    if (influence < 0.001 && targetInfluence > 0) {
+      smoothMouse.copy(mouse); // 首次接觸：位置直接到位，靠 influence 淡入強度（不橫掃畫面）
+    } else {
+      smoothMouse.lerp(mouse, k); // 移動中：座標平滑跟隨
+    }
+    influence += (targetInfluence - influence) * k;
     if (mat) {
       mat.uniforms.uTime!.value = t;
-      mat.uniforms.uMouse!.value.copy(mouse);
+      mat.uniforms.uMouse!.value.copy(smoothMouse);
+      mat.uniforms.uMouseInfluence!.value = influence;
     }
     renderer.render(scene, camera);
     raf = requestAnimationFrame(animate);
@@ -479,7 +528,10 @@ onMounted(() => {
   border: 1px solid rgba(0, 0, 0, 0.5);
   border-radius: 999px;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s, opacity 0.3s;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    opacity 0.3s;
 }
 
 .go:hover:not(:disabled) {
