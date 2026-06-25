@@ -50,11 +50,15 @@ useSeoMeta({
         v-model:dispersed="symbolDispersed"
         :phrases="symbolPhrases"
         :hole-radius="25"
-        :max-particles="6000"
-        :color="['#77c6e0', '#d1f4ff', '#ffffff']"
+        :max-particles="16000"
+        :color="['#ffffff', '#d1f4ff', '#77c6e0', '#000000']"
         bg-color="#000"
-        :min-density="0.1"
-        :density-gamma="3.0"
+        :sample-step="4"
+        :size-min="16"
+        :size-max="20"
+        :min-density="0.01"
+        :density-gamma="4.2"
+        :dark-boost="1.2"
       />
       <OrangeCore>
         <section
