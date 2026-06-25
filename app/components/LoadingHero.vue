@@ -1,0 +1,223 @@
+<template>
+  <div ref="rootRef" class="loader" aria-label="載入中" role="img">
+    <!-- 網格比視窗略大且置中，溢出等量裁掉 → 中間格中心 = 視窗正中心 -->
+    <div class="grid">
+      <div v-for="i in count" :key="i" ref="tileRefs" class="tile" />
+    </div>
+    <div ref="counterRef" class="counter">0%</div>
+  </div>
+</template>
+
+<script setup lang="ts">
+const props = defineProps({
+  /** 自動播放總秒數（0 → 100%）；越小越快 */
+  duration: { type: Number, default: 3.2 },
+  /** 方塊邊長（px）；固定尺寸，欄列數由視窗推算 */
+  tileSize: { type: Number, default: 92 },
+  /** 橘色「處理中」前緣占總格數的比例（控制同時有多少橘塊） */
+  orangeRatio: { type: Number, default: 0.04 },
+  /** 底色（未載入） */
+  blue: { type: String, default: '#9FD6FF' },
+  /** 前緣「處理中」色 / 收尾中央色 */
+  orange: { type: String, default: '#FF7F00' },
+  /** 載入完成色（=背景） */
+  white: { type: String, default: '#ffffff' },
+  /** 計數文字色 */
+  textColor: { type: String, default: '#686868' },
+  /** 進站後延遲幾秒才開始 */
+  startDelay: { type: Number, default: 0.2 },
+  /** 100% 後，正中央方塊翻成橘色的延遲秒數 */
+  finalOrangeDelay: { type: Number, default: 0.35 },
+});
+
+const emit = defineEmits<{ done: [] }>();
+
+const rootRef = ref<HTMLDivElement | null>(null);
+const counterRef = ref<HTMLDivElement | null>(null);
+const tileRefs = ref<HTMLDivElement[]>([]);
+
+// 網格欄列數與總格數（resize 時重算）；cols/rows 強制為奇數，保證有「正中間一格」
+const cols = ref(0);
+const count = ref(0);
+let rows = 0;
+let centerIndex = 0; // 正中央那格的 index（最先翻白、最後翻橘、且中心對齊視窗正中心）
+
+// 每格在翻白順序中的「名次」（0..N-1）；名次越小越早翻白
+let order: number[] = [];
+// 上一幀每格狀態，避免重複寫入 DOM
+let prevState: number[] = [];
+
+let raf = 0;
+let prevNow = -1;
+let elapsed = 0; // 累積「可見」秒數（隱藏時不累積，避免切回分頁時快轉）
+let finished = false;
+
+const easeInOutQuad = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+
+// 取 >= v/tile 的最小「奇數」欄列數：奇數才有正中間那一格
+const oddCover = (size: number, tile: number) => {
+  let n = Math.ceil(size / tile);
+  if (n % 2 === 0) n += 1;
+  return Math.max(3, n);
+};
+
+const computeGrid = () => {
+  const vw = rootRef.value?.clientWidth || window.innerWidth;
+  const vh = rootRef.value?.clientHeight || window.innerHeight;
+  const tile = props.tileSize;
+  const c = oddCover(vw, tile);
+  const r = oddCover(vh, tile);
+  cols.value = c;
+  rows = r;
+  count.value = c * r;
+  // 奇數網格的正中間格：中心即整個網格中心；網格置中後 = 視窗正中心
+  centerIndex = Math.floor(r / 2) * c + Math.floor(c / 2);
+  if (rootRef.value) {
+    rootRef.value.style.setProperty('--cols', String(c));
+    rootRef.value.style.setProperty('--tile', `${tile}px`);
+  }
+};
+
+// 洗牌產生翻白順序（Fisher–Yates），並強制「正中央」為第一個翻白（名次 0）
+const buildOrder = (n: number) => {
+  const arr = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j]!, arr[i]!];
+  }
+  // arr[k] = 第 k 名要翻白的「格子 index」。把中央格換到第 0 名。
+  const pos = arr.indexOf(centerIndex);
+  [arr[0], arr[pos]] = [arr[pos]!, arr[0]!];
+  // 轉成 rank：order[格子 index] = 該格的名次
+  order = new Array(n);
+  for (let rank = 0; rank < n; rank++) order[arr[rank]!] = rank;
+  prevState = new Array(n).fill(-1);
+};
+
+// 0=藍 1=橘 2=白
+const paint = (idx: number, state: number) => {
+  const el = tileRefs.value[idx];
+  if (!el || prevState[idx] === state) return;
+  prevState[idx] = state;
+  el.style.backgroundColor = state === 2 ? props.white : state === 1 ? props.orange : props.blue;
+};
+
+const finish = () => {
+  finished = true;
+  const n = count.value;
+  for (let idx = 0; idx < n; idx++) paint(idx, 2); // 全部翻白
+  if (counterRef.value) counterRef.value.style.opacity = '0'; // 數字淡出
+  emit('done');
+  // 收尾動作：正中央方塊翻橘（精準落在視窗正中心）
+  window.setTimeout(() => {
+    paint(centerIndex, 1);
+  }, props.finalOrangeDelay * 1000);
+};
+
+const frame = (now: number) => {
+  if (prevNow < 0) prevNow = now;
+  // clamp 單幀 dt：分頁切回/掉幀時不會把進度一次推完
+  const dt = Math.min((now - prevNow) / 1000, 0.05);
+  prevNow = now;
+  elapsed += dt;
+
+  const n = count.value;
+  const band = Math.max(1, Math.round(n * props.orangeRatio)); // 橘色前緣寬度
+
+  const active = elapsed - props.startDelay;
+  if (active <= 0) {
+    raf = requestAnimationFrame(frame);
+    return;
+  }
+
+  const t = Math.min(active / props.duration, 1);
+  const p = easeInOutQuad(t);
+  const whiteCount = Math.floor(p * n);
+
+  // 依名次決定狀態：已過 → 白；前緣 band 內 → 橘；其餘 → 藍
+  for (let idx = 0; idx < n; idx++) {
+    const rank = order[idx]!;
+    const state = rank < whiteCount ? 2 : rank < whiteCount + band ? 1 : 0;
+    paint(idx, state);
+  }
+
+  if (counterRef.value) counterRef.value.textContent = `${Math.round(p * 100)}%`;
+
+  if (t >= 1) {
+    if (!finished) finish();
+    return; // 停止 RAF
+  }
+  raf = requestAnimationFrame(frame);
+};
+
+const start = () => {
+  buildOrder(count.value);
+  prevNow = -1;
+  elapsed = 0;
+  finished = false;
+  if (counterRef.value) counterRef.value.style.opacity = '1';
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(frame);
+};
+
+const onResize = () => {
+  if (finished) return; // 播完不再重排
+  computeGrid();
+  nextTick(() => start());
+};
+
+onMounted(() => {
+  if (counterRef.value) counterRef.value.style.color = props.textColor;
+  computeGrid();
+  nextTick(() => start());
+  window.addEventListener('resize', onResize);
+});
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(raf);
+  window.removeEventListener('resize', onResize);
+});
+</script>
+
+<style scoped>
+.loader {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background: #fff;
+  /* 把略大於視窗的網格置中：溢出等量被裁，正中間那一格中心 = 視窗正中心 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--tile));
+  grid-auto-rows: var(--tile);
+  flex: none;
+}
+
+.tile {
+  width: var(--tile);
+  height: var(--tile);
+  background-color: #9fd6ff;
+  /* 翻色帶一點點過渡，避免硬切；前緣波看起來會「流動」 */
+  transition: background-color 0.18s linear;
+}
+
+.counter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(28px, 6vmin, 56px);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #686868;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+</style>

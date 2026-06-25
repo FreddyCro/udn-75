@@ -44,22 +44,7 @@ useSeoMeta({
     <NuxtRouteAnnouncer />
     <!-- <AppHeader /> -->
     <main class="main-content">
-      <!-- <ParticleScene /> -->
-      <!-- :auto-mouse="true" -->
-      <SymbolPortraitScene
-        v-model:dispersed="symbolDispersed"
-        :phrases="symbolPhrases"
-        :hole-radius="25"
-        :max-particles="16000"
-        :color="['#ffffff', '#d1f4ff', '#77c6e0', '#000000']"
-        bg-color="#000"
-        :sample-step="4"
-        :size-min="16"
-        :size-max="20"
-        :min-density="0.01"
-        :density-gamma="4.2"
-        :dark-boost="1.2"
-      />
+      <LoadingHero :duration="3" />
       <OrangeCore>
         <section
           v-for="(section, i) in story.sections"
@@ -78,6 +63,21 @@ useSeoMeta({
           <p class="story-section__body">{{ section.body }}</p>
         </section>
       </OrangeCore>
+      <!-- :auto-mouse="true" -->
+      <SymbolPortraitScene
+        v-model:dispersed="symbolDispersed"
+        :phrases="symbolPhrases"
+        :hole-radius="25"
+        :max-particles="16000"
+        :color="['#ffffff', '#d1f4ff', '#77c6e0', '#000000']"
+        bg-color="#000"
+        :sample-step="4"
+        :size-min="16"
+        :size-max="20"
+        :min-density="0.01"
+        :density-gamma="4.2"
+        :dark-boost="1.2"
+      />
       <MetaballsReveal />
       <section class="glitch-demo">
         <GlitchImage
