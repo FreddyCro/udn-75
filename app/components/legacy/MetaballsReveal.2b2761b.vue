@@ -1,53 +1,3 @@
-<!--
-  ============================================================================
-  MetaballsReveal — 游標互動的像素馬賽克揭露效果（單色藍 / Canvas 2D）
-  ============================================================================
-
-  【整體】
-  畫面是一張被網格量化的「蓋章式 metaball 場」當作柔邊遮罩：游標移動時沿軌跡
-  蓋下會漸縮消失的圓章，疊出有機團塊；無互動 IDLE_DELAY 秒後進入閒置漂浮，
-  團塊以多頻率 sin 在畫面中央緩慢游移。只有落在場內（Σ r²/d² ≥ 閾值）的格子
-  才會被填色，因此邊緣是隨游標生長/消退的柔邊，而非硬邊形狀。全程單色藍。
-
-  【兩區：中心 vs 外圍】（核心規格）
-  以游標為焦點 (centerX,centerY) 定義一個「會擴散的圓角方形」中心區，其餘場內
-  區域為外圍。中心區半邊長 centerR 由 0 緩動長到 CENTER_MAX（擴散感）並跟隨游標。
-
-    1. 形狀：用「超橢圓」判定中心區 |dx|^n + |dy|^n ≤ r^n（n = cornerExp）。
-       n=2 為正圓、n 越大越方；預設 4 → 圓角方形，避免生硬直角。
-
-    2. 中心圖案 = 「變寬棋盤」：
-       - 水平方向是寬度帶 1,2,3,6 循環（單元寬 12 格），SEG[p] = 該格所屬帶序 k(0~3)。
-       - 顏色由 (k + gy) 的奇偶決定：相鄰帶反色、相鄰列也反色（棋盤二染色），
-         但格子是不等寬的長方塊。每一列都畫。
-         偶數列：1藍 2白 3藍 6白；奇數列：1白 2藍 3白 6藍。
-
-    3. 外圍圖案：只在偶數列上，以 hash 隨機散布 1×1 / 1×2 小藍塊
-       （density = peripheryDensity），呈現鬆散像素點。
-
-    4. 邊界羽化（自然 spread）：用超橢圓正規化半徑 rn（中心 0、邊界 1）算「保留中心」
-       機率 keep（核心內 1、接近邊界經 smoothstep 降到 0）；以抖動 hash 機率性把
-       邊緣的中心格子「讓位」給外圍紋理 → 兩種紋理在過渡帶交融、邊界自然溶解，
-       不會看到生硬的圓角方形邊。edgeFeather 控制過渡帶寬度。
-
-  【穩定性】外圍與羽化都用「同座標每幀同值」的 hash（非 Math.random），所以圖案
-  不會逐幀閃爍；只有 metaball 場邊緣的隨機生死閾值 cellThresholds 提供毛糙感。
-
-  【效能】每幀只跑活動 bounding box 內的格子；render loop 由 IntersectionObserver
-  控制（不在視窗內就停）。
-
-  【Props】
-    bgColor          畫布底色
-    maxBalls         同時存活的 metaball 上限（ring buffer 大小）
-    life             單顆 ball 壽命（秒）
-    cellSize         馬賽克格子尺寸（px）— 控制顆粒粗細
-    color            單色藍
-    centerCells      中心圓角方形半邊長（格數）— 控制中心區大小
-    peripheryDensity 外圍藍塊密度（0~1）
-    cornerExp        中心區超橢圓指數（2=圓、4=圓角方、越大越方）
-    edgeFeather      邊緣羽化寬度（佔半徑比例 0~1，越大散越開）
-  ============================================================================
--->
 <template>
   <section ref="wrapRef" class="metaballs" :style="{ background: bgColor }">
     <canvas ref="canvasRef" />
@@ -65,27 +15,15 @@ const props = withDefaults(
     life?: number;
     /** 矩陣格子尺寸（CSS px） */
     cellSize?: number;
-    /** 單色藍 */
-    color?: string;
-    /** 中心正方形半邊長（格數）；方塊會由 0 緩動擴散到此大小並跟隨游標 */
-    centerCells?: number;
-    /** 外圍隨機藍塊的密度（0~1，偶數列上每格為藍的機率） */
-    peripheryDensity?: number;
-    /** 中心區形狀的超橢圓指數：2 = 正圓、越大越接近方形；4 左右為圓角方形 */
-    cornerExp?: number;
-    /** 邊緣羽化寬度（佔半徑比例 0~1）：越大過渡帶越寬、中心越自然散開融入外圍 */
-    edgeFeather?: number;
+    /** 格子色票 */
+    palette?: string[];
   }>(),
   {
     bgColor: '#ffffff',
     maxBalls: 64,
     life: 1.6,
     cellSize: 14,
-    color: '#9FD6FF',
-    centerCells: 17,
-    peripheryDensity: 0.5,
-    cornerExp: 4,
-    edgeFeather: 0.5,
+    palette: () => ['#9cc9f0', '#bdddf7', '#dcedfb'],
   },
 );
 
@@ -100,39 +38,14 @@ onMounted(() => {
   const ctx = canvas.getContext('2d')!;
   const CELL = props.cellSize;
   const MAX = props.maxBalls;
-  const COLOR = props.color;
-
-  // 中心「變寬棋盤」：水平寬度帶 1,2,3,6 循環（單元寬 12 格），SEG[p] = 該位置所屬帶序 k(0~3)。
-  // 顏色 = (k + gy) 奇偶交錯 → 相鄰帶、相鄰列皆反色；錨定格子絕對座標，圖案固定不滑動。
-  const WIDTHS = [1, 2, 3, 6];
-  const SEG: number[] = [];
-  WIDTHS.forEach((w, k) => {
-    for (let i = 0; i < w; i++) SEG.push(k);
-  });
-  const UNIT_W = SEG.length; // 12
-
-  // 穩定的逐格偽隨機（同座標每幀同值 → 外圍圖案不閃爍）
-  const hash = (x: number, y: number) => {
-    const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-    return s - Math.floor(s);
-  };
-
-  // 平滑階梯：x≤a 回 0、x≥b 回 1，中間為 S 形漸變
-  const smoothstep = (a: number, b: number, x: number) => {
-    const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
-    return t * t * (3 - 2 * t);
-  };
-
-  // 中心正方形：跟隨游標的焦點 (centerX,centerY)，半邊長 centerR(px) 由 0 緩動擴散到 CENTER_MAX
-  let centerX = -9999;
-  let centerY = -9999;
-  let centerR = 0;
-  const CENTER_MAX = props.centerCells * CELL;
 
   let width = 0;
   let height = 0;
   let cols = 0;
   let rows = 0;
+  // 每格目前的顏色：undefined = 未激活；null = 此次激活抽到留白；string = 色票
+  // 格子離開 metaball 場便重設，再次經過時重新隨機 → 每次圖案都不同
+  let cellColors: (string | null | undefined)[] = [];
   // 每格的生死閾值：metaball 等值線本身是平滑的，被網格量化後會切出
   // 整排同列的直線與直角階梯；給每格隨機閾值讓輪廓毛糙、產生離群像素
   let cellThresholds: (number | undefined)[] = [];
@@ -146,6 +59,7 @@ onMounted(() => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cols = Math.ceil(width / CELL);
     rows = Math.ceil(height / CELL);
+    cellColors = new Array(cols * rows);
     cellThresholds = new Array(cols * rows);
   };
   setSize();
@@ -201,9 +115,7 @@ onMounted(() => {
   const onPointerMove = (e: PointerEvent) => {
     const rect = canvas.getBoundingClientRect();
     lastPointerAt = now();
-    centerX = e.clientX - rect.left;
-    centerY = e.clientY - rect.top;
-    spawn(centerX, centerY);
+    spawn(e.clientX - rect.left, e.clientY - rect.top);
   };
   wrap.addEventListener('pointermove', onPointerMove);
   wrap.addEventListener('pointerdown', onPointerMove);
@@ -218,23 +130,17 @@ onMounted(() => {
 
     // 閒置時：中央小範圍漂浮（多頻率 sin 疊出緩慢偽 noise 路徑）；
     // pointer 互動會暫停，停止互動 IDLE_DELAY 後回到中央
-    if (t - lastPointerAt > IDLE_DELAY) {
+    if (t - lastPointerAt > IDLE_DELAY && t - lastAmbientAt > AMBIENT_INTERVAL) {
+      lastAmbientAt = t;
       const base = Math.min(width, height);
-      // 每幀更新焦點 → 中心方塊跟著漂浮路徑走
-      centerX =
+      const x =
         width * 0.5 +
         (Math.sin(t * 0.35) * 0.6 + Math.sin(t * 0.13 + 1.7) * 0.4) * base * 0.1;
-      centerY =
+      const y =
         height * 0.5 +
         (Math.cos(t * 0.28) * 0.6 + Math.sin(t * 0.17 + 0.7) * 0.4) * base * 0.1;
-      if (t - lastAmbientAt > AMBIENT_INTERVAL) {
-        lastAmbientAt = t;
-        addStamp(centerX, centerY, 0.035, 0.075);
-      }
+      addStamp(x, y, 0.035, 0.075);
     }
-
-    // 中心半邊長緩動擴散到目標值（擴散感）
-    centerR += (CENTER_MAX - centerR) * 0.12;
 
     // 計算每顆 stamp 的當前半徑（快進慢出），並求活動範圍 bounding box
     const live: { x: number; y: number; r: number }[] = [];
@@ -265,13 +171,15 @@ onMounted(() => {
 
     ctx.clearRect(0, 0, width, height);
 
-    // 逐格判斷是否在 metaball 場內（Σ r²/d² ≥ 閾值）：在場內才依「中心/外圍」
-    // 規則上色（見檔頭 spec）；離開場則重設該格閾值，下次經過重新抽。
+    // 逐格判斷是否在 metaball 場內（Σ r²/d² ≥ 1）：
+    // 在場內 → 長出格子（首次激活時隨機配色，偏好延續左鄰顏色形成橫紋）
+    // 離開場 → 重設，下次經過重新隨機
     for (let gy = 0; gy < rows; gy++) {
       const inY = gy >= gy0 && gy < gy1;
       for (let gx = 0; gx < cols; gx++) {
         const idx = gy * cols + gx;
         if (!inY || gx < gx0 || gx >= gx1 || live.length === 0) {
+          if (cellColors[idx] !== undefined) cellColors[idx] = undefined;
           if (cellThresholds[idx] !== undefined) cellThresholds[idx] = undefined;
           continue;
         }
@@ -294,29 +202,25 @@ onMounted(() => {
           cellThresholds[idx] = th;
         }
         if (field >= th) {
-          // 中心區用超橢圓正規化半徑 rn（中心=0、邊界=1），圓角方形不見生硬直角
-          const cdx = Math.abs(cx - centerX);
-          const cdy = Math.abs(cy - centerY);
-          const e =
-            Math.pow(cdx, props.cornerExp) + Math.pow(cdy, props.cornerExp);
-          const rn = Math.pow(e, 1 / props.cornerExp) / Math.max(centerR, 0.0001);
-          // 羽化：核心內 keep=1 全保留中心圖案；接近邊界 keep 漸降到 0，
-          // 以抖動 hash 機率性讓位給外圍 → 兩種紋理在過渡帶交融、邊界自然溶解
-          const keep = 1 - smoothstep(1 - props.edgeFeather, 1, rn);
-          const isCenter = keep > 0 && hash(gx + 31.4, gy + 17.2) < keep;
-          let blue = false;
-          if (isCenter) {
-            // 中心：變寬棋盤——帶序 k 查 SEG，顏色 (k + gy) 奇偶交錯，每列都畫
-            const k = SEG[((gx % UNIT_W) + UNIT_W) % UNIT_W]!;
-            blue = (k + gy) % 2 === 0;
-          } else if (gy % 2 === 0) {
-            // 外圍（含過渡帶讓位的格子）：偶數列隨機散布 1×1 / 1×2 小藍塊
-            blue = hash(gx, gy) < props.peripheryDensity;
+          let c = cellColors[idx];
+          if (c === undefined) {
+            const left = gx > 0 ? cellColors[idx - 1] : undefined;
+            if (left !== undefined && Math.random() < 0.6) {
+              c = left; // 延續左鄰 → 橫向色帶感
+            } else {
+              c =
+                Math.random() < 0.78
+                  ? props.palette[Math.floor(Math.random() * props.palette.length)]!
+                  : null;
+            }
+            cellColors[idx] = c;
           }
-          if (blue) {
-            ctx.fillStyle = COLOR;
+          if (c) {
+            ctx.fillStyle = c;
             ctx.fillRect(gx * CELL, gy * CELL, CELL, CELL);
           }
+        } else if (cellColors[idx] !== undefined) {
+          cellColors[idx] = undefined;
         }
       }
     }
