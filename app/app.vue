@@ -35,11 +35,15 @@ useSeoMeta({
     <!-- <AppHeader /> -->
     <main class="main-content">
       <!-- <ParticleScene /> -->
+      <!-- :auto-mouse="true" -->
       <SymbolPortraitScene
         v-model:dispersed="symbolDispersed"
         :hole-radius="25"
         :max-particles="6000"
-        :auto-mouse="true"
+        :color="['#77c6e0', '#d1f4ff', '#ffffff']"
+        bg-color="#000"
+        :min-density="0.1"
+        :density-gamma="3.0"
       />
       <OrangeCore>
         <section

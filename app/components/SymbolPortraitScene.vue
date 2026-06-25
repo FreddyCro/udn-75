@@ -21,8 +21,13 @@ const props = defineProps({
     type: Array as () => string[],
     default: () => ['M', 'F', 'O', 'A', 'B', 'I', '7', '5'],
   },
-  /** 單一色系（淡藍），層次靠密度與大小 */
-  color: { type: String, default: '#88beef' },
+  /** 顏色：單色字串，或多色標漸層陣列（如 ['#000','#77c6e0','#fff']），依 colorMode 取色 */
+  color: {
+    type: [String, Array] as () => string | string[],
+    default: '#88beef',
+  },
+  /** 漸層取色方式：'tone' 依明暗對應（暗→左端、亮→右端）/ 'random' 每顆隨機取色 */
+  colorMode: { type: String, default: 'tone' },
   /** 採樣間距（px），越小越密 */
   sampleStep: { type: Number, default: 6 },
   /** 目標框寬（world 單位）：圖以 contain 方式塞入，正規化 render 大小 */
@@ -117,6 +122,31 @@ const makeGlyphAtlas = (chars: string[]) => {
   return { texture, cols, rows };
 };
 
+// 把單色/多色標漸層畫成 1D 漸層貼圖，shader 以 vT 取色
+const makeColorRamp = (color: string | string[]) => {
+  const stops = Array.isArray(color) ? color : [color];
+  const w = 256;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = 1;
+  const ctx = c.getContext('2d')!;
+  if (stops.length === 1) {
+    ctx.fillStyle = stops[0]!;
+    ctx.fillRect(0, 0, w, 1);
+  } else {
+    const g = ctx.createLinearGradient(0, 0, w, 0);
+    stops.forEach((s, i) => g.addColorStop(i / (stops.length - 1), s));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, 1);
+  }
+  const texture = new THREE.CanvasTexture(c);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  return texture;
+};
+
 onMounted(() => {
   const wrap = wrapRef.value;
   if (!wrap) return;
@@ -162,6 +192,7 @@ onMounted(() => {
   renderer.domElement.addEventListener('pointerleave', onLeave);
 
   const atlas = makeGlyphAtlas(props.chars);
+  const colorRamp = makeColorRamp(props.color);
 
   let geom: THREE.BufferGeometry | null = null;
   let mat: THREE.ShaderMaterial | null = null;
@@ -308,7 +339,8 @@ onMounted(() => {
         uAtlas: { value: atlas.texture },
         uAtlasGrid: { value: new THREE.Vector2(atlas.cols, atlas.rows) },
         uGlyphCount: { value: props.chars.length },
-        uColor: { value: new THREE.Color(props.color) },
+        uColorRamp: { value: colorRamp },
+        uColorRandom: { value: props.colorMode === 'random' ? 1 : 0 },
       },
       vertexShader: /* glsl */ `
         attribute vec3 aStart;
@@ -334,9 +366,11 @@ onMounted(() => {
         uniform float uGroupShift;
         uniform float uGroupNear;
         uniform float uGroupFar;
+        uniform float uColorRandom;
         varying float vAlpha;
         varying float vGlyph;
         varying float vShade;
+        varying float vT;
 
         float hash(float n) { return fract(sin(n) * 43758.5453123); }
 
@@ -389,7 +423,9 @@ onMounted(() => {
           float twinkle = 0.82 + 0.18 * sin(uTime * 2.2 + aSeed * 40.0);
           // 亮部稍透明、暗部不透明，再疊一層深淺：對比靠 alpha + 色深 + 大小 + 密度
           vAlpha = local * twinkle * mix(0.55, 1.0, aDark) * mix(1.0, 0.5, uDisperse);
-          vShade = mix(1.15, 0.45, aDark) * (0.92 + 0.16 * hash(aSeed * 17.7));
+          // 取色位置：tone=依明暗(暗→漸層左端) / random=每顆隨機；色調由漸層主導，vShade 僅輕微明暗+抖動
+          vT = mix(1.0 - aDark, hash(aSeed * 53.7), uColorRandom);
+          vShade = mix(1.1, 0.7, aDark) * (0.92 + 0.16 * hash(aSeed * 17.7));
 
           vec4 mv = modelViewMatrix * vec4(pos, 1.0);
           gl_Position = projectionMatrix * mv;
@@ -401,10 +437,11 @@ onMounted(() => {
       fragmentShader: /* glsl */ `
         uniform sampler2D uAtlas;
         uniform vec2 uAtlasGrid;
-        uniform vec3 uColor;
+        uniform sampler2D uColorRamp;
         varying float vAlpha;
         varying float vGlyph;
         varying float vShade;
+        varying float vT;
         void main() {
           vec2 cell = vec2(mod(vGlyph, uAtlasGrid.x), floor(vGlyph / uAtlasGrid.x));
           vec2 uv = vec2(
@@ -413,7 +450,8 @@ onMounted(() => {
           );
           float a = texture2D(uAtlas, uv).a * vAlpha;
           if (a < 0.02) discard;
-          gl_FragColor = vec4(uColor * vShade, a);
+          vec3 col = texture2D(uColorRamp, vec2(clamp(vT, 0.0, 1.0), 0.5)).rgb;
+          gl_FragColor = vec4(col * vShade, a);
         }
       `,
     });
@@ -526,6 +564,7 @@ onMounted(() => {
     geom?.dispose();
     mat?.dispose();
     atlas.texture.dispose();
+    colorRamp.dispose();
     wrap.removeChild(renderer.domElement);
   });
 });
