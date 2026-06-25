@@ -78,6 +78,10 @@ const props = defineProps({
   groupShiftFar: { type: Number, default: 380 },
   /** 滑鼠互動平滑速度：越大越跟手、越小越柔（進入/移動/離開都會緩動，不瞬移） */
   mouseEase: { type: Number, default: 8 },
+  /** 自動游標：無 hover 環境（手機）以虛擬游標在人像內隨機遊走，沿用真空/避讓效果 */
+  autoMouse: { type: Boolean, default: false },
+  /** 自動游標遊走速度倍率 */
+  autoMouseSpeed: { type: Number, default: 1.0 },
 });
 
 const wrapRef = ref<HTMLDivElement | null>(null);
@@ -162,6 +166,9 @@ onMounted(() => {
   let geom: THREE.BufferGeometry | null = null;
   let mat: THREE.ShaderMaterial | null = null;
   let unmounted = false;
+  // 自動游標遊走半徑（buildFromImage 依人像實際範圍設定）
+  let roamX = 150;
+  let roamY = 150;
 
   // ---------- 圖片亮度採樣：暗密亮疏、暗大亮小 ----------
   const buildFromImage = (img: HTMLImageElement) => {
@@ -178,6 +185,9 @@ onMounted(() => {
     // 與圖片解析度、視窗 aspect 脫鉤（換圖不爆框）
     const scale =
       Math.min(props.fitWidth / W, props.fitHeight / H) * props.worldScale;
+    // 自動游標在人像範圍的 ~70% 內遊走（人像置中於原點，半寬高 = W*scale/2、H*scale/2）
+    roamX = ((W * scale) / 2) * 0.7;
+    roamY = ((H * scale) / 2) * 0.7;
     const positions: number[] = [];
     const sizes: number[] = [];
     const darks: number[] = [];
@@ -468,6 +478,16 @@ onMounted(() => {
     const t = clock.getElapsedTime();
     const dt = Math.min(t - prevT, 0.1); // clamp 避免分頁切回時大跳
     prevT = t;
+    // 自動游標：以多頻率正弦疊加做出非重複的平滑遊走，覆寫真實游標
+    if (props.autoMouse) {
+      const at = t * props.autoMouseSpeed;
+      mouse.set(
+        Math.sin(at * 0.7) * roamX * 0.6 + Math.sin(at * 0.23 + 1.3) * roamX * 0.4,
+        Math.cos(at * 0.53) * roamY * 0.6 + Math.cos(at * 0.31 + 0.7) * roamY * 0.4,
+        0,
+      );
+      targetInfluence = 1;
+    }
     // 與幀率無關的指數緩動係數
     const k = 1 - Math.exp(-props.mouseEase * dt);
     if (influence < 0.001 && targetInfluence > 0) {

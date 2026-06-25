@@ -39,6 +39,7 @@ useSeoMeta({
         v-model:dispersed="symbolDispersed"
         :hole-radius="25"
         :max-particles="6000"
+        :auto-mouse="true"
       />
       <OrangeCore>
         <section
