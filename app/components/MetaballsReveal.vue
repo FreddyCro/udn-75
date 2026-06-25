@@ -15,15 +15,21 @@ const props = withDefaults(
     life?: number;
     /** 矩陣格子尺寸（CSS px） */
     cellSize?: number;
-    /** 格子色票 */
-    palette?: string[];
+    /** 單色藍 */
+    color?: string;
+    /** 中心正方形半邊長（格數）；方塊會由 0 緩動擴散到此大小並跟隨游標 */
+    centerCells?: number;
+    /** 外圍隨機藍塊的密度（0~1，偶數列上每格為藍的機率） */
+    peripheryDensity?: number;
   }>(),
   {
     bgColor: '#ffffff',
     maxBalls: 64,
     life: 1.6,
     cellSize: 14,
-    palette: () => ['#9cc9f0', '#bdddf7', '#dcedfb'],
+    color: '#9FD6FF',
+    centerCells: 6,
+    peripheryDensity: 0.5,
   },
 );
 
@@ -38,14 +44,34 @@ onMounted(() => {
   const ctx = canvas.getContext('2d')!;
   const CELL = props.cellSize;
   const MAX = props.maxBalls;
+  const COLOR = props.color;
+
+  // 中心水平寬度序列（三角波）：1,2,3,6,3,2 循環，每段藍 rect 後接 1 格白縫。
+  // 預先攤平成布林查表，藍列上 cell 是否為藍 = UNIT[gx mod UNIT.length]（錨定格子絕對座標）。
+  const WIDTHS = [1, 2, 3, 6, 3, 2];
+  const UNIT: boolean[] = [];
+  for (const w of WIDTHS) {
+    for (let i = 0; i < w; i++) UNIT.push(true);
+    UNIT.push(false);
+  }
+  const U = UNIT.length;
+
+  // 穩定的逐格偽隨機（同座標每幀同值 → 外圍圖案不閃爍）
+  const hash = (x: number, y: number) => {
+    const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+    return s - Math.floor(s);
+  };
+
+  // 中心正方形：跟隨游標的焦點 (centerX,centerY)，半邊長 centerR(px) 由 0 緩動擴散到 CENTER_MAX
+  let centerX = -9999;
+  let centerY = -9999;
+  let centerR = 0;
+  const CENTER_MAX = props.centerCells * CELL;
 
   let width = 0;
   let height = 0;
   let cols = 0;
   let rows = 0;
-  // 每格目前的顏色：undefined = 未激活；null = 此次激活抽到留白；string = 色票
-  // 格子離開 metaball 場便重設，再次經過時重新隨機 → 每次圖案都不同
-  let cellColors: (string | null | undefined)[] = [];
   // 每格的生死閾值：metaball 等值線本身是平滑的，被網格量化後會切出
   // 整排同列的直線與直角階梯；給每格隨機閾值讓輪廓毛糙、產生離群像素
   let cellThresholds: (number | undefined)[] = [];
@@ -59,7 +85,6 @@ onMounted(() => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cols = Math.ceil(width / CELL);
     rows = Math.ceil(height / CELL);
-    cellColors = new Array(cols * rows);
     cellThresholds = new Array(cols * rows);
   };
   setSize();
@@ -115,7 +140,9 @@ onMounted(() => {
   const onPointerMove = (e: PointerEvent) => {
     const rect = canvas.getBoundingClientRect();
     lastPointerAt = now();
-    spawn(e.clientX - rect.left, e.clientY - rect.top);
+    centerX = e.clientX - rect.left;
+    centerY = e.clientY - rect.top;
+    spawn(centerX, centerY);
   };
   wrap.addEventListener('pointermove', onPointerMove);
   wrap.addEventListener('pointerdown', onPointerMove);
@@ -130,17 +157,23 @@ onMounted(() => {
 
     // 閒置時：中央小範圍漂浮（多頻率 sin 疊出緩慢偽 noise 路徑）；
     // pointer 互動會暫停，停止互動 IDLE_DELAY 後回到中央
-    if (t - lastPointerAt > IDLE_DELAY && t - lastAmbientAt > AMBIENT_INTERVAL) {
-      lastAmbientAt = t;
+    if (t - lastPointerAt > IDLE_DELAY) {
       const base = Math.min(width, height);
-      const x =
+      // 每幀更新焦點 → 中心方塊跟著漂浮路徑走
+      centerX =
         width * 0.5 +
         (Math.sin(t * 0.35) * 0.6 + Math.sin(t * 0.13 + 1.7) * 0.4) * base * 0.1;
-      const y =
+      centerY =
         height * 0.5 +
         (Math.cos(t * 0.28) * 0.6 + Math.sin(t * 0.17 + 0.7) * 0.4) * base * 0.1;
-      addStamp(x, y, 0.035, 0.075);
+      if (t - lastAmbientAt > AMBIENT_INTERVAL) {
+        lastAmbientAt = t;
+        addStamp(centerX, centerY, 0.035, 0.075);
+      }
     }
+
+    // 中心正方形半邊長緩動擴散到目標值（擴散感）
+    centerR += (CENTER_MAX - centerR) * 0.12;
 
     // 計算每顆 stamp 的當前半徑（快進慢出），並求活動範圍 bounding box
     const live: { x: number; y: number; r: number }[] = [];
@@ -179,7 +212,6 @@ onMounted(() => {
       for (let gx = 0; gx < cols; gx++) {
         const idx = gy * cols + gx;
         if (!inY || gx < gx0 || gx >= gx1 || live.length === 0) {
-          if (cellColors[idx] !== undefined) cellColors[idx] = undefined;
           if (cellThresholds[idx] !== undefined) cellThresholds[idx] = undefined;
           continue;
         }
@@ -202,25 +234,22 @@ onMounted(() => {
           cellThresholds[idx] = th;
         }
         if (field >= th) {
-          let c = cellColors[idx];
-          if (c === undefined) {
-            const left = gx > 0 ? cellColors[idx - 1] : undefined;
-            if (left !== undefined && Math.random() < 0.6) {
-              c = left; // 延續左鄰 → 橫向色帶感
-            } else {
-              c =
-                Math.random() < 0.78
-                  ? props.palette[Math.floor(Math.random() * props.palette.length)]!
-                  : null;
-            }
-            cellColors[idx] = c;
+          // 百葉窗：偶數列才畫、奇數列整列留白；藍 rect 均為 1 列高、上下對齊
+          let blue = false;
+          if (gy % 2 === 0) {
+            // 是否落在跟隨游標的中心正方形內（Chebyshev 距離 → 方塊）
+            const inCenter =
+              Math.max(Math.abs(cx - centerX), Math.abs(cy - centerY)) <= centerR;
+            blue = inCenter
+              ? // 中心：三角波寬度序列 1,2,3,6,3,2（錨定格子絕對座標，圖案固定不滑動）
+                UNIT[((gx % U) + U) % U]!
+              : // 外圍：隨機散布 1×1 / 1×2 小藍塊
+                hash(gx, gy) < props.peripheryDensity;
           }
-          if (c) {
-            ctx.fillStyle = c;
+          if (blue) {
+            ctx.fillStyle = COLOR;
             ctx.fillRect(gx * CELL, gy * CELL, CELL, CELL);
           }
-        } else if (cellColors[idx] !== undefined) {
-          cellColors[idx] = undefined;
         }
       }
     }
