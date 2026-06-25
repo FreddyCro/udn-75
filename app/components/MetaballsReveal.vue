@@ -28,7 +28,7 @@ const props = withDefaults(
     life: 1.6,
     cellSize: 14,
     color: '#9FD6FF',
-    centerCells: 6,
+    centerCells: 12,
     peripheryDensity: 0.5,
   },
 );
@@ -46,15 +46,14 @@ onMounted(() => {
   const MAX = props.maxBalls;
   const COLOR = props.color;
 
-  // 中心水平寬度序列（三角波）：1,2,3,6,3,2 循環，每段藍 rect 後接 1 格白縫。
-  // 預先攤平成布林查表，藍列上 cell 是否為藍 = UNIT[gx mod UNIT.length]（錨定格子絕對座標）。
-  const WIDTHS = [1, 2, 3, 6, 3, 2];
-  const UNIT: boolean[] = [];
-  for (const w of WIDTHS) {
-    for (let i = 0; i < w; i++) UNIT.push(true);
-    UNIT.push(false);
-  }
-  const U = UNIT.length;
+  // 中心「變寬棋盤」：水平寬度帶 1,2,3,6 循環（單元寬 12 格），SEG[p] = 該位置所屬帶序 k(0~3)。
+  // 顏色 = (k + gy) 奇偶交錯 → 相鄰帶、相鄰列皆反色；錨定格子絕對座標，圖案固定不滑動。
+  const WIDTHS = [1, 2, 3, 6];
+  const SEG: number[] = [];
+  WIDTHS.forEach((w, k) => {
+    for (let i = 0; i < w; i++) SEG.push(k);
+  });
+  const UNIT_W = SEG.length; // 12
 
   // 穩定的逐格偽隨機（同座標每幀同值 → 外圍圖案不閃爍）
   const hash = (x: number, y: number) => {
@@ -234,17 +233,17 @@ onMounted(() => {
           cellThresholds[idx] = th;
         }
         if (field >= th) {
-          // 百葉窗：偶數列才畫、奇數列整列留白；藍 rect 均為 1 列高、上下對齊
+          // 是否落在跟隨游標的中心正方形內（Chebyshev 距離 → 方塊）
+          const inCenter =
+            Math.max(Math.abs(cx - centerX), Math.abs(cy - centerY)) <= centerR;
           let blue = false;
-          if (gy % 2 === 0) {
-            // 是否落在跟隨游標的中心正方形內（Chebyshev 距離 → 方塊）
-            const inCenter =
-              Math.max(Math.abs(cx - centerX), Math.abs(cy - centerY)) <= centerR;
-            blue = inCenter
-              ? // 中心：三角波寬度序列 1,2,3,6,3,2（錨定格子絕對座標，圖案固定不滑動）
-                UNIT[((gx % U) + U) % U]!
-              : // 外圍：隨機散布 1×1 / 1×2 小藍塊
-                hash(gx, gy) < props.peripheryDensity;
+          if (inCenter) {
+            // 中心：變寬棋盤——帶序 k 查 SEG，顏色 (k + gy) 奇偶交錯，每列都畫
+            const k = SEG[((gx % UNIT_W) + UNIT_W) % UNIT_W]!;
+            blue = (k + gy) % 2 === 0;
+          } else if (gy % 2 === 0) {
+            // 外圍維持原樣：偶數列隨機散布 1×1 / 1×2 小藍塊
+            blue = hash(gx, gy) < props.peripheryDensity;
           }
           if (blue) {
             ctx.fillStyle = COLOR;
