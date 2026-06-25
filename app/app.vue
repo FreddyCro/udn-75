@@ -28,10 +28,10 @@ useSeoMeta({
 <template>
   <div>
     <NuxtRouteAnnouncer />
-    <AppHeader />
+    <!-- <AppHeader /> -->
     <main class="main-content">
       <!-- <ParticleScene /> -->
-      <SymbolPortraitScene />
+      <SymbolPortraitScene :hole-radius="25" />
       <OrangeCore>
         <section
           v-for="(section, i) in story.sections"
@@ -55,14 +55,14 @@ useSeoMeta({
         <GlitchImage
           class="glitch-demo__item"
           :images="[glitch3, glitch1, glitch2]"
-          :duration="2.4"
-          :pieces="24"
+          :duration="1.2"
+          :pieces="12"
           bg-color="#ffffff"
           alt="Glitch 收斂進場示意圖"
         />
       </section>
     </main>
-    <AppFooter />
+    <!-- <AppFooter /> -->
   </div>
 </template>
 

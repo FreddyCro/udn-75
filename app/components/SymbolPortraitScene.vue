@@ -34,6 +34,38 @@ const props = defineProps({
   sizeMax: { type: Number, default: 36 },
   /** 粒子數上限（行動裝置可降） */
   maxParticles: { type: Number, default: 14000 },
+
+  // ---------- 場景 / 動畫節奏 ----------
+  /** 背景色 */
+  bgColor: { type: String, default: '#ffffff' },
+  /** 組合（reveal）動畫秒數 */
+  revealDuration: { type: Number, default: 3 },
+  /** 散場（disperse）動畫秒數 */
+  disperseDuration: { type: Number, default: 2.2 },
+  /** 散場擴散範圍 [x, y, z] */
+  disperseSpread: { type: Array as () => number[], default: () => [900, 520, 240] },
+
+  // ---------- 無互動時的整體漂浮 ----------
+  /** 整體漂浮幅度（全部 symbol 同步隨機遊走，做出「整片在飄」） */
+  floatAmp: { type: Number, default: 22 },
+  /** 每顆 symbol 額外微擾幅度（organic 感） */
+  floatMicro: { type: Number, default: 4 },
+  /** 漂浮速度倍率 */
+  floatSpeed: { type: Number, default: 1.0 },
+
+  // ---------- 滑鼠真空（斥力） ----------
+  /** 真空半徑：游標圈內完全清空 */
+  holeRadius: { type: Number, default: 90 },
+  /** 擴散範圍：圈外再延伸多遠做遞減外推（柔化邊界、擴散到周圍） */
+  holeSpread: { type: Number, default: 140 },
+
+  // ---------- 整體避讓（symbol 群閃避游標） ----------
+  /** 游標越遠，整群往反方向（遠離游標）位移的最大量（微微一動） */
+  groupShift: { type: Number, default: 28 },
+  /** 此距離內（游標貼近/重疊群中心）不位移，以保留中心環形真空 */
+  groupShiftNear: { type: Number, default: 120 },
+  /** 游標離群中心到此距離時達最大位移、之後停住 */
+  groupShiftFar: { type: Number, default: 380 },
 });
 
 const wrapRef = ref<HTMLDivElement | null>(null);
@@ -77,7 +109,7 @@ onMounted(() => {
   const height = wrap.clientHeight;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xffffff);
+  scene.background = new THREE.Color(props.bgColor);
 
   const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 2000);
   camera.position.z = 600;
@@ -182,9 +214,9 @@ onMounted(() => {
     const glyph = new Float32Array(count);
     const seed = new Float32Array(count);
 
-    const FLOAT_X = 900;
-    const FLOAT_Y = 520;
-    const FLOAT_Z = 240;
+    const FLOAT_X = props.disperseSpread[0] ?? 900;
+    const FLOAT_Y = props.disperseSpread[1] ?? 520;
+    const FLOAT_Z = props.disperseSpread[2] ?? 240;
     for (let i = 0; i < count; i++) {
       const i3 = i * 3;
       const ang = Math.random() * Math.PI * 2;
@@ -220,6 +252,14 @@ onMounted(() => {
         uDisperse: { value: 0 },
         uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
         uPixelRatio: { value: renderer.getPixelRatio() },
+        uFloatAmp: { value: props.floatAmp },
+        uFloatMicro: { value: props.floatMicro },
+        uFloatSpeed: { value: props.floatSpeed },
+        uHoleRadius: { value: props.holeRadius },
+        uHoleSpread: { value: props.holeSpread },
+        uGroupShift: { value: props.groupShift },
+        uGroupNear: { value: props.groupShiftNear },
+        uGroupFar: { value: props.groupShiftFar },
         uAtlas: { value: atlas.texture },
         uAtlasGrid: { value: new THREE.Vector2(atlas.cols, atlas.rows) },
         uGlyphCount: { value: props.chars.length },
@@ -240,6 +280,14 @@ onMounted(() => {
         uniform vec3 uMouse;
         uniform float uPixelRatio;
         uniform float uGlyphCount;
+        uniform float uFloatAmp;
+        uniform float uFloatMicro;
+        uniform float uFloatSpeed;
+        uniform float uHoleRadius;
+        uniform float uHoleSpread;
+        uniform float uGroupShift;
+        uniform float uGroupNear;
+        uniform float uGroupFar;
         varying float vAlpha;
         varying float vGlyph;
         varying float vShade;
@@ -250,6 +298,20 @@ onMounted(() => {
           float local = smoothstep(aOrder, aOrder + 0.12, uProgress);
           vec3 pos = mix(aStart, aTarget, local);
 
+          // 無互動時的整體漂浮：全粒子同步的低頻隨機遊走（不帶 seed）做出「整片在飄」，
+          // 再疊一層每顆微擾（帶 seed）增加 organic 感；散場時淡出交棒給下方 drift
+          float idle = local * (1.0 - uDisperse);
+          float ts = uTime * uFloatSpeed;
+          vec3 sway;
+          sway.x = (sin(ts * 0.23) + 0.6 * sin(ts * 0.37 + 1.7)) * uFloatAmp;
+          sway.y = (cos(ts * 0.19) + 0.6 * cos(ts * 0.31 + 0.5)) * uFloatAmp;
+          sway.z = sin(ts * 0.15) * uFloatAmp * 0.4;
+          vec3 micro;
+          micro.x = sin(ts * 0.50 + aSeed * 6.2831) * uFloatMicro;
+          micro.y = cos(ts * 0.44 + aSeed * 5.0)    * uFloatMicro;
+          micro.z = sin(ts * 0.62 + aSeed * 3.1416) * uFloatMicro * 0.5;
+          pos += (sway + micro) * idle;
+
           // 離場：target -> 隨機漂浮位置，並持續緩慢漂移
           vec3 drift = aFloat;
           drift.x += sin(uTime * 0.30 + aSeed * 6.2831) * 28.0;
@@ -257,11 +319,22 @@ onMounted(() => {
           drift.z += sin(uTime * 0.18 + aSeed * 3.1416) * 10.0;
           pos = mix(pos, drift, uDisperse);
 
-          // 滑鼠斥力（散場後關閉）
-          vec3 toMouse = pos - uMouse;
-          float d = length(toMouse.xy);
-          float force = smoothstep(110.0, 0.0, d) * (1.0 - uDisperse);
-          pos.xy += normalize(toMouse.xy + 0.0001) * force * 55.0;
+          // 整體避讓：以游標到群中心(原點)的距離決定整群往反方向(遠離游標)的平移量，
+          // uGroupNear 內(重疊)≈0 以保留中心環形真空、到 uGroupFar 達上限即停。
+          // active 過濾無游標(9999 哨兵)；散場後關閉。
+          float dCenter = length(uMouse.xy);
+          float onScreen = 1.0 - smoothstep(2000.0, 4000.0, dCenter);
+          float shiftAmt = uGroupShift * smoothstep(uGroupNear, uGroupFar, dCenter) * onScreen * (1.0 - uDisperse);
+          pos.xy += normalize(-uMouse.xy + 0.0001) * shiftAmt;
+
+          // 滑鼠真空（斥力）：圈內(uHoleRadius)清空、推到邊界；圈外在 uHoleSpread 範圍內
+          // 遞減外推，把效果擴散到周圍、柔化邊界（不在邊界硬堆一圈）；散場後關閉
+          vec3 fromMouse = pos - uMouse;
+          float dm = length(fromMouse.xy) + 0.0001;
+          float clear = max(uHoleRadius - dm, 0.0);
+          float spread = smoothstep(uHoleRadius + uHoleSpread, uHoleRadius, dm) * uHoleSpread * 0.5;
+          float push = (clear + spread) * (1.0 - uDisperse);
+          pos.xy += (fromMouse.xy / dm) * push;
 
           // 隨機換字閃爍：每 1/3 秒抽一次，少數粒子暫時換成別的字元
           float tick = floor(uTime * 3.0);
@@ -305,7 +378,7 @@ onMounted(() => {
     tryReveal();
 
     disperseFn = () => {
-      gsap.to(mat!.uniforms.uDisperse, { value: 1, duration: 2.2, ease: 'power2.inOut' });
+      gsap.to(mat!.uniforms.uDisperse, { value: 1, duration: props.disperseDuration, ease: 'power2.inOut' });
     };
   };
 
@@ -315,7 +388,7 @@ onMounted(() => {
   const tryReveal = () => {
     if (!inView || !mat || revealStarted) return;
     revealStarted = true;
-    gsap.to(mat.uniforms.uProgress, { value: 1, duration: 3, ease: 'power2.inOut' });
+    gsap.to(mat.uniforms.uProgress, { value: 1, duration: props.revealDuration, ease: 'power2.inOut' });
   };
   const observer = new IntersectionObserver(
     (entries) => {
