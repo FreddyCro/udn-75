@@ -1,7 +1,7 @@
 <template>
   <div ref="wrapRef" class="stage">
-    <button class="go" :disabled="dispersed" @click="onDisperse">
-      DISPERSE
+    <button class="go" @click="dispersed = !dispersed">
+      {{ dispersed ? '集合' : '分散' }}
     </button>
   </div>
 </template>
@@ -81,14 +81,13 @@ const props = defineProps({
 });
 
 const wrapRef = ref<HTMLDivElement | null>(null);
-const dispersed = ref(false);
-let disperseFn: (() => void) | null = null;
+// 兩種狀態：false = 集合（人像）/ true = 分散（散場漂浮）。
+// v-model 由父層決定預設值並隨意切換；元件內按鈕也只是翻轉它。
+const dispersed = defineModel<boolean>('dispersed', { default: false });
+let disperseFn: ((animated?: boolean) => void) | null = null;
 
-const onDisperse = () => {
-  if (dispersed.value) return;
-  dispersed.value = true;
-  disperseFn?.();
-};
+// 狀態改變時，可逆地補間 uDisperse（0↔1）
+watch(dispersed, () => disperseFn?.(true));
 
 // 把字元集畫成 sprite sheet，fragment shader 以 gl_PointCoord + cell offset 取樣
 const makeGlyphAtlas = (chars: string[]) => {
@@ -413,13 +412,22 @@ onMounted(() => {
     scene.add(points);
     tryReveal();
 
-    disperseFn = () => {
-      gsap.to(mat!.uniforms.uDisperse, {
-        value: 1,
-        duration: props.disperseDuration,
-        ease: 'power2.inOut',
-      });
+    // 依目前狀態補間到 0(集合) 或 1(分散)；animated=false 用於初始直接定位
+    disperseFn = (animated = true) => {
+      if (!mat) return;
+      const targetVal = dispersed.value ? 1 : 0;
+      gsap.killTweensOf(mat.uniforms.uDisperse);
+      if (animated) {
+        gsap.to(mat.uniforms.uDisperse, {
+          value: targetVal,
+          duration: props.disperseDuration,
+          ease: 'power2.inOut',
+        });
+      } else {
+        mat.uniforms.uDisperse.value = targetVal;
+      }
     };
+    disperseFn(false); // 套用初始預設狀態（不動畫）
   };
 
   // 進入視口且圖片採樣完成後才開始 reveal

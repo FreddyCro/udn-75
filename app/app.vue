@@ -11,6 +11,10 @@ const config = useRuntimeConfig();
 const APP_MODE = config.public.APP_MODE;
 const ASSETS_PATH = config.public.APP_ASSETS_PATH;
 
+// SymbolPortraitScene 狀態：false = 集合（人像）/ true = 分散（漂浮）
+// 改這裡決定預設狀態；之後任何地方 symbolDispersed.value = !symbolDispersed.value 即可切換
+const symbolDispersed = ref(false);
+
 useSeoMeta({
   title: meta.metaTitle,
   description: meta.metaDesc,
@@ -31,7 +35,11 @@ useSeoMeta({
     <!-- <AppHeader /> -->
     <main class="main-content">
       <!-- <ParticleScene /> -->
-      <SymbolPortraitScene :hole-radius="25" :max-particles="6000" />
+      <SymbolPortraitScene
+        v-model:dispersed="symbolDispersed"
+        :hole-radius="25"
+        :max-particles="6000"
+      />
       <OrangeCore>
         <section
           v-for="(section, i) in story.sections"
