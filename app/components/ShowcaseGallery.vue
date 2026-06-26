@@ -127,7 +127,7 @@ onMounted(() => {
     for (let i = 0; i < N; i++) {
       const el = els[i];
       if (!el) continue;
-      const t = (i / N + state.p) % 1; // 輸送帶：每張各自的相位 + 全域進度
+      const t = (i / N + state.p) % 1; // 輸送帶：每張各自的相位 + 全域進度（左 → 右）
       const pt = path.getPointAtLength(t * total);
       const c = cosθ[i]!;
       // rotateX（正交投影）：軌跡 Y 乘 cosθ → 同一條 bell 被垂直壓縮/翻轉成各自路徑

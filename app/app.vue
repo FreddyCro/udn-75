@@ -11,7 +11,7 @@ const config = useRuntimeConfig();
 const APP_MODE = config.public.APP_MODE;
 const ASSETS_PATH = config.public.APP_ASSETS_PATH;
 
-// SymbolPortraitScene 狀態：false = 集合（人像）/ true = 分散（漂浮）
+// SymbolFace 狀態：false = 集合（人像）/ true = 分散（漂浮）
 // 改這裡決定預設狀態；之後任何地方 symbolDispersed.value = !symbolDispersed.value 即可切換
 const symbolDispersed = ref(false);
 
@@ -64,21 +64,21 @@ useSeoMeta({
         </section>
       </OrangeCore>
       <!-- :auto-mouse="true" -->
-      <SymbolPortraitScene
+      <SymbolFace
         v-model:dispersed="symbolDispersed"
         :phrases="symbolPhrases"
         :hole-radius="25"
         :max-particles="16000"
-        :color="['#ffffff', '#d1f4ff', '#77c6e0', '#000000']"
+        :color="['#ffffff', '#9fd6ff', '#77c6e0', '#3f8fb5']"
         bg-color="#000"
-        :sample-step="4"
-        :size-min="16"
-        :size-max="20"
+        :sample-step="6"
+        :size-min="14"
+        :size-max="18"
         :min-density="0.01"
         :density-gamma="4.2"
         :dark-boost="1.2"
       />
-      <MetaballsReveal />
+      <HeartMetaball />
       <section class="glitch-demo">
         <GlitchImage
           class="glitch-demo__item"

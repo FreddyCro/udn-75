@@ -5,12 +5,8 @@
     </button>
     <!-- 彩蛋：定位/透明度由 JS 每幀控制；內容走 slot（預設純文字） -->
     <div ref="eggRef" class="egg" aria-hidden="true">
-      <slot
-        name="phrase"
-        :index="activeEgg"
-        :text="activeEgg >= 0 ? phrases[activeEgg] : ''"
-      >
-        {{ activeEgg >= 0 ? phrases[activeEgg] : '' }}
+      <slot name="phrase" :index="activeEgg" :text="displayText">
+        {{ displayText }}
       </slot>
     </div>
   </div>
@@ -116,6 +112,41 @@ const wrapRef = ref<HTMLDivElement | null>(null);
 const eggRef = ref<HTMLDivElement | null>(null);
 // 目前游標所在宮格 index（-1 = 無），只在換格時更新 → slot 內容僅換格才 re-render
 const activeEgg = ref(-1);
+
+// 彩蛋切換時的「亂碼跑動」出現動畫：activeEgg 換格時，文字由隨機字元逐步落定成句子，
+// 讓「切換到另一則彩蛋」更明顯。displayText 取代直接顯示 phrases[activeEgg]。
+const displayText = ref('');
+const GLITCH_CHARS = 'AMFOBI7501<>/\\[]{}#%&@十人工智慧能力未來';
+const SCRAMBLE_MS = 480;
+let scrambleRaf = 0;
+const runScramble = (target: string) => {
+  cancelAnimationFrame(scrambleRaf);
+  if (!target) {
+    displayText.value = '';
+    return;
+  }
+  const startT = performance.now();
+  const tick = (nowT: number) => {
+    const p = Math.min((nowT - startT) / SCRAMBLE_MS, 1);
+    const revealed = Math.floor(p * target.length); // 由左到右逐字落定
+    let s = '';
+    for (let i = 0; i < target.length; i++) {
+      const ch = target[i]!;
+      s +=
+        i < revealed || ch === ' '
+          ? ch
+          : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
+    }
+    displayText.value = s;
+    if (p < 1) scrambleRaf = requestAnimationFrame(tick);
+    else displayText.value = target;
+  };
+  scrambleRaf = requestAnimationFrame(tick);
+};
+watch(activeEgg, (idx) => {
+  runScramble(idx >= 0 ? (props.phrases[idx] ?? '') : '');
+});
+onBeforeUnmount(() => cancelAnimationFrame(scrambleRaf));
 // 兩種狀態：false = 集合（人像）/ true = 分散（散場漂浮）。
 // v-model 由父層決定預設值並隨意切換；元件內按鈕也只是翻轉它。
 const dispersed = defineModel<boolean>('dispersed', { default: false });

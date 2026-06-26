@@ -24,10 +24,10 @@ const props = defineProps({
   white: { type: String, default: '#ffffff' },
   /** 計數文字色 */
   textColor: { type: String, default: '#686868' },
+  /** 計數文字大小（CSS 長度，可含 clamp()）；微調數字大小用 */
+  counterFontSize: { type: String, default: 'clamp(28px, 6vmin, 56px)' },
   /** 進站後延遲幾秒才開始 */
   startDelay: { type: Number, default: 0.2 },
-  /** 100% 後，正中央方塊翻成橘色的延遲秒數 */
-  finalOrangeDelay: { type: Number, default: 0.35 },
 });
 
 const emit = defineEmits<{ done: [] }>();
@@ -105,13 +105,11 @@ const paint = (idx: number, state: number) => {
 const finish = () => {
   finished = true;
   const n = count.value;
-  for (let idx = 0; idx < n; idx++) paint(idx, 2); // 全部翻白
-  if (counterRef.value) counterRef.value.style.opacity = '0'; // 數字淡出
+  // 其餘翻白、正中央格「直接」翻橘（同一幀）：不再有先全白、隔一段才冒出橘色的空檔；
+  // 橘塊精準落在視窗正中心，數字同時淡出（被橘塊取代/遮蓋）
+  for (let idx = 0; idx < n; idx++) paint(idx, idx === centerIndex ? 1 : 2);
+  if (counterRef.value) counterRef.value.style.opacity = '0';
   emit('done');
-  // 收尾動作：正中央方塊翻橘（精準落在視窗正中心）
-  window.setTimeout(() => {
-    paint(centerIndex, 1);
-  }, props.finalOrangeDelay * 1000);
 };
 
 const frame = (now: number) => {
@@ -167,7 +165,10 @@ const onResize = () => {
 };
 
 onMounted(() => {
-  if (counterRef.value) counterRef.value.style.color = props.textColor;
+  if (counterRef.value) {
+    counterRef.value.style.color = props.textColor;
+    counterRef.value.style.fontSize = props.counterFontSize;
+  }
   computeGrid();
   nextTick(() => start());
   window.addEventListener('resize', onResize);
