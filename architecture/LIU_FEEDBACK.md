@@ -58,7 +58,7 @@
 | # | 反饋內容 | 對應元件 | 類型 | 狀態 | CLAUDE 說明（可行性／方法） |
 | --- | --- | --- | --- | --- | --- |
 | 4-1 | 目前尚無多種底圖變換。請測試「多種底圖局部隨機切換」是否可行（可沿用現有紋樣再設定另一種顏色，或增加另一種等分方塊棋盤格，能看出多底紋變化即可） | `HeartMetaball.vue`（render loop 中心上色段） | 待研究 | ✅ 已實作 variant 局部隨機切換（2026-06-29，待視覺確認） | 🟡 以「variant system」一次涵蓋多色＋多 pattern＋局部隨機切換：**Step 1（靜態多底紋）**：中心切成 `accentBlock` 格見方的區塊，每塊持有 variant=(pattern, color)。pattern 兩種＝變寬棋盤／等分棋盤（`evenCells` 控制方格大小）；color＝藍/橘（`accentColor`）。多數維持 base（變寬棋盤藍），`accentRatio` 比例改用非 base（變寬橘／等分藍／等分橘）。**Step 2（局部隨機切換）**：variant 由「區塊座標 × epoch」的穩定 hash 決定，`epoch = floor(t/switchPeriod + 逐塊相位)`，相位逐塊錯開 → 各塊在不同時間點**硬切、此起彼落**；同 epoch 內每幀同值故不閃。`switchPeriod` 控節奏（預設 3s）。後續可往 VARIANTS 加更多 pattern／改 crossfade 轉場。與 `mosaicTexture.ts` 無關（legacy）。 |
-| 4-2 | 手機版同樣手指互動感應不佳；之後改為「不用手指互動，直接預設在中心位置隨機跑動」 | `HeartMetaball.vue`（手機互動） | 調整 | ⏸ 暫緩（手機版，本輪不做） | 🟢 元件已有閒置邏輯：停止互動 `IDLE_DELAY`(1.2s) 後即在畫面中央以多頻率 sin 漂浮（`animate()` 內）。做法：以 `matchMedia('(hover: none)')` 偵測觸控環境時不綁 pointer 互動、直接維持閒置中央漂浮即可，幾乎純複用既有分支＋RWD 判斷。 |
+| 4-2 | 手機版同樣手指互動感應不佳；之後改為「不用手指互動，直接預設在中心位置隨機跑動」 | `HeartMetaball.vue`（手機互動） | 調整 | ✅ 已實作（2026-06-29，待手機確認） | 🟢 兩步到位：(1) 把閒置漂浮從「小範圍多頻 sin（偏原地抖動）」改為**平滑隨機遊走**——多個不可公度頻率疊加成不重複有機路徑，移動範圍 ×4（`idleRoamRange` 0.4，原 ~0.1），並沿路徑距離補章避免移動中斷裂。(2) 以 `matchMedia('(hover: none)')` 偵測觸控環境時**不綁 pointer、一律自走**（`autoRoam` prop 可在桌機強制預覽）。所有自走參數皆可調：`idleRoamRange`(移動範圍)／`idleRoamSpeed`(速度)／`idleBlobMin`·`idleBlobMax`(顯示範圍/團塊大小)。 |
 
 ---
 

@@ -58,6 +58,20 @@
     peripheryDensity 外圍藍塊密度（0~1）
     cornerExp        中心區超橢圓指數（2=圓、4=圓角方、越大越方）
     edgeFeather      邊緣羽化寬度（佔半徑比例 0~1，越大散越開）
+    idleRoamRange    閒置自動遊走範圍（佔短邊比例，移動範圍）
+    idleRoamSpeed    閒置遊走速度倍率
+    idleBlobMin/Max  閒置團塊半徑下/上限（顯示範圍，佔短邊比例；同游標的隨機半徑）
+    autoRoam         強制只自動遊走、不綁手指（觸控環境自動啟用）— 解 4-2
+
+  【閒置自動遊走 / 4-2 手機】
+  無 pointer 互動 IDLE_DELAY 秒後，團塊在畫面中央一帶以多個不可公度頻率疊加做
+  「平滑隨機遊走」（非原地抖動），範圍/速度/大小皆 prop 可調。補章只沿「移動路徑」
+  做（距離門檻，不做時間定點補章）→ 舊章隨壽命留在身後淡出，呈現像游標的「彗星
+  拖尾」、且不再原地一蹦一蹦像心跳。閒置補章與游標完全相同（每章 min~max 間隨機半徑），
+  無任何時間性脹縮／呼吸 → 純粹是「慢慢移動的游標」；移動速度由 idleRoamSpeed 控制。
+  另在遊走焦點補一顆「不衰減的持久頭部球」（半徑固定 = (min+max)/2）：遊走偶爾趨近靜止、
+  距離補章補不到時 trail 會衰減殆盡，這顆球確保團塊永不完全消失，且固定大小不脹縮。
+  觸控環境（hover:none）或 autoRoam 時不綁手指、一律自走 → 對應 4-2。
   ============================================================================
 -->
 <template>
@@ -99,6 +113,16 @@ const props = withDefaults(
     cornerExp?: number;
     /** 邊緣羽化寬度（佔半徑比例 0~1）：越大過渡帶越寬、中心越自然散開融入外圍 */
     edgeFeather?: number;
+    /** 閒置自動遊走的範圍（佔畫面短邊比例）：團塊在中央±此比例內平滑亂走。預設 0.4（原 0.1 的 4 倍） */
+    idleRoamRange?: number;
+    /** 閒置遊走速度倍率：越大走越快 */
+    idleRoamSpeed?: number;
+    /** 閒置團塊半徑下限（顯示範圍／佔短邊比例）：每章在 min~max 間隨機取半徑（同游標） */
+    idleBlobMin?: number;
+    /** 閒置團塊半徑上限（顯示範圍／佔短邊比例）：與 min 設相近＝大小幾乎固定 */
+    idleBlobMax?: number;
+    /** 強制「只自動遊走、不綁手指互動」（觸控環境會自動啟用，桌機可用此 prop 預覽手機行為） */
+    autoRoam?: boolean;
   }>(),
   {
     bgColor: '#ffffff',
@@ -115,6 +139,11 @@ const props = withDefaults(
     peripheryDensity: 0.5,
     cornerExp: 4,
     edgeFeather: 0.5,
+    idleRoamRange: 0.4,
+    idleRoamSpeed: 1,
+    idleBlobMin: 0.05,
+    idleBlobMax: 0.09,
+    autoRoam: false,
   },
 );
 
@@ -231,10 +260,8 @@ onMounted(() => {
   };
 
   // ---------- 閒置漂浮：無互動時在畫面中央維持一小團，緩慢漂移 ----------
-  const IDLE_DELAY = 1.2; // 秒：最後一次 pointer 活動後多久進入閒置漂浮
-  const AMBIENT_INTERVAL = 0.4; // 秒：漂浮團定期補章，避免原地衰減消失
+  const IDLE_DELAY = 1.2; // 秒：最後一次 pointer 活動後多久進入閒置自走
   let lastPointerAt = -Infinity;
-  let lastAmbientAt = -Infinity;
 
   const onPointerMove = (e: PointerEvent) => {
     const rect = canvas.getBoundingClientRect();
@@ -243,8 +270,14 @@ onMounted(() => {
     centerY = e.clientY - rect.top;
     spawn(centerX, centerY);
   };
-  wrap.addEventListener('pointermove', onPointerMove);
-  wrap.addEventListener('pointerdown', onPointerMove);
+  // 4-2：觸控環境（手機，hover:none）手指感應不佳 → 不綁互動，一律自動遊走；
+  // autoRoam prop 可在桌機強制此行為以預覽手機效果。
+  const roamOnly =
+    props.autoRoam || window.matchMedia('(hover: none)').matches;
+  if (!roamOnly) {
+    wrap.addEventListener('pointermove', onPointerMove);
+    wrap.addEventListener('pointerdown', onPointerMove);
+  }
 
   // ---------- render loop（IntersectionObserver 控制啟停） ----------
   let raf = 0;
@@ -253,21 +286,39 @@ onMounted(() => {
   const animate = () => {
     if (!running) return;
     const t = now();
+    const isIdle = t - lastPointerAt > IDLE_DELAY;
 
-    // 閒置時：中央小範圍漂浮（多頻率 sin 疊出緩慢偽 noise 路徑）；
-    // pointer 互動會暫停，停止互動 IDLE_DELAY 後回到中央
-    if (t - lastPointerAt > IDLE_DELAY) {
+    // 閒置時：團塊在畫面中央一帶「平滑隨機遊走」（多個不可公度頻率疊加 → 不重複的
+    // 有機路徑，而非原地抖動）。範圍 idleRoamRange、速度 idleRoamSpeed 皆可調。
+    // pointer 互動會暫停，停止互動 IDLE_DELAY 後回到自走（觸控環境則一律自走）。
+    if (isIdle) {
       const base = Math.min(width, height);
-      // 每幀更新焦點 → 中心方塊跟著漂浮路徑走
+      const amp = base * props.idleRoamRange;
+      const s = t * props.idleRoamSpeed;
+      // 每幀更新焦點 → 中心方塊跟著遊走路徑走；權重和為 1，最大擺幅 = amp
       centerX =
         width * 0.5 +
-        (Math.sin(t * 0.35) * 0.6 + Math.sin(t * 0.13 + 1.7) * 0.4) * base * 0.1;
+        (Math.sin(s * 0.13) * 0.5 +
+          Math.sin(s * 0.21 + 1.7) * 0.3 +
+          Math.sin(s * 0.07 + 4.1) * 0.2) *
+          amp;
       centerY =
         height * 0.5 +
-        (Math.cos(t * 0.28) * 0.6 + Math.sin(t * 0.17 + 0.7) * 0.4) * base * 0.1;
-      if (t - lastAmbientAt > AMBIENT_INTERVAL) {
-        lastAmbientAt = t;
-        addStamp(centerX, centerY, 0.035, 0.075);
+        (Math.cos(s * 0.11) * 0.5 +
+          Math.cos(s * 0.19 + 0.7) * 0.3 +
+          Math.sin(s * 0.05 + 2.3) * 0.2) *
+          amp;
+      // 彗星拖尾：像游標一樣「只沿移動路徑」距離補章（移動超過 SPAWN_DIST 才補一章）。
+      // 不再用時間定點補章 → 不會在原地一蹦一蹦像心跳；舊章隨壽命衰退留在身後 →
+      // 形成隨移動方向淡出的尾巴。多頻遊走持續移動，故團塊不會因停滯而消失。
+      const dx = centerX - lastSpawn.x;
+      const dy = centerY - lastSpawn.y;
+      if (dx * dx + dy * dy > SPAWN_DIST * SPAWN_DIST) {
+        lastSpawn.x = centerX;
+        lastSpawn.y = centerY;
+        // 與游標完全相同：每章在 min~max 間隨機取半徑，沿移動路徑鋪章。
+        // 無任何時間性脹縮 → 純粹是「慢慢移動的游標」。
+        addStamp(centerX, centerY, props.idleBlobMin, props.idleBlobMax);
       }
     }
 
@@ -294,6 +345,19 @@ onMounted(() => {
       maxX = Math.max(maxX, s.x + r * 2.5);
       minY = Math.min(minY, s.y - r * 2.5);
       maxY = Math.max(maxY, s.y + r * 2.5);
+    }
+
+    // 閒置「持久頭部」：在遊走焦點補一顆「不衰減」的球（固定半徑）。多頻遊走偶爾趨近
+    // 靜止、距離補章補不到時，trail 會在 life 內衰減殆盡 → 整團消失；這顆持久球確保
+    // 團塊永不完全消失，又因固定大小不會脹縮。身後的衰減 trail 仍形成彗星尾。
+    if (isIdle && width > 0) {
+      const base = Math.min(width, height);
+      const headR = base * (props.idleBlobMin + props.idleBlobMax) * 0.5;
+      live.push({ x: centerX, y: centerY, r: headR });
+      minX = Math.min(minX, centerX - headR * 2.5);
+      maxX = Math.max(maxX, centerX + headR * 2.5);
+      minY = Math.min(minY, centerY - headR * 2.5);
+      maxY = Math.max(maxY, centerY + headR * 2.5);
     }
 
     const gx0 = Math.max(Math.floor(minX / CELL), 0);
@@ -425,7 +489,6 @@ onMounted(() => {
   width: 100%;
   height: 100vh;
   overflow: hidden;
-  cursor: none;
 }
 
 .metaballs canvas {

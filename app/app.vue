@@ -78,7 +78,12 @@ useSeoMeta({
         :density-gamma="4.2"
         :dark-boost="1.3"
       />
-      <HeartMetaball />
+      <HeartMetaball
+        :idleBlobMin="0.1"
+        :idleBlobMax="0.2"
+        :idleRoamSpeed="3"
+        :life="3"
+      />
       <section class="glitch-demo">
         <GlitchImage
           class="glitch-demo__item"
