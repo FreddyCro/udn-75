@@ -15,6 +15,10 @@ const ASSETS_PATH = config.public.APP_ASSETS_PATH;
 // 改這裡決定預設狀態；之後任何地方 symbolDispersed.value = !symbolDispersed.value 即可切換
 const symbolDispersed = ref(false);
 
+// GlitchImage 觸發 API（暫用右下角按鈕；之後改由列表 hover/scroll 呼叫 start()）
+const glitchRef = ref<{ start: () => void; reset: () => void } | null>(null);
+const startGlitch = () => glitchRef.value?.start();
+
 // 彩蛋句子（row-major 對應宮格）
 const symbolPhrases = [
   '逼真 AI 詐騙究竟如何分辨？',
@@ -86,16 +90,21 @@ useSeoMeta({
       />
       <section class="glitch-demo">
         <GlitchImage
+          ref="glitchRef"
           class="glitch-demo__item"
           :images="[glitch3, glitch1, glitch2]"
           :duration="1.2"
           :pieces="12"
           bg-color="#ffffff"
-          alt="Glitch 收斂進場示意圖"
+          caption="6 位中途少年的自白，訴說著觸法行為背後的困境與茫然。"
         />
+        <button class="glitch-start-btn" type="button" @click="startGlitch">
+          start
+        </button>
       </section>
       <ShowcaseGallery />
     </main>
+    <!-- 暫用：手動觸發 GlitchImage（之後改由列表 hover/scroll 觸發 start()） -->
     <!-- <AppFooter /> -->
   </div>
 </template>
@@ -134,6 +143,7 @@ useSeoMeta({
 }
 
 .glitch-demo {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -143,5 +153,23 @@ useSeoMeta({
 
 .glitch-demo__item {
   width: min(100%, 640px);
+}
+
+/* 暫用：手動觸發 GlitchImage 的按鈕（之後移除，改由列表觸發） */
+.glitch-start-btn {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 9999;
+  padding: 10px 24px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #fff;
+  background: #ff7f00;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
 }
 </style>
