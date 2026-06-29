@@ -21,13 +21,6 @@
        - 顏色由 (k + gy) 的奇偶決定：相鄰帶反色、相鄰列也反色（棋盤二染色），
          但格子是不等寬的長方塊。每一列都畫。
          偶數列：1藍 2白 3藍 6白；奇數列：1白 2藍 3白 6藍。
-       - 局部多底紋（variant system）：把畫面切成 accentBlock 格見方的區塊，每塊持有
-         一個 variant=(pattern, color)。pattern 有兩種：變寬棋盤、等分棋盤（EVEN_W 格
-         見方，evenCells 控制）；color 有藍/橘。多數區塊維持 base（變寬棋盤藍），
-         accentRatio 比例的區塊改用非 base variant（變寬橘／等分藍／等分橘）。
-       - Step 2 局部隨機切換：每塊的 variant 由「區塊座標 × epoch」的穩定 hash 決定。
-         epoch = floor(t / switchPeriod + 逐塊相位)，相位由區塊 hash 偏移 → 各塊在
-         不同時間點硬切、此起彼落；同一 epoch 內每幀同值 → 不閃爍。switchPeriod 控制節奏。
 
     3. 外圍圖案：只在偶數列上，以 hash 隨機散布 1×1 / 1×2 小藍塊
        （density = peripheryDensity），呈現鬆散像素點。
@@ -49,11 +42,6 @@
     life             單顆 ball 壽命（秒）
     cellSize         馬賽克格子尺寸（px）— 控制顆粒粗細
     color            單色藍
-    accentColor      強調色（橘）— 非 base variant 用此色
-    accentRatio      區塊偏離 base 的佔比（0~1）
-    accentBlock      區塊邊長（格數）— 越大每塊變化越大顆
-    evenCells        第二種 pattern「等分棋盤」方格邊長（格數）
-    switchPeriod     Step 2 局部隨機切換週期（秒）— 越大變化越慢
     centerCells      中心圓角方形半邊長（格數）— 控制中心區大小
     peripheryDensity 外圍藍塊密度（0~1）
     cornerExp        中心區超橢圓指數（2=圓、4=圓角方、越大越方）
@@ -79,18 +67,6 @@ const props = withDefaults(
     cellSize?: number;
     /** 單色藍 */
     color?: string;
-    /** 強調色（橘）：中心棋盤的部分區塊會改用此色，做出局部多底紋 */
-    accentColor?: string;
-    /** 區塊「偏離 base」的佔比（0~1）：中心切成 accentBlock 格見方的區塊，此比例的
-     *  區塊會改用非 base 的 variant（換色／換 pattern）；其餘維持 base（變寬棋盤藍） */
-    accentRatio?: number;
-    /** 區塊邊長（格數）：越大每塊變化越大顆。穩定 hash 依區塊座標決定該塊的 variant */
-    accentBlock?: number;
-    /** 第二種 pattern「等分棋盤」的方格邊長（格數）：與變寬棋盤對比，越小格越細 */
-    evenCells?: number;
-    /** Step 2 局部隨機切換的週期（秒）：每塊每隔約這麼久重抽一次 variant；
-     *  各塊相位錯開 → 此起彼落地切換。越大變化越慢 */
-    switchPeriod?: number;
     /** 中心正方形半邊長（格數）；方塊會由 0 緩動擴散到此大小並跟隨游標 */
     centerCells?: number;
     /** 外圍隨機藍塊的密度（0~1，偶數列上每格為藍的機率） */
@@ -106,11 +82,6 @@ const props = withDefaults(
     life: 1.6,
     cellSize: 14,
     color: '#9FD6FF',
-    accentColor: '#FF7F00',
-    accentRatio: 0.3,
-    accentBlock: 6,
-    evenCells: 2,
-    switchPeriod: 3,
     centerCells: 17,
     peripheryDensity: 0.5,
     cornerExp: 4,
@@ -130,10 +101,6 @@ onMounted(() => {
   const CELL = props.cellSize;
   const MAX = props.maxBalls;
   const COLOR = props.color;
-  const ACCENT = props.accentColor; // 強調色（橘）
-  const ACCENT_BLOCK = Math.max(1, Math.round(props.accentBlock)); // 區塊邊長（格）
-  const EVEN_W = Math.max(1, Math.round(props.evenCells)); // 等分棋盤方格邊長（格）
-  const SWITCH_PERIOD = Math.max(0.1, props.switchPeriod); // 切換週期（秒）
 
   // 中心「變寬棋盤」：水平寬度帶 1,2,3,6 循環（單元寬 12 格），SEG[p] = 該位置所屬帶序 k(0~3)。
   // 顏色 = (k + gy) 奇偶交錯 → 相鄰帶、相鄰列皆反色；錨定格子絕對座標，圖案固定不滑動。
@@ -147,11 +114,6 @@ onMounted(() => {
   // 穩定的逐格偽隨機（同座標每幀同值 → 外圍圖案不閃爍）
   const hash = (x: number, y: number) => {
     const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-    return s - Math.floor(s);
-  };
-  // 三輸入版（多帶一個 epoch 維度）：用於「區塊 × 時間」決定 variant
-  const hash3 = (x: number, y: number, z: number) => {
-    const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
     return s - Math.floor(s);
   };
 
@@ -342,48 +304,17 @@ onMounted(() => {
           // 以抖動 hash 機率性讓位給外圍 → 兩種紋理在過渡帶交融、邊界自然溶解
           const keep = 1 - smoothstep(1 - props.edgeFeather, 1, rn);
           const isCenter = keep > 0 && hash(gx + 31.4, gy + 17.2) < keep;
-          let fill: string | null = null;
+          let blue = false;
           if (isCenter) {
-            // 中心 = 局部多底紋：把畫面切成 ACCENT_BLOCK 格見方的區塊，每塊在每個時刻
-            // 持有一個 variant=(pattern, color)。多數維持 base（變寬棋盤藍），accentRatio
-            // 比例的區塊改用非 base 的 variant（變寬橘／等分藍／等分橘）。
-            // Step 2：variant 由「區塊座標 × epoch」的穩定 hash 決定，epoch 相位逐塊錯開
-            //         → 各塊在不同時間點硬切、此起彼落；同一 epoch 內每幀同值 → 不閃。
-            const bx = Math.floor(gx / ACCENT_BLOCK);
-            const by = Math.floor(gy / ACCENT_BLOCK);
-            const phase = hash(bx * 7.1 + 1.3, by * 7.1 + 2.7); // 0~1 逐塊相位
-            const epoch = Math.floor(t / SWITCH_PERIOD + phase);
-            let usePattern = 0; // 0=變寬棋盤 1=等分棋盤
-            let useColor = COLOR;
-            if (hash3(bx, by, epoch + 0.5) < props.accentRatio) {
-              // 此塊偏離 base：在 3 種非 base variant 間抽一個
-              const j = Math.floor(hash3(bx + 0.7, by + 0.3, epoch + 11.5) * 3);
-              if (j === 0) {
-                useColor = ACCENT; // 變寬棋盤 × 橘
-              } else if (j === 1) {
-                usePattern = 1; // 等分棋盤 × 藍
-              } else {
-                usePattern = 1;
-                useColor = ACCENT; // 等分棋盤 × 橘
-              }
-            }
-            // 由 variant 的 pattern 決定該格是否上色
-            let on: boolean;
-            if (usePattern === 0) {
-              // 變寬棋盤：帶序 k 查 SEG，顏色 (k + gy) 奇偶交錯，每列都畫
-              const k = SEG[((gx % UNIT_W) + UNIT_W) % UNIT_W]!;
-              on = (k + gy) % 2 === 0;
-            } else {
-              // 等分棋盤：EVEN_W 格見方的方格二染色
-              on = (Math.floor(gx / EVEN_W) + Math.floor(gy / EVEN_W)) % 2 === 0;
-            }
-            if (on) fill = useColor;
+            // 中心：變寬棋盤——帶序 k 查 SEG，顏色 (k + gy) 奇偶交錯，每列都畫
+            const k = SEG[((gx % UNIT_W) + UNIT_W) % UNIT_W]!;
+            blue = (k + gy) % 2 === 0;
           } else if (gy % 2 === 0) {
             // 外圍（含過渡帶讓位的格子）：偶數列隨機散布 1×1 / 1×2 小藍塊
-            if (hash(gx, gy) < props.peripheryDensity) fill = COLOR;
+            blue = hash(gx, gy) < props.peripheryDensity;
           }
-          if (fill) {
-            ctx.fillStyle = fill;
+          if (blue) {
+            ctx.fillStyle = COLOR;
             ctx.fillRect(gx * CELL, gy * CELL, CELL, CELL);
           }
         }
