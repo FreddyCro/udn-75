@@ -50,8 +50,8 @@ const props = defineProps({
   darkBoost: { type: Number, default: 1.8 },
   sizeMin: { type: Number, default: 18 },
   sizeMax: { type: Number, default: 36 },
-  /** 粒子數上限（行動裝置可降） */
-  maxParticles: { type: Number, default: 14000 },
+  /** 粒子數上限（行動裝置可降）；慣性物理在 CPU 端積分，原型先降到 6000 確認效能/手感 */
+  maxParticles: { type: Number, default: 6000 },
 
   // ---------- 場景 / 動畫節奏 ----------
   /** 背景色 */
@@ -79,6 +79,14 @@ const props = defineProps({
   holeRadius: { type: Number, default: 90 },
   /** 擴散範圍：圈外再延伸多遠做遞減外推（柔化邊界、擴散到周圍） */
   holeSpread: { type: Number, default: 140 },
+
+  // ---------- 慣性物理（彈簧-阻尼；撞散→overshoot→慢慢歸位） ----------
+  /** 彈簧硬度 k：越大回彈越快、歸位越急（accel = -k·位移） */
+  stiffness: { type: Number, default: 40 },
+  /** 阻尼：越小越「彈」(overshoot 越多)、越大越快定住；< 2√k 才會 overshoot */
+  damping: { type: Number, default: 3.5 },
+  /** 游標外推力道：越大洞越大、撞得越開（穩態位移 ≈ impulseStrength / stiffness） */
+  impulseStrength: { type: Number, default: 3600 },
 
   // ---------- 整體避讓（symbol 群閃避游標） ----------
   /** 游標越遠，整群往反方向（遠離游標）位移的最大量（微微一動） */
@@ -254,6 +262,12 @@ onMounted(() => {
   let geom: THREE.BufferGeometry | null = null;
   let mat: THREE.ShaderMaterial | null = null;
   let unmounted = false;
+  // ---- 慣性物理狀態（buildFromImage 建立；animate 每幀積分後寫回 aDisp）----
+  let dispArr: Float32Array | null = null; // 相對 formation 的附加位移
+  let velArr: Float32Array | null = null; // 對應速度
+  let targetArr: Float32Array | null = null; // formation 座標（命中測試用）
+  let dispAttr: THREE.BufferAttribute | null = null;
+  let pCount = 0;
   // 人像半寬高 + 自動游標遊走半徑（buildFromImage 依人像實際範圍設定）
   let halfW = 0;
   let halfH = 0;
@@ -379,6 +393,15 @@ onMounted(() => {
     geom.setAttribute('aGlyph', new THREE.BufferAttribute(glyph, 1));
     geom.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
 
+    // 慣性物理：附加位移 aDisp（初始 0），CPU 每幀積分後上傳
+    dispArr = new Float32Array(count * 3);
+    velArr = new Float32Array(count * 3);
+    targetArr = target;
+    pCount = count;
+    dispAttr = new THREE.BufferAttribute(dispArr, 3);
+    dispAttr.setUsage(THREE.DynamicDrawUsage);
+    geom.setAttribute('aDisp', dispAttr);
+
     mat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
@@ -407,6 +430,7 @@ onMounted(() => {
         attribute vec3 aStart;
         attribute vec3 aTarget;
         attribute vec3 aFloat;
+        attribute vec3 aDisp;
         attribute float aOrder;
         attribute float aSize;
         attribute float aGlyph;
@@ -467,14 +491,10 @@ onMounted(() => {
           float shiftAmt = uGroupShift * smoothstep(uGroupNear, uGroupFar, dCenter) * uMouseInfluence * (1.0 - uDisperse);
           pos.xy += normalize(-uMouse.xy + 0.0001) * shiftAmt;
 
-          // 滑鼠真空（斥力）：圈內(uHoleRadius)清空、推到邊界；圈外在 uHoleSpread 範圍內
-          // 遞減外推，把效果擴散到周圍、柔化邊界（不在邊界硬堆一圈）；散場後關閉
-          vec3 fromMouse = pos - uMouse;
-          float dm = length(fromMouse.xy) + 0.0001;
-          float clear = max(uHoleRadius - dm, 0.0);
-          float spread = smoothstep(uHoleRadius + uHoleSpread, uHoleRadius, dm) * uHoleSpread * 0.5;
-          float push = (clear + spread) * uMouseInfluence * (1.0 - uDisperse);
-          pos.xy += (fromMouse.xy / dm) * push;
+          // 慣性位移：游標斥力/回彈改由 CPU 端彈簧-阻尼積分（見 animate()），
+          // 結果存在 aDisp，這裡直接疊加 → 撞散後帶動量 overshoot、再慢慢歸位（脫離磁吸感）。
+          // 散場時讓位移淡出，交棒給 drift。
+          pos += aDisp * (1.0 - uDisperse);
 
           // 隨機換字閃爍：每 1/3 秒抽一次，少數粒子暫時換成別的字元
           float tick = floor(uTime * 3.0);
@@ -604,6 +624,50 @@ onMounted(() => {
       mat.uniforms.uTime!.value = t;
       mat.uniforms.uMouse!.value.copy(smoothMouse);
       mat.uniforms.uMouseInfluence!.value = influence;
+    }
+
+    // ---- 慣性物理：附加位移的彈簧-阻尼積分（撞散→帶動量 overshoot→慢慢歸位）----
+    // 每顆粒子維持 disp(位移)+vel(速度)：彈簧把 disp 拉回 0(歸位)、阻尼衰減；
+    // 游標半徑內持續注入外推速度 → 在時開洞、離開後僅靠彈簧回彈（欠阻尼即 overshoot）。
+    if (dispArr && velArr && targetArr && dispAttr) {
+      const disp = dispArr;
+      const vel = velArr;
+      const tgt = targetArr;
+      const k = props.stiffness;
+      const damp = Math.exp(-props.damping * dt); // 與幀率無關的速度衰減
+      const hitR = props.holeRadius + props.holeSpread;
+      const hitR2 = hitR * hitR;
+      const canHit = !dispersed.value && influence > 0.01;
+      const mx = smoothMouse.x;
+      const my = smoothMouse.y;
+      const kick = props.impulseStrength * influence;
+      for (let i = 0; i < pCount; i++) {
+        const i3 = i * 3;
+        // 彈簧拉回 0 + 阻尼（半隱式：先加彈簧力，再整體衰減）
+        let vx = (vel[i3]! - k * disp[i3]! * dt) * damp;
+        let vy = (vel[i3 + 1]! - k * disp[i3 + 1]! * dt) * damp;
+        let vz = (vel[i3 + 2]! - k * disp[i3 + 2]! * dt) * damp;
+        // 游標外推 impulse：以 formation+目前位移近似命中（idle sway 幅度小，可忽略）
+        if (canHit) {
+          const px = tgt[i3]! + disp[i3]! - mx;
+          const py = tgt[i3 + 1]! + disp[i3 + 1]! - my;
+          const d2 = px * px + py * py;
+          if (d2 < hitR2) {
+            const d = Math.sqrt(d2) + 0.0001;
+            const falloff = 1 - d / hitR; // 近強遠弱
+            const f = (kick * falloff * falloff * dt) / d;
+            vx += px * f;
+            vy += py * f;
+          }
+        }
+        vel[i3] = vx;
+        vel[i3 + 1] = vy;
+        vel[i3 + 2] = vz;
+        disp[i3] = disp[i3]! + vx * dt;
+        disp[i3 + 1] = disp[i3 + 1]! + vy * dt;
+        disp[i3 + 2] = disp[i3 + 2]! + vz * dt;
+      }
+      dispAttr.needsUpdate = true;
     }
 
     // 彩蛋：算游標所在宮格 → 顯示對應句子（只在集合狀態、influence 夠高時）

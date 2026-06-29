@@ -73,10 +73,10 @@ useSeoMeta({
         bg-color="#000"
         :sample-step="6"
         :size-min="14"
-        :size-max="18"
+        :size-max="22"
         :min-density="0.01"
         :density-gamma="4.2"
-        :dark-boost="1.2"
+        :dark-boost="1.3"
       />
       <HeartMetaball />
       <section class="glitch-demo">
