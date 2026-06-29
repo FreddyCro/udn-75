@@ -689,10 +689,8 @@ onMounted(() => {
         proj.copy(smoothMouse).project(camera);
         const sx = (proj.x * 0.5 + 0.5) * viewW;
         const sy = (-proj.y * 0.5 + 0.5) * viewH;
-        const flip = sx > viewW * 0.6; // 靠右緣則翻到游標左側避免溢出
-        eggEl.style.transform =
-          `translate(${sx + (flip ? -20 : 20)}px, ${sy}px) translateY(-50%)` +
-          (flip ? ' translateX(-100%)' : '');
+        // 文字中心對齊真空中心（游標位置）：水平+垂直皆置中
+        eggEl.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%)`;
         eggEl.style.opacity = String(Math.min(1, influence));
       } else {
         eggEl.style.opacity = '0';
@@ -753,6 +751,7 @@ onMounted(() => {
   font-weight: 600;
   line-height: 1.5;
   letter-spacing: 0.02em;
+  text-align: center;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.25s ease;
