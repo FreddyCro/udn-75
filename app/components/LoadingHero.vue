@@ -28,6 +28,8 @@ const props = defineProps({
   counterFontSize: { type: String, default: 'clamp(28px, 6vmin, 56px)' },
   /** 進站後延遲幾秒才開始 */
   startDelay: { type: Number, default: 0.2 },
+  /** 進度到達此比例（0~1，對應數字百分比）時，中央格就提早翻橘，與後續「100%」數字重疊一段時間 */
+  centerOrangeAt: { type: Number, default: 0.8 },
 });
 
 const emit = defineEmits<{ done: [] }>();
@@ -132,10 +134,14 @@ const frame = (now: number) => {
   const p = easeInOutQuad(t);
   const whiteCount = Math.floor(p * n);
 
+  // 進度到 centerOrangeAt（如 80%）就先讓中央格翻橘（此時數字仍在跑 → 橘塊與「100%」重疊一段）
+  const centerOrangeNow = p >= props.centerOrangeAt;
+
   // 依名次決定狀態：已過 → 白；前緣 band 內 → 橘；其餘 → 藍
   for (let idx = 0; idx < n; idx++) {
     const rank = order[idx]!;
-    const state = rank < whiteCount ? 2 : rank < whiteCount + band ? 1 : 0;
+    let state = rank < whiteCount ? 2 : rank < whiteCount + band ? 1 : 0;
+    if (idx === centerIndex && centerOrangeNow) state = 1; // 中央格提早翻橘
     paint(idx, state);
   }
 
