@@ -81,12 +81,22 @@ const props = defineProps({
   holeSpread: { type: Number, default: 140 },
 
   // ---------- 慣性物理（彈簧-阻尼；撞散→overshoot→慢慢歸位） ----------
-  /** 彈簧硬度 k：越大回彈越快、歸位越急（accel = -k·位移） */
-  stiffness: { type: Number, default: 40 },
-  /** 阻尼：越小越「彈」(overshoot 越多)、越大越快定住；< 2√k 才會 overshoot */
-  damping: { type: Number, default: 3.5 },
+  // 對照 LIU_FEEDBACK_2 #2-3：脫離「果凍感」需「回彈更慢更遠 + 更多滯空 + 方向性發散」。
+  // 做法＝降 stiffness／降 damping（拉回慢、overshoot 多）＋ 提高 impulse 並讓外推發散。
+  /** 彈簧硬度 k：越大回彈越快、歸位越急（accel = -k·位移）。降低 → 撞散後飄得更遠更久 */
+  stiffness: { type: Number, default: 18 },
+  /** 阻尼：越小越「彈」(overshoot/滯空 越多)、越大越快定住；< 2√k 才會 overshoot */
+  damping: { type: Number, default: 1.8 },
   /** 游標外推力道：越大洞越大、撞得越開（穩態位移 ≈ impulseStrength / stiffness） */
-  impulseStrength: { type: Number, default: 3600 },
+  impulseStrength: { type: Number, default: 6000 },
+  /** 撞散方向發散角（弧度）：0=整齊徑向放射；越大每顆旋轉固定隨機角 → 炸裂不規則四散 */
+  impulseSpray: { type: Number, default: 0.9 },
+  /** z 方向散射倍率：撞散時往鏡頭前後散開的立體炸開感（維持人臉平面感，宜小） */
+  impulseSprayZ: { type: Number, default: 0.6 },
+  /** 沿游標移動方向甩出的比例：拖曳時粒子順移動方向飛濺（0=只有徑向斥力） */
+  velocityFollow: { type: Number, default: 0.35 },
+  /** 粒子速度上限（world 單位/秒）：低阻尼下避免無限加速、維持炸裂又穩定 */
+  maxSpeed: { type: Number, default: 2600 },
 
   // ---------- 整體避讓（symbol 群閃避游標） ----------
   /** 游標越遠，整群往反方向（遠離游標）位移的最大量（微微一動） */
@@ -266,6 +276,7 @@ onMounted(() => {
   let dispArr: Float32Array | null = null; // 相對 formation 的附加位移
   let velArr: Float32Array | null = null; // 對應速度
   let targetArr: Float32Array | null = null; // formation 座標（命中測試用）
+  let seedArr: Float32Array | null = null; // 每顆隨機種子（impulse 發散角／z 散射用）
   let dispAttr: THREE.BufferAttribute | null = null;
   let pCount = 0;
   // 人像半寬高 + 自動游標遊走半徑（buildFromImage 依人像實際範圍設定）
@@ -397,6 +408,7 @@ onMounted(() => {
     dispArr = new Float32Array(count * 3);
     velArr = new Float32Array(count * 3);
     targetArr = target;
+    seedArr = seed; // 與 aSeed 共用同一份（CPU 只讀）：impulse 發散用
     pCount = count;
     dispAttr = new THREE.BufferAttribute(dispArr, 3);
     dispAttr.setUsage(THREE.DynamicDrawUsage);
@@ -592,6 +604,9 @@ onMounted(() => {
   const clock = new THREE.Clock();
   let raf = 0;
   let prevT = 0;
+  // 上一幀游標位置（算游標速度 → 沿移動方向甩出粒子）；9999 = 尚未接觸
+  let prevMx = 9999;
+  let prevMy = 9999;
   // 彩蛋：world → 螢幕像素投影用；viewW/H 隨 resize 更新
   const proj = new THREE.Vector3();
   let viewW = width;
@@ -633,6 +648,7 @@ onMounted(() => {
       const disp = dispArr;
       const vel = velArr;
       const tgt = targetArr;
+      const seeds = seedArr;
       const k = props.stiffness;
       const damp = Math.exp(-props.damping * dt); // 與幀率無關的速度衰減
       const hitR = props.holeRadius + props.holeSpread;
@@ -641,6 +657,28 @@ onMounted(() => {
       const mx = smoothMouse.x;
       const my = smoothMouse.y;
       const kick = props.impulseStrength * influence;
+      const spray = props.impulseSpray;
+      const sprayZ = props.impulseSprayZ;
+      const velFollow = props.velocityFollow;
+      const maxV2 = props.maxSpeed * props.maxSpeed;
+      // 游標移動速度（world/秒）→ 沿移動方向甩出粒子（拖曳發散）；靜止 hover 則 ≈0。
+      // prevMx<9000 確保有上一幀有效座標，避免從 9999 起跳造成爆衝；並夾住上限。
+      let mvx = 0;
+      let mvy = 0;
+      if (canHit && prevMx < 9000) {
+        const idt = 1 / Math.max(dt, 1e-3);
+        mvx = (mx - prevMx) * idt;
+        mvy = (my - prevMy) * idt;
+        const sp = Math.hypot(mvx, mvy);
+        const cap = 4000;
+        if (sp > cap) {
+          const s = cap / sp;
+          mvx *= s;
+          mvy *= s;
+        }
+      }
+      prevMx = mx;
+      prevMy = my;
       for (let i = 0; i < pCount; i++) {
         const i3 = i * 3;
         // 彈簧拉回 0 + 阻尼（半隱式：先加彈簧力，再整體衰減）
@@ -655,10 +693,32 @@ onMounted(() => {
           if (d2 < hitR2) {
             const d = Math.sqrt(d2) + 0.0001;
             const falloff = 1 - d / hitR; // 近強遠弱
-            const f = (kick * falloff * falloff * dt) / d;
-            vx += px * f;
-            vy += py * f;
+            const mag = kick * falloff * falloff * dt; // 速度增量量級
+            // 方向：徑向外推，但每顆旋轉一個「固定」隨機角（由 seed 決定，逐幀穩定不抖），
+            // 讓四散方向不規則 → 炸裂感而非整齊放射。spray=0 退回純徑向。
+            const sj = seeds ? seeds[i]! : 0.5;
+            const ang = (sj - 0.5) * spray;
+            const ca = Math.cos(ang);
+            const sa = Math.sin(ang);
+            const nx = px / d;
+            const ny = py / d;
+            vx += (nx * ca - ny * sa) * mag;
+            vy += (nx * sa + ny * ca) * mag;
+            // 沿游標移動方向甩出：拖曳時粒子順移動方向飛濺（靜止 hover 此項 ≈0）
+            vx += mvx * velFollow * falloff;
+            vy += mvy * velFollow * falloff;
+            // z 少量散射：立體炸開（第二組偽隨機由 seed 導出，維持平面感故幅度小）
+            const sj2 = Math.sin(sj * 91.7) * 0.5 + 0.5;
+            vz += (sj2 - 0.5) * mag * sprayZ;
           }
+        }
+        // 速度上限：低阻尼下避免無限加速、維持炸裂又穩定
+        const v2 = vx * vx + vy * vy + vz * vz;
+        if (v2 > maxV2) {
+          const s = props.maxSpeed / Math.sqrt(v2);
+          vx *= s;
+          vy *= s;
+          vz *= s;
         }
         vel[i3] = vx;
         vel[i3 + 1] = vy;
