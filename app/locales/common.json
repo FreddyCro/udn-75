@@ -2,5 +2,10 @@
   "navbarMenu1Text": "選單項目一",
   "navbarMenu1Link": "#",
   "navbarMenu2Text": "更多數位專題",
-  "navbarMenu2Link": "https://udn.com/newmedia/office/"
+  "navbarMenu2Link": "https://udn.com/newmedia/office/",
+  "headerAnchors": [
+    { "title": "論壇", "target": "forum" },
+    { "title": "永續祝福", "target": "blessing" },
+    { "title": "智慧心媒體", "target": "media" }
+  ]
 }

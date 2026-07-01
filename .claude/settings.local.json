@@ -5,7 +5,15 @@
       "mcp__claude_ai_Figma__get_screenshot",
       "mcp__claude_ai_Figma__get_motion_context",
       "mcp__claude_ai_Figma__get_variable_defs",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "mcp__claude_ai_Figma__get_metadata",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -o forum_head.png \"https://www.figma.com/api/mcp/asset/5cbc5f85-3596-4ab7-bf85-d50578f23741\")",
+      "Bash(curl -s -o hero.png \"https://www.figma.com/api/mcp/asset/dd36877c-93e7-47e4-ad88-2bee86f293ff\")",
+      "Bash(curl -s -o nm1.png \"https://www.figma.com/api/mcp/asset/ea2e4ba1-e68d-4c1d-886f-59c2ff3c7710\")",
+      "Bash(curl -s -o nm4.png \"https://www.figma.com/api/mcp/asset/8a21254a-ee2d-484b-a3ae-e7706d9edc98\")",
+      "Bash(curl -s -o bless.png \"https://www.figma.com/api/mcp/asset/165ddf0e-253e-4a7a-b3f4-9d9470985b30\")",
+      "Bash(curl -s -o partner.png \"https://www.figma.com/api/mcp/asset/92dd1a61-615a-4933-b603-e8dd4c53dbbf\")"
     ]
   }
 }
