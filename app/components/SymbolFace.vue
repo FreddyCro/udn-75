@@ -1,13 +1,75 @@
 <template>
   <div ref="wrapRef" class="stage">
-    <button class="go" @click="dispersed = !dispersed">
-      {{ dispersed ? '集合' : '分散' }}
-    </button>
     <!-- 彩蛋：定位/透明度由 JS 每幀控制；內容走 slot（預設純文字） -->
     <div ref="eggRef" class="egg" aria-hidden="true">
       <slot name="phrase" :index="activeEgg" :text="displayText">
         {{ displayText }}
       </slot>
+    </div>
+
+    <!-- dev config 面板（右上角、可收合）：改值不即時套用，按 Refresh 才重建 -->
+    <div v-if="dev" class="cfg">
+      <button class="cfg__toggle" type="button" @click="panelOpen = !panelOpen">
+        <span>⚙ Config</span>
+        <span>{{ panelOpen ? '▾' : '▸' }}</span>
+      </button>
+      <div v-show="panelOpen" class="cfg__body">
+        <template v-for="(f, i) in CONFIG_SCHEMA" :key="f.key">
+          <div
+            v-if="f.group && f.group !== CONFIG_SCHEMA[i - 1]?.group"
+            class="cfg__group"
+          >
+            {{ f.group }}
+          </div>
+          <label class="cfg__row">
+            <span class="cfg__label" :title="f.key">{{ f.label }}</span>
+            <input
+              v-if="f.kind === 'bool'"
+              v-model="draft[f.key]"
+              class="cfg__input cfg__input--check"
+              type="checkbox"
+            />
+            <input
+              v-else-if="f.kind === 'color'"
+              v-model="draft[f.key]"
+              class="cfg__input cfg__input--color"
+              type="color"
+            />
+            <select
+              v-else-if="f.kind === 'select'"
+              v-model="draft[f.key]"
+              class="cfg__input"
+            >
+              <option v-for="o in f.options" :key="o" :value="o">{{ o }}</option>
+            </select>
+            <input
+              v-else-if="f.kind === 'num'"
+              v-model.number="draft[f.key]"
+              class="cfg__input"
+              type="number"
+              :step="f.step ?? 1"
+            />
+            <input
+              v-else
+              v-model="draft[f.key]"
+              class="cfg__input"
+              type="text"
+            />
+          </label>
+        </template>
+        <div class="cfg__footer">
+          <button class="cfg__refresh" type="button" @click="applyRefresh">
+            ↻ Refresh
+          </button>
+          <button
+            class="cfg__disperse"
+            type="button"
+            @click="dispersed = !dispersed"
+          >
+            {{ dispersed ? '聚攏' : '分散' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -125,6 +187,9 @@ const props = defineProps({
   gridRows: { type: Number, default: 2 },
   /** 彩蛋文字顏色 */
   phraseColor: { type: String, default: '#ffffff' },
+
+  /** 開發用：顯示右上角可收合的參數面板（預設 false；demo 頁設 true） */
+  dev: { type: Boolean, default: false },
 });
 
 const wrapRef = ref<HTMLDivElement | null>(null);
@@ -163,7 +228,7 @@ const runScramble = (target: string) => {
   scrambleRaf = requestAnimationFrame(tick);
 };
 watch(activeEgg, (idx) => {
-  runScramble(idx >= 0 ? (props.phrases[idx] ?? '') : '');
+  runScramble(idx >= 0 ? (cfg.phrases[idx] ?? '') : '');
 });
 onBeforeUnmount(() => cancelAnimationFrame(scrambleRaf));
 // 兩種狀態：false = 集合（人像）/ true = 分散（散場漂浮）。
@@ -173,6 +238,95 @@ let disperseFn: ((animated?: boolean) => void) | null = null;
 
 // 狀態改變時，可逆地補間 uDisperse（0↔1）
 watch(dispersed, () => disperseFn?.(true));
+
+// ---------- 開發用 config 面板（dev=true 顯示）----------
+// 面板編輯 draft（不即時套用）；按 Refresh 才把 draft → cfg 並重建粒子系統。
+// cfg 是 three.js 實際讀取的設定（初始 = props；本檔內 three.js 讀設定的地方都改讀 cfg）。
+const CONFIG_SCHEMA = [
+  // 圖像 / 採樣
+  { key: 'src', label: '圖片路徑', kind: 'text', group: '圖像 / 採樣' },
+  { key: 'chars', label: '符號集', kind: 'csvStr', group: '圖像 / 採樣' },
+  { key: 'color', label: '顏色(逗號多色)', kind: 'colorList', group: '圖像 / 採樣' },
+  { key: 'colorMode', label: '取色模式', kind: 'select', options: ['tone', 'random'], group: '圖像 / 採樣' },
+  { key: 'sampleStep', label: '採樣間距', kind: 'num', step: 1, group: '圖像 / 採樣' },
+  { key: 'fitWidth', label: 'fit 寬', kind: 'num', step: 10, group: '圖像 / 採樣' },
+  { key: 'fitHeight', label: 'fit 高', kind: 'num', step: 10, group: '圖像 / 採樣' },
+  { key: 'worldScale', label: 'world 縮放', kind: 'num', step: 0.05, group: '圖像 / 採樣' },
+  { key: 'minDensity', label: '亮部最低密度', kind: 'num', step: 0.01, group: '圖像 / 採樣' },
+  { key: 'densityGamma', label: '密度 gamma', kind: 'num', step: 0.1, group: '圖像 / 採樣' },
+  { key: 'darkBoost', label: '暗度增益', kind: 'num', step: 0.1, group: '圖像 / 採樣' },
+  { key: 'sizeMin', label: '字級 min', kind: 'num', step: 1, group: '圖像 / 採樣' },
+  { key: 'sizeMax', label: '字級 max', kind: 'num', step: 1, group: '圖像 / 採樣' },
+  { key: 'maxParticles', label: '粒子上限', kind: 'num', step: 500, group: '圖像 / 採樣' },
+  // 場景 / 節奏
+  { key: 'bgColor', label: '背景色', kind: 'color', group: '場景 / 節奏' },
+  { key: 'revealDuration', label: '組合秒數', kind: 'num', step: 0.1, group: '場景 / 節奏' },
+  { key: 'disperseDuration', label: '散場秒數', kind: 'num', step: 0.1, group: '場景 / 節奏' },
+  { key: 'disperseSpread', label: '散場範圍 xyz', kind: 'csvNum', group: '場景 / 節奏' },
+  // 漂浮
+  { key: 'floatAmp', label: '整體漂浮幅度', kind: 'num', step: 1, group: '漂浮' },
+  { key: 'floatMicro', label: '微擾幅度', kind: 'num', step: 1, group: '漂浮' },
+  { key: 'floatSpeed', label: '漂浮速度', kind: 'num', step: 0.1, group: '漂浮' },
+  // 斥力 / 物理
+  { key: 'holeRadius', label: '真空半徑', kind: 'num', step: 5, group: '斥力 / 物理' },
+  { key: 'holeSpread', label: '擴散範圍', kind: 'num', step: 5, group: '斥力 / 物理' },
+  { key: 'returnEase', label: '回位速率', kind: 'num', step: 0.1, group: '斥力 / 物理' },
+  { key: 'friction', label: '動量衰減', kind: 'num', step: 0.1, group: '斥力 / 物理' },
+  { key: 'impulseStrength', label: '外推力道', kind: 'num', step: 100, group: '斥力 / 物理' },
+  { key: 'impulseSpray', label: '發散角', kind: 'num', step: 0.05, group: '斥力 / 物理' },
+  { key: 'impulseSprayZ', label: 'z 散射', kind: 'num', step: 0.05, group: '斥力 / 物理' },
+  { key: 'velocityFollow', label: '拖曳甩出比例', kind: 'num', step: 0.05, group: '斥力 / 物理' },
+  { key: 'maxSpeed', label: '速度上限', kind: 'num', step: 100, group: '斥力 / 物理' },
+  // 避讓 / 滑鼠
+  { key: 'groupShift', label: '群閃避量', kind: 'num', step: 1, group: '避讓 / 滑鼠' },
+  { key: 'groupShiftNear', label: '閃避近界', kind: 'num', step: 10, group: '避讓 / 滑鼠' },
+  { key: 'groupShiftFar', label: '閃避遠界', kind: 'num', step: 10, group: '避讓 / 滑鼠' },
+  { key: 'mouseEase', label: '滑鼠平滑', kind: 'num', step: 0.5, group: '避讓 / 滑鼠' },
+  { key: 'autoMouse', label: '自動游標', kind: 'bool', group: '避讓 / 滑鼠' },
+  { key: 'autoMouseSpeed', label: '自動游標速度', kind: 'num', step: 0.1, group: '避讓 / 滑鼠' },
+  // 彩蛋
+  { key: 'phrases', label: '彩蛋句(逗號)', kind: 'csvStr', group: '彩蛋' },
+  { key: 'gridCols', label: '宮格欄', kind: 'num', step: 1, group: '彩蛋' },
+  { key: 'gridRows', label: '宮格列', kind: 'num', step: 1, group: '彩蛋' },
+  { key: 'phraseColor', label: '彩蛋文字色', kind: 'color', group: '彩蛋' },
+];
+
+const panelOpen = ref(true);
+// props 值 → 面板可編輯字串（陣列類轉成逗號字串）
+const toDraft = (val: any, kind: string) => {
+  if (kind === 'csvNum' || kind === 'csvStr') return (val ?? []).join(', ');
+  if (kind === 'colorList') return Array.isArray(val) ? val.join(', ') : (val ?? '');
+  return val;
+};
+// 面板值 → cfg 正確型別
+const fromDraft = (val: any, kind: string) => {
+  if (kind === 'num') return Number(val);
+  if (kind === 'bool') return !!val;
+  if (kind === 'csvNum')
+    return String(val).split(',').map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n));
+  if (kind === 'csvStr')
+    return String(val).split(',').map((s) => s.trim()).filter(Boolean);
+  if (kind === 'colorList') {
+    const parts = String(val).split(',').map((s) => s.trim()).filter(Boolean);
+    return parts.length > 1 ? parts : (parts[0] ?? '');
+  }
+  return val; // color / text / select
+};
+
+// cfg：three.js 讀取的實際設定（plain object，避免熱迴圈 reactive 開銷）
+const cfg: Record<string, any> = {};
+// draft：面板 v-model 綁定（reactive）
+const draft = reactive<Record<string, any>>({});
+for (const f of CONFIG_SCHEMA) {
+  cfg[f.key] = props[f.key as keyof typeof props];
+  draft[f.key] = toDraft(props[f.key as keyof typeof props], f.kind);
+}
+// onMounted 內指派：把 cfg 套進 three.js 並重建粒子系統
+let rebuildParticles: (() => void) | null = null;
+const applyRefresh = () => {
+  for (const f of CONFIG_SCHEMA) cfg[f.key] = fromDraft(draft[f.key], f.kind);
+  rebuildParticles?.();
+};
 
 // 把字元集畫成 sprite sheet，fragment shader 以 gl_PointCoord + cell offset 取樣
 const makeGlyphAtlas = (chars: string[]) => {
@@ -230,7 +384,7 @@ onMounted(() => {
   const height = wrap.clientHeight;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(props.bgColor);
+  scene.background = new THREE.Color(cfg.bgColor);
 
   const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 2000);
   camera.position.z = 600;
@@ -267,8 +421,10 @@ onMounted(() => {
   renderer.domElement.addEventListener('pointermove', onMove);
   renderer.domElement.addEventListener('pointerleave', onLeave);
 
-  const atlas = makeGlyphAtlas(props.chars);
-  const colorRamp = makeColorRamp(props.color);
+  // atlas / colorRamp / points 改為 let，可在 refresh 時 dispose 重建
+  let atlas: ReturnType<typeof makeGlyphAtlas> | null = null;
+  let colorRamp: THREE.CanvasTexture | null = null;
+  let points: THREE.Points | null = null;
 
   let geom: THREE.BufferGeometry | null = null;
   let mat: THREE.ShaderMaterial | null = null;
@@ -300,7 +456,7 @@ onMounted(() => {
     // contain-fit：把圖（W×H）等比例塞進目標框（fitWidth×fitHeight），正規化 render 大小，
     // 與圖片解析度、視窗 aspect 脫鉤（換圖不爆框）
     const scale =
-      Math.min(props.fitWidth / W, props.fitHeight / H) * props.worldScale;
+      Math.min(cfg.fitWidth / W, cfg.fitHeight / H) * cfg.worldScale;
     // 人像置中於原點，半寬高 = W*scale/2、H*scale/2；自動游標在 ~70% 內遊走
     halfW = (W * scale) / 2;
     halfH = (H * scale) / 2;
@@ -312,7 +468,7 @@ onMounted(() => {
     // 分布疏密與原圖解析度脫鉤：sampleStep 視為「目標 world 間距」，換算回影像 px 步長
     // （world 間距 = step × scale ≈ sampleStep）。高解析原圖不再被 contain-fit 壓成密網格而重疊，
     // 疏密固定 → 貼近舊版 einstein 的攤開感（LIU_FEEDBACK_2 #2-3 分布方式）。
-    const step = Math.max(1, Math.round(props.sampleStep / scale));
+    const step = Math.max(1, Math.round(cfg.sampleStep / scale));
     for (let y = 0; y < H; y += step) {
       for (let x = 0; x < W; x += step) {
         // 整格平均，比單點採樣穩定（鉛筆稿紋理噪點大）
@@ -333,10 +489,10 @@ onMounted(() => {
         }
         const a = aSum / n;
         if (a < 0.5) continue; // 透明背景 = 輪廓外
-        const dark = Math.min(1, (1 - lumSum / n) * props.darkBoost);
+        const dark = Math.min(1, (1 - lumSum / n) * cfg.darkBoost);
         const prob =
-          (props.minDensity +
-            (1 - props.minDensity) * Math.pow(dark, props.densityGamma)) *
+          (cfg.minDensity +
+            (1 - cfg.minDensity) * Math.pow(dark, cfg.densityGamma)) *
           a;
         if (Math.random() > prob) continue;
         positions.push(
@@ -344,14 +500,14 @@ onMounted(() => {
           -(y - H / 2) * scale,
           (Math.random() - 0.5) * 8,
         );
-        sizes.push(props.sizeMin + (props.sizeMax - props.sizeMin) * dark);
+        sizes.push(cfg.sizeMin + (cfg.sizeMax - cfg.sizeMin) * dark);
         darks.push(dark);
       }
     }
 
     let count = positions.length / 3;
-    if (count > props.maxParticles) {
-      const keep = props.maxParticles / count;
+    if (count > cfg.maxParticles) {
+      const keep = cfg.maxParticles / count;
       let w = 0;
       for (let i = 0; i < count; i++) {
         if (Math.random() > keep) continue;
@@ -376,9 +532,9 @@ onMounted(() => {
     const glyph = new Float32Array(count);
     const seed = new Float32Array(count);
 
-    const FLOAT_X = props.disperseSpread[0] ?? 900;
-    const FLOAT_Y = props.disperseSpread[1] ?? 520;
-    const FLOAT_Z = props.disperseSpread[2] ?? 240;
+    const FLOAT_X = cfg.disperseSpread[0] ?? 900;
+    const FLOAT_Y = cfg.disperseSpread[1] ?? 520;
+    const FLOAT_Z = cfg.disperseSpread[2] ?? 240;
     for (let i = 0; i < count; i++) {
       const i3 = i * 3;
       const ang = Math.random() * Math.PI * 2;
@@ -390,7 +546,7 @@ onMounted(() => {
       floatPos[i3 + 1] = (Math.random() - 0.5) * FLOAT_Y;
       floatPos[i3 + 2] = (Math.random() - 0.5) * FLOAT_Z;
       order[i] = Math.random() * 0.85;
-      glyph[i] = Math.floor(Math.random() * props.chars.length);
+      glyph[i] = Math.floor(Math.random() * cfg.chars.length);
       seed[i] = Math.random();
     }
 
@@ -428,19 +584,19 @@ onMounted(() => {
         uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
         uMouseInfluence: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
-        uFloatAmp: { value: props.floatAmp },
-        uFloatMicro: { value: props.floatMicro },
-        uFloatSpeed: { value: props.floatSpeed },
-        uHoleRadius: { value: props.holeRadius },
-        uHoleSpread: { value: props.holeSpread },
-        uGroupShift: { value: props.groupShift },
-        uGroupNear: { value: props.groupShiftNear },
-        uGroupFar: { value: props.groupShiftFar },
+        uFloatAmp: { value: cfg.floatAmp },
+        uFloatMicro: { value: cfg.floatMicro },
+        uFloatSpeed: { value: cfg.floatSpeed },
+        uHoleRadius: { value: cfg.holeRadius },
+        uHoleSpread: { value: cfg.holeSpread },
+        uGroupShift: { value: cfg.groupShift },
+        uGroupNear: { value: cfg.groupShiftNear },
+        uGroupFar: { value: cfg.groupShiftFar },
         uAtlas: { value: atlas.texture },
         uAtlasGrid: { value: new THREE.Vector2(atlas.cols, atlas.rows) },
-        uGlyphCount: { value: props.chars.length },
+        uGlyphCount: { value: cfg.chars.length },
         uColorRamp: { value: colorRamp },
-        uColorRandom: { value: props.colorMode === 'random' ? 1 : 0 },
+        uColorRandom: { value: cfg.colorMode === 'random' ? 1 : 0 },
       },
       vertexShader: /* glsl */ `
         attribute vec3 aStart;
@@ -554,7 +710,7 @@ onMounted(() => {
       `,
     });
 
-    const points = new THREE.Points(geom, mat);
+    points = new THREE.Points(geom, mat);
     scene.add(points);
     tryReveal();
 
@@ -566,7 +722,7 @@ onMounted(() => {
       if (animated) {
         gsap.to(mat.uniforms.uDisperse, {
           value: targetVal,
-          duration: props.disperseDuration,
+          duration: cfg.disperseDuration,
           ease: 'power2.inOut',
         });
       } else {
@@ -584,7 +740,7 @@ onMounted(() => {
     revealStarted = true;
     gsap.to(mat.uniforms.uProgress, {
       value: 1,
-      duration: props.revealDuration,
+      duration: cfg.revealDuration,
       ease: 'power2.inOut',
     });
   };
@@ -600,10 +756,50 @@ onMounted(() => {
   );
   observer.observe(wrap);
 
+  // 已載入的圖與其 src（refresh 時若 src 未變可直接重採樣，不必重載）
+  let loadedImg: HTMLImageElement | null = null;
+  let loadedSrc = cfg.src;
+
+  // 重建粒子系統：dispose 舊的 → 依目前 cfg 重建 atlas / 漸層 / 幾何 / 材質，並重跑 reveal
+  const buildParticles = () => {
+    if (!loadedImg) return;
+    if (points) scene.remove(points);
+    geom?.dispose();
+    mat?.dispose();
+    atlas?.texture.dispose();
+    colorRamp?.dispose();
+    atlas = makeGlyphAtlas(cfg.chars);
+    colorRamp = makeColorRamp(cfg.color);
+    revealStarted = false; // 讓 reveal 重跑（新材質 uProgress 從 0 起）
+    buildFromImage(loadedImg);
+  };
+
   const img = new Image();
-  img.src = props.src;
+  img.src = cfg.src;
   img.onload = () => {
-    if (!unmounted) buildFromImage(img);
+    if (unmounted) return;
+    loadedImg = img;
+    loadedSrc = cfg.src;
+    buildParticles();
+  };
+
+  // refresh：套用 cfg（背景色/彩蛋色即時更新）後重建粒子；src 變更則先載入新圖再重建
+  rebuildParticles = () => {
+    if (unmounted) return;
+    scene.background = new THREE.Color(cfg.bgColor);
+    if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
+    if (cfg.src !== loadedSrc) {
+      const im = new Image();
+      im.src = cfg.src;
+      im.onload = () => {
+        if (unmounted) return;
+        loadedImg = im;
+        loadedSrc = cfg.src;
+        buildParticles();
+      };
+    } else {
+      buildParticles();
+    }
   };
 
   const clock = new THREE.Clock();
@@ -616,15 +812,15 @@ onMounted(() => {
   const proj = new THREE.Vector3();
   let viewW = width;
   let viewH = height;
-  if (eggRef.value) eggRef.value.style.color = props.phraseColor;
+  if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
 
   const animate = () => {
     const t = clock.getElapsedTime();
     const dt = Math.min(t - prevT, 0.1); // clamp 避免分頁切回時大跳
     prevT = t;
     // 自動游標：以多頻率正弦疊加做出非重複的平滑遊走，覆寫真實游標
-    if (props.autoMouse) {
-      const at = t * props.autoMouseSpeed;
+    if (cfg.autoMouse) {
+      const at = t * cfg.autoMouseSpeed;
       mouse.set(
         Math.sin(at * 0.7) * roamX * 0.6 + Math.sin(at * 0.23 + 1.3) * roamX * 0.4,
         Math.cos(at * 0.53) * roamY * 0.6 + Math.cos(at * 0.31 + 0.7) * roamY * 0.4,
@@ -633,7 +829,7 @@ onMounted(() => {
       targetInfluence = 1;
     }
     // 與幀率無關的指數緩動係數
-    const k = 1 - Math.exp(-props.mouseEase * dt);
+    const k = 1 - Math.exp(-cfg.mouseEase * dt);
     if (influence < 0.001 && targetInfluence > 0) {
       smoothMouse.copy(mouse); // 首次接觸：位置直接到位，靠 influence 淡入強度（不橫掃畫面）
     } else {
@@ -655,18 +851,18 @@ onMounted(() => {
       const vel = velArr;
       const tgt = targetArr;
       const seeds = seedArr;
-      const velDecay = Math.exp(-props.friction * dt); // 與幀率無關的動量衰減（friction）
-      const easeAmt = 1 - Math.exp(-props.returnEase * dt); // 與幀率無關的回位 lerp 係數（趨近 0）
-      const hitR = props.holeRadius + props.holeSpread;
+      const velDecay = Math.exp(-cfg.friction * dt); // 與幀率無關的動量衰減（friction）
+      const easeAmt = 1 - Math.exp(-cfg.returnEase * dt); // 與幀率無關的回位 lerp 係數（趨近 0）
+      const hitR = cfg.holeRadius + cfg.holeSpread;
       const hitR2 = hitR * hitR;
       const canHit = !dispersed.value && influence > 0.01;
       const mx = smoothMouse.x;
       const my = smoothMouse.y;
-      const kick = props.impulseStrength * influence;
-      const spray = props.impulseSpray;
-      const sprayZ = props.impulseSprayZ;
-      const velFollow = props.velocityFollow;
-      const maxV2 = props.maxSpeed * props.maxSpeed;
+      const kick = cfg.impulseStrength * influence;
+      const spray = cfg.impulseSpray;
+      const sprayZ = cfg.impulseSprayZ;
+      const velFollow = cfg.velocityFollow;
+      const maxV2 = cfg.maxSpeed * cfg.maxSpeed;
       // 游標移動速度（world/秒）→ 沿移動方向甩出粒子（拖曳發散）；靜止 hover 則 ≈0。
       // prevMx<9000 確保有上一幀有效座標，避免從 9999 起跳造成爆衝；並夾住上限。
       let mvx = 0;
@@ -721,7 +917,7 @@ onMounted(() => {
         // 速度上限：friction 值偏低（動量保留高）時避免持續 impulse 累積成無限加速、維持炸裂又穩定
         const v2 = vx * vx + vy * vy + vz * vz;
         if (v2 > maxV2) {
-          const s = props.maxSpeed / Math.sqrt(v2);
+          const s = cfg.maxSpeed / Math.sqrt(v2);
           vx *= s;
           vy *= s;
           vz *= s;
@@ -742,14 +938,14 @@ onMounted(() => {
     const eggEl = eggRef.value;
     if (eggEl && halfW > 0) {
       let idx = -1;
-      if (!dispersed.value && influence > 0.4 && props.phrases.length) {
+      if (!dispersed.value && influence > 0.4 && cfg.phrases.length) {
         const nx = (smoothMouse.x + halfW) / (2 * halfW); // 0..1 左→右
         const ny = (halfH - smoothMouse.y) / (2 * halfH); // 0..1 上→下
         if (nx >= 0 && nx < 1 && ny >= 0 && ny < 1) {
-          const col = Math.min(props.gridCols - 1, Math.floor(nx * props.gridCols));
-          const row = Math.min(props.gridRows - 1, Math.floor(ny * props.gridRows));
-          const i = row * props.gridCols + col;
-          if (i < props.phrases.length && props.phrases[i]) idx = i;
+          const col = Math.min(cfg.gridCols - 1, Math.floor(nx * cfg.gridCols));
+          const row = Math.min(cfg.gridRows - 1, Math.floor(ny * cfg.gridRows));
+          const i = row * cfg.gridCols + col;
+          if (i < cfg.phrases.length && cfg.phrases[i]) idx = i;
         }
       }
       if (idx !== activeEgg.value) activeEgg.value = idx; // 僅換格才觸發 re-render
@@ -791,8 +987,8 @@ onMounted(() => {
     renderer.dispose();
     geom?.dispose();
     mat?.dispose();
-    atlas.texture.dispose();
-    colorRamp.dispose();
+    atlas?.texture.dispose();
+    colorRamp?.dispose();
     wrap.removeChild(renderer.domElement);
   });
 });
@@ -826,34 +1022,131 @@ onMounted(() => {
   will-change: transform, opacity;
 }
 
-.go {
+/* ---------- dev config 面板 ---------- */
+.cfg {
   position: absolute;
-  right: 32px;
-  bottom: 32px;
-  z-index: 1;
-  padding: 12px 28px;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  color: #333;
-  background: transparent;
-  border: 1px solid rgba(0, 0, 0, 0.5);
-  border-radius: 999px;
-  cursor: pointer;
-  transition:
-    background 0.2s,
-    color 0.2s,
-    opacity 0.3s;
-}
-
-.go:hover:not(:disabled) {
-  background: #333;
-  color: #fff;
-}
-
-.go:disabled {
-  opacity: 0.3;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  width: 252px;
+  max-width: calc(100% - 24px);
+  font-family: ui-monospace, 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #e8e8e8;
+  background: rgba(20, 22, 28, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
   cursor: default;
+  overflow: hidden;
+}
+
+.cfg__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  border: 0;
+  cursor: pointer;
+}
+
+.cfg__body {
+  max-height: min(72vh, 600px);
+  overflow-y: auto;
+  padding: 4px 10px 10px;
+}
+
+.cfg__group {
+  margin: 10px 0 4px;
+  padding-bottom: 2px;
+  font-weight: 700;
+  color: #7fd0ff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.cfg__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.cfg__label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cfg__input {
+  flex: 0 0 98px;
+  width: 98px;
+  min-width: 0;
+  padding: 2px 4px;
+  font: inherit;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.cfg__input--check {
+  flex-basis: auto;
+  width: 16px;
+  height: 16px;
+}
+
+.cfg__input--color {
+  padding: 0;
+  height: 22px;
+}
+
+.cfg__footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  background: rgba(20, 22, 28, 0.9);
+}
+
+.cfg__refresh,
+.cfg__disperse {
+  flex: 1 1 0;
+  padding: 9px;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cfg__refresh {
+  color: #10141b;
+  background: #7fd0ff;
+}
+
+.cfg__refresh:hover {
+  background: #a5e0ff;
+}
+
+.cfg__disperse {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.cfg__disperse:hover {
+  background: rgba(255, 255, 255, 0.24);
 }
 </style>

@@ -22,6 +22,7 @@
 | 元件 / 區塊 | 功能 | 說明 |
 | --- | --- | --- |
 | hero（`#app-hero`） | 開場主視覺 | 兼作 Header 顯示時機的觀察目標：`id="app-hero"` 供 [AppHeader.vue](app/components/AppHeader.vue) 以 IntersectionObserver 監看，**hero 完全捲離視窗（在畫面中完全消失）後 Header 才滑入**；只要 hero 還有任一部分在畫面內，Header 保持隱藏。修改 hero 結構時請保留此 id。 |
+| hero 影片捲動鎖 | **重整一律從頂端重來** | hero 影片播放期間（`main` / `loop` 狀態）鎖住頁面捲動（`body { overflow: hidden }`）。重整後影片狀態會重置為 `main`，若瀏覽器將捲動位置還原到影片後方的內容區，將被 `overflow: hidden` 永久鎖死於中途、無法捲動。因此 **hero 影片體驗一律從頂端重新開始**：<br>・`onMounted` 設定 `history.scrollRestoration = 'manual'`，停用瀏覽器的捲動位置還原。<br>・上鎖（`applyScrollLock`）前先 `window.scrollTo(0, 0)`，確保鎖定當下停在 hero 頂端。<br>兩者確保影片狀態與捲動位置始終同步於頂端，不會出現「鎖死於中途」。 |
 
 ### Section 2 — 智慧論壇 `#forum`（[Section2.vue](app/components/Section2.vue)）
 
