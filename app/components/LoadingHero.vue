@@ -30,6 +30,12 @@ const props = defineProps({
   startDelay: { type: Number, default: 0.2 },
   /** 進度到達此比例（0~1，對應數字百分比）時，中央格就提早翻橘，與後續「100%」數字重疊一段時間 */
   centerOrangeAt: { type: Number, default: 0.8 },
+  /**
+   * 影片（或主要素材）是否已可播放。
+   * false 時進度會封頂在 99%「等載入」，即使 duration 已到也不收尾；
+   * 轉為 true 後才會補到 100% 並 emit done。預設 true → 單獨使用時照 duration 跑完。
+   */
+  ready: { type: Boolean, default: true },
 });
 
 const emit = defineEmits<{ done: [] }>();
@@ -131,7 +137,9 @@ const frame = (now: number) => {
   }
 
   const t = Math.min(active / props.duration, 1);
-  const p = easeInOutQuad(t);
+  // 影片尚不可播放時，進度封頂在 0.99（數字停在 99%），等 ready 後才收尾到 100%
+  let p = easeInOutQuad(t);
+  if (!props.ready) p = Math.min(p, 0.99);
   const whiteCount = Math.floor(p * n);
 
   // 進度到 centerOrangeAt（如 80%）就先讓中央格翻橘（此時數字仍在跑 → 橘塊與「100%」重疊一段）
@@ -147,7 +155,8 @@ const frame = (now: number) => {
 
   if (counterRef.value) counterRef.value.textContent = `${Math.round(p * 100)}%`;
 
-  if (t >= 1) {
+  // duration 已到、且影片可播放才收尾；否則持續等待（RAF 續跑，ready 轉 true 後自動收尾）
+  if (t >= 1 && props.ready) {
     if (!finished) finish();
     return; // 停止 RAF
   }
@@ -175,6 +184,8 @@ onMounted(() => {
     counterRef.value.style.color = props.textColor;
     counterRef.value.style.fontSize = props.counterFontSize;
   }
+  // 載入期間鎖住捲動，避免在載入層底下捲動頁面
+  document.body.style.overflow = 'hidden';
   computeGrid();
   nextTick(() => start());
   window.addEventListener('resize', onResize);
@@ -183,14 +194,16 @@ onMounted(() => {
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf);
   window.removeEventListener('resize', onResize);
+  document.body.style.overflow = '';
 });
 </script>
 
 <style scoped>
 .loader {
-  position: relative;
-  width: 100%;
-  height: 100vh;
+  /* 覆蓋整個視窗的載入層（蓋在 header 之上，z-index > .app-header 的 1000） */
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
   overflow: hidden;
   background: #fff;
   /* 把略大於視窗的網格置中：溢出等量被裁，正中間那一格中心 = 視窗正中心 */

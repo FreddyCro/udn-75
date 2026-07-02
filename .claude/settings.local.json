@@ -13,7 +13,11 @@
       "Bash(curl -s -o nm1.png \"https://www.figma.com/api/mcp/asset/ea2e4ba1-e68d-4c1d-886f-59c2ff3c7710\")",
       "Bash(curl -s -o nm4.png \"https://www.figma.com/api/mcp/asset/8a21254a-ee2d-484b-a3ae-e7706d9edc98\")",
       "Bash(curl -s -o bless.png \"https://www.figma.com/api/mcp/asset/165ddf0e-253e-4a7a-b3f4-9d9470985b30\")",
-      "Bash(curl -s -o partner.png \"https://www.figma.com/api/mcp/asset/92dd1a61-615a-4933-b603-e8dd4c53dbbf\")"
+      "Bash(curl -s -o partner.png \"https://www.figma.com/api/mcp/asset/92dd1a61-615a-4933-b603-e8dd4c53dbbf\")",
+      "PowerShell(pnpm add -D \"@tailwindcss/vite@^4.3.0\" \"tailwindcss@^4.3.0\")",
+      "PowerShell(pnpm nuxt prepare)",
+      "mcp__claude_ai_Figma__get_design_context",
+      "Bash(curl -s -o \"C:/Users/fredd/AppData/Local/Temp/claude/C--Users-fredd-Documents-works-projects-udn-75/c2125390-347e-4e7d-8e25-63cf1090c9ba/scratchpad/sec1-frame.png\" \"https://www.figma.com/api/mcp/asset/36eaec42-6038-41c4-be12-0af92c7205ba\")"
     ]
   }
 }

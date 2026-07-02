@@ -1,4 +1,7 @@
 :root {
+  // 頂部固定 header 的總高度（進度條 3px ＋ 頂部列 80px），
+  // 供錨點捲動偏移補償使用；CSS 與 JS 皆從此變數取得。
+  --header-height: 83px;
 }
 
 html,
@@ -16,4 +19,17 @@ html {
   font-family: 'Noto Sans TC', sans-serif;
   font-style: normal;
   line-height: 150%;
+}
+
+// 視覺上隱藏但保留於 DOM，供螢幕閱讀器與 SEO 讀取。
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

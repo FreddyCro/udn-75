@@ -1,3 +1,5 @@
+import tailwindcss from '@tailwindcss/vite';
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
@@ -36,13 +38,14 @@ export default defineNuxtConfig({
     })(),
   },
 
-  css: ['~/assets/styles/base.scss'],
+  css: ['~/assets/styles/tailwind.css', '~/assets/styles/base.scss'],
 
   // Pre-bundle CJS-only dependency in dev to avoid ESM default export issues.
   // @udn-digital-center/common-components 內部 import 的 vue-scrollto 為 CJS，
   // 需在此預打包成 ESM（並把 vue-scrollto 裝成直接相依），否則 dev 會報
   // "does not provide an export named 'default'"。
   vite: {
+    plugins: [tailwindcss()],
     optimizeDeps: {
       // 預先 pre-bundle，避免 dev 期間「runtime 才發現依賴」觸發整頁 reload。
       // vue-scrollto 為 CJS-only，預先 bundle 成 ESM 以提供 default export
