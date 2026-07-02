@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Section 1：hero / intro / date
 import str from '@/locales/section1.json';
-import { useHeroVideo, HERO_STATES, type HeroState } from '~/composables/useHeroVideo';
+import { useHeroVideo } from '~/composables/useHeroVideo';
 
 // LoadingHero 蓋在最上層，等 hero 影片可播放後才收尾並淡出移除。
 const loaderDone = ref(false);
@@ -13,23 +13,10 @@ const loaderDone = ref(false);
 const videoReady = ref(false);
 
 // hero 影片四階段狀態改為全域共享（見 composables/useHeroVideo）：
-// 任一元件皆可 const { setState } = useHeroVideo(); setState('outro') 來控制。
 //   main 主要內容 / loop 循環段 / outro 退場段 / gone 退場消失（白底 + core）
 // main / loop 期間鎖住頁面捲動（body overflow hidden）；outro 起解鎖。
-const { state: heroState, setState: setHeroState, isGone, shouldLockScroll } =
-  useHeroVideo();
-
-// placeholder：真影片尚未到位，先用按鈕手動切換狀態（僅 dev 顯示）。
-// TODO: 換成真實 <video> 後移除切換列，改由影片事件驅動：
-//   主要內容 @ended → 'loop'；loop 段用 <video loop>；
-//   loop 期間向下滾動 → 'outro'（播退場段）；退場 @ended → 'gone'。
-const isDev = import.meta.dev;
-const stateLabel: Record<HeroState, string> = {
-  main: '主要內容',
-  loop: 'Loop 段落',
-  outro: '退場段落',
-  gone: '',
-};
+// 狀態切換 UI 已抽到 <HeroVideoControls>（dev 用）；此處只讀狀態驅動畫面。
+const { state: heroState, isGone, shouldLockScroll } = useHeroVideo();
 
 // main / loop 期間鎖住 body 捲動；其餘（outro / gone）解鎖。
 function applyScrollLock() {
@@ -73,13 +60,7 @@ onBeforeUnmount(() => {
         :class="{ 'is-ended': isGone }"
         aria-hidden="true"
       >
-        <span>(video：{{ stateLabel[heroState] }})</span>
-        <h1 class="sec1__hero-title">
-          {{ str.hero.title }}
-        </h1>
-        <p class="sec1__hero-subtitle">
-          {{ str.hero.subtitle }}
-        </p>
+        <span>(video：{{ heroState }})</span>
       </div>
 
       <!-- 文字保留於 DOM 供 SEO / 螢幕閱讀器，視覺上不顯示 -->
@@ -92,21 +73,8 @@ onBeforeUnmount(() => {
         <span class="sec1__hero-scroll-line" aria-hidden="true" />
       </div>
 
-      <!-- ⚙︎ placeholder：手動切換影片四階段狀態（真 <video> 到位後移除）；僅 dev 顯示。
-           定位在 video（hero）區塊內，隨 hero 一起捲動 -->
-      <div v-if="isDev" class="sec1__debug">
-        <span class="sec1__debug-label">video</span>
-        <button
-          v-for="s in HERO_STATES"
-          :key="s"
-          type="button"
-          class="sec1__debug-btn"
-          :class="{ 'is-active': heroState === s }"
-          @click="setHeroState(s)"
-        >
-          {{ s === 'gone' ? '消失' : stateLabel[s] }}
-        </button>
-      </div>
+      <!-- 影片狀態切換列（dev 用：狀態切換 + SKIP）；定位在 hero 內、水平置中 -->
+      <HeroVideoControls dev />
     </div>
 
     <!--
@@ -260,48 +228,6 @@ $light-gray: #898989;
     &.is-visible {
       opacity: 1;
       transform: translate(-50%, -50%) scale(1);
-    }
-  }
-
-  // placeholder 用的影片狀態切換列（真影片到位後連同 template 一併移除）
-  // 定位在 video（hero）區塊內，隨 hero 一起捲動
-  &__debug {
-    position: absolute;
-    z-index: 10;
-    left: 24px;
-    bottom: 24px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.72);
-    backdrop-filter: blur(4px);
-  }
-
-  &__debug-label {
-    color: #fff;
-    font-size: 12px;
-    opacity: 0.6;
-  }
-
-  &__debug-btn {
-    padding: 4px 12px;
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 999px;
-    background: transparent;
-    color: #fff;
-    font-size: 13px;
-    cursor: pointer;
-    transition: background 0.15s ease;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.15);
-    }
-
-    &.is-active {
-      background: $orange;
-      border-color: $orange;
     }
   }
 

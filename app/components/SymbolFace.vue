@@ -34,7 +34,7 @@ const props = defineProps({
   },
   /** 漸層取色方式：'tone' 依明暗對應（暗→左端、亮→右端）/ 'random' 每顆隨機取色 */
   colorMode: { type: String, default: 'tone' },
-  /** 採樣間距（px），越小越密 */
+  /** 採樣間距 → 目標 world 間距（與原圖解析度脫鉤）：符號畫面間距 ≈ 此值，越小越密、越大越攤開不重疊 */
   sampleStep: { type: Number, default: 6 },
   /** 目標框寬（world 單位）：圖以 contain 方式塞入，正規化 render 大小 */
   fitWidth: { type: Number, default: 500 },
@@ -309,7 +309,10 @@ onMounted(() => {
     const positions: number[] = [];
     const sizes: number[] = [];
     const darks: number[] = [];
-    const step = props.sampleStep;
+    // 分布疏密與原圖解析度脫鉤：sampleStep 視為「目標 world 間距」，換算回影像 px 步長
+    // （world 間距 = step × scale ≈ sampleStep）。高解析原圖不再被 contain-fit 壓成密網格而重疊，
+    // 疏密固定 → 貼近舊版 einstein 的攤開感（LIU_FEEDBACK_2 #2-3 分布方式）。
+    const step = Math.max(1, Math.round(props.sampleStep / scale));
     for (let y = 0; y < H; y += step) {
       for (let x = 0; x < W; x += step) {
         // 整格平均，比單點採樣穩定（鉛筆稿紋理噪點大）
@@ -517,9 +520,10 @@ onMounted(() => {
           float twinkle = 0.82 + 0.18 * sin(uTime * 2.2 + aSeed * 40.0);
           // 亮部稍透明、暗部不透明，再疊一層深淺：對比靠 alpha + 色深 + 大小 + 密度
           vAlpha = local * twinkle * mix(0.55, 1.0, aDark) * mix(1.0, 0.5, uDisperse);
-          // 取色位置：tone=依明暗(暗→漸層左端) / random=每顆隨機；色調由漸層主導，vShade 僅輕微明暗+抖動
+          // 取色位置：tone=依明暗(暗→漸層左端) / random=每顆隨機；色調由漸層主導，
+          // vShade 再疊明暗對比(暗→濃、亮→淡)+抖動，讓深淺更明顯（貼近舊版靠亮度表現深淺）
           vT = mix(1.0 - aDark, hash(aSeed * 53.7), uColorRandom);
-          vShade = mix(1.1, 0.7, aDark) * (0.92 + 0.16 * hash(aSeed * 17.7));
+          vShade = mix(1.15, 0.6, aDark) * (0.92 + 0.16 * hash(aSeed * 17.7));
 
           vec4 mv = modelViewMatrix * vec4(pos, 1.0);
           gl_Position = projectionMatrix * mv;
