@@ -6,9 +6,9 @@ import glitch3 from '~/assets/img/glitch-03.jpg';
 
 const config = useRuntimeConfig();
 
-// SymbolFace 狀態：false = 集合（人像）/ true = 分散（漂浮）
-// 改這裡決定預設狀態；之後任何地方 symbolDispersed.value = !symbolDispersed.value 即可切換
-const symbolDispersed = ref(false);
+// SymbolFace 狀態：'face' = 集合（人像）/ 'disperse' = 分散（漂浮）/ 'converge' = 匯聚成點
+// 改這裡決定預設狀態；之後任何地方指派 symbolMode.value = 'disperse' | 'converge' | 'face' 即可切換
+const symbolMode = ref<'face' | 'disperse' | 'converge'>('face');
 
 // GlitchImage 觸發 API（暫用右下角按鈕；之後改由列表 hover/scroll 呼叫 start()）
 const glitchRef = ref<{ start: () => void; reset: () => void } | null>(null);
@@ -50,27 +50,29 @@ const symbolPhrases = [
       <!-- :auto-mouse="true" -->
       <LegacySymbolFace />
       <SymbolFace
-        v-model:dispersed="symbolDispersed"
+        v-model:mode="symbolMode"
         :dev="true"
         :phrases="symbolPhrases"
         :hole-radius="25"
         :hole-spread="50"
-        :return-ease="1"
-        :friction="3.6"
+        :return-ease="1.5"
+        :friction="1.8"
         :impulse-strength="10000"
         :impulse-spray="0.9"
         :impulse-spray-z="0.6"
         :velocity-follow="0.1"
         :max-speed="3000"
-        :max-particles="16000"
+        :max-particles="10000"
         :color="['#ffffff', '#9fd6ff', '#77c6e0', '#3f8fb5']"
         bg-color="#000"
-        :sample-step="6"
-        :size-min="30"
-        :size-max="50"
-        :min-density="0.01"
-        :density-gamma="4.2"
-        :dark-boost="1.3"
+        :sample-step="5"
+        :size-min="16"
+        :size-max="32"
+        :min-density="0.7"
+        :density-gamma="2.4"
+        :dark-boost="1.8"
+        :float-amp="18"
+        :float-micro="0.5"
       />
       <HeartMetaball
         :idleBlobMin="0.1"

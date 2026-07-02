@@ -58,16 +58,26 @@
           </label>
         </template>
         <div class="cfg__footer">
-          <button class="cfg__refresh" type="button" @click="applyRefresh">
-            ↻ Refresh
-          </button>
-          <button
-            class="cfg__disperse"
-            type="button"
-            @click="dispersed = !dispersed"
-          >
-            {{ dispersed ? '聚攏' : '分散' }}
-          </button>
+          <div class="cfg__modes">
+            <button
+              v-for="m in MODES"
+              :key="m.value"
+              class="cfg__mode"
+              :class="{ 'cfg__mode--active': mode === m.value }"
+              type="button"
+              @click="mode = m.value"
+            >
+              {{ m.label }}
+            </button>
+          </div>
+          <div class="cfg__actions">
+            <button class="cfg__refresh" type="button" @click="applyRefresh">
+              ↻ Refresh
+            </button>
+            <button class="cfg__export" type="button" @click="exportConfig">
+              {{ exportLabel }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -231,13 +241,20 @@ watch(activeEgg, (idx) => {
   runScramble(idx >= 0 ? (cfg.phrases[idx] ?? '') : '');
 });
 onBeforeUnmount(() => cancelAnimationFrame(scrambleRaf));
-// 兩種狀態：false = 集合（人像）/ true = 分散（散場漂浮）。
-// v-model 由父層決定預設值並隨意切換；元件內按鈕也只是翻轉它。
-const dispersed = defineModel<boolean>('dispersed', { default: false });
+// 三種狀態：'face' = 集合（人像）/ 'disperse' = 分散（散場漂浮）/ 'converge' = 匯聚成點。
+// 三態互斥，由 uDisperse / uConverge 兩個 uniform 表示（同一時間至多一個為 1）。
+// v-model 由父層決定預設值並隨意切換；元件內按鈕也只是指派它。
+type SymbolMode = 'face' | 'disperse' | 'converge';
+const mode = defineModel<SymbolMode>('mode', { default: 'face' });
+const MODES: { value: SymbolMode; label: string }[] = [
+  { value: 'face', label: '集合' },
+  { value: 'disperse', label: '分散' },
+  { value: 'converge', label: '匯聚成點' },
+];
 let disperseFn: ((animated?: boolean) => void) | null = null;
 
-// 狀態改變時，可逆地補間 uDisperse（0↔1）
-watch(dispersed, () => disperseFn?.(true));
+// 狀態改變時，可逆地補間 uDisperse / uConverge（0↔1）
+watch(mode, () => disperseFn?.(true));
 
 // ---------- 開發用 config 面板（dev=true 顯示）----------
 // 面板編輯 draft（不即時套用）；按 Refresh 才把 draft → cfg 並重建粒子系統。
@@ -326,6 +343,33 @@ let rebuildParticles: (() => void) | null = null;
 const applyRefresh = () => {
   for (const f of CONFIG_SCHEMA) cfg[f.key] = fromDraft(draft[f.key], f.kind);
   rebuildParticles?.();
+};
+
+// 匯出目前面板所有設定成 JSON：下載成檔案並順手複製到剪貼簿。
+// 值取自 draft（面板當下值）並轉回正確型別（數字/陣列），再附上目前 mode。
+const exportLabel = ref('⬇ Export JSON');
+let exportResetTimer: ReturnType<typeof setTimeout> | null = null;
+const exportConfig = () => {
+  const snapshot: Record<string, any> = {};
+  for (const f of CONFIG_SCHEMA) snapshot[f.key] = fromDraft(draft[f.key], f.kind);
+  snapshot.mode = mode.value;
+  const json = JSON.stringify(snapshot, null, 2);
+
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'symbol-face-config.json';
+  a.click();
+  URL.revokeObjectURL(url);
+
+  navigator.clipboard?.writeText(json).catch(() => {});
+
+  exportLabel.value = '✓ 已匯出';
+  if (exportResetTimer) clearTimeout(exportResetTimer);
+  exportResetTimer = setTimeout(() => {
+    exportLabel.value = '⬇ Export JSON';
+  }, 1600);
 };
 
 // 把字元集畫成 sprite sheet，fragment shader 以 gl_PointCoord + cell offset 取樣
@@ -581,6 +625,7 @@ onMounted(() => {
         uProgress: { value: 0 },
         uTime: { value: 0 },
         uDisperse: { value: 0 },
+        uConverge: { value: 0 },
         uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
         uMouseInfluence: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
@@ -611,6 +656,7 @@ onMounted(() => {
         uniform float uProgress;
         uniform float uTime;
         uniform float uDisperse;
+        uniform float uConverge;
         uniform vec3 uMouse;
         uniform float uMouseInfluence;
         uniform float uPixelRatio;
@@ -635,9 +681,13 @@ onMounted(() => {
           float local = smoothstep(aOrder, aOrder + 0.12, uProgress);
           vec3 pos = mix(aStart, aTarget, local);
 
+          // 非集合態（分散或匯聚）的合併強度：任一 → 關閉漂浮/斥力/避讓等「集合態」行為。
+          float away = max(uDisperse, uConverge);
+          float formed = 1.0 - away;
+
           // 無互動時的整體漂浮：全粒子同步的低頻隨機遊走（不帶 seed）做出「整片在飄」，
-          // 再疊一層每顆微擾（帶 seed）增加 organic 感；散場時淡出交棒給下方 drift
-          float idle = local * (1.0 - uDisperse);
+          // 再疊一層每顆微擾（帶 seed）增加 organic 感；散場/匯聚時淡出交棒給下方 drift
+          float idle = local * formed;
           float ts = uTime * uFloatSpeed;
           vec3 sway;
           sway.x = (sin(ts * 0.23) + 0.6 * sin(ts * 0.37 + 1.7)) * uFloatAmp;
@@ -656,17 +706,21 @@ onMounted(() => {
           drift.z += sin(uTime * 0.18 + aSeed * 3.1416) * 10.0;
           pos = mix(pos, drift, uDisperse);
 
+          // 匯聚成點：所有粒子收攏到人像中心(原點)近乎完全重疊 → 收成一顆實心點。
+          // 與 uDisperse 互斥（同一時間至多一個為 1），故直接再 mix 一層即可。
+          pos = mix(pos, vec3(0.0), uConverge);
+
           // 整體避讓：以游標到群中心(原點)的距離決定整群往反方向(遠離游標)的平移量，
           // uGroupNear 內(重疊)≈0 以保留中心環形真空、到 uGroupFar 達上限即停。
-          // uMouseInfluence 由 JS 緩動(進入/離開淡入淡出)；散場後關閉。
+          // uMouseInfluence 由 JS 緩動(進入/離開淡入淡出)；離開集合態後關閉。
           float dCenter = length(uMouse.xy);
-          float shiftAmt = uGroupShift * smoothstep(uGroupNear, uGroupFar, dCenter) * uMouseInfluence * (1.0 - uDisperse);
+          float shiftAmt = uGroupShift * smoothstep(uGroupNear, uGroupFar, dCenter) * uMouseInfluence * formed;
           pos.xy += normalize(-uMouse.xy + 0.0001) * shiftAmt;
 
           // 慣性位移：游標斥力/回位改由 CPU 端「動量 + 指數 ease」積分（見 animate()），
           // 結果存在 aDisp，這裡直接疊加 → 撞散後帶動量四散、再平順 ease 歸位（不 overshoot、無果凍回彈）。
-          // 散場時讓位移淡出，交棒給 drift。
-          pos += aDisp * (1.0 - uDisperse);
+          // 離開集合態（分散/匯聚）時讓位移淡出，交棒給 drift / 匯聚點。
+          pos += aDisp * formed;
 
           // 隨機換字閃爍：每 1/3 秒抽一次，少數粒子暫時換成別的字元
           float tick = floor(uTime * 3.0);
@@ -684,7 +738,7 @@ onMounted(() => {
           vec4 mv = modelViewMatrix * vec4(pos, 1.0);
           gl_Position = projectionMatrix * mv;
           float breath = 1.0 + 0.12 * sin(uTime * 2.0 + aSeed * 9.0);
-          float size = aSize * mix(1.0, 0.65, uDisperse);
+          float size = aSize * mix(1.0, 0.65, uDisperse) * mix(1.0, 0.6, uConverge);
           gl_PointSize = size * breath * local * uPixelRatio * (300.0 / -mv.z);
         }
       `,
@@ -714,19 +768,21 @@ onMounted(() => {
     scene.add(points);
     tryReveal();
 
-    // 依目前狀態補間到 0(集合) 或 1(分散)；animated=false 用於初始直接定位
+    // 依目前 mode 補間 uDisperse / uConverge 到對應目標；animated=false 用於初始直接定位。
+    // 三態互斥：分散→uDisperse=1、匯聚→uConverge=1、集合→兩者皆 0。
     disperseFn = (animated = true) => {
       if (!mat) return;
-      const targetVal = dispersed.value ? 1 : 0;
+      const dTarget = mode.value === 'disperse' ? 1 : 0;
+      const cTarget = mode.value === 'converge' ? 1 : 0;
       gsap.killTweensOf(mat.uniforms.uDisperse);
+      gsap.killTweensOf(mat.uniforms.uConverge);
       if (animated) {
-        gsap.to(mat.uniforms.uDisperse, {
-          value: targetVal,
-          duration: cfg.disperseDuration,
-          ease: 'power2.inOut',
-        });
+        const opts = { duration: cfg.disperseDuration, ease: 'power2.inOut' };
+        gsap.to(mat.uniforms.uDisperse, { value: dTarget, ...opts });
+        gsap.to(mat.uniforms.uConverge, { value: cTarget, ...opts });
       } else {
-        mat.uniforms.uDisperse.value = targetVal;
+        mat.uniforms.uDisperse.value = dTarget;
+        mat.uniforms.uConverge.value = cTarget;
       }
     };
     disperseFn(false); // 套用初始預設狀態（不動畫）
@@ -855,7 +911,7 @@ onMounted(() => {
       const easeAmt = 1 - Math.exp(-cfg.returnEase * dt); // 與幀率無關的回位 lerp 係數（趨近 0）
       const hitR = cfg.holeRadius + cfg.holeSpread;
       const hitR2 = hitR * hitR;
-      const canHit = !dispersed.value && influence > 0.01;
+      const canHit = mode.value === 'face' && influence > 0.01;
       const mx = smoothMouse.x;
       const my = smoothMouse.y;
       const kick = cfg.impulseStrength * influence;
@@ -938,7 +994,7 @@ onMounted(() => {
     const eggEl = eggRef.value;
     if (eggEl && halfW > 0) {
       let idx = -1;
-      if (!dispersed.value && influence > 0.4 && cfg.phrases.length) {
+      if (mode.value === 'face' && influence > 0.4 && cfg.phrases.length) {
         const nx = (smoothMouse.x + halfW) / (2 * halfW); // 0..1 左→右
         const ny = (halfH - smoothMouse.y) / (2 * halfH); // 0..1 上→下
         if (nx >= 0 && nx < 1 && ny >= 0 && ny < 1) {
@@ -1028,11 +1084,11 @@ onMounted(() => {
   top: 12px;
   right: 12px;
   z-index: 5;
-  width: 252px;
+  width: 340px;
   max-width: calc(100% - 24px);
   font-family: ui-monospace, 'Courier New', monospace;
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.45;
   color: #e8e8e8;
   background: rgba(20, 22, 28, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -1058,9 +1114,9 @@ onMounted(() => {
 }
 
 .cfg__body {
-  max-height: min(72vh, 600px);
+  max-height: calc(100vh - 68px);
   overflow-y: auto;
-  padding: 4px 10px 10px;
+  padding: 4px 12px 12px;
 }
 
 .cfg__group {
@@ -1087,8 +1143,8 @@ onMounted(() => {
 }
 
 .cfg__input {
-  flex: 0 0 98px;
-  width: 98px;
+  flex: 0 0 120px;
+  width: 120px;
   min-width: 0;
   padding: 2px 4px;
   font: inherit;
@@ -1113,26 +1169,65 @@ onMounted(() => {
   position: sticky;
   bottom: 0;
   display: flex;
+  flex-direction: column;
   gap: 8px;
   margin-top: 10px;
   padding-top: 8px;
   background: rgba(20, 22, 28, 0.9);
 }
 
-.cfg__refresh,
-.cfg__disperse {
+.cfg__modes {
+  display: flex;
+  gap: 6px;
+}
+
+.cfg__mode {
   flex: 1 1 0;
-  padding: 9px;
+  padding: 8px 4px;
   font: inherit;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  border: 0;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 6px;
   cursor: pointer;
 }
 
-.cfg__refresh {
+.cfg__mode:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.cfg__mode--active {
   color: #10141b;
+  background: #ffb060;
+  border-color: #ffb060;
+}
+
+.cfg__mode--active:hover {
+  background: #ffc281;
+}
+
+.cfg__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.cfg__refresh,
+.cfg__export {
+  flex: 1 1 0;
+  padding: 10px 6px;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #10141b;
+  border: 0;
+  border-radius: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cfg__refresh {
   background: #7fd0ff;
 }
 
@@ -1140,13 +1235,11 @@ onMounted(() => {
   background: #a5e0ff;
 }
 
-.cfg__disperse {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.28);
+.cfg__export {
+  background: #8fe3a0;
 }
 
-.cfg__disperse:hover {
-  background: rgba(255, 255, 255, 0.24);
+.cfg__export:hover {
+  background: #aef0ba;
 }
 </style>

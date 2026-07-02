@@ -177,7 +177,7 @@ onMounted(() => {
 });
 </script>
 
-<style>
+<style scoped>
 .gallery {
   position: relative;
   width: 100%;

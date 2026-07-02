@@ -3,6 +3,14 @@
 import str from '@/locales/section1.json';
 import { useHeroVideo } from '~/composables/useHeroVideo';
 
+// core path overlay 需要的元素 ref：
+//   sec1Ref      — 座標範圍 / ScrollTrigger trigger
+//   coreRef      — orange core（被 GSAP 驅動沿線移動）
+//   dateTitleRef — date 大標（曲線錨定原點）
+const sec1Ref = ref<HTMLElement | null>(null);
+const coreRef = ref<HTMLElement | null>(null);
+const dateTitleRef = ref<HTMLElement | null>(null);
+
 // LoadingHero 蓋在最上層，等 hero 影片可播放後才收尾並淡出移除。
 const loaderDone = ref(false);
 
@@ -51,7 +59,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="sec1">
+  <section ref="sec1Ref" class="sec1">
     <Transition name="loader-fade" @after-leave="onLoaderGone">
       <LoadingHero
         v-if="!loaderDone"
@@ -89,27 +97,36 @@ onBeforeUnmount(() => {
 
     <!--
       orange core：影片結束後於第一屏（影片區塊）正中央淡入 —— 這是 core 的起點。
-      設計上之後會沿一條曲線 path「貫穿全場」直到 date 區（移動本身尚未實作）。
+      位置由 HeroCorePath 以 GSAP 驅動（沿驅動線移動）；此處只保留外觀與淡入。
     -->
     <span
+      ref="coreRef"
       class="sec1__core"
       :class="{ 'is-visible': isGone }"
       aria-hidden="true"
     />
 
-    <!-- intro → date：orange core 貫穿的內容場景（core 移動路線尚未實作） -->
+    <!--
+      core 移動路徑 overlay（section 級、1:1 px）：可見灰線 + 不可見驅動線。
+      需要 .sec1（座標範圍 / trigger）、core（被驅動）、date 大標（錨定原點）三個元素。
+    -->
+    <HeroCorePath
+      :section-el="sec1Ref"
+      :core-el="coreRef"
+      :anchor-el="dateTitleRef"
+    />
+
+    <!-- intro → date：orange core 貫穿的內容場景 -->
     <div class="sec1__scene">
       <!-- intro 引言：置中窄欄，往下滑才進入視窗 -->
       <div class="sec1__intro">
         <p class="sec1__intro-body">{{ str.intro.body }}</p>
       </div>
 
-      <!-- date 論壇資訊 + core 路徑：整組以絕對定位對齊設計稿 501:21162 相對位置（RWD 之後再處理） -->
+      <!-- date 論壇資訊：整組以絕對定位對齊設計稿 501:21162 相對位置（RWD 之後再處理）。
+           core 路徑已抽到 section 級 overlay，尾端仍以此區大標為錨點對齊。 -->
       <div class="sec1__date">
-        <!-- core 路徑（與 date 文字同一 group；置於最前 → 疊在文字後方） -->
-        <HeroCorePath class="sec1__core-path" />
-
-        <h2 class="sec1__date-title">{{ str.date.title }}</h2>
+        <h2 ref="dateTitleRef" class="sec1__date-title">{{ str.date.title }}</h2>
         <p class="sec1__date-desc">{{ str.date.desc }}</p>
 
         <!-- 大型日期：階梯狀排列 2026 / 09 / 16 -->
@@ -220,37 +237,24 @@ $light-gray: #898989;
     padding: 0 56px;
   }
 
-  // orange core：影片結束後於第一屏（影片區塊）正中央淡入；此為起點。
+  // orange core：影片結束後於第一屏（影片區塊）正中央淡入。
+  // 位置由 HeroCorePath 以 GSAP 驅動（gsap.set x/y + xPercent/yPercent:-50 置中）；
+  // 故此處 top/left 皆 0、不設 transform，避免與 GSAP 的 transform 衝突。
   &__core {
     position: absolute;
-    top: 50vh; // 第一屏（影片區塊）正中央
-    left: 50%;
+    top: 0;
+    left: 0;
     z-index: 2;
     width: 24px;
     height: 24px;
-    transform: translate(-50%, -50%) scale(0.6);
     background: $orange;
     opacity: 0;
-    transition:
-      opacity 0.6s ease,
-      transform 0.6s ease;
+    transition: opacity 0.6s ease;
 
     // 退場消失（gone）後淡入
     &.is-visible {
       opacity: 1;
-      transform: translate(-50%, -50%) scale(1);
     }
-  }
-
-  // 桌機 core 路徑：與 date 文字同一 group，依設計稿 501:21162 相對定位（大標左上角為原點）。
-  // path 左上角 = 設計 (581, 364)，相對大標 (56, 476) → (525, -112)；尺寸 485×1075（1:1，RWD 之後再處理）。
-  &__core-path {
-    position: absolute;
-    top: -112px;
-    left: 525px;
-    width: 485px;
-    height: 1075px;
-    pointer-events: none;
   }
 
   // ---- intro 引言 ----

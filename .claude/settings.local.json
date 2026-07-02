@@ -17,7 +17,8 @@
       "PowerShell(pnpm add -D \"@tailwindcss/vite@^4.3.0\" \"tailwindcss@^4.3.0\")",
       "PowerShell(pnpm nuxt prepare)",
       "mcp__claude_ai_Figma__get_design_context",
-      "Bash(curl -s -o \"C:/Users/fredd/AppData/Local/Temp/claude/C--Users-fredd-Documents-works-projects-udn-75/c2125390-347e-4e7d-8e25-63cf1090c9ba/scratchpad/sec1-frame.png\" \"https://www.figma.com/api/mcp/asset/36eaec42-6038-41c4-be12-0af92c7205ba\")"
+      "Bash(curl -s -o \"C:/Users/fredd/AppData/Local/Temp/claude/C--Users-fredd-Documents-works-projects-udn-75/c2125390-347e-4e7d-8e25-63cf1090c9ba/scratchpad/sec1-frame.png\" \"https://www.figma.com/api/mcp/asset/36eaec42-6038-41c4-be12-0af92c7205ba\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/demo)"
     ]
   }
 }
