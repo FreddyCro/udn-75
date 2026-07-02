@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Section 1：hero / intro / date
 import str from '@/locales/section1.json';
+import { useHeroVideo, HERO_STATES, type HeroState } from '~/composables/useHeroVideo';
 
 // LoadingHero 蓋在最上層，等 hero 影片可播放後才收尾並淡出移除。
 const loaderDone = ref(false);
@@ -10,14 +11,51 @@ const loaderDone = ref(false);
 // TODO: 換成真實 <video> 後，移除下方 onMounted 設值，改綁定 <video> 的
 //       @canplaythrough="videoReady = true"（並視需要 preload）。
 const videoReady = ref(false);
+
+// hero 影片四階段狀態改為全域共享（見 composables/useHeroVideo）：
+// 任一元件皆可 const { setState } = useHeroVideo(); setState('outro') 來控制。
+//   main 主要內容 / loop 循環段 / outro 退場段 / gone 退場消失（白底 + core）
+// main / loop 期間鎖住頁面捲動（body overflow hidden）；outro 起解鎖。
+const { state: heroState, setState: setHeroState, isGone, shouldLockScroll } =
+  useHeroVideo();
+
+// placeholder：真影片尚未到位，先用按鈕手動切換狀態（僅 dev 顯示）。
+// TODO: 換成真實 <video> 後移除切換列，改由影片事件驅動：
+//   主要內容 @ended → 'loop'；loop 段用 <video loop>；
+//   loop 期間向下滾動 → 'outro'（播退場段）；退場 @ended → 'gone'。
+const isDev = import.meta.dev;
+const stateLabel: Record<HeroState, string> = {
+  main: '主要內容',
+  loop: 'Loop 段落',
+  outro: '退場段落',
+  gone: '',
+};
+
+// main / loop 期間鎖住 body 捲動；其餘（outro / gone）解鎖。
+function applyScrollLock() {
+  document.body.style.overflow = shouldLockScroll.value ? 'hidden' : '';
+}
+
 onMounted(() => {
   videoReady.value = true;
+});
+
+// LoadingHero 淡出移除後才套用捲動鎖。用 nextTick 延到 LoadingHero 卸載
+// （其 onBeforeUnmount 會把 body overflow 還原為 ''）之後，避免上的鎖被覆蓋。
+function onLoaderGone() {
+  nextTick(applyScrollLock);
+}
+
+watch(heroState, applyScrollLock);
+
+onBeforeUnmount(() => {
+  document.body.style.overflow = '';
 });
 </script>
 
 <template>
   <section class="sec1">
-    <Transition name="loader-fade">
+    <Transition name="loader-fade" @after-leave="onLoaderGone">
       <LoadingHero
         v-if="!loaderDone"
         :duration="2"
@@ -28,12 +66,14 @@ onMounted(() => {
 
     <!-- hero -->
     <div class="sec1__hero" id="app-hero">
-      <!-- video placeholder（影片尚未提供，暫用 CSS 動畫模擬動態影像） -->
+      <!-- video placeholder（影片尚未提供，暫用 CSS 動畫模擬動態影像）；
+           退場消失（gone）時淡出，露出 hero 白底 -->
       <div
         class="sec1__hero-video w-full h-screen flex justify-center items-center flex-col"
+        :class="{ 'is-ended': isGone }"
         aria-hidden="true"
       >
-        <span>(video)</span>
+        <span>(video：{{ stateLabel[heroState] }})</span>
         <h1 class="sec1__hero-title">
           {{ str.hero.title }}
         </h1>
@@ -46,22 +86,41 @@ onMounted(() => {
       <h1 class="visually-hidden">{{ str.hero.title }}</h1>
       <p class="visually-hidden">{{ str.hero.subtitle }}</p>
 
-      <!-- 下滑看更多：文字 + 向下延伸細線（末端貼齊 hero 底緣），純視覺無功能 -->
-      <div class="sec1__hero-scroll">
+      <!-- 下滑看更多：僅 loop 狀態顯示（提示使用者向下滾動以觸發退場） -->
+      <div v-if="heroState === 'loop'" class="sec1__hero-scroll">
         <span class="sec1__hero-scroll-text">{{ str.hero.scrollHint }}</span>
         <span class="sec1__hero-scroll-line" aria-hidden="true" />
       </div>
+
+      <!-- ⚙︎ placeholder：手動切換影片四階段狀態（真 <video> 到位後移除）；僅 dev 顯示。
+           定位在 video（hero）區塊內，隨 hero 一起捲動 -->
+      <div v-if="isDev" class="sec1__debug">
+        <span class="sec1__debug-label">video</span>
+        <button
+          v-for="s in HERO_STATES"
+          :key="s"
+          type="button"
+          class="sec1__debug-btn"
+          :class="{ 'is-active': heroState === s }"
+          @click="setHeroState(s)"
+        >
+          {{ s === 'gone' ? '消失' : stateLabel[s] }}
+        </button>
+      </div>
     </div>
+
+    <!--
+      orange core：影片結束後於第一屏（影片區塊）正中央淡入 —— 這是 core 的起點。
+      設計上之後會沿一條曲線 path「貫穿全場」直到 date 區（移動本身尚未實作）。
+    -->
+    <span
+      class="sec1__core"
+      :class="{ 'is-visible': isGone }"
+      aria-hidden="true"
+    />
 
     <!-- intro → date：orange core 貫穿的內容場景（core 移動路線尚未實作） -->
     <div class="sec1__scene">
-      <!--
-        orange core：intro 起始時位於畫面正中的橘色方塊，
-        設計上會沿一條曲線路徑「貫穿全場」直到 date 區。
-        目前僅為靜態佔位（初始位置），尚未實作移動動畫。
-      -->
-      <span class="sec1__core" aria-hidden="true" />
-
       <!-- intro 引言：置中窄欄，往下滑才進入視窗 -->
       <div class="sec1__intro">
         <p class="sec1__intro-body">{{ str.intro.body }}</p>
@@ -94,17 +153,20 @@ onMounted(() => {
 </template>
 
 <style lang="scss" scoped>
-// Figma design tokens（與 AppHeader 一致）
+// figma design tokens（與 AppHeader 一致）
 $orange: #ff7f00;
 $gray: #686868;
 $light-gray: #898989;
 
 .sec1 {
+  position: relative;
+
   &__hero {
     position: relative;
     width: 100%;
     height: 100vh;
     overflow: hidden;
+    background: #fff; // 影片淡出後露出的白底
   }
 
   // 假影片：多層漸層 + 緩慢平移／色相位移，模擬動態影像；待真影片到位後移除。
@@ -135,6 +197,12 @@ $light-gray: #898989;
       220% 220%;
     animation: sec1-fake-video 14s ease-in-out infinite alternate;
     will-change: background-position, filter;
+    transition: opacity 0.8s ease;
+
+    // 影片播放完畢：淡出，露出 hero 白底
+    &.is-ended {
+      opacity: 0;
+    }
   }
 
   // 下滑看更多：文字置中、下方一條細線垂直延伸至 hero 底緣
@@ -173,21 +241,74 @@ $light-gray: #898989;
     padding: 0 56px;
   }
 
-  // orange core：初始置於場景第一屏正中央的橘色方塊（靜態佔位）
+  // orange core：影片結束後於第一屏（影片區塊）正中央淡入；此為起點。
   &__core {
     position: absolute;
-    top: clamp(210px, 44vh, 360px);
+    top: 50vh; // 第一屏（影片區塊）正中央
     left: 50%;
+    z-index: 2;
     width: 24px;
     height: 24px;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%) scale(0.6);
     background: $orange;
+    opacity: 0;
+    transition:
+      opacity 0.6s ease,
+      transform 0.6s ease;
+
+    // 退場消失（gone）後淡入
+    &.is-visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+
+  // placeholder 用的影片狀態切換列（真影片到位後連同 template 一併移除）
+  // 定位在 video（hero）區塊內，隨 hero 一起捲動
+  &__debug {
+    position: absolute;
+    z-index: 10;
+    left: 24px;
+    bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(4px);
+  }
+
+  &__debug-label {
+    color: #fff;
+    font-size: 12px;
+    opacity: 0.6;
+  }
+
+  &__debug-btn {
+    padding: 4px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 999px;
+    background: transparent;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    &.is-active {
+      background: $orange;
+      border-color: $orange;
+    }
   }
 
   // ---- intro 引言 ----
   &__intro {
     // 預留上方 core「舞台」空間：往下滑，引言文字才進入視窗
-    padding-top: clamp(420px, 88vh, 720px);
+    padding-top: 100px;
   }
 
   &__intro-body {
@@ -198,17 +319,6 @@ $light-gray: #898989;
     font-size: 18px;
     line-height: 36px;
     text-align: justify;
-  }
-
-  &__intro-cta {
-    display: block;
-    width: fit-content;
-    margin: 40px auto 0;
-    padding: 4px 0;
-    color: $orange;
-    font-size: 16px;
-    text-decoration: underline;
-    text-underline-offset: 4px;
   }
 
   // ---- date 論壇資訊 ----
@@ -327,6 +437,11 @@ $light-gray: #898989;
 @media (prefers-reduced-motion: reduce) {
   .sec1__hero-video {
     animation: none;
+    transition: none;
+  }
+
+  .sec1__core {
+    transition: none;
   }
 }
 

@@ -80,14 +80,15 @@ const props = defineProps({
   /** 擴散範圍：圈外再延伸多遠做遞減外推（柔化邊界、擴散到周圍） */
   holeSpread: { type: Number, default: 140 },
 
-  // ---------- 慣性物理（彈簧-阻尼；撞散→overshoot→慢慢歸位） ----------
-  // 對照 LIU_FEEDBACK_2 #2-3：脫離「果凍感」需「回彈更慢更遠 + 更多滯空 + 方向性發散」。
-  // 做法＝降 stiffness／降 damping（拉回慢、overshoot 多）＋ 提高 impulse 並讓外推發散。
-  /** 彈簧硬度 k：越大回彈越快、歸位越急（accel = -k·位移）。降低 → 撞散後飄得更遠更久 */
-  stiffness: { type: Number, default: 18 },
-  /** 阻尼：越小越「彈」(overshoot/滯空 越多)、越大越快定住；< 2√k 才會 overshoot */
-  damping: { type: Number, default: 1.8 },
-  /** 游標外推力道：越大洞越大、撞得越開（穩態位移 ≈ impulseStrength / stiffness） */
+  // ---------- 慣性物理（動量 + 指數 ease 回位；撞散→帶動量四散→平順歸位，不 overshoot） ----------
+  // 對照 LIU_FEEDBACK_2 #2-3：脫離「果凍感」＝回位改「指數 ease」而非彈簧力
+  // （彈簧回復力加到速度會 overshoot→bounce＝果凍）。參考 codepen BaxvVdJ：
+  // x += (vx *= friction) + (origin - x) * ease —— 速度只保留動量（往外散），位置直接對原位做 lerp（單調趨近）。
+  /** 回位速率（1/秒）：對原位做指數 ease；越大回得越快，但始終單調趨近、不 overshoot。越小＝回彈更慢更遠、更散 */
+  returnEase: { type: Number, default: 2.5 },
+  /** 動量衰減 friction（1/秒）：速度每幀 ×exp(-friction·dt)。越小越「滑」、滯空越久越散；越大越快靜止 */
+  friction: { type: Number, default: 1.8 },
+  /** 游標外推力道：越大洞越大、撞得越開 */
   impulseStrength: { type: Number, default: 6000 },
   /** 撞散方向發散角（弧度）：0=整齊徑向放射；越大每顆旋轉固定隨機角 → 炸裂不規則四散 */
   impulseSpray: { type: Number, default: 0.9 },
@@ -95,7 +96,7 @@ const props = defineProps({
   impulseSprayZ: { type: Number, default: 0.6 },
   /** 沿游標移動方向甩出的比例：拖曳時粒子順移動方向飛濺（0=只有徑向斥力） */
   velocityFollow: { type: Number, default: 0.35 },
-  /** 粒子速度上限（world 單位/秒）：低阻尼下避免無限加速、維持炸裂又穩定 */
+  /** 粒子速度上限（world 單位/秒）：friction 值偏低（動量保留高）時避免無限加速、維持炸裂又穩定 */
   maxSpeed: { type: Number, default: 2600 },
 
   // ---------- 整體避讓（symbol 群閃避游標） ----------
@@ -503,8 +504,8 @@ onMounted(() => {
           float shiftAmt = uGroupShift * smoothstep(uGroupNear, uGroupFar, dCenter) * uMouseInfluence * (1.0 - uDisperse);
           pos.xy += normalize(-uMouse.xy + 0.0001) * shiftAmt;
 
-          // 慣性位移：游標斥力/回彈改由 CPU 端彈簧-阻尼積分（見 animate()），
-          // 結果存在 aDisp，這裡直接疊加 → 撞散後帶動量 overshoot、再慢慢歸位（脫離磁吸感）。
+          // 慣性位移：游標斥力/回位改由 CPU 端「動量 + 指數 ease」積分（見 animate()），
+          // 結果存在 aDisp，這裡直接疊加 → 撞散後帶動量四散、再平順 ease 歸位（不 overshoot、無果凍回彈）。
           // 散場時讓位移淡出，交棒給 drift。
           pos += aDisp * (1.0 - uDisperse);
 
@@ -641,16 +642,17 @@ onMounted(() => {
       mat.uniforms.uMouseInfluence!.value = influence;
     }
 
-    // ---- 慣性物理：附加位移的彈簧-阻尼積分（撞散→帶動量 overshoot→慢慢歸位）----
-    // 每顆粒子維持 disp(位移)+vel(速度)：彈簧把 disp 拉回 0(歸位)、阻尼衰減；
-    // 游標半徑內持續注入外推速度 → 在時開洞、離開後僅靠彈簧回彈（欠阻尼即 overshoot）。
+    // ---- 慣性物理：附加位移的「動量 + 指數 ease」積分（撞散→帶動量四散→平順歸位，不 overshoot）----
+    // 每顆粒子維持 disp(位移)+vel(速度)：速度只保留動量並靠 friction 衰減（負責往外散）；
+    // 位置每幀對原位(0)做指數 lerp（單調趨近、不會回彈）。游標半徑內持續注入外推速度 → 在時開洞、
+    // 離開後速度衰減、位置 ease 回原位（脫離果凍感）。
     if (dispArr && velArr && targetArr && dispAttr) {
       const disp = dispArr;
       const vel = velArr;
       const tgt = targetArr;
       const seeds = seedArr;
-      const k = props.stiffness;
-      const damp = Math.exp(-props.damping * dt); // 與幀率無關的速度衰減
+      const velDecay = Math.exp(-props.friction * dt); // 與幀率無關的動量衰減（friction）
+      const easeAmt = 1 - Math.exp(-props.returnEase * dt); // 與幀率無關的回位 lerp 係數（趨近 0）
       const hitR = props.holeRadius + props.holeSpread;
       const hitR2 = hitR * hitR;
       const canHit = !dispersed.value && influence > 0.01;
@@ -681,10 +683,10 @@ onMounted(() => {
       prevMy = my;
       for (let i = 0; i < pCount; i++) {
         const i3 = i * 3;
-        // 彈簧拉回 0 + 阻尼（半隱式：先加彈簧力，再整體衰減）
-        let vx = (vel[i3]! - k * disp[i3]! * dt) * damp;
-        let vy = (vel[i3 + 1]! - k * disp[i3 + 1]! * dt) * damp;
-        let vz = (vel[i3 + 2]! - k * disp[i3 + 2]! * dt) * damp;
+        // 動量：速度只做 friction 衰減，不加彈簧回復力 → 不會 overshoot/bounce（回位改由下方位置 ease 處理）
+        let vx = vel[i3]! * velDecay;
+        let vy = vel[i3 + 1]! * velDecay;
+        let vz = vel[i3 + 2]! * velDecay;
         // 游標外推 impulse：以 formation+目前位移近似命中（idle sway 幅度小，可忽略）
         if (canHit) {
           const px = tgt[i3]! + disp[i3]! - mx;
@@ -712,7 +714,7 @@ onMounted(() => {
             vz += (sj2 - 0.5) * mag * sprayZ;
           }
         }
-        // 速度上限：低阻尼下避免無限加速、維持炸裂又穩定
+        // 速度上限：friction 值偏低（動量保留高）時避免持續 impulse 累積成無限加速、維持炸裂又穩定
         const v2 = vx * vx + vy * vy + vz * vz;
         if (v2 > maxV2) {
           const s = props.maxSpeed / Math.sqrt(v2);
@@ -723,9 +725,11 @@ onMounted(() => {
         vel[i3] = vx;
         vel[i3 + 1] = vy;
         vel[i3 + 2] = vz;
-        disp[i3] = disp[i3]! + vx * dt;
-        disp[i3 + 1] = disp[i3 + 1]! + vy * dt;
-        disp[i3 + 2] = disp[i3 + 2]! + vz * dt;
+        // 位置：動量位移 + 對原位(0)做指數 ease（disp*(1-easeAmt) 單調趨近，無回彈）。
+        // 等價於 reference 的 x += vx + (origin - x)*ease，這裡 origin=0（disp 是相對 formation 的位移）。
+        disp[i3] = disp[i3]! * (1 - easeAmt) + vx * dt;
+        disp[i3 + 1] = disp[i3 + 1]! * (1 - easeAmt) + vy * dt;
+        disp[i3 + 2] = disp[i3 + 2]! * (1 - easeAmt) + vz * dt;
       }
       dispAttr.needsUpdate = true;
     }

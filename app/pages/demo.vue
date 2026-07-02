@@ -1,13 +1,10 @@
 <script lang="ts" setup>
-import meta from '~/locales/meta.json';
 import story from '~/locales/story.json';
 import glitch1 from '~/assets/img/glitch-01.jpg';
 import glitch2 from '~/assets/img/glitch-02.jpg';
 import glitch3 from '~/assets/img/glitch-03.jpg';
 
 const config = useRuntimeConfig();
-const APP_MODE = config.public.APP_MODE;
-const ASSETS_PATH = config.public.APP_ASSETS_PATH;
 
 // SymbolFace 狀態：false = 集合（人像）/ true = 分散（漂浮）
 // 改這裡決定預設狀態；之後任何地方 symbolDispersed.value = !symbolDispersed.value 即可切換
@@ -32,7 +29,6 @@ const symbolPhrases = [
   <div>
     <!-- <AppHeader /> -->
     <main class="main-content">
-      <LoadingHero :duration="3" />
       <OrangeCore>
         <section
           v-for="(section, i) in story.sections"
@@ -52,6 +48,7 @@ const symbolPhrases = [
         </section>
       </OrangeCore>
       <!-- :auto-mouse="true" -->
+      <LegacySymbolFace />
       <SymbolFace
         v-model:dispersed="symbolDispersed"
         :phrases="symbolPhrases"
