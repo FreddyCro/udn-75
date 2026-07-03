@@ -24,6 +24,9 @@ const props = defineProps<{
   anchorEl: HTMLElement | null;
 }>();
 
+// core 沿線移動進度（0..1）→ 寫入全域共享狀態（單一來源），供顯示與效果讀取。
+const { setProgress } = useCoreProgress();
+
 // 設計中心線（viewBox 0 0 481 1073）：stub 垂直段 + 曲線段。
 // 曲線段只含 C / L，座標嚴格為 x,y 交替、且以 x 起始（供 shift() 整體平移）。
 const STUB = { x: 59.3574, bottom: 176.115 };
@@ -39,6 +42,8 @@ const lineEl = ref<SVGPathElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
 let st: ScrollTrigger | null = null;
 let ready = false;
+// 驅動線總長：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用（避免 getTotalLength 熱路徑）。
+let motionLen = 0;
 
 // 平移「只含 C / L」的座標片段：座標 x,y 交替、以 x 起始。
 function shift(frag: string, tx: number, ty: number) {
@@ -80,6 +85,9 @@ function build() {
     `M${cx.toFixed(3)} ${cy.toFixed(3)}L${scx.toFixed(3)} ${scy.toFixed(3)}${curve}`,
   );
 
+  // 幾何已定，量一次總長供 place() 每幀複用。
+  motionLen = motion.getTotalLength();
+
   place(st ? st.progress : 0);
 }
 
@@ -87,11 +95,10 @@ function build() {
 function place(p: number) {
   const core = props.coreEl;
   const motion = motionEl.value;
-  if (!core || !motion) return;
-  const len = motion.getTotalLength();
-  if (!len) return;
-  const pt = motion.getPointAtLength(p * len);
+  if (!core || !motion || !motionLen) return;
+  const pt = motion.getPointAtLength(p * motionLen);
   gsap.set(core, { x: pt.x, y: pt.y });
+  setProgress(p);
 }
 
 function init() {

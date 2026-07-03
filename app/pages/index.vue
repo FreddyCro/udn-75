@@ -25,6 +25,8 @@ useSeoMeta({
     <Section1 />
     <Section2 />
     <Section3 />
+
+    <!-- Yumi  -->
     <Section4 />
   </div>
 </template>

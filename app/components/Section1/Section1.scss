@@ -1,0 +1,147 @@
+$gray: #686868;
+
+.sec1 {
+  position: relative;
+
+  // ===== intro → date 內容場景 =====
+  // 對齊 Figma 1280 設計稿：內容置中、左右留白 56px
+  &__scene {
+    position: relative;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 56px;
+  }
+
+  // orange core：外觀 / 淡入 / 各階段視覺已抽到 Section1/Core.vue（scoped）。
+
+  // ---- intro 引言 ----
+  &__intro {
+    // 預留上方 core「舞台」空間：往下滑，引言文字才進入視窗
+    padding-top: 100px;
+  }
+
+  &__intro-body {
+    max-width: 630px;
+    margin: 0 auto; // 置中窄欄（設計稿左右留白對稱）
+    color: $gray;
+    font-weight: 300; // Noto Sans TC Light
+    font-size: 18px;
+    line-height: 36px;
+    text-align: justify;
+  }
+
+  // ---- date 論壇資訊（＋ core 路徑）整組 ----
+  // 依設計稿 501:21162：以大標左上角為原點，各元素絕對定位（固定 px，RWD 之後再處理）。
+  &__date {
+    position: relative;
+    height: 963px; // 大標頂 → path／日期底（path 下緣約 963）
+    margin-top: clamp(120px, 22vh, 200px);
+  }
+
+  // 大標「智慧未來 AI永續論壇」— 原點 (0, 0)
+  &__date-title {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 688px;
+    margin: 0;
+    color: $gray;
+    font-weight: 400;
+    font-size: clamp(56px, 10.5vw, 134px);
+    line-height: 1;
+    letter-spacing: 0.02em;
+  }
+
+  // desc — (0, 306)
+  &__date-desc {
+    position: absolute;
+    top: 306px;
+    left: 0;
+    width: 686px;
+    margin: 0;
+    color: $gray;
+    font-weight: 300;
+    font-size: 22px;
+    line-height: 40px;
+    text-align: justify;
+  }
+
+  // 大型日期 2026 / 09 / 16（階梯狀往右下錯開）— (245, 587)
+  &__date-when {
+    position: absolute;
+    top: 587px;
+    left: 245px;
+    margin: 0;
+    color: $gray;
+    font-weight: 300;
+    font-size: clamp(64px, 13vw, 132px);
+    line-height: 0.95;
+  }
+
+  &__date-num {
+    display: block;
+
+    &--m {
+      margin-left: 1.3em;
+    }
+
+    &--d {
+      position: relative; // ⊜ 標記的定位原點
+      margin-left: 2.7em;
+    }
+  }
+
+  // 星期圓框標記「三」：位於「16」右下、緊接其後（對應設計 683:51624，直徑約 60.7）
+  // 尺寸／字級皆以 em 綁定大型日期字級，隨 RWD 一起縮放。
+  &__date-mark {
+    position: absolute;
+    left: calc(100% + 0.3em);
+    bottom: 0.1em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.62em; // ≈ 60px（相對本身 font-size 0.28em）
+    height: 1.62em;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    color: $gray;
+    font-size: 0.28em; // ≈ 37px；「三」置中於圓內
+    font-weight: 300;
+    line-height: 1;
+  }
+
+  // 地點與時間 — (863, 582)
+  &__date-where {
+    position: absolute;
+    top: 582px;
+    left: 863px;
+    margin: 0;
+    color: $gray;
+    font-weight: 400;
+    font-size: clamp(24px, 3.6vw, 46px);
+    line-height: 1.25;
+
+    span {
+      display: block;
+    }
+  }
+}
+
+// ---- 手機（<768px）：僅保留 scene / intro 基本調整；date group 的 RWD 待後續處理 ----
+@media screen and (max-width: 767.98px) {
+  .sec1__scene {
+    padding: 0 20px;
+  }
+
+  .sec1__intro {
+    padding-top: clamp(360px, 78vh, 560px);
+  }
+}
+
+// LoadingHero 收尾後淡出移除
+.loader-fade-leave-active {
+  transition: opacity 0.6s ease;
+}
+.loader-fade-leave-to {
+  opacity: 0;
+}

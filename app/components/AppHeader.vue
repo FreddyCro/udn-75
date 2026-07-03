@@ -41,6 +41,7 @@ let observer: IntersectionObserver | null = null;
 let heroObserver: IntersectionObserver | null = null;
 let rafId = 0;
 let heroRafId = 0;
+
 onMounted(() => {
   updateProgress();
   window.addEventListener('scroll', onScroll, { passive: true });
@@ -143,7 +144,7 @@ function scrollToTop(e?: Event) {
 <template>
   <header class="app-header" :class="{ 'is-visible': isVisible }">
     <!-- 閱讀進度 -->
-    <div class="app-header__progress">
+    <div v-show="isVisible" class="app-header__progress">
       <div
         class="app-header__progress-bar"
         :style="{ width: `${progress}%` }"
@@ -226,7 +227,6 @@ $pc-min: 1024px;
    注意：transform 不可加在 .app-header 上，否則會成為底部 fixed TOC 的
    containing block，害 .app-header__toc 的 bottom 定位跑掉。因此上方列與
    底部 TOC 各自做位移動畫。 */
-.app-header__progress,
 .app-header__bar-wrap {
   transition: transform 0.3s ease;
   transform: translateY(-100%);
@@ -238,7 +238,6 @@ $pc-min: 1024px;
 }
 
 .app-header.is-visible {
-  .app-header__progress,
   .app-header__bar-wrap,
   .app-header__toc {
     transform: translateY(0);

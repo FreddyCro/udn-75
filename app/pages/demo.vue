@@ -29,27 +29,8 @@ const symbolPhrases = [
   <div>
     <!-- <AppHeader /> -->
     <main class="main-content">
-      <OrangeCore>
-        <section
-          v-for="(section, i) in story.sections"
-          :key="i"
-          class="story-section"
-        >
-          <h2 class="story-section__title">
-            <template v-if="section.titleHead"
-              >{{ section.titleHead
-              }}<span class="orange-core-anchor" aria-hidden="true" />{{
-                section.titleTail
-              }}</template
-            >
-            <template v-else>{{ section.title }}</template>
-          </h2>
-          <p class="story-section__body">{{ section.body }}</p>
-        </section>
-      </OrangeCore>
       <!-- :auto-mouse="true" -->
-      <LegacySymbolFace />
-      <SymbolFace
+      <Section2SymbolFace
         v-model:mode="symbolMode"
         :dev="true"
         :phrases="symbolPhrases"
@@ -74,7 +55,7 @@ const symbolPhrases = [
         :float-amp="18"
         :float-micro="0.5"
       />
-      <HeartMetaball
+      <Section4HeartMetaball
         :idleBlobMin="0.1"
         :idleBlobMax="0.2"
         :idleRoamSpeed="3"

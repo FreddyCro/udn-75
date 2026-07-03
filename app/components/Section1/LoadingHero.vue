@@ -54,6 +54,8 @@ let centerIndex = 0; // 正中央那格的 index（最先翻白、最後翻橘�
 let order: number[] = [];
 // 上一幀每格狀態，避免重複寫入 DOM
 let prevState: number[] = [];
+// 橘色前緣寬度（格數）；僅隨網格大小 / orangeRatio 變動，故於 buildOrder 算一次。
+let band = 1;
 
 let raf = 0;
 let prevNow = -1;
@@ -100,6 +102,7 @@ const buildOrder = (n: number) => {
   order = new Array(n);
   for (let rank = 0; rank < n; rank++) order[arr[rank]!] = rank;
   prevState = new Array(n).fill(-1);
+  band = Math.max(1, Math.round(n * props.orangeRatio)); // 橘色前緣寬度
 };
 
 // 0=藍 1=橘 2=白
@@ -128,7 +131,6 @@ const frame = (now: number) => {
   elapsed += dt;
 
   const n = count.value;
-  const band = Math.max(1, Math.round(n * props.orangeRatio)); // 橘色前緣寬度
 
   const active = elapsed - props.startDelay;
   if (active <= 0) {
@@ -184,8 +186,8 @@ onMounted(() => {
     counterRef.value.style.color = props.textColor;
     counterRef.value.style.fontSize = props.counterFontSize;
   }
-  // 載入期間鎖住捲動，避免在載入層底下捲動頁面
-  document.body.style.overflow = 'hidden';
+  // 捲動鎖統一由父層 Section1 擁有（載入期間即已上鎖），本元件不碰 body.overflow，
+  // 避免卸載解鎖與父層重新上鎖之間出現「瞬間可捲動」的破口。
   computeGrid();
   nextTick(() => start());
   window.addEventListener('resize', onResize);
@@ -194,7 +196,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf);
   window.removeEventListener('resize', onResize);
-  document.body.style.overflow = '';
 });
 </script>
 
