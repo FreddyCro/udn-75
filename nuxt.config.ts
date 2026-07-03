@@ -21,7 +21,7 @@ export default defineNuxtConfig({
   components: [
     { path: '~/components/01.hero', pathPrefix: false },
     { path: '~/components/02.forum', pathPrefix: false },
-    { path: '~/components/03.agenda', pathPrefix: false },
+    { path: '~/components/03.blessing', pathPrefix: false },
     { path: '~/components/04.media', pathPrefix: false },
     '~/components',
   ],

@@ -10,7 +10,7 @@
 - 正式頁面：`/`（[index.vue](app/pages/index.vue)）
 - 版面容器：[layouts/default.vue](app/layouts/default.vue)（Header + 內容 + Footer）
 - 開發測試頁（非正式產品，不納入本 PRD）：`/demo`、`/data`、`/digital`、`/news`、`/visual`
-- **元件目錄慣例**：每個 section 一個「數字前綴 ＋ 語意名」資料夾（`01.hero` / `02.forum` / `03.agenda` / `04.media`），使檔案總管依序排列。`nuxt.config.ts` 對這些資料夾設 `pathPrefix: false`，故 auto-import 元件名**只取檔名、不含數字前綴**（`<Hero>` / `<Forum>` / `<Agenda>` / `<Media>` 等）。新增 section 時：建 `NN.名稱/` 資料夾 ＋ 在 `nuxt.config.ts` 的 `components` 陣列補一筆 `{ path: '~/components/NN.名稱', pathPrefix: false }`。
+- **元件目錄慣例**：每個 section 一個「數字前綴 ＋ 語意名」資料夾（`01.hero` / `02.forum` / `03.blessing` / `04.media`），使檔案總管依序排列。`nuxt.config.ts` 對這些資料夾設 `pathPrefix: false`，故 auto-import 元件名**只取檔名、不含數字前綴**（`<Hero>` / `<Forum>` / `<Blessing>` / `<Media>` 等）。新增 section 時：建 `NN.名稱/` 資料夾 ＋ 在 `nuxt.config.ts` 的 `components` 陣列補一筆 `{ path: '~/components/NN.名稱', pathPrefix: false }`。
 
 ---
 
@@ -20,24 +20,85 @@
 
 ### Section 1 — Hero／開場（[Hero.vue](app/components/01.hero/Hero.vue)）
 
+開場為一段連續的捲動敘事：**載入層 → hero 影片（四階段）→ orange core 沿路徑移動（stage 1–3）→ inner 釘住做變色／放大（stage 4–6）→ 星空轉場交棒給 Section 2**。整段由兩個全域 composable 作單一狀態來源（`useState`，SSR 安全、跨元件共享）：
+
+- [useHeroVideo.ts](app/composables/useHeroVideo.ts)：hero 影片四階段 `main / loop / outro / gone`，及衍生的 `shouldLockScroll`（main/loop 期間鎖捲動）、`isGone`。
+- [useHeroCoreProgress.ts](app/composables/useHeroCoreProgress.ts)：orange core 的 **stage 1–6 模型** ＋ 轉場離場旗標 `transitionDone` ＋ SymbolFace 三態 `symbolMode`。stage 由兩條各自 0..1 的 progress 軌合成（**path 軌**＝core 沿線移動、對應 stage 1–3；**pin 軌**＝inner 釘住後的進度、對應 stage 4–6；交界＝斜槓＝pin 起點）。各元件只讀 `stage` / `stageProgress` 漸進自己的視覺。要調時間點只改 `STAGE_STOPS`；其餘旋鈕：`PIN_VH`（pin 距離 ×vh，預設 0.3，Hero pinST 與 HeroCorePath 尾端共用同一值）、`MOVE_VH`（date 前額外墊的捲動距離＝相對速度旋鈕，預設 0）、`MOVE_EASE`（移動速度曲線）、`CROSSFADE`（星空淡入所占比例，預設 0.01＝近乎立即實色、無 washy）。
+
+**orange core 生命週期（貫穿全場；✅ 已實作／🚧 規劃中）**：core 不是「出現又消失」，而是一路 morph——載入層橘塊 →〔影片內橘核心 🚧〕→ 白底淡入 → 沿路徑移動並變長 → 落在日期「/」→ 變黑 → 撐大成星空 → 成為 Section 2 背景。方框右側標註驅動者。
+
+```
+┌─ 進站／載入 ─────────────────────────────────────  [LoadingHero, RAF] ─┐
+│ ✅ ① 方塊網格翻面，收尾「正中央格翻橘」＝ core 視覺種子（對齊視窗中心）  │
+└──────────────────────────────┬────────────────────────────────────────┘
+                               │ @done 淡出
+┌─ hero 影片（#app-hero）───────┴───────────────────────  [useHeroVideo] ─┐
+│ 🚧 ② main→loop→outro：core 應在影片中就已在場／可見（缺口，尚未實作）   │
+│      現況：core DOM 在場但 opacity:0、不可見；影片為 CSS 假影片          │
+└──────────────────────────────┬────────────────────────────────────────┘
+                               │ gone（影片淡出 → 白底）
+   ✅ ③ Core 淡入（isGone）於第一屏正中央 ＝ 載入層橘塊的位置（延續同一點）
+                               │
+╞═ stage 1–3　path 軌 ═════════╪════════════════════════  [HeroCorePath] ═╡
+   ✅ ④ stage1 引段：中央往下（點狀）
+   ✅ ⑤ stage2 沿曲線移動
+   ✅ ⑥ stage3 直線尾段 ＋ point→line 變長，尾端落在日期「/」
+                               │
+╞═ stage 4–6　pin 軌 ══════════╪═══════════════════════════  [Hero pinST] ╡
+   ✅ ⑦ stage4 釘在「/」，橘 → 黑變色（#0a1c2b）
+   ✅ ⑧ stage5 星空遮罩自 core 線沿斜角撐大，core 同步淡出（CROSSFADE）
+   ✅ ⑨ stage6 星空蓋滿視窗、core 隱去（完全化為 Section 2 背景）
+                               │ 等待使用者
+┌─ Section 2 Forum ────────────┴──────────────────────  [transitionDone] ─┐
+│ ✅ ⑩ symbol 三態切換 ＋ 點「進入論壇」→ 星空轉場淡出 → 露出論壇內容      │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+> 🚧 缺口②：影片播放期間（main/loop/outro）core 目前 `opacity:0`、不可見；「從 hero 影片就延續在場的橘核心」尚未實作。補完後才真正達成「貫穿全場」。
+
+**stage 1–6 一覽**（跨 Hero／Forum 共用；Hero 驅動並寫入、Forum 讀取並收尾）：
+
+| stage | 觸發軌（門檻） | 視覺 |
+| --- | --- | --- |
+| 1 | path ≤ 0.41 | core 沿引段（第一屏中央往下）移動，維持點狀 |
+| 2 | path ≤ 0.71 | core 沿曲線移動 |
+| 3 | path ≤ 1.0 | core 走直線尾段，同時 point→line 變長（`scaleX` 1→10），尾端落在大型日期「/」 |
+| 4 | pin ≤ 0.25 | core 釘在「/」，橘→黑變色（黑＝Section 2 星空底 `#0a1c2b`） |
+| 5 | pin ≤ 0.9 | [HeroTransition](app/components/01.hero/HeroTransition.vue) 星空遮罩自 core 線沿斜角撐大、透出星空；core 同步淡出（`CROSSFADE`） |
+| 6 | pin ≤ 1.0 | 星空蓋滿視窗、core 隱去；停在此等待 Forum 的「進入論壇」關閉轉場（**不會自動消失**） |
+
 | 元件 / 區塊 | 功能 | 說明 |
 | --- | --- | --- |
+| 載入層（[LoadingHero.vue](app/components/01.hero/LoadingHero.vue)） | 進站載入動畫（滿版 fixed，z-index 2000 蓋過 Header） | 方塊網格以 Fisher–Yates 洗牌逐格由藍→橘（處理中前緣）→白翻面，中央計數 0→100%。網格強制奇數欄列並置中，**正中央格對齊視窗正中心**：收尾時中央格翻橘＝orange core 的視覺起點（與後續 core 淡入位置一致）。`ready`（影片可播放）為 false 時進度封頂 99% 等待，轉 true 才補到 100% 並 `@done` 淡出移除。**不自行改 `body.overflow`**（捲動鎖由 Hero 單一擁有），避免卸載解鎖與父層重新上鎖間出現「瞬間可捲動」破口。<br>TODO：目前用 CSS 假影片，`videoReady` 於 `onMounted` 直接設 true；換真 `<video>` 後改綁 `@canplaythrough`。 |
 | hero（`#app-hero`） | 開場主視覺 | 兼作 Header 顯示時機的觀察目標：`id="app-hero"` 供 [AppHeader.vue](app/components/AppHeader.vue) 以 IntersectionObserver 監看，**hero 完全捲離視窗（在畫面中完全消失）後 Header 才滑入**；只要 hero 還有任一部分在畫面內，Header 保持隱藏。修改 hero 結構時請保留此 id。 |
+| hero 影片四階段（[HeroVideo.vue](app/components/01.hero/HeroVideo.vue)／[useHeroVideo.ts](app/composables/useHeroVideo.ts)） | 影片播放狀態機 | 四階段全域共享：`main`（主要內容，播一次）→ `loop`（循環段，顯示「下滑看更多」提示）→ `outro`（loop 期間向下捲動或按 SKIP 觸發的退場段）→ `gone`（退場結束、影片淡出露出白底 → orange core 於第一屏正中央淡入）。`main` / `loop` 期間鎖捲動、`outro` 起解鎖。狀態切換 UI 抽到 dev 用的 [HeroVideoControls.vue](app/components/01.hero/HeroVideoControls.vue)（狀態列＋SKIP）。<br>TODO：目前為 CSS 假影片、`outro` 以 `OUTRO_MOCK_MS`（1800ms）計時進 `gone`；換真影片後改由退場 `<video>` 的 `@ended` 觸發。 |
 | hero 影片捲動鎖 | **重整一律從頂端重來** | hero 影片播放期間（`main` / `loop` 狀態）鎖住頁面捲動（`body { overflow: hidden }`）。重整後影片狀態會重置為 `main`，若瀏覽器將捲動位置還原到影片後方的內容區，將被 `overflow: hidden` 永久鎖死於中途、無法捲動。因此 **hero 影片體驗一律從頂端重新開始**：<br>・`onMounted` 設定 `history.scrollRestoration = 'manual'`，停用瀏覽器的捲動位置還原。<br>・上鎖（`applyScrollLock`）前先 `window.scrollTo(0, 0)`，確保鎖定當下停在 hero 頂端。<br>兩者確保影片狀態與捲動位置始終同步於頂端，不會出現「鎖死於中途」。 |
 | orange core（`.sec1__core`） | 貫穿全場的橘色核心 | hero 影片播畢轉白底（`gone`）後，於**第一屏正中央**淡入（CSS `opacity`）；隨後沿 core path、由捲動驅動一路移動到 date 區，收在大型日期「09／16」之間的橘色「/」。**位置由 [HeroCorePath.vue](app/components/01.hero/HeroCorePath.vue) 以 GSAP 驅動**（`gsap.set` 的 `x/y` + `xPercent/yPercent:-50` 置中）。<br>⚠️ `.sec1__core` **不可**再設 CSS `transform`（含置中、`scale` 淡入）——會與 GSAP 寫入的 `transform` 衝突；置中一律交給 GSAP，淡入只用 `opacity`。 |
 | core 移動路徑（[HeroCorePath.vue](app/components/01.hero/HeroCorePath.vue)） | 驅動 core 的路徑 overlay | `.sec1` 級絕對定位 overlay（`inset:0`、1:1 px、無 `viewBox`、`pointer-events:none`），在**同一像素座標系**畫兩條線：<br>・**可見灰線**：設計中心線（stub 垂直段 + 曲線），以 **date 大標左上角為錨點**（位移 `left 525 / top −112`）定位 → 尾端固定落在「/」。<br>・**驅動線**（不可見，`stroke:none`）：`core 第一屏中央 →（動態直線引段）→ 曲線`；單一 **scrub `ScrollTrigger`**（`trigger:.sec1`、`start:'top top'`、`end:'bottom bottom'`、`scrub:true`）+ `path.getPointAtLength()` 逐幀定位 core。<br>**設計規則**：<br>① 整段動作是**一條連續 path、一個 tween** → 接縫零頓挫（**不採**「直落 + 交棒 MotionPath 兩段式」，避免交界頓挫）。<br>② **引段（直線）長度隨視窗高度動態重算**，吸收 core（`50vh`）與 date 之間的 vh 動態距離。<br>③ **曲線段只被平移、形狀/尺寸不變**，故 core 尾端一律精準落在「/」。<br>重建時機：`ScrollTrigger` 的 `refreshInit`、`document.fonts.ready`、resize。<br>相依：由 [Hero.vue](app/components/01.hero/Hero.vue) 傳入 `.sec1` / core / date 大標三個元素（`sectionEl` / `coreEl` / `anchorEl`）。<br>🚧 未實作（規劃中）：沿途殘影 **trail dots**（設計 motion frame）、**RWD 手機版**另畫直式 path（不縮放桌機弧線）、`prefers-reduced-motion` 可改為直接定位起/終點；若 core 抵達「/」時機需微調，改 `ScrollTrigger` 的 `end`。 |
+| inner pin（[Hero.vue](app/components/01.hero/Hero.vue) `pinST`） | 釘住整組跑 stage 4–6 | date 整組底緣（含 `padding-bottom`）抵達視窗底時，用 `ScrollTrigger.create({ pin })` 把 `.sec1__inner`（core／path／date 整組）一起 `position: fixed` 釘住，並延展 `PIN_VH × innerHeight` 的捲動距離；三者一起 fixed → core／path 不脫離斜槓。pin 期間進度寫入 pin 軌（`setPinProgress`）＝ stage 4–6；`onLeaveBack` 歸零退回 path 軌。⚠️ 釘住會在 `.sec1__inner` 寫入 `transform`，使其成為 fixed 子孫的 containing block → 載入層與轉場層都須掛在 `.sec1__inner`「外面」（否則會改以 inner 為定位基準而跑位）。 |
+| hero → Forum 轉場遮罩（[HeroTransition.vue](app/components/01.hero/HeroTransition.vue)） | 星空揭開遮罩（fixed 滿版，z-index 10、低於 Header 1000） | 僅 stage ≥5 且未離場（`!transitionDone`）時顯示。讀 core 元素的螢幕位置與旋轉角，畫一條沿斜角的平行四邊形 `clip-path`：起始尺寸＝stage 3 拉長後那條 core 線（故看起來是「黑線繼續長大」的同一物），stage 5 隨 `stageProgress` 撐大到蓋滿視窗對角。內含 Section 2 的 `<SymbolFace>`（slot）；星空底目前用 CSS placeholder（深藍綠 `#0a1c2b` 點陣）模擬，正式版由 SymbolFace 接手。**離場只由 Forum 的「進入論壇」把 `transitionDone` 設 true 觸發**（整層 opacity 淡出）。 |
+| dev 工具（[HeroVideoControls.vue](app/components/01.hero/HeroVideoControls.vue)／[CoreProgress.vue](app/components/01.hero/CoreProgress.vue)） | 開發輔助 | HeroVideoControls：影片四階段切換＋SKIP；CoreProgress：顯示當前 `stage`／`stageProgress`（及 path／pin 原始值）。皆包在 `<DevOnly>` 或 `dev` prop，production build 不進 bundle。 |
 
 ### Section 2 — 智慧論壇 `#forum`（[Forum.vue](app/components/02.forum/Forum.vue)）
 
-| 元件 / 區塊 | 功能 | 說明 |
-| --- | --- | --- |
-
-### Section 3 — 永續祝福 `#blessing`（[Agenda.vue](app/components/03.agenda/Agenda.vue)）
-
-> ⚠️ 命名注意：此 section 的內容主題為「永續祝福」、錨點 id 仍為 `#blessing`，但元件/資料夾已定名為 `Agenda`（`03.agenda/Agenda.vue`）。元件名與內容主題暫不一致，後續若要對齊，需一併調整內容或錨點。
+由 Hero 的星空轉場（stage 5–6）交棒進場：**Forum 決定何時關閉轉場**，並提供 SymbolFace 三態切換；轉場關閉後往下依序是議程時間軸與活動回顧。轉場相關狀態（`stage` / `transitionDone` / `symbolMode`）皆讀自 [useHeroCoreProgress.ts](app/composables/useHeroCoreProgress.ts)（與 Hero 同一份）。
 
 | 元件 / 區塊 | 功能 | 說明 |
 | --- | --- | --- |
+| 星空轉場交棒 | 承接 Hero pin 的第一屏 | `.sec2` 刻意 `padding-top: 100vh` ＋與星空同底色的深藍綠 placeholder，讓 Hero pin 轉場層淡出交棒時不閃白；議程內容因此位於第一屏之下。正式版由 SymbolFace 星空取代 placeholder 底色。 |
+| SymbolFace（[SymbolFace.vue](app/components/02.forum/SymbolFace.vue)） | three.js 粒子人像星空 | **實際掛在 Hero 的 `<HeroTransition>` slot 內**，由 Forum 透過全域 `symbolMode` 控制（Hero 端 `v-model:mode` 綁定）。三態互斥：`disperse` 分散漂浮（預設）／ `face` 集合成人像／ `converge` 匯聚成點。粒子由符號字元集組成、取自 `face.png` 的 alpha 輪廓，含滑鼠斥力真空與慣性物理漂浮。元件自帶 dev config 面板（可匯出 JSON 參數）。 |
+| 轉場關閉 UI（`.sec2__symbol-switch` / `.sec2__enter`） | 「進入論壇」＋ symbol 切換 | 僅在 `stage ≥ 5 && !transitionDone` 顯示（fixed 底部置中，浮在星空 z-index 10 之上、Header 1000 之下）：symbol switch 三顆按鈕（01.分散／02.集合／03.匯聚成點）指派 `symbolMode`；`stage ≥ 6` 才多出「進入論壇」按鈕，按下設 `transitionDone = true` → HeroTransition 淡出、露出下方論壇內容。 |
+| agenda 議程時間軸（`.sec2__agenda`） | 場次垂直時間軸 | 資料自 [section2.json](app/locales/section2.json)。依 `period`（`morning` / `afternoon`）分組，每個時段第一場前插入時段封面（label／title／desc，對應 Figma 上午場／下午場封面）。場次兩型：**一般場**＝講者列表（role＋name）；**對談場**＝主持人 `moderator` ＋ 分題 `topics`（每題 question ＋ 該題講者）。 |
+| recap 活動回顧（`.sec2__recap`） | 回顧文字區 | heading／body／readMore「更多」連結（目前 `href="#"` 佔位）。 |
+
+### Section 3 — 永續祝福 `#blessing`（[Blessing.vue](app/components/03.blessing/Blessing.vue)）
+
+內容主題為「永續祝福」，資料鍵 `partner`（[section3.json](app/locales/section3.json)），錨點 `#blessing`。
+
+| 元件 / 區塊 | 功能 | 說明 |
+| --- | --- | --- |
+| intro（`.section3__intro`） | 區段引言 | `partner.title` ＋ `partner.body`。 |
+| 夥伴分級（`.section3__tier`） | 依級別列出響應夥伴 | 逐一渲染 `partner.tiers`：每個 tier 一個 `label`（策略／共創／倡議／響應等級別）＋夥伴清單，每筆夥伴含 `name` 與 `quote`（祝福語）。 |
 
 ### Section 4 — 智慧「心」媒體 `#media`（[Media.vue](app/components/04.media/Media.vue)）
 

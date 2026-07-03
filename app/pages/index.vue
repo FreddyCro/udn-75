@@ -31,7 +31,7 @@ useSeoMeta({
     <Forum />
 
     <!-- 03 -->
-    <Agenda />
+    <Blessing />
 
     <!-- Yumi  -->
     <!-- 04 -->
