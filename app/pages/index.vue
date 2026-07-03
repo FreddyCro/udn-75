@@ -22,12 +22,13 @@ useSeoMeta({
 <template>
   <div>
     <!-- 正式開發從這裡開始 -->
-    <Section1 />
-    <Section2 />
-    <Section3 />
+    <Hero />
+    <Forum />
+    <Agenda />
 
     <!-- Yumi  -->
-    <Section4 />
+    <!-- 04 -->
+    <Media />
   </div>
 </template>
 

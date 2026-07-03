@@ -10,6 +10,7 @@
 - 正式頁面：`/`（[index.vue](app/pages/index.vue)）
 - 版面容器：[layouts/default.vue](app/layouts/default.vue)（Header + 內容 + Footer）
 - 開發測試頁（非正式產品，不納入本 PRD）：`/demo`、`/data`、`/digital`、`/news`、`/visual`
+- **元件目錄慣例**：每個 section 一個「數字前綴 ＋ 語意名」資料夾（`01.hero` / `02.forum` / `03.agenda` / `04.media`），使檔案總管依序排列。`nuxt.config.ts` 對這些資料夾設 `pathPrefix: false`，故 auto-import 元件名**只取檔名、不含數字前綴**（`<Hero>` / `<Forum>` / `<Agenda>` / `<Media>` 等）。新增 section 時：建 `NN.名稱/` 資料夾 ＋ 在 `nuxt.config.ts` 的 `components` 陣列補一筆 `{ path: '~/components/NN.名稱', pathPrefix: false }`。
 
 ---
 
@@ -17,26 +18,28 @@
 
 由四個 section 依序組成，對應 Header 三個錨點（`forum` / `blessing` / `media`）。
 
-### Section 1 — Hero／開場（[Section1.vue](app/components/Section1.vue)）
+### Section 1 — Hero／開場（[Hero.vue](app/components/01.hero/Hero.vue)）
 
 | 元件 / 區塊 | 功能 | 說明 |
 | --- | --- | --- |
 | hero（`#app-hero`） | 開場主視覺 | 兼作 Header 顯示時機的觀察目標：`id="app-hero"` 供 [AppHeader.vue](app/components/AppHeader.vue) 以 IntersectionObserver 監看，**hero 完全捲離視窗（在畫面中完全消失）後 Header 才滑入**；只要 hero 還有任一部分在畫面內，Header 保持隱藏。修改 hero 結構時請保留此 id。 |
 | hero 影片捲動鎖 | **重整一律從頂端重來** | hero 影片播放期間（`main` / `loop` 狀態）鎖住頁面捲動（`body { overflow: hidden }`）。重整後影片狀態會重置為 `main`，若瀏覽器將捲動位置還原到影片後方的內容區，將被 `overflow: hidden` 永久鎖死於中途、無法捲動。因此 **hero 影片體驗一律從頂端重新開始**：<br>・`onMounted` 設定 `history.scrollRestoration = 'manual'`，停用瀏覽器的捲動位置還原。<br>・上鎖（`applyScrollLock`）前先 `window.scrollTo(0, 0)`，確保鎖定當下停在 hero 頂端。<br>兩者確保影片狀態與捲動位置始終同步於頂端，不會出現「鎖死於中途」。 |
-| orange core（`.sec1__core`） | 貫穿全場的橘色核心 | hero 影片播畢轉白底（`gone`）後，於**第一屏正中央**淡入（CSS `opacity`）；隨後沿 core path、由捲動驅動一路移動到 date 區，收在大型日期「09／16」之間的橘色「/」。**位置由 [HeroCorePath.vue](app/components/HeroCorePath.vue) 以 GSAP 驅動**（`gsap.set` 的 `x/y` + `xPercent/yPercent:-50` 置中）。<br>⚠️ `.sec1__core` **不可**再設 CSS `transform`（含置中、`scale` 淡入）——會與 GSAP 寫入的 `transform` 衝突；置中一律交給 GSAP，淡入只用 `opacity`。 |
-| core 移動路徑（[HeroCorePath.vue](app/components/HeroCorePath.vue)） | 驅動 core 的路徑 overlay | `.sec1` 級絕對定位 overlay（`inset:0`、1:1 px、無 `viewBox`、`pointer-events:none`），在**同一像素座標系**畫兩條線：<br>・**可見灰線**：設計中心線（stub 垂直段 + 曲線），以 **date 大標左上角為錨點**（位移 `left 525 / top −112`）定位 → 尾端固定落在「/」。<br>・**驅動線**（不可見，`stroke:none`）：`core 第一屏中央 →（動態直線引段）→ 曲線`；單一 **scrub `ScrollTrigger`**（`trigger:.sec1`、`start:'top top'`、`end:'bottom bottom'`、`scrub:true`）+ `path.getPointAtLength()` 逐幀定位 core。<br>**設計規則**：<br>① 整段動作是**一條連續 path、一個 tween** → 接縫零頓挫（**不採**「直落 + 交棒 MotionPath 兩段式」，避免交界頓挫）。<br>② **引段（直線）長度隨視窗高度動態重算**，吸收 core（`50vh`）與 date 之間的 vh 動態距離。<br>③ **曲線段只被平移、形狀/尺寸不變**，故 core 尾端一律精準落在「/」。<br>重建時機：`ScrollTrigger` 的 `refreshInit`、`document.fonts.ready`、resize。<br>相依：由 [Section1.vue](app/components/Section1.vue) 傳入 `.sec1` / core / date 大標三個元素（`sectionEl` / `coreEl` / `anchorEl`）。<br>🚧 未實作（規劃中）：沿途殘影 **trail dots**（設計 motion frame）、**RWD 手機版**另畫直式 path（不縮放桌機弧線）、`prefers-reduced-motion` 可改為直接定位起/終點；若 core 抵達「/」時機需微調，改 `ScrollTrigger` 的 `end`。 |
+| orange core（`.sec1__core`） | 貫穿全場的橘色核心 | hero 影片播畢轉白底（`gone`）後，於**第一屏正中央**淡入（CSS `opacity`）；隨後沿 core path、由捲動驅動一路移動到 date 區，收在大型日期「09／16」之間的橘色「/」。**位置由 [HeroCorePath.vue](app/components/01.hero/HeroCorePath.vue) 以 GSAP 驅動**（`gsap.set` 的 `x/y` + `xPercent/yPercent:-50` 置中）。<br>⚠️ `.sec1__core` **不可**再設 CSS `transform`（含置中、`scale` 淡入）——會與 GSAP 寫入的 `transform` 衝突；置中一律交給 GSAP，淡入只用 `opacity`。 |
+| core 移動路徑（[HeroCorePath.vue](app/components/01.hero/HeroCorePath.vue)） | 驅動 core 的路徑 overlay | `.sec1` 級絕對定位 overlay（`inset:0`、1:1 px、無 `viewBox`、`pointer-events:none`），在**同一像素座標系**畫兩條線：<br>・**可見灰線**：設計中心線（stub 垂直段 + 曲線），以 **date 大標左上角為錨點**（位移 `left 525 / top −112`）定位 → 尾端固定落在「/」。<br>・**驅動線**（不可見，`stroke:none`）：`core 第一屏中央 →（動態直線引段）→ 曲線`；單一 **scrub `ScrollTrigger`**（`trigger:.sec1`、`start:'top top'`、`end:'bottom bottom'`、`scrub:true`）+ `path.getPointAtLength()` 逐幀定位 core。<br>**設計規則**：<br>① 整段動作是**一條連續 path、一個 tween** → 接縫零頓挫（**不採**「直落 + 交棒 MotionPath 兩段式」，避免交界頓挫）。<br>② **引段（直線）長度隨視窗高度動態重算**，吸收 core（`50vh`）與 date 之間的 vh 動態距離。<br>③ **曲線段只被平移、形狀/尺寸不變**，故 core 尾端一律精準落在「/」。<br>重建時機：`ScrollTrigger` 的 `refreshInit`、`document.fonts.ready`、resize。<br>相依：由 [Hero.vue](app/components/01.hero/Hero.vue) 傳入 `.sec1` / core / date 大標三個元素（`sectionEl` / `coreEl` / `anchorEl`）。<br>🚧 未實作（規劃中）：沿途殘影 **trail dots**（設計 motion frame）、**RWD 手機版**另畫直式 path（不縮放桌機弧線）、`prefers-reduced-motion` 可改為直接定位起/終點；若 core 抵達「/」時機需微調，改 `ScrollTrigger` 的 `end`。 |
 
-### Section 2 — 智慧論壇 `#forum`（[Section2.vue](app/components/Section2.vue)）
-
-| 元件 / 區塊 | 功能 | 說明 |
-| --- | --- | --- |
-
-### Section 3 — 永續祝福 `#blessing`（[Section3.vue](app/components/Section3.vue)）
+### Section 2 — 智慧論壇 `#forum`（[Forum.vue](app/components/02.forum/Forum.vue)）
 
 | 元件 / 區塊 | 功能 | 說明 |
 | --- | --- | --- |
 
-### Section 4 — 智慧「心」媒體 `#media`（[Section4.vue](app/components/Section4.vue)）
+### Section 3 — 永續祝福 `#blessing`（[Agenda.vue](app/components/03.agenda/Agenda.vue)）
+
+> ⚠️ 命名注意：此 section 的內容主題為「永續祝福」、錨點 id 仍為 `#blessing`，但元件/資料夾已定名為 `Agenda`（`03.agenda/Agenda.vue`）。元件名與內容主題暫不一致，後續若要對齊，需一併調整內容或錨點。
+
+| 元件 / 區塊 | 功能 | 說明 |
+| --- | --- | --- |
+
+### Section 4 — 智慧「心」媒體 `#media`（[Media.vue](app/components/04.media/Media.vue)）
 
 | 元件 / 區塊 | 功能 | 說明 |
 | --- | --- | --- |

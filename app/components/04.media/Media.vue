@@ -6,10 +6,10 @@ const { newmedia } = str;
 </script>
 
 <template>
-  <section id="media" class="section4">
-    <a class="section4__entry" href="#">{{ newmedia.entryLabel }}</a>
-    <h2 class="section4__title">{{ newmedia.title }}</h2>
-    <p class="section4__body">{{ newmedia.body }}</p>
+  <section id="media">
+    <a href="#">{{ newmedia.entryLabel }}</a>
+    <h2>{{ newmedia.title }}</h2>
+    <p>{{ newmedia.body }}</p>
   </section>
 </template>
 

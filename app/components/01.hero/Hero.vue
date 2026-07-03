@@ -69,7 +69,7 @@ function applyScrollLock() {
          已被切到 outro/gone，watch 也已處理）。因 LoadingHero 不再碰 body.overflow，無需
          nextTick 等它卸載。 -->
     <Transition name="loader-fade" @after-leave="applyScrollLock">
-      <Section1LoadingHero
+      <LoadingHero
         v-if="!loaderDone"
         :duration="2"
         :ready="videoReady"
@@ -77,20 +77,20 @@ function applyScrollLock() {
       />
     </Transition>
 
-    <!-- hero：第一屏影片區塊（已抽為子元件 Section1/Hero.vue） -->
-    <Section1Hero />
+    <!-- hero：第一屏影片區塊（已抽為子元件 01.hero/HeroVideo.vue） -->
+    <HeroVideo />
 
     <!--
       orange core：影片結束後於第一屏（影片區塊）正中央淡入 —— 這是 core 的起點。
       位置由 HeroCorePath 以 GSAP 驅動（沿驅動線移動）；此處只保留外觀與淡入。
     -->
-    <Section1Core ref="coreRef" :stage="coreStage" :visible="isGone" />
+    <Core ref="coreRef" :stage="coreStage" :visible="isGone" />
 
     <!--
       core 移動路徑 overlay（section 級、1:1 px）：可見灰線 + 不可見驅動線。
       需要 .sec1（座標範圍 / trigger）、core（被驅動）、date 大標（錨定原點）三個元素。
     -->
-    <Section1HeroCorePath
+    <HeroCorePath
       :section-el="sec1Ref"
       :core-el="coreEl"
       :anchor-el="dateTitleRef"
@@ -99,7 +99,7 @@ function applyScrollLock() {
     <!-- core 沿線移動進度（fixed 右下角，直接讀 useCoreProgress）。
          <DevOnly>：production build 會整個編譯掉、不進 bundle。 -->
     <DevOnly>
-      <Section1CoreProgress />
+      <CoreProgress />
     </DevOnly>
 
     <!-- intro → date：orange core 貫穿的內容場景 -->
@@ -142,4 +142,4 @@ function applyScrollLock() {
   </section>
 </template>
 
-<style src="./Section1.scss" lang="scss" scoped />
+<style src="./Hero.scss" lang="scss" scoped />

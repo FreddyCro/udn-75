@@ -31,7 +31,7 @@ const { state: heroState, isGone } = useHeroVideo();
     </div>
 
     <!-- 影片狀態切換列（dev 用：狀態切換 + SKIP）；定位在 hero 內、水平置中 -->
-    <Section1HeroVideoControls dev />
+    <HeroVideoControls dev />
   </div>
 </template>
 

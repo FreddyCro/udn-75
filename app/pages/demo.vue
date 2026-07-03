@@ -30,7 +30,7 @@ const symbolPhrases = [
     <!-- <AppHeader /> -->
     <main class="main-content">
       <!-- :auto-mouse="true" -->
-      <Section2SymbolFace
+      <SymbolFace
         v-model:mode="symbolMode"
         :dev="true"
         :phrases="symbolPhrases"
@@ -55,7 +55,7 @@ const symbolPhrases = [
         :float-amp="18"
         :float-micro="0.5"
       />
-      <Section4HeartMetaball
+      <HeartMetaball
         :idleBlobMin="0.1"
         :idleBlobMax="0.2"
         :idleRoamSpeed="3"
