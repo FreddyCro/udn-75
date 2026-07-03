@@ -19,19 +19,27 @@ defineExpose({ root });
 </script>
 
 <template>
+  <!--
+    外層 root：由 HeroCorePath 以 GSAP 驅動（位置 x/y + 切線 rotation）。
+    內層 dot：實際橘色視覺；stage 3 起用 CSS scaleX/scaleY 把「點」拉成沿前進方向的「線」。
+    分兩層 → GSAP 只碰外層 transform、CSS 只碰內層 transform，互不衝突。
+  -->
   <span
     ref="root"
     class="sec1__core"
     :class="[`sec1__core--stage-${stage}`, { 'is-visible': visible }]"
     aria-hidden="true"
-  />
+  >
+    <span class="sec1__core-dot" />
+  </span>
 </template>
 
 <style lang="scss" scoped>
 $orange: #ff7f00;
 
-// 位置由 HeroCorePath 以 GSAP 驅動（gsap.set x/y + xPercent/yPercent:-50 置中）；
-// 故此處 top/left 皆 0、不設 transform，避免與 GSAP 的 transform 衝突。
+// 外層 root：位置 + 切線 rotation 全由 HeroCorePath 的 GSAP 驅動
+// （gsap.set x/y/rotation + xPercent/yPercent:-50 置中）；故此處不設任何 transform，
+// 避免覆蓋 GSAP 的 transform。橘色視覺與 stage 變形都放到內層 dot。
 .sec1__core {
   position: absolute;
   top: 0;
@@ -39,9 +47,7 @@ $orange: #ff7f00;
   z-index: 2;
   width: 24px;
   height: 24px;
-  background: $orange;
   opacity: 0;
-  transform: translate(-50%, -50%);
   transition: opacity 0.6s ease;
 
   // 退場消失（gone）後淡入
@@ -50,26 +56,31 @@ $orange: #ff7f00;
   }
 
   // 依移動進度切換的四個階段效果（門檻 41% / 71% / 90%，見 useCoreProgress）。
-  // 目前為佔位，填入各階段要的視覺變化即可。
-  &--stage-1 {
-    // 0 ~ 41%
+  // end（90%~100%）把內層 dot 從「點」拉成沿前進方向的「線」；因外層已轉到路徑切線角，
+  // 這條線會自動順著路徑方向 → 抵達日期「/」時自然貼合斜槓。
+  &--stage-end .sec1__core-dot {
+    // scaleX：沿本地 +x（即路徑前進方向）拉長；scaleY：壓薄成線。數值可微調。
+    transform: scaleX(10) scaleY(1);
   }
+}
 
-  &--stage-2 {
-    // 41% ~ 71%
-  }
-
-  &--stage-3 {
-    // 71% ~ 90%
-  }
-
-  &--stage-end {
-    // 90% ~ 100%
-  }
+// 內層 dot：實際橘色視覺。預設為方點，stage 3/end 被上方規則拉成線。
+.sec1__core-dot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: $orange;
+  transform-origin: center;
+  transform: scale(1);
+  transition: transform 0.5s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .sec1__core {
+    transition: none;
+  }
+
+  .sec1__core-dot {
     transition: none;
   }
 }

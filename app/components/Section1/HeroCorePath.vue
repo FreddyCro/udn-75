@@ -91,13 +91,19 @@ function build() {
   place(st ? st.progress : 0);
 }
 
-// 依進度 p（0..1）把 core 定位到驅動線上的點。
+// 依進度 p（0..1）把 core 定位到驅動線上的點，並轉到該處的路徑切線方向
+// （雲霄飛車感）。切線由前後各取 1px 的鄰近點連線求得，兩端皆穩定（不會因 eps=0 歸零）。
 function place(p: number) {
   const core = props.coreEl;
   const motion = motionEl.value;
   if (!core || !motion || !motionLen) return;
-  const pt = motion.getPointAtLength(p * motionLen);
-  gsap.set(core, { x: pt.x, y: pt.y });
+  const len = p * motionLen;
+  const pt = motion.getPointAtLength(len);
+  const d = 1; // 取樣間距（px）
+  const behind = motion.getPointAtLength(Math.max(0, len - d));
+  const ahead = motion.getPointAtLength(Math.min(motionLen, len + d));
+  const angle = (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
+  gsap.set(core, { x: pt.x, y: pt.y, rotation: angle });
   setProgress(p);
 }
 
