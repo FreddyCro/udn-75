@@ -1,8 +1,21 @@
 <script setup lang="ts">
 // Section 2：face / agenda / recap（智慧論壇）
 import str from '@/locales/section2.json';
+import type { SymbolMode } from '~/composables/useHeroCoreProgress';
 
 const { agenda } = str;
+
+// hero → section 2 星空轉場：由 section 2 決定何時關閉（不自動消失）。
+// 星空蓋滿（stage 6）後才出現「進入論壇」按鈕，按下才把 transitionDone 設 true → 星空退場、露出論壇。
+// symbolMode：SymbolFace 三態，同樣提升到全域，由本區的 switch 切換（Hero 端 v-model 綁定）。
+const { stage, transitionDone, symbolMode } = useHeroCoreProgress();
+
+// symbol 狀態切換 switch 選項：對應 SymbolFace 的三個互斥態。
+const SYMBOL_MODES: { value: SymbolMode; label: string }[] = [
+  { value: 'disperse', label: '01.分散' },
+  { value: 'face', label: '02.集合' },
+  { value: 'converge', label: '03.匯聚成點' },
+];
 
 // 依場次順序建立時間軸。標記每個時段（上午／下午）的第一場，
 // 以便在時間軸中插入時段封面標題（對應 Figma 的上午場／下午場封面）。
@@ -20,9 +33,28 @@ const timeline = agenda.sessions.map((session, i) => ({
 
 <template>
   <section id="forum" class="sec2">
-    <!-- face：人物牆 -->
-    <div class="sec2__face">
-      <!-- <SymbolFace /> -->
+    <!-- 星空蓋滿後出現的「進入論壇」按鈕：按下才關閉 hero 星空轉場（fixed，浮在星空之上）。 -->
+
+    <!-- symbol 狀態 switch：星空轉場期間（SymbolFace 現身時）切換集合／分散／匯聚，浮在星空之上。 -->
+    <div v-if="stage >= 5 && !transitionDone" class="sec2__symbol-switch">
+      <button
+        v-if="stage >= 6 && !transitionDone"
+        class="sec2__enter"
+        type="button"
+        @click="transitionDone = true"
+      >
+        進入論壇
+      </button>
+      <button
+        v-for="m in SYMBOL_MODES"
+        :key="m.value"
+        class="sec2__symbol-mode"
+        :class="{ 'is-active': symbolMode === m.value }"
+        type="button"
+        @click="symbolMode = m.value"
+      >
+        {{ m.label }}
+      </button>
     </div>
 
     <!-- agenda：議程時間軸 -->
@@ -116,6 +148,63 @@ const timeline = agenda.sessions.map((session, i) => ({
   padding: 100vh 24px 120px;
   color: #fff;
   background-color: #000;
+}
+
+// 「進入論壇」按鈕：固定於畫面、浮在 HeroTransition 星空（z-index 10）之上、header（1000）之下。
+.sec2__enter {
+  z-index: 50;
+  padding: 14px 36px;
+  margin-right: 20px;
+  font-size: 15px;
+  letter-spacing: 0.15em;
+  color: #fff;
+  background: rgba(255, 127, 0, 0.9);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+// symbol 狀態 switch：固定於畫面頂端置中，與「進入論壇」同層浮在星空之上。
+.sec2__symbol-switch {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: rgba(10, 28, 43, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  backdrop-filter: blur(4px);
+}
+
+.sec2__symbol-mode {
+  padding: 8px 18px;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  &.is-active {
+    color: #10141b;
+    background: rgba(255, 127, 0, 0.95);
+  }
+
+  &.is-active:hover {
+    background: rgba(255, 127, 0, 0.95);
+  }
 }
 
 .sec2__face {

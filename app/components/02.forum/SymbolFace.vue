@@ -1,89 +1,3 @@
-<template>
-  <div ref="wrapRef" class="stage">
-    <!-- 彩蛋：定位/透明度由 JS 每幀控制；內容走 slot（預設純文字） -->
-    <div ref="eggRef" class="egg" aria-hidden="true">
-      <slot name="phrase" :index="activeEgg" :text="displayText">
-        {{ displayText }}
-      </slot>
-    </div>
-
-    <!-- dev config 面板（右上角、可收合）：改值不即時套用，按 Refresh 才重建 -->
-    <div v-if="dev" class="cfg">
-      <button class="cfg__toggle" type="button" @click="panelOpen = !panelOpen">
-        <span>⚙ Config</span>
-        <span>{{ panelOpen ? '▾' : '▸' }}</span>
-      </button>
-      <div v-show="panelOpen" class="cfg__body">
-        <template v-for="(f, i) in CONFIG_SCHEMA" :key="f.key">
-          <div
-            v-if="f.group && f.group !== CONFIG_SCHEMA[i - 1]?.group"
-            class="cfg__group"
-          >
-            {{ f.group }}
-          </div>
-          <label class="cfg__row">
-            <span class="cfg__label" :title="f.key">{{ f.label }}</span>
-            <input
-              v-if="f.kind === 'bool'"
-              v-model="draft[f.key]"
-              class="cfg__input cfg__input--check"
-              type="checkbox"
-            />
-            <input
-              v-else-if="f.kind === 'color'"
-              v-model="draft[f.key]"
-              class="cfg__input cfg__input--color"
-              type="color"
-            />
-            <select
-              v-else-if="f.kind === 'select'"
-              v-model="draft[f.key]"
-              class="cfg__input"
-            >
-              <option v-for="o in f.options" :key="o" :value="o">{{ o }}</option>
-            </select>
-            <input
-              v-else-if="f.kind === 'num'"
-              v-model.number="draft[f.key]"
-              class="cfg__input"
-              type="number"
-              :step="f.step ?? 1"
-            />
-            <input
-              v-else
-              v-model="draft[f.key]"
-              class="cfg__input"
-              type="text"
-            />
-          </label>
-        </template>
-        <div class="cfg__footer">
-          <div class="cfg__modes">
-            <button
-              v-for="m in MODES"
-              :key="m.value"
-              class="cfg__mode"
-              :class="{ 'cfg__mode--active': mode === m.value }"
-              type="button"
-              @click="mode = m.value"
-            >
-              {{ m.label }}
-            </button>
-          </div>
-          <div class="cfg__actions">
-            <button class="cfg__refresh" type="button" @click="applyRefresh">
-              ↻ Refresh
-            </button>
-            <button class="cfg__export" type="button" @click="exportConfig">
-              {{ exportLabel }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 // @ts-nocheck
 import * as THREE from 'three';
@@ -263,44 +177,228 @@ const CONFIG_SCHEMA = [
   // 圖像 / 採樣
   { key: 'src', label: '圖片路徑', kind: 'text', group: '圖像 / 採樣' },
   { key: 'chars', label: '符號集', kind: 'csvStr', group: '圖像 / 採樣' },
-  { key: 'color', label: '顏色(逗號多色)', kind: 'colorList', group: '圖像 / 採樣' },
-  { key: 'colorMode', label: '取色模式', kind: 'select', options: ['tone', 'random'], group: '圖像 / 採樣' },
-  { key: 'sampleStep', label: '採樣間距', kind: 'num', step: 1, group: '圖像 / 採樣' },
-  { key: 'fitWidth', label: 'fit 寬', kind: 'num', step: 10, group: '圖像 / 採樣' },
-  { key: 'fitHeight', label: 'fit 高', kind: 'num', step: 10, group: '圖像 / 採樣' },
-  { key: 'worldScale', label: 'world 縮放', kind: 'num', step: 0.05, group: '圖像 / 採樣' },
-  { key: 'minDensity', label: '亮部最低密度', kind: 'num', step: 0.01, group: '圖像 / 採樣' },
-  { key: 'densityGamma', label: '密度 gamma', kind: 'num', step: 0.1, group: '圖像 / 採樣' },
-  { key: 'darkBoost', label: '暗度增益', kind: 'num', step: 0.1, group: '圖像 / 採樣' },
-  { key: 'sizeMin', label: '字級 min', kind: 'num', step: 1, group: '圖像 / 採樣' },
-  { key: 'sizeMax', label: '字級 max', kind: 'num', step: 1, group: '圖像 / 採樣' },
-  { key: 'maxParticles', label: '粒子上限', kind: 'num', step: 500, group: '圖像 / 採樣' },
+  {
+    key: 'color',
+    label: '顏色(逗號多色)',
+    kind: 'colorList',
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'colorMode',
+    label: '取色模式',
+    kind: 'select',
+    options: ['tone', 'random'],
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'sampleStep',
+    label: '採樣間距',
+    kind: 'num',
+    step: 1,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'fitWidth',
+    label: 'fit 寬',
+    kind: 'num',
+    step: 10,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'fitHeight',
+    label: 'fit 高',
+    kind: 'num',
+    step: 10,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'worldScale',
+    label: 'world 縮放',
+    kind: 'num',
+    step: 0.05,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'minDensity',
+    label: '亮部最低密度',
+    kind: 'num',
+    step: 0.01,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'densityGamma',
+    label: '密度 gamma',
+    kind: 'num',
+    step: 0.1,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'darkBoost',
+    label: '暗度增益',
+    kind: 'num',
+    step: 0.1,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'sizeMin',
+    label: '字級 min',
+    kind: 'num',
+    step: 1,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'sizeMax',
+    label: '字級 max',
+    kind: 'num',
+    step: 1,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'maxParticles',
+    label: '粒子上限',
+    kind: 'num',
+    step: 500,
+    group: '圖像 / 採樣',
+  },
   // 場景 / 節奏
   { key: 'bgColor', label: '背景色', kind: 'color', group: '場景 / 節奏' },
-  { key: 'revealDuration', label: '組合秒數', kind: 'num', step: 0.1, group: '場景 / 節奏' },
-  { key: 'disperseDuration', label: '散場秒數', kind: 'num', step: 0.1, group: '場景 / 節奏' },
-  { key: 'disperseSpread', label: '散場範圍 xyz', kind: 'csvNum', group: '場景 / 節奏' },
+  {
+    key: 'revealDuration',
+    label: '組合秒數',
+    kind: 'num',
+    step: 0.1,
+    group: '場景 / 節奏',
+  },
+  {
+    key: 'disperseDuration',
+    label: '散場秒數',
+    kind: 'num',
+    step: 0.1,
+    group: '場景 / 節奏',
+  },
+  {
+    key: 'disperseSpread',
+    label: '散場範圍 xyz',
+    kind: 'csvNum',
+    group: '場景 / 節奏',
+  },
   // 漂浮
-  { key: 'floatAmp', label: '整體漂浮幅度', kind: 'num', step: 1, group: '漂浮' },
+  {
+    key: 'floatAmp',
+    label: '整體漂浮幅度',
+    kind: 'num',
+    step: 1,
+    group: '漂浮',
+  },
   { key: 'floatMicro', label: '微擾幅度', kind: 'num', step: 1, group: '漂浮' },
-  { key: 'floatSpeed', label: '漂浮速度', kind: 'num', step: 0.1, group: '漂浮' },
+  {
+    key: 'floatSpeed',
+    label: '漂浮速度',
+    kind: 'num',
+    step: 0.1,
+    group: '漂浮',
+  },
   // 斥力 / 物理
-  { key: 'holeRadius', label: '真空半徑', kind: 'num', step: 5, group: '斥力 / 物理' },
-  { key: 'holeSpread', label: '擴散範圍', kind: 'num', step: 5, group: '斥力 / 物理' },
-  { key: 'returnEase', label: '回位速率', kind: 'num', step: 0.1, group: '斥力 / 物理' },
-  { key: 'friction', label: '動量衰減', kind: 'num', step: 0.1, group: '斥力 / 物理' },
-  { key: 'impulseStrength', label: '外推力道', kind: 'num', step: 100, group: '斥力 / 物理' },
-  { key: 'impulseSpray', label: '發散角', kind: 'num', step: 0.05, group: '斥力 / 物理' },
-  { key: 'impulseSprayZ', label: 'z 散射', kind: 'num', step: 0.05, group: '斥力 / 物理' },
-  { key: 'velocityFollow', label: '拖曳甩出比例', kind: 'num', step: 0.05, group: '斥力 / 物理' },
-  { key: 'maxSpeed', label: '速度上限', kind: 'num', step: 100, group: '斥力 / 物理' },
+  {
+    key: 'holeRadius',
+    label: '真空半徑',
+    kind: 'num',
+    step: 5,
+    group: '斥力 / 物理',
+  },
+  {
+    key: 'holeSpread',
+    label: '擴散範圍',
+    kind: 'num',
+    step: 5,
+    group: '斥力 / 物理',
+  },
+  {
+    key: 'returnEase',
+    label: '回位速率',
+    kind: 'num',
+    step: 0.1,
+    group: '斥力 / 物理',
+  },
+  {
+    key: 'friction',
+    label: '動量衰減',
+    kind: 'num',
+    step: 0.1,
+    group: '斥力 / 物理',
+  },
+  {
+    key: 'impulseStrength',
+    label: '外推力道',
+    kind: 'num',
+    step: 100,
+    group: '斥力 / 物理',
+  },
+  {
+    key: 'impulseSpray',
+    label: '發散角',
+    kind: 'num',
+    step: 0.05,
+    group: '斥力 / 物理',
+  },
+  {
+    key: 'impulseSprayZ',
+    label: 'z 散射',
+    kind: 'num',
+    step: 0.05,
+    group: '斥力 / 物理',
+  },
+  {
+    key: 'velocityFollow',
+    label: '拖曳甩出比例',
+    kind: 'num',
+    step: 0.05,
+    group: '斥力 / 物理',
+  },
+  {
+    key: 'maxSpeed',
+    label: '速度上限',
+    kind: 'num',
+    step: 100,
+    group: '斥力 / 物理',
+  },
   // 避讓 / 滑鼠
-  { key: 'groupShift', label: '群閃避量', kind: 'num', step: 1, group: '避讓 / 滑鼠' },
-  { key: 'groupShiftNear', label: '閃避近界', kind: 'num', step: 10, group: '避讓 / 滑鼠' },
-  { key: 'groupShiftFar', label: '閃避遠界', kind: 'num', step: 10, group: '避讓 / 滑鼠' },
-  { key: 'mouseEase', label: '滑鼠平滑', kind: 'num', step: 0.5, group: '避讓 / 滑鼠' },
+  {
+    key: 'groupShift',
+    label: '群閃避量',
+    kind: 'num',
+    step: 1,
+    group: '避讓 / 滑鼠',
+  },
+  {
+    key: 'groupShiftNear',
+    label: '閃避近界',
+    kind: 'num',
+    step: 10,
+    group: '避讓 / 滑鼠',
+  },
+  {
+    key: 'groupShiftFar',
+    label: '閃避遠界',
+    kind: 'num',
+    step: 10,
+    group: '避讓 / 滑鼠',
+  },
+  {
+    key: 'mouseEase',
+    label: '滑鼠平滑',
+    kind: 'num',
+    step: 0.5,
+    group: '避讓 / 滑鼠',
+  },
   { key: 'autoMouse', label: '自動游標', kind: 'bool', group: '避讓 / 滑鼠' },
-  { key: 'autoMouseSpeed', label: '自動游標速度', kind: 'num', step: 0.1, group: '避讓 / 滑鼠' },
+  {
+    key: 'autoMouseSpeed',
+    label: '自動游標速度',
+    kind: 'num',
+    step: 0.1,
+    group: '避讓 / 滑鼠',
+  },
   // 彩蛋
   { key: 'phrases', label: '彩蛋句(逗號)', kind: 'csvStr', group: '彩蛋' },
   { key: 'gridCols', label: '宮格欄', kind: 'num', step: 1, group: '彩蛋' },
@@ -312,7 +410,8 @@ const panelOpen = ref(true);
 // props 值 → 面板可編輯字串（陣列類轉成逗號字串）
 const toDraft = (val: any, kind: string) => {
   if (kind === 'csvNum' || kind === 'csvStr') return (val ?? []).join(', ');
-  if (kind === 'colorList') return Array.isArray(val) ? val.join(', ') : (val ?? '');
+  if (kind === 'colorList')
+    return Array.isArray(val) ? val.join(', ') : (val ?? '');
   return val;
 };
 // 面板值 → cfg 正確型別
@@ -320,11 +419,20 @@ const fromDraft = (val: any, kind: string) => {
   if (kind === 'num') return Number(val);
   if (kind === 'bool') return !!val;
   if (kind === 'csvNum')
-    return String(val).split(',').map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n));
+    return String(val)
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => !Number.isNaN(n));
   if (kind === 'csvStr')
-    return String(val).split(',').map((s) => s.trim()).filter(Boolean);
+    return String(val)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
   if (kind === 'colorList') {
-    const parts = String(val).split(',').map((s) => s.trim()).filter(Boolean);
+    const parts = String(val)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     return parts.length > 1 ? parts : (parts[0] ?? '');
   }
   return val; // color / text / select
@@ -351,7 +459,8 @@ const exportLabel = ref('⬇ Export JSON');
 let exportResetTimer: ReturnType<typeof setTimeout> | null = null;
 const exportConfig = () => {
   const snapshot: Record<string, any> = {};
-  for (const f of CONFIG_SCHEMA) snapshot[f.key] = fromDraft(draft[f.key], f.kind);
+  for (const f of CONFIG_SCHEMA)
+    snapshot[f.key] = fromDraft(draft[f.key], f.kind);
   snapshot.mode = mode.value;
   const json = JSON.stringify(snapshot, null, 2);
 
@@ -878,8 +987,10 @@ onMounted(() => {
     if (cfg.autoMouse) {
       const at = t * cfg.autoMouseSpeed;
       mouse.set(
-        Math.sin(at * 0.7) * roamX * 0.6 + Math.sin(at * 0.23 + 1.3) * roamX * 0.4,
-        Math.cos(at * 0.53) * roamY * 0.6 + Math.cos(at * 0.31 + 0.7) * roamY * 0.4,
+        Math.sin(at * 0.7) * roamX * 0.6 +
+          Math.sin(at * 0.23 + 1.3) * roamX * 0.4,
+        Math.cos(at * 0.53) * roamY * 0.6 +
+          Math.cos(at * 0.31 + 0.7) * roamY * 0.4,
         0,
       );
       targetInfluence = 1;
@@ -1049,6 +1160,94 @@ onMounted(() => {
   });
 });
 </script>
+
+<template>
+  <div ref="wrapRef" class="stage">
+    <!-- 彩蛋：定位/透明度由 JS 每幀控制；內容走 slot（預設純文字） -->
+    <div ref="eggRef" class="egg" aria-hidden="true">
+      <slot name="phrase" :index="activeEgg" :text="displayText">
+        {{ displayText }}
+      </slot>
+    </div>
+
+    <!-- dev config 面板（右上角、可收合）：改值不即時套用，按 Refresh 才重建 -->
+    <div v-if="dev" class="cfg">
+      <button class="cfg__toggle" type="button" @click="panelOpen = !panelOpen">
+        <span>⚙ Config</span>
+        <span>{{ panelOpen ? '▾' : '▸' }}</span>
+      </button>
+      <div v-show="panelOpen" class="cfg__body">
+        <template v-for="(f, i) in CONFIG_SCHEMA" :key="f.key">
+          <div
+            v-if="f.group && f.group !== CONFIG_SCHEMA[i - 1]?.group"
+            class="cfg__group"
+          >
+            {{ f.group }}
+          </div>
+          <label class="cfg__row">
+            <span class="cfg__label" :title="f.key">{{ f.label }}</span>
+            <input
+              v-if="f.kind === 'bool'"
+              v-model="draft[f.key]"
+              class="cfg__input cfg__input--check"
+              type="checkbox"
+            />
+            <input
+              v-else-if="f.kind === 'color'"
+              v-model="draft[f.key]"
+              class="cfg__input cfg__input--color"
+              type="color"
+            />
+            <select
+              v-else-if="f.kind === 'select'"
+              v-model="draft[f.key]"
+              class="cfg__input"
+            >
+              <option v-for="o in f.options" :key="o" :value="o">
+                {{ o }}
+              </option>
+            </select>
+            <input
+              v-else-if="f.kind === 'num'"
+              v-model.number="draft[f.key]"
+              class="cfg__input"
+              type="number"
+              :step="f.step ?? 1"
+            />
+            <input
+              v-else
+              v-model="draft[f.key]"
+              class="cfg__input"
+              type="text"
+            />
+          </label>
+        </template>
+        <div class="cfg__footer">
+          <div class="cfg__modes">
+            <button
+              v-for="m in MODES"
+              :key="m.value"
+              class="cfg__mode"
+              :class="{ 'cfg__mode--active': mode === m.value }"
+              type="button"
+              @click="mode = m.value"
+            >
+              {{ m.label }}
+            </button>
+          </div>
+          <div class="cfg__actions">
+            <button class="cfg__refresh" type="button" @click="applyRefresh">
+              ↻ Refresh
+            </button>
+            <button class="cfg__export" type="button" @click="exportConfig">
+              {{ exportLabel }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
 
 <style scoped>
 .stage {

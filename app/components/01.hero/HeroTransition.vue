@@ -7,7 +7,7 @@
   遮罩形狀直接讀 core 元素的螢幕位置與旋轉角，故與橘色 core 線無縫接上（橘→黑→放大）。
 -->
 <script setup lang="ts">
-import type { CoreStage } from '~/composables/useHeroCoreProgress';
+import { CROSSFADE, type CoreStage } from '~/composables/useHeroCoreProgress';
 
 const props = defineProps<{
   /** 目前 stage（1..6）：只在 stage 5（放大）/ 6（已蓋滿）現身 */
@@ -77,12 +77,16 @@ function computeClip(p: number) {
     .join(', ')})`;
 }
 
-// 放大進度變動時直接寫 style（避免每幀觸發 Vue re-render）。
+// 放大進度變動時直接寫 style（避免每幀觸發 Vue re-render）：
+//   - clip-path：從 core 線的尺寸撐大到蓋滿。
+//   - opacity：CROSSFADE=0 → 立即實色（無 washy）；>0 則在前 CROSSFADE 比例內淡入完成。
 watch(
   revealP,
   (p) => {
     const el = fieldRef.value;
-    if (el) el.style.clipPath = computeClip(p);
+    if (!el) return;
+    el.style.clipPath = computeClip(p);
+    el.style.opacity = String(CROSSFADE <= 0 ? 1 : Math.min(1, p / CROSSFADE));
   },
   { immediate: true },
 );
@@ -94,7 +98,9 @@ watch(
     :class="{ 'is-hidden': !active }"
     aria-hidden="true"
   >
-    <div ref="fieldRef" class="hero-transition__field" />
+    <div ref="fieldRef" class="hero-transition__field">
+      <slot />
+    </div>
   </div>
 </template>
 
@@ -126,8 +132,18 @@ watch(
     radial-gradient(circle, rgba(136, 190, 239, 0.8) 0.5px, transparent 1.4px),
     radial-gradient(circle, rgba(127, 208, 255, 0.5) 0.5px, transparent 1.4px),
     linear-gradient(125deg, #06283b 0%, #0a1c2b 45%, #071726 100%);
-  background-size: 67px 83px, 113px 97px, 89px 71px, 149px 127px, 100% 100%;
-  background-position: 0 0, 29px 41px, 53px 17px, 91px 63px, 0 0;
+  background-size:
+    67px 83px,
+    113px 97px,
+    89px 71px,
+    149px 127px,
+    100% 100%;
+  background-position:
+    0 0,
+    29px 41px,
+    53px 17px,
+    91px 63px,
+    0 0;
   will-change: clip-path;
 }
 </style>

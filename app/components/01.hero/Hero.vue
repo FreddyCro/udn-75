@@ -17,16 +17,18 @@ const dateTitleRef = ref<HTMLElement | null>(null);
 const dateRef = ref<HTMLElement | null>(null);
 const innerRef = ref<HTMLElement | null>(null);
 
-// hero → section 2 轉場（HeroTransition）：done = 已捲過 pin（轉場層隱藏）。
-const transitionDone = ref(false);
-
 // Core 元件曝露的 root el，交給 HeroCorePath 以 GSAP 驅動。
 const coreEl = computed(() => coreRef.value?.root ?? null);
 
 // core 階段模型（stage 1..6）＋ 各段 local progress：全域共享（單一來源）。
 //   - HeroCorePath 寫 path 軌（stage 1–3）；本元件的 pinST 寫 pin 軌（stage 4–6，見下 setPinProgress）。
 //   - stage / stageProgress 驅動 Core（變長 / 變色）與 HeroTransition（星空放大）。門檻見 useHeroCoreProgress。
-const { stage, stageProgress, setPinProgress } = useHeroCoreProgress();
+//   - transitionDone：轉場是否已離場（跨元件共享）。本元件的 pinST 寫入；index.vue / Forum 亦可控制。
+const { stage, stageProgress, setPinProgress, transitionDone, symbolMode } =
+  useHeroCoreProgress();
+
+// core 移動速度旋鈕：在 date 之前墊出 MOVE_VH 的捲動距離（見 useHeroCoreProgress 的 MOVE_VH）。
+const moveSpacerHeight = `${MOVE_VH * 100}vh`;
 
 // LoadingHero 蓋在最上層，等 hero 影片可播放後才收尾並淡出移除。
 const loaderDone = ref(false);
@@ -71,14 +73,10 @@ onMounted(() => {
       pinSpacing: true,
       invalidateOnRefresh: true, // 視窗高變動時重算釘住距離
       // pin 期間的捲動進度 → pin 軌（stage 4–6）：變色 → 星空放大 → fixed。
+      // 注意：不在此自動關閉轉場層 —— HeroTransition 出現後會一直停留，
+      //       只有 section 2（Forum）的按鈕把 transitionDone 設 true 才會消失。
       onUpdate: (self) => {
         setPinProgress(self.progress);
-      },
-      onLeave: () => {
-        transitionDone.value = true; // 捲過 pin → 進入 section 2，轉場層淡出
-      },
-      onEnterBack: () => {
-        transitionDone.value = false; // 捲回 pin → 重新顯示轉場層
       },
       onLeaveBack: () => {
         setPinProgress(0); // 回到 pin 之前 → 退回 stage 1–3（path 軌）
@@ -114,21 +112,25 @@ function applyScrollLock() {
       <CoreProgress />
     </DevOnly>
 
+    <!-- 載入層：滿版 fixed overlay，必須放在 .sec1__inner「外面」。
+         pinST 會在 .sec1__inner 寫入 transform（即使是 translate(0,0) 也算非 none），
+         使其成為 fixed 子孫的 containing block —— 若把 loader 放進 inner，它會改以
+         inner（而非視窗）為定位/尺寸基準而跑位。與 HeroTransition 同樣掛在 .sec1 下。
+         淡出移除後 @after-leave 再確認一次捲動鎖狀態（多半仍為 main → 維持上鎖；若載入
+         期間已被切到 outro/gone，watch 也已處理）。因 LoadingHero 不碰 body.overflow，
+         無需 nextTick 等它卸載。 -->
+    <Transition name="loader-fade" @after-leave="applyScrollLock">
+      <LoadingHero
+        v-if="!loaderDone"
+        :duration="2"
+        :ready="videoReady"
+        @done="loaderDone = true"
+      />
+    </Transition>
+
     <!-- 視覺內容整組包一層 inner：core / path / date 的絕對定位原點，也是 pin 目標。
          pin 時整組一起 fixed → core / path 不脫離斜槓（見 script 的 pinST）。 -->
     <div ref="innerRef" class="sec1__inner">
-      <!-- 載入層淡出移除後，再確認一次捲動鎖狀態（多半仍為 main → 維持上鎖；若載入期間
-         已被切到 outro/gone，watch 也已處理）。因 LoadingHero 不再碰 body.overflow，無需
-         nextTick 等它卸載。 -->
-      <Transition name="loader-fade" @after-leave="applyScrollLock">
-        <LoadingHero
-          v-if="!loaderDone"
-          :duration="2"
-          :ready="videoReady"
-          @done="loaderDone = true"
-        />
-      </Transition>
-
       <!-- hero：第一屏影片區塊（已抽為子元件 01.hero/HeroVideo.vue） -->
       <HeroVideo />
 
@@ -159,6 +161,13 @@ function applyScrollLock() {
         <div class="sec1__intro">
           <p class="sec1__intro-body">{{ str.intro.body }}</p>
         </div>
+
+        <!-- 移動速度 spacer：在 date 之前墊出 MOVE_VH 的捲動距離 → 拉長 core 旅程 = 相對視窗變慢。 -->
+        <div
+          class="sec1__move-spacer"
+          :style="{ height: moveSpacerHeight }"
+          aria-hidden="true"
+        />
 
         <!-- date 論壇資訊：整組以絕對定位對齊設計稿 501:21162 相對位置（RWD 之後再處理）。
            core 路徑已抽到 section 級 overlay，尾端仍以此區大標為錨點對齊。 -->
@@ -196,12 +205,37 @@ function applyScrollLock() {
       hero → section 2 轉場遮罩（fixed 滿版）：stage 5 起由 stageProgress 撐大，
       從斜槓處 core 線沿斜角長成對角遮罩、透出 section 2 星空，stage 6 蓋滿視窗。
     -->
-    <!-- <HeroTransition
+    <HeroTransition
       :stage="stage"
       :stage-progress="stageProgress"
       :core-el="coreEl"
       :done="transitionDone"
-    /> -->
+    >
+      <SymbolFace
+        v-model:mode="symbolMode"
+        :dev="false"
+        :hole-radius="25"
+        :hole-spread="50"
+        :return-ease="1.5"
+        :friction="1.8"
+        :impulse-strength="10000"
+        :impulse-spray="0.9"
+        :impulse-spray-z="0.6"
+        :velocity-follow="0.1"
+        :max-speed="3000"
+        :max-particles="10000"
+        :color="['#ffffff', '#9fd6ff', '#77c6e0', '#3f8fb5']"
+        bg-color="#000"
+        :sample-step="5"
+        :size-min="16"
+        :size-max="32"
+        :min-density="0.7"
+        :density-gamma="2.4"
+        :dark-boost="1.8"
+        :float-amp="18"
+        :float-micro="0.5"
+      />
+    </HeroTransition>
   </section>
 </template>
 
