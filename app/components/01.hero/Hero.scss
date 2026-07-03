@@ -3,6 +3,14 @@ $gray: #686868;
 .sec1 {
   position: relative;
 
+  // 視覺內容整組容器：core / path / date 都在此，並作為它們 absolute 定位的原點。
+  // 滑到底時由 ScrollTrigger pin（＝ position:fixed）整組釘住並延展 100vh 捲動深度
+  // （見 Hero.vue 的 pinST）；pin 期間三者相對位置一致。
+  // 注意：core 進度仍隨整個 section 捲動繼續前進，故 pin 期間 core 會漂移 —— 待後續處理。
+  &__inner {
+    position: relative;
+  }
+
   // ===== intro → date 內容場景 =====
   // 對齊 Figma 1280 設計稿：內容置中、左右留白 56px
   &__scene {
@@ -34,7 +42,11 @@ $gray: #686868;
   // 依設計稿 501:21162：以大標左上角為原點，各元素絕對定位（固定 px，RWD 之後再處理）。
   &__date {
     position: relative;
+    // content-box：讓 padding-bottom 在 963px 之外「額外」加高（border-box 會把 padding 吃進內容）。
+    box-sizing: content-box;
     height: 963px; // 大標頂 → path／日期底（path 下緣約 963）
+    // date 下方多撐 30vh：pin 期間吃掉的捲動距離（露出 date 下面的空間 / 給星空轉場 scrub）。
+    padding-bottom: 30vh;
     margin-top: clamp(120px, 22vh, 200px);
   }
 
@@ -66,7 +78,7 @@ $gray: #686868;
     text-align: justify;
   }
 
-  // 大型日期 2026 / 09 / 16（階梯狀往右下錯開）— (245, 587)
+  // 大型日期 2026 / 09 / 16（階梯狀往右下錯開）— (245, 587)，對齊設計稿 501:21163。
   &__date-when {
     position: absolute;
     top: 587px;

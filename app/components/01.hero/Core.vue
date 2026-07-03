@@ -1,14 +1,20 @@
 <!--
-  orange core：影片退場後於第一屏正中央淡入的橘點。
-  位置由 HeroCorePath 以 GSAP 驅動（沿驅動線移動）；本元件只負責外觀 / 淡入 /
-  依 stage 切換視覺。GSAP 需要真實 DOM 元素，故對外曝露 root el 供父層取得。
+  orange core：影片退場後於第一屏中央淡入的橘點，沿驅動線移動、依 stage 變化。
+  位置與切線旋轉由 HeroCorePath 以 GSAP 驅動（需要真實 DOM 元素 → 對外曝露 root el）。
+  本元件只負責 dot 的外觀：
+    stage 1–2：點（移動中）
+    stage 3  ：point → line（隨 stageProgress 漸進變長）
+    stage 4  ：橘 → 黑（隨 stageProgress 漸進變色；黑＝section 2 星空底色）
+    stage 5–6：維持黑線（放大交給 HeroTransition 的星空遮罩承接）
 -->
 <script setup lang="ts">
 import type { CoreStage } from '~/composables/useCoreProgress';
 
-defineProps<{
-  /** 依移動進度的階段（門檻見 Section1）；驅動各階段視覺 */
+const props = defineProps<{
+  /** 目前 stage（1..6，見 useCoreProgress） */
   stage: CoreStage;
+  /** 該 stage 內的 local progress（0..1）→ 漸進變長 / 變色 */
+  stageProgress: number;
   /** 影片退場（gone）後才淡入 */
   visible?: boolean;
 }>();
@@ -16,30 +22,52 @@ defineProps<{
 // HeroCorePath 以 gsap.set 驅動位置，需要真實 DOM 元素 → 對外曝露 root el。
 const root = ref<HTMLElement | null>(null);
 defineExpose({ root });
+
+// ── 視覺參數（config）──
+const LINE_SCALE_X = 10; // stage 3 變長：point(24px) → line(240px)。與 HeroTransition 的 LINE_HALF_* 對齊
+const ORANGE: [number, number, number] = [255, 127, 0];
+const DARK: [number, number, number] = [10, 28, 43]; // 橘→黑目標（section 2 星空底色）
+
+const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
+
+// dot 的 transform / 顏色完全由 stage + stageProgress 驅動；scrub 值直接跟手，不加 transition。
+const dotStyle = computed(() => {
+  const s = props.stage;
+  const sp = props.stageProgress;
+
+  // 變長：stage 3 漸進 1→10；stage ≥4 維持線；stage ≤2 維持點
+  let scaleX = 1;
+  if (s === 3) scaleX = 1 + (LINE_SCALE_X - 1) * sp;
+  else if (s >= 4) scaleX = LINE_SCALE_X;
+
+  // 變色：stage 4 漸進 橘→黑；stage ≥5 維持黑；stage ≤3 維持橘
+  let c = ORANGE;
+  if (s === 4) c = [mix(ORANGE[0], DARK[0], sp), mix(ORANGE[1], DARK[1], sp), mix(ORANGE[2], DARK[2], sp)];
+  else if (s >= 5) c = DARK;
+
+  return {
+    transform: `scaleX(${scaleX}) scaleY(1)`,
+    background: `rgb(${c[0]}, ${c[1]}, ${c[2]})`,
+  };
+});
 </script>
 
 <template>
   <!--
-    外層 root：由 HeroCorePath 以 GSAP 驅動（位置 x/y + 切線 rotation）。
-    內層 dot：實際橘色視覺；stage 3 起用 CSS scaleX/scaleY 把「點」拉成沿前進方向的「線」。
-    分兩層 → GSAP 只碰外層 transform、CSS 只碰內層 transform，互不衝突。
+    外層 root：位置 + 切線 rotation 由 HeroCorePath 的 GSAP 驅動（x/y/rotation + xPercent/yPercent:-50）；
+    此處不設 transform，避免覆蓋 GSAP。內層 dot 的形狀/顏色由 dotStyle（stage 驅動）決定。
   -->
   <span
     ref="root"
     class="sec1__core"
-    :class="[`sec1__core--stage-${stage}`, { 'is-visible': visible }]"
+    :class="{ 'is-visible': visible }"
     aria-hidden="true"
   >
-    <span class="sec1__core-dot" />
+    <span class="sec1__core-dot" :style="dotStyle" />
   </span>
 </template>
 
 <style lang="scss" scoped>
-$orange: #ff7f00;
-
-// 外層 root：位置 + 切線 rotation 全由 HeroCorePath 的 GSAP 驅動
-// （gsap.set x/y/rotation + xPercent/yPercent:-50 置中）；故此處不設任何 transform，
-// 避免覆蓋 GSAP 的 transform。橘色視覺與 stage 變形都放到內層 dot。
 .sec1__core {
   position: absolute;
   top: 0;
@@ -54,33 +82,18 @@ $orange: #ff7f00;
   &.is-visible {
     opacity: 1;
   }
-
-  // 依移動進度切換的四個階段效果（門檻 41% / 71% / 90%，見 useCoreProgress）。
-  // end（90%~100%）把內層 dot 從「點」拉成沿前進方向的「線」；因外層已轉到路徑切線角，
-  // 這條線會自動順著路徑方向 → 抵達日期「/」時自然貼合斜槓。
-  &--stage-end .sec1__core-dot {
-    // scaleX：沿本地 +x（即路徑前進方向）拉長；scaleY：壓薄成線。數值可微調。
-    transform: scaleX(10) scaleY(1);
-  }
 }
 
-// 內層 dot：實際橘色視覺。預設為方點，stage 3/end 被上方規則拉成線。
+// 內層 dot：transform / background 皆由 JS（dotStyle）依 stage 驅動。
 .sec1__core-dot {
   display: block;
   width: 100%;
   height: 100%;
-  background: $orange;
   transform-origin: center;
-  transform: scale(1);
-  transition: transform 0.5s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .sec1__core {
-    transition: none;
-  }
-
-  .sec1__core-dot {
     transition: none;
   }
 }

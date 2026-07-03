@@ -4,17 +4,20 @@
   正式環境整個元件不 render，故不需外部傳 prop、也不涉入任何行為驅動。
 -->
 <script setup lang="ts">
-const { progress, stage } = useCoreProgress();
+const { stage, stageProgress, pathProgress, pinProgress } = useCoreProgress();
 
-const percent = computed(() => Math.round(progress.value * 100));
+const pct = (v: number) => Math.round(v * 100);
 </script>
 
 <template>
   <div
-    class="core-progress fixed right-4 bottom-1/2 px-2 py-1 rounded-xl text-white"
+    class="core-progress fixed z-1000 right-4 bottom-1/2 px-2 py-1 rounded-xl text-white"
     aria-hidden="true"
   >
-    {{ percent }}% · {{ stage }}
+    stage {{ stage }} · {{ pct(stageProgress) }}%
+    <span class="core-progress__raw">
+      (path {{ pct(pathProgress) }} / pin {{ pct(pinProgress) }})
+    </span>
   </div>
 </template>
 
@@ -22,6 +25,10 @@ const percent = computed(() => Math.round(progress.value * 100));
 .core-progress {
   background: rgba(0, 0, 0, 0.6);
   font-size: 12px;
-  line-height: 1;
+  line-height: 1.4;
+}
+
+.core-progress__raw {
+  opacity: 0.6;
 }
 </style>

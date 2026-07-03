@@ -24,8 +24,11 @@ const props = defineProps<{
   anchorEl: HTMLElement | null;
 }>();
 
-// core 沿線移動進度（0..1）→ 寫入全域共享狀態（單一來源），供顯示與效果讀取。
-const { setProgress } = useCoreProgress();
+// core 沿線移動進度（0..1）→ 寫入全域共享 path 軌（stage 1–3 來源），供顯示與效果讀取。
+const { setPathProgress } = useCoreProgress();
+
+// 移動速度曲線：把 raw 捲動進度重新映射成 path 進度（見 useCoreProgress 的 MOVE_EASE）。
+const easeMove = gsap.parseEase(MOVE_EASE) ?? ((v: number) => v);
 
 // 設計中心線（viewBox 0 0 481 1073）：stub 垂直段 + 曲線段。
 // 曲線段只含 C / L，座標嚴格為 x,y 交替、且以 x 起始（供 shift() 整體平移）。
@@ -91,12 +94,14 @@ function build() {
   place(st ? st.progress : 0);
 }
 
-// 依進度 p（0..1）把 core 定位到驅動線上的點，並轉到該處的路徑切線方向
-// （雲霄飛車感）。切線由前後各取 1px 的鄰近點連線求得，兩端皆穩定（不會因 eps=0 歸零）。
-function place(p: number) {
+// 依 raw 捲動進度把 core 定位到驅動線上的點，並轉到該處的路徑切線方向（雲霄飛車感）。
+// 先過 easeMove（MOVE_EASE 速度曲線）→ 得 path 進度 p，再定位；切線由前後各取 1px 的鄰近點
+// 連線求得，兩端皆穩定（不會因 eps=0 歸零）。p 同時寫回 path 軌，故 stage 判定與定位一致。
+function place(rawP: number) {
   const core = props.coreEl;
   const motion = motionEl.value;
   if (!core || !motion || !motionLen) return;
+  const p = easeMove(rawP); // 套用移動速度曲線
   const len = p * motionLen;
   const pt = motion.getPointAtLength(len);
   const d = 1; // 取樣間距（px）
@@ -104,7 +109,7 @@ function place(p: number) {
   const ahead = motion.getPointAtLength(Math.min(motionLen, len + d));
   const angle = (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
   gsap.set(core, { x: pt.x, y: pt.y, rotation: angle });
-  setProgress(p);
+  setPathProgress(p);
 }
 
 function init() {
@@ -118,7 +123,9 @@ function init() {
   st = ScrollTrigger.create({
     trigger: props.sectionEl,
     start: 'top top',
-    end: 'bottom bottom',
+    // 尾端扣掉 Hero pin 的 30vh（＝ pinST 的 end 距離）：core 於「進入 pin 的那一刻」剛好到達
+    // 斜槓（progress=1），pin 期間不再前進 → core 穩定停在斜槓。兩處 30vh 需保持一致。
+    end: () => `bottom bottom-=${window.innerHeight * 0.3}`,
     scrub: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => place(self.progress),
@@ -163,7 +170,8 @@ onBeforeUnmount(() => {
 <style lang="scss" scoped>
 .sec1__core-path {
   position: absolute;
-  inset: 0;
+  // inset: 0;
+  top: 0;
   width: 100%;
   height: 100%;
   overflow: visible; // path 座標超出 svg box（引段往上到 hero）仍需可見

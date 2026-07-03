@@ -21,9 +21,13 @@ useSeoMeta({
 
 <template>
   <div>
-    <!-- 正式開發從這裡開始 -->
+    <!-- 01 -->
     <Hero />
+
+    <!-- 02 -->
     <Forum />
+
+    <!-- 03 -->
     <Agenda />
 
     <!-- Yumi  -->

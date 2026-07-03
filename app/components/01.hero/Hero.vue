@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // Section 1：hero / intro / date
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section1.json';
 import { useHeroVideo } from '~/composables/useHeroVideo';
 
@@ -7,16 +9,24 @@ import { useHeroVideo } from '~/composables/useHeroVideo';
 //   sec1Ref      — 座標範圍 / ScrollTrigger trigger
 //   coreRef      — orange core 元件（曝露 root el 供 GSAP 驅動）
 //   dateTitleRef — date 大標（曲線錨定原點）
+//   dateRef      — date 整組（pin 的 trigger：決定「何時」釘住）
+//   innerRef     — 含 core / path / date 的整組（pin 目標：讓三者一起 fixed、不脫節）
 const sec1Ref = ref<HTMLElement | null>(null);
 const coreRef = ref<{ root: HTMLElement | null } | null>(null);
 const dateTitleRef = ref<HTMLElement | null>(null);
+const dateRef = ref<HTMLElement | null>(null);
+const innerRef = ref<HTMLElement | null>(null);
+
+// hero → section 2 轉場（HeroTransition）：done = 已捲過 pin（轉場層隱藏）。
+const transitionDone = ref(false);
 
 // Core 元件曝露的 root el，交給 HeroCorePath 以 GSAP 驅動。
 const coreEl = computed(() => coreRef.value?.root ?? null);
 
-// core 沿線移動進度衍生的階段：全域共享（HeroCorePath 寫入 progress，此處讀 stage）。
-// 門檻與對應視覺見 useCoreProgress / Core.vue。
-const { stage: coreStage } = useCoreProgress();
+// core 階段模型（stage 1..6）＋ 各段 local progress：全域共享（單一來源）。
+//   - HeroCorePath 寫 path 軌（stage 1–3）；本元件的 pinST 寫 pin 軌（stage 4–6，見下 setPinProgress）。
+//   - stage / stageProgress 驅動 Core（變長 / 變色）與 HeroTransition（星空放大）。門檻見 useCoreProgress。
+const { stage, stageProgress, setPinProgress } = useCoreProgress();
 
 // LoadingHero 蓋在最上層，等 hero 影片可播放後才收尾並淡出移除。
 const loaderDone = ref(false);
@@ -35,6 +45,9 @@ const { state: heroState, isGone, shouldLockScroll } = useHeroVideo();
 
 watch(heroState, applyScrollLock);
 
+// inner 滑到底後把整組釘住（pin ＝ position:fixed）並延展 100vh 捲動深度的 ScrollTrigger。
+let pinST: ScrollTrigger | null = null;
+
 onMounted(() => {
   videoReady.value = true;
   // hero 影片體驗一律從頂端開始：停用瀏覽器捲動位置還原，
@@ -44,10 +57,40 @@ onMounted(() => {
   // outro/gone 才解鎖。LoadingHero 不再自行改 body.overflow —— 否則它卸載時
   // 先解鎖、本元件下一 tick 才重新上鎖，中間會出現「瞬間可捲動」的破口。
   applyScrollLock();
+
+  // date 整組底緣（含 padding-bottom: 30vh）抵達視窗底時，把 inner（core / path / date）整組
+  // 一起 pin 住並吃掉 30vh 捲動距離。trigger 用 date 決定「何時」；pin 用 inner 讓三者一起 fixed
+  // → core / path 不會脫離斜槓（解決先前的脫節問題）。
+  if (dateRef.value && innerRef.value) {
+    gsap.registerPlugin(ScrollTrigger);
+    pinST = ScrollTrigger.create({
+      trigger: dateRef.value,
+      start: 'bottom bottom', // date 底緣（含 padding-bottom）抵達視窗底 → 釘住
+      end: () => `+=${window.innerHeight * 0.3}`, // 釘住 30vh（＝ padding-bottom 的量）
+      pin: innerRef.value,
+      pinSpacing: true,
+      invalidateOnRefresh: true, // 視窗高變動時重算釘住距離
+      // pin 期間的捲動進度 → pin 軌（stage 4–6）：變色 → 星空放大 → fixed。
+      onUpdate: (self) => {
+        setPinProgress(self.progress);
+      },
+      onLeave: () => {
+        transitionDone.value = true; // 捲過 pin → 進入 section 2，轉場層淡出
+      },
+      onEnterBack: () => {
+        transitionDone.value = false; // 捲回 pin → 重新顯示轉場層
+      },
+      onLeaveBack: () => {
+        setPinProgress(0); // 回到 pin 之前 → 退回 stage 1–3（path 軌）
+      },
+    });
+  }
 });
 
 onBeforeUnmount(() => {
   document.body.style.overflow = '';
+  pinST?.kill();
+  pinST = null;
 });
 
 // main / loop 期間鎖住 body 捲動；其餘（outro / gone）解鎖。
@@ -65,80 +108,100 @@ function applyScrollLock() {
 
 <template>
   <section ref="sec1Ref" class="sec1">
-    <!-- 載入層淡出移除後，再確認一次捲動鎖狀態（多半仍為 main → 維持上鎖；若載入期間
-         已被切到 outro/gone，watch 也已處理）。因 LoadingHero 不再碰 body.overflow，無需
-         nextTick 等它卸載。 -->
-    <Transition name="loader-fade" @after-leave="applyScrollLock">
-      <LoadingHero
-        v-if="!loaderDone"
-        :duration="2"
-        :ready="videoReady"
-        @done="loaderDone = true"
-      />
-    </Transition>
-
-    <!-- hero：第一屏影片區塊（已抽為子元件 01.hero/HeroVideo.vue） -->
-    <HeroVideo />
-
-    <!--
-      orange core：影片結束後於第一屏（影片區塊）正中央淡入 —— 這是 core 的起點。
-      位置由 HeroCorePath 以 GSAP 驅動（沿驅動線移動）；此處只保留外觀與淡入。
-    -->
-    <Core ref="coreRef" :stage="coreStage" :visible="isGone" />
-
-    <!--
-      core 移動路徑 overlay（section 級、1:1 px）：可見灰線 + 不可見驅動線。
-      需要 .sec1（座標範圍 / trigger）、core（被驅動）、date 大標（錨定原點）三個元素。
-    -->
-    <HeroCorePath
-      :section-el="sec1Ref"
-      :core-el="coreEl"
-      :anchor-el="dateTitleRef"
-    />
-
     <!-- core 沿線移動進度（fixed 右下角，直接讀 useCoreProgress）。
          <DevOnly>：production build 會整個編譯掉、不進 bundle。 -->
     <DevOnly>
       <CoreProgress />
     </DevOnly>
 
-    <!-- intro → date：orange core 貫穿的內容場景 -->
-    <div class="sec1__scene">
-      <!-- intro 引言：置中窄欄，往下滑才進入視窗 -->
-      <div class="sec1__intro">
-        <p class="sec1__intro-body">{{ str.intro.body }}</p>
-      </div>
+    <!-- 視覺內容整組包一層 inner：core / path / date 的絕對定位原點，也是 pin 目標。
+         pin 時整組一起 fixed → core / path 不脫離斜槓（見 script 的 pinST）。 -->
+    <div ref="innerRef" class="sec1__inner">
+      <!-- 載入層淡出移除後，再確認一次捲動鎖狀態（多半仍為 main → 維持上鎖；若載入期間
+         已被切到 outro/gone，watch 也已處理）。因 LoadingHero 不再碰 body.overflow，無需
+         nextTick 等它卸載。 -->
+      <Transition name="loader-fade" @after-leave="applyScrollLock">
+        <LoadingHero
+          v-if="!loaderDone"
+          :duration="2"
+          :ready="videoReady"
+          @done="loaderDone = true"
+        />
+      </Transition>
 
-      <!-- date 論壇資訊：整組以絕對定位對齊設計稿 501:21162 相對位置（RWD 之後再處理）。
+      <!-- hero：第一屏影片區塊（已抽為子元件 01.hero/HeroVideo.vue） -->
+      <HeroVideo />
+
+      <!--
+        orange core：影片結束後於第一屏（影片區塊）正中央淡入 —— 這是 core 的起點。
+        位置由 HeroCorePath 以 GSAP 驅動（沿驅動線移動）；此處只保留外觀與淡入。
+      -->
+      <Core
+        ref="coreRef"
+        :stage="stage"
+        :stage-progress="stageProgress"
+        :visible="isGone"
+      />
+
+      <!--
+        core 移動路徑 overlay（section 級、1:1 px）：可見灰線 + 不可見驅動線。
+        需要 .sec1（座標範圍 / trigger）、core（被驅動）、date 大標（錨定原點）三個元素。
+      -->
+      <HeroCorePath
+        :section-el="sec1Ref"
+        :core-el="coreEl"
+        :anchor-el="dateTitleRef"
+      />
+
+      <!-- intro → date：orange core 貫穿的內容場景 -->
+      <div class="sec1__scene">
+        <!-- intro 引言：置中窄欄，往下滑才進入視窗 -->
+        <div class="sec1__intro">
+          <p class="sec1__intro-body">{{ str.intro.body }}</p>
+        </div>
+
+        <!-- date 論壇資訊：整組以絕對定位對齊設計稿 501:21162 相對位置（RWD 之後再處理）。
            core 路徑已抽到 section 級 overlay，尾端仍以此區大標為錨點對齊。 -->
-      <div class="sec1__date">
-        <h2 ref="dateTitleRef" class="sec1__date-title">
-          {{ str.date.title }}
-        </h2>
-        <p class="sec1__date-desc">{{ str.date.desc }}</p>
+        <div ref="dateRef" class="sec1__date">
+          <h2 ref="dateTitleRef" class="sec1__date-title">
+            {{ str.date.title }}
+          </h2>
+          <p class="sec1__date-desc">{{ str.date.desc }}</p>
 
-        <!-- 大型日期：階梯狀排列 2026 / 09 / 16 -->
-        <p class="sec1__date-when">
-          <span class="visually-hidden">{{ str.date.dateLabel }}：</span>
-          <span class="sec1__date-num">{{ str.date.year }}</span>
-          <span class="sec1__date-num sec1__date-num--m">{{
-            str.date.month
-          }}</span>
-          <span class="sec1__date-num sec1__date-num--d">
-            {{ str.date.day }}
-            <!-- 星期（三）：置於圓框內，緊接「16」右下（對應設計 683:51624） -->
-            <span class="sec1__date-mark">{{ str.date.weekDay }}</span>
-          </span>
-        </p>
+          <!-- 大型日期：階梯狀排列 2026 / 09 / 16 -->
+          <p class="sec1__date-when">
+            <span class="visually-hidden">{{ str.date.dateLabel }}：</span>
+            <span class="sec1__date-num">{{ str.date.year }}</span>
+            <span class="sec1__date-num sec1__date-num--m">{{
+              str.date.month
+            }}</span>
+            <span class="sec1__date-num sec1__date-num--d">
+              {{ str.date.day }}
+              <!-- 星期（三）：置於圓框內，緊接「16」右下（對應設計 683:51624） -->
+              <span class="sec1__date-mark">{{ str.date.weekDay }}</span>
+            </span>
+          </p>
 
-        <!-- 地點與時間 -->
-        <p class="sec1__date-where">
-          <span class="visually-hidden">{{ str.date.locationLabel }}：</span>
-          <span class="sec1__date-venue">{{ str.date.venue }}</span>
-          <span class="sec1__date-time">{{ str.date.time }}</span>
-        </p>
+          <!-- 地點與時間 -->
+          <p class="sec1__date-where">
+            <span class="visually-hidden">{{ str.date.locationLabel }}：</span>
+            <span class="sec1__date-venue">{{ str.date.venue }}</span>
+            <span class="sec1__date-time">{{ str.date.time }}</span>
+          </p>
+        </div>
       </div>
     </div>
+
+    <!--
+      hero → section 2 轉場遮罩（fixed 滿版）：stage 5 起由 stageProgress 撐大，
+      從斜槓處 core 線沿斜角長成對角遮罩、透出 section 2 星空，stage 6 蓋滿視窗。
+    -->
+    <!-- <HeroTransition
+      :stage="stage"
+      :stage-progress="stageProgress"
+      :core-el="coreEl"
+      :done="transitionDone"
+    /> -->
   </section>
 </template>
 
