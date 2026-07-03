@@ -8,7 +8,7 @@
     stage 5–6：維持黑線（放大交給 HeroTransition 的星空遮罩承接）
 -->
 <script setup lang="ts">
-import type { CoreStage } from '~/composables/useCoreProgress';
+import type { CoreStage } from '~/composables/useHeroCoreProgress';
 
 const props = defineProps<{
   /** 目前 stage（1..6，見 useCoreProgress） */

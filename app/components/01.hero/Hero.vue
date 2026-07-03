@@ -25,8 +25,8 @@ const coreEl = computed(() => coreRef.value?.root ?? null);
 
 // core 階段模型（stage 1..6）＋ 各段 local progress：全域共享（單一來源）。
 //   - HeroCorePath 寫 path 軌（stage 1–3）；本元件的 pinST 寫 pin 軌（stage 4–6，見下 setPinProgress）。
-//   - stage / stageProgress 驅動 Core（變長 / 變色）與 HeroTransition（星空放大）。門檻見 useCoreProgress。
-const { stage, stageProgress, setPinProgress } = useCoreProgress();
+//   - stage / stageProgress 驅動 Core（變長 / 變色）與 HeroTransition（星空放大）。門檻見 useHeroCoreProgress。
+const { stage, stageProgress, setPinProgress } = useHeroCoreProgress();
 
 // LoadingHero 蓋在最上層，等 hero 影片可播放後才收尾並淡出移除。
 const loaderDone = ref(false);
@@ -45,7 +45,7 @@ const { state: heroState, isGone, shouldLockScroll } = useHeroVideo();
 
 watch(heroState, applyScrollLock);
 
-// inner 滑到底後把整組釘住（pin ＝ position:fixed）並延展 100vh 捲動深度的 ScrollTrigger。
+// inner 滑到底後把整組釘住（pin ＝ position:fixed）並延展 PIN_VH 捲動深度的 ScrollTrigger。
 let pinST: ScrollTrigger | null = null;
 
 onMounted(() => {
@@ -58,15 +58,15 @@ onMounted(() => {
   // 先解鎖、本元件下一 tick 才重新上鎖，中間會出現「瞬間可捲動」的破口。
   applyScrollLock();
 
-  // date 整組底緣（含 padding-bottom: 30vh）抵達視窗底時，把 inner（core / path / date）整組
-  // 一起 pin 住並吃掉 30vh 捲動距離。trigger 用 date 決定「何時」；pin 用 inner 讓三者一起 fixed
+  // date 整組底緣（含 padding-bottom）抵達視窗底時，把 inner（core / path / date）整組
+  // 一起 pin 住並吃掉 PIN_VH 捲動距離。trigger 用 date 決定「何時」；pin 用 inner 讓三者一起 fixed
   // → core / path 不會脫離斜槓（解決先前的脫節問題）。
   if (dateRef.value && innerRef.value) {
     gsap.registerPlugin(ScrollTrigger);
     pinST = ScrollTrigger.create({
       trigger: dateRef.value,
       start: 'bottom bottom', // date 底緣（含 padding-bottom）抵達視窗底 → 釘住
-      end: () => `+=${window.innerHeight * 0.3}`, // 釘住 30vh（＝ padding-bottom 的量）
+      end: () => `+=${window.innerHeight * PIN_VH}`, // 釘住 PIN_VH（見 useHeroCoreProgress config）
       pin: innerRef.value,
       pinSpacing: true,
       invalidateOnRefresh: true, // 視窗高變動時重算釘住距離
@@ -108,7 +108,7 @@ function applyScrollLock() {
 
 <template>
   <section ref="sec1Ref" class="sec1">
-    <!-- core 沿線移動進度（fixed 右下角，直接讀 useCoreProgress）。
+    <!-- core 沿線移動進度（fixed 右下角，直接讀 useHeroCoreProgress）。
          <DevOnly>：production build 會整個編譯掉、不進 bundle。 -->
     <DevOnly>
       <CoreProgress />

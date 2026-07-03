@@ -4,7 +4,8 @@
   正式環境整個元件不 render，故不需外部傳 prop、也不涉入任何行為驅動。
 -->
 <script setup lang="ts">
-const { stage, stageProgress, pathProgress, pinProgress } = useCoreProgress();
+const { stage, stageProgress, pathProgress, pinProgress } =
+  useHeroCoreProgress();
 
 const pct = (v: number) => Math.round(v * 100);
 </script>

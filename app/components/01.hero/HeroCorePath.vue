@@ -25,9 +25,9 @@ const props = defineProps<{
 }>();
 
 // core 沿線移動進度（0..1）→ 寫入全域共享 path 軌（stage 1–3 來源），供顯示與效果讀取。
-const { setPathProgress } = useCoreProgress();
+const { setPathProgress } = useHeroCoreProgress();
 
-// 移動速度曲線：把 raw 捲動進度重新映射成 path 進度（見 useCoreProgress 的 MOVE_EASE）。
+// 移動速度曲線：把 raw 捲動進度重新映射成 path 進度（見 useHeroCoreProgress 的 MOVE_EASE）。
 const easeMove = gsap.parseEase(MOVE_EASE) ?? ((v: number) => v);
 
 // 設計中心線（viewBox 0 0 481 1073）：stub 垂直段 + 曲線段。
@@ -107,7 +107,8 @@ function place(rawP: number) {
   const d = 1; // 取樣間距（px）
   const behind = motion.getPointAtLength(Math.max(0, len - d));
   const ahead = motion.getPointAtLength(Math.min(motionLen, len + d));
-  const angle = (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
+  const angle =
+    (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
   gsap.set(core, { x: pt.x, y: pt.y, rotation: angle });
   setPathProgress(p);
 }
@@ -123,9 +124,9 @@ function init() {
   st = ScrollTrigger.create({
     trigger: props.sectionEl,
     start: 'top top',
-    // 尾端扣掉 Hero pin 的 30vh（＝ pinST 的 end 距離）：core 於「進入 pin 的那一刻」剛好到達
-    // 斜槓（progress=1），pin 期間不再前進 → core 穩定停在斜槓。兩處 30vh 需保持一致。
-    end: () => `bottom bottom-=${window.innerHeight * 0.3}`,
+    // 尾端扣掉 Hero pin 的釘住距離（PIN_VH）：core 於「進入 pin 的那一刻」剛好到達斜槓
+    // （progress=1），pin 期間不再前進 → core 穩定停在斜槓。與 Hero pinST 共用同一個 PIN_VH。
+    end: () => `bottom bottom-=${window.innerHeight * PIN_VH}`,
     scrub: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => place(self.progress),
@@ -161,7 +162,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <svg class="sec1__core-path" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <svg
+    class="sec1__core-path"
+    aria-hidden="true"
+    xmlns="http://www.w3.org/2000/svg"
+  >
     <path ref="lineEl" class="sec1__core-path-line" />
     <path ref="motionEl" fill="none" stroke="none" />
   </svg>

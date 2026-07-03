@@ -2,7 +2,7 @@
 //
 // 兩條 progress 軌（各自 0..1，互不干擾；交界＝斜槓＝pin 起點，屬結構性、不當可調數字）：
 //   - path：core 沿驅動線移動的進度（HeroCorePath 每幀 scrub 寫入）→ stage 1–3。
-//   - pin ：inner 釘住後那 100vh 的進度（Hero 的 pinST scrub 寫入）  → stage 4–6。
+//   - pin ：inner 釘住後（長度＝PIN_VH）的進度（Hero 的 pinST scrub 寫入）→ stage 4–6。
 //
 // 依下方 STAGE_STOPS 合成「目前 stage」與「該 stage 內的 local progress（stageProgress, 0..1）」，
 // 各元件只需拿 stageProgress 漸進自己的視覺：stage3 變長 / stage4 變色 / stage5 星空放大。
@@ -35,6 +35,14 @@ export const STAGE_STOPS = {
 // 註：ease 同時作用於「定位」與「stage 判定」，故 stage 門檻仍對齊路徑幾何位置（不會錯位）。
 export const MOVE_EASE = 'none';
 
+// ── pin 釘住距離 config（× 視窗高）─────────────────────────────────
+// stage 4–6 的捲動距離：core 停在斜槓後，變色 → 星空放大 → fixed 都在這段內完成。
+//   - Hero.vue 的 pinST：end = `+=${innerHeight * PIN_VH}`（釘住多久）。
+//   - HeroCorePath 的 path scrub：end = `bottom bottom-=${innerHeight * PIN_VH}`
+//     （尾端扣掉同樣的量，讓 core 剛好在 pin 起點抵達斜槓）。
+// 兩處共用此值 → 必須一致，否則 core 會在 pin 期間繼續移動、脫離斜槓。
+export const PIN_VH = 0.3;
+
 type Stop = { until: number; stage: number };
 
 // 依 stops 找出 p（0..1）落在哪個 stage，並回傳該 stage 內的 local progress（0..1）。
@@ -56,7 +64,7 @@ function resolveStage(stops: readonly Stop[], p: number) {
 
 const clamp01 = (p: number) => (p < 0 ? 0 : p > 1 ? 1 : p);
 
-export function useCoreProgress() {
+export function useHeroCoreProgress() {
   // useState → SSR 安全的跨元件共享（同 key 全站一份）
   const pathProgress = useState<number>('core-path-progress', () => 0);
   const pinProgress = useState<number>('core-pin-progress', () => 0);

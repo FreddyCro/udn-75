@@ -7,7 +7,7 @@
   遮罩形狀直接讀 core 元素的螢幕位置與旋轉角，故與橘色 core 線無縫接上（橘→黑→放大）。
 -->
 <script setup lang="ts">
-import type { CoreStage } from '~/composables/useCoreProgress';
+import type { CoreStage } from '~/composables/useHeroCoreProgress';
 
 const props = defineProps<{
   /** 目前 stage（1..6）：只在 stage 5（放大）/ 6（已蓋滿）現身 */

@@ -45,7 +45,8 @@ $gray: #686868;
     // content-box：讓 padding-bottom 在 963px 之外「額外」加高（border-box 會把 padding 吃進內容）。
     box-sizing: content-box;
     height: 963px; // 大標頂 → path／日期底（path 下緣約 963）
-    // date 下方多撐 30vh：pin 期間吃掉的捲動距離（露出 date 下面的空間 / 給星空轉場 scrub）。
+    // date 內容下方預留的空白：決定 pin 起點時（start: 'bottom bottom'）日期停在畫面的高度
+    // ——padding 越大，日期停得越高、下方留白越多。與 pin 釘住距離（PIN_VH）無關，是獨立的「取景」值。
     padding-bottom: 30vh;
     margin-top: clamp(120px, 22vh, 200px);
   }
