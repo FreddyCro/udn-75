@@ -186,7 +186,7 @@ onMounted(() => {
     counterRef.value.style.color = props.textColor;
     counterRef.value.style.fontSize = props.counterFontSize;
   }
-  // 捲動鎖統一由父層 Section1 擁有（載入期間即已上鎖），本元件不碰 body.overflow，
+  // 捲動鎖統一由父層 Hero 擁有（載入期間即已上鎖），本元件不碰 body.overflow，
   // 避免卸載解鎖與父層重新上鎖之間出現「瞬間可捲動」的破口。
   computeGrid();
   nextTick(() => start());

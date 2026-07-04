@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // hero 影片狀態切換列（切 main/loop/outro/gone + SKIP）。
 // dev=false（預設）時完全不渲染；樣式精簡，production 負擔極小。
-import { useHeroVideo, HERO_STATES, type HeroState } from '~/composables/useHeroVideo';
+import { HERO_STATES, type HeroState } from '~/composables/useHeroVideo';
 
 defineProps({ dev: { type: Boolean, default: false } });
 

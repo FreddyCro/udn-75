@@ -5,13 +5,14 @@
     stage 1–2：點（移動中）
     stage 3  ：point → line（隨 stageProgress 漸進變長）
     stage 4  ：橘 → 黑（隨 stageProgress 漸進變色；黑＝section 2 星空底色）
-    stage 5–6：維持黑線（放大交給 HeroTransition 的星空遮罩承接）
+    stage 5  ：邊放大邊淡出，與星空淡入同步交融（CROSSFADE 控制快慢）
+    stage 6  ：已隱去，放大後續由 HeroTransition 星空遮罩承接
 -->
 <script setup lang="ts">
 import { CROSSFADE, type CoreStage } from '~/composables/useHeroCoreProgress';
 
 const props = defineProps<{
-  /** 目前 stage（1..6，見 useCoreProgress） */
+  /** 目前 stage（1..6，見 useHeroCoreProgress） */
   stage: CoreStage;
   /** 該 stage 內的 local progress（0..1）→ 漸進變長 / 變色 */
   stageProgress: number;

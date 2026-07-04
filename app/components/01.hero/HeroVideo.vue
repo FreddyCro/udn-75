@@ -2,7 +2,6 @@
 // hero：第一屏影片區塊（含 SEO 文字、下滑提示、dev 狀態切換列）。
 // 影片四階段狀態自 useHeroVideo 全域共享；此處只讀狀態驅動外觀。
 import str from '@/locales/section1.json';
-import { useHeroVideo } from '~/composables/useHeroVideo';
 
 const { state: heroState, isGone } = useHeroVideo();
 </script>
@@ -13,7 +12,7 @@ const { state: heroState, isGone } = useHeroVideo();
     <!-- video placeholder（影片尚未提供，暫用 CSS 動畫模擬動態影像）；
          退場消失（gone）時淡出，露出 hero 白底 -->
     <div
-      class="sec1__hero-video w-full h-screen flex justify-center items-center flex-col"
+      class="sec1__hero-video flex justify-center items-center flex-col"
       :class="{ 'is-ended': isGone }"
       aria-hidden="true"
     >

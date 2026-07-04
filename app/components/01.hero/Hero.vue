@@ -3,7 +3,6 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section1.json';
-import { useHeroVideo } from '~/composables/useHeroVideo';
 
 // core path overlay 需要的元素 ref：
 //   sec1Ref      — 座標範圍 / ScrollTrigger trigger
@@ -39,10 +38,8 @@ const loaderDone = ref(false);
 //       @canplaythrough="videoReady = true"（並視需要 preload）。
 const videoReady = ref(false);
 
-// hero 影片四階段狀態改為全域共享（見 composables/useHeroVideo）：
-//   main 主要內容 / loop 循環段 / outro 退場段 / gone 退場消失（白底 + core）
-// main / loop 期間鎖住頁面捲動（body overflow hidden）；outro 起解鎖。
-// 狀態切換 UI 已抽到 <HeroVideoControls>（dev 用）；此處只讀狀態驅動畫面。
+// hero 影片四階段（main/loop/outro/gone）全域共享，定義見 composables/useHeroVideo。
+// 此處只讀狀態驅動畫面與捲動鎖：main / loop 鎖捲動、outro 起解鎖。
 const { state: heroState, isGone, shouldLockScroll } = useHeroVideo();
 
 watch(heroState, applyScrollLock);
@@ -112,13 +109,9 @@ function applyScrollLock() {
       <CoreProgress />
     </DevOnly>
 
-    <!-- 載入層：滿版 fixed overlay，必須放在 .sec1__inner「外面」。
-         pinST 會在 .sec1__inner 寫入 transform（即使是 translate(0,0) 也算非 none），
-         使其成為 fixed 子孫的 containing block —— 若把 loader 放進 inner，它會改以
-         inner（而非視窗）為定位/尺寸基準而跑位。與 HeroTransition 同樣掛在 .sec1 下。
-         淡出移除後 @after-leave 再確認一次捲動鎖狀態（多半仍為 main → 維持上鎖；若載入
-         期間已被切到 outro/gone，watch 也已處理）。因 LoadingHero 不碰 body.overflow，
-         無需 nextTick 等它卸載。 -->
+    <!-- 載入層：必須掛在 .sec1__inner「外面」——pinST 會在 inner 寫入 transform，使其成為
+         fixed 子孫的 containing block，loader 放進去會改以 inner 為基準而跑位（同 HeroTransition）。
+         @after-leave 再確認捲動鎖；LoadingHero 不碰 body.overflow，故無需等它卸載。 -->
     <Transition name="loader-fade" @after-leave="applyScrollLock">
       <LoadingHero
         v-if="!loaderDone"
