@@ -15,3 +15,9 @@
 ## Figma
 
 讀取 Figma 時，優先使用 Figma MCP（`mcp__claude_ai_Figma__*` 工具），避免直接呼叫 Figma API。
+
+## SCSS
+
+1. 優先使用 BEM（`block__element--modifier`）命名。
+2. RWD 寫在 BEM element 內部，用 `rwd-xxx` mixin 包住，不要按斷點把整份 scss 切成多區。同一個 class 只定義一次，其各斷點樣式集中在同一處。
+3. **BEM 最多一層 element**：巢狀結構用連字號延伸，不可疊兩個。
