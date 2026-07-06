@@ -8,9 +8,9 @@ const { agenda } = str;
 
 // hero 星空蓋滿後，本區用第二段 pin（forum pin）scrub 驅動 SymbolFace 序列：
 //   預設 disperse → face（集合）→ converge（匯聚成點）→ enter（越過門檻 → transitionDone、星空退場揭開議程）。
-// 門檻與捲動距離見 useHeroCoreProgress 的 SYMBOL_STOPS / SYMBOL_VH。因為 scrub，往回捲會自動倒退。
+// 門檻與捲動距離見 ~/utils/orange-core-config 的 SYMBOL_STOPS / SYMBOL_VH。因為 scrub，往回捲會自動倒退。
 const { transitionDone, symbolMode, symbolTarget, setSymbolProgress } =
-  useHeroCoreProgress();
+  useOrangeCoreProgress();
 
 // forum pin：sec2 頂端貼齊視窗頂時釘住，吃掉 SYMBOL_VH 捲動距離 → 進度寫入 symbolProgress。
 // enter 後 pin 於尾端解除 → 議程從頂端接著捲入。

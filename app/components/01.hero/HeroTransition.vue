@@ -7,7 +7,7 @@
   遮罩形狀直接讀 core 元素的螢幕位置與旋轉角，故與橘色 core 線無縫接上（橘→黑→放大）。
 -->
 <script setup lang="ts">
-import { CROSSFADE, type CoreStage } from '~/composables/useHeroCoreProgress';
+import type { CoreStage } from '~/composables/useOrangeCoreProgress';
 
 const props = defineProps<{
   /** 目前 stage（1..6）：只在 stage 5（放大）/ 6（已蓋滿）現身 */
@@ -50,10 +50,10 @@ function readCore() {
   return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, angle };
 }
 
-// core 於 stage 3 拉長後那條「線」的半尺寸（＝遮罩起點）：對齊 Core.vue 的 LINE_SCALE_X × 24 / 2。
-// 遮罩於 stage 5 起始（revealP≈0）時就等於這條線，故看起來是「（已變黑的）線 → 撐大」的同一個東西。
-const LINE_HALF_LEN = 120; // 24 × scaleX(10) / 2
-const LINE_HALF_THICK = 12; // 24 × scaleY(1) / 2
+// core 於 stage 3 拉長後那條「線」的半尺寸（＝遮罩起點）＝ TRANSITION（由 ~/utils/orange-core-config 的
+// CORE 推導，永遠對齊那條線）。遮罩於 stage 5 起始（revealP≈0）時就等於這條線，
+// 故看起來是「（已變黑的）線 → 撐大」的同一個東西。
+const { lineHalfLen, lineHalfThick } = TRANSITION;
 
 // 依進度計算對角平行四邊形 clip-path（field 為 fixed 滿版 → 座標即 viewport px）。
 // 長度與半寬都從 core 線的尺寸「長出來」，一路撐到覆蓋整個視窗對角。
@@ -64,8 +64,8 @@ function computeClip(p: number) {
   const nx = -dy; // 斜角的法線方向（半寬沿此增長）
   const ny = dx;
   const diag = Math.hypot(window.innerWidth, window.innerHeight);
-  const L = LINE_HALF_LEN + (diag * 1.5 - LINE_HALF_LEN) * p; // 沿斜角半長：線長 → 拉出視窗外
-  const w = LINE_HALF_THICK + (diag - LINE_HALF_THICK) * p; // 垂直半寬：線厚 → 對角長（蓋滿）
+  const L = lineHalfLen + (diag * 1.5 - lineHalfLen) * p; // 沿斜角半長：線長 → 拉出視窗外
+  const w = lineHalfThick + (diag - lineHalfThick) * p; // 垂直半寬：線厚 → 對角長（蓋滿）
   const pts = [
     [cx + dx * L + nx * w, cy + dy * L + ny * w],
     [cx + dx * L - nx * w, cy + dy * L - ny * w],

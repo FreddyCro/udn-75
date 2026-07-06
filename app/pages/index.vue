@@ -2,7 +2,7 @@
 import meta from '~/locales/meta.json';
 
 // hero → section 2 轉場的離場狀態，提升到 page 層由此協調（Hero 寫入、此處/Forum 可覆寫）。
-const { transitionDone } = useHeroCoreProgress();
+const { transitionDone } = useOrangeCoreProgress();
 
 const config = useRuntimeConfig();
 const APP_MODE = config.public.APP_MODE;

@@ -25,21 +25,14 @@ const props = defineProps<{
 }>();
 
 // core 沿線移動進度（0..1）→ 寫入全域共享 path 軌（stage 1–3 來源），供顯示與效果讀取。
-const { setPathProgress } = useHeroCoreProgress();
+const { setPathProgress } = useOrangeCoreProgress();
 
-// 移動速度曲線：把 raw 捲動進度重新映射成 path 進度（見 useHeroCoreProgress 的 MOVE_EASE）。
+// 移動速度曲線：把 raw 捲動進度重新映射成 path 進度（見 ~/utils/orange-core-config 的 MOVE_EASE）。
 const easeMove = gsap.parseEase(MOVE_EASE) ?? ((v: number) => v);
 
-// 設計中心線（viewBox 0 0 481 1073）：stub 垂直段 + 曲線段。
-// 曲線段只含 C / L，座標嚴格為 x,y 交替、且以 x 起始（供 shift() 整體平移）。
-const STUB = { x: 59.3574, bottom: 176.115 };
-const CURVE =
-  'C59.3574 176.115 151.779 50.008 276.663 126.658' +
-  'C401.548 203.309 458.899 505.284 478.018 665.86' +
-  'C478.018 665.86 282.352 448.5 156.411 749.963' +
-  'L108.852 848.738L1.35156 1072';
-// svg(0,0) 相對「date 大標左上角」的位移（沿用驗證過的設計定位：left 525 / top -112）。
-const ANCHOR_OFFSET = { x: 525, y: -112 };
+// 設計中心線幾何（stub 垂直段 / 曲線段 / 錨定位移）集中在 ~/utils/orange-core-config 的 PATH。
+// 沿用原本的 STUB / CURVE / ANCHOR_OFFSET 命名，故下方 build() 內文不動。
+const { stub: STUB, curve: CURVE, anchorOffset: ANCHOR_OFFSET } = PATH;
 
 const lineEl = ref<SVGPathElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);

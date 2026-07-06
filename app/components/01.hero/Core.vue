@@ -9,10 +9,10 @@
     stage 6  ：已隱去，放大後續由 HeroTransition 星空遮罩承接
 -->
 <script setup lang="ts">
-import { CROSSFADE, type CoreStage } from '~/composables/useHeroCoreProgress';
+import type { CoreStage } from '~/composables/useOrangeCoreProgress';
 
 const props = defineProps<{
-  /** 目前 stage（1..6，見 useHeroCoreProgress） */
+  /** 目前 stage（1..6，見 useOrangeCoreProgress） */
   stage: CoreStage;
   /** 該 stage 內的 local progress（0..1）→ 漸進變長 / 變色 */
   stageProgress: number;
@@ -24,11 +24,8 @@ const props = defineProps<{
 const root = ref<HTMLElement | null>(null);
 defineExpose({ root });
 
-// ── 視覺參數（config）──
-const LINE_SCALE_X = 10; // stage 3 變長：point(24px) → line(240px)。與 HeroTransition 的 LINE_HALF_* 對齊
-const REVEAL_GROW = 15; // stage 5：接續線後再放大的量（邊放大邊淡出，與星空遮罩交融）
-const ORANGE: [number, number, number] = [255, 127, 0];
-const DARK: [number, number, number] = [10, 28, 43]; // 橘→黑目標（section 2 星空底色）
+// ── 視覺參數：集中在 ~/utils/orange-core-config 的 CORE（dot 形變量與橘→黑顏色）──
+const { lineScaleX, revealGrow, orange, dark } = CORE;
 
 const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
 
@@ -42,27 +39,27 @@ const dotStyle = computed(() => {
   let opacity = 1;
 
   if (s === 3) {
-    scaleX = 1 + (LINE_SCALE_X - 1) * sp; // point → line
+    scaleX = 1 + (lineScaleX - 1) * sp; // point → line
   } else if (s === 4) {
-    scaleX = LINE_SCALE_X; // line（變色階段）
+    scaleX = lineScaleX; // line（變色階段）
   } else if (s === 5) {
     // 放大 + 淡出：接續線繼續長大；淡出與星空淡入同步（CROSSFADE 控制快慢）。
     // CROSSFADE=0 → 星空立即實色接手、core 立即隱去（無 washy）。
-    scaleX = LINE_SCALE_X + REVEAL_GROW * sp;
-    scaleY = 1 + REVEAL_GROW * sp;
+    scaleX = lineScaleX + revealGrow * sp;
+    scaleY = 1 + revealGrow * sp;
     const fade = CROSSFADE <= 0 ? 1 : Math.min(1, sp / CROSSFADE);
     opacity = 1 - fade;
   } else if (s >= 6) {
     // 已完全交棒給星空 → 藏起（維持已放大狀態，避免殘影）
-    scaleX = LINE_SCALE_X + REVEAL_GROW;
-    scaleY = 1 + REVEAL_GROW;
+    scaleX = lineScaleX + revealGrow;
+    scaleY = 1 + revealGrow;
     opacity = 0;
   }
 
   // 變色：stage 4 漸進 橘→黑；stage ≥5 維持黑；stage ≤3 維持橘
-  let c = ORANGE;
-  if (s === 4) c = [mix(ORANGE[0], DARK[0], sp), mix(ORANGE[1], DARK[1], sp), mix(ORANGE[2], DARK[2], sp)];
-  else if (s >= 5) c = DARK;
+  let c = orange;
+  if (s === 4) c = [mix(orange[0], dark[0], sp), mix(orange[1], dark[1], sp), mix(orange[2], dark[2], sp)];
+  else if (s >= 5) c = dark;
 
   return {
     transform: `scaleX(${scaleX}) scaleY(${scaleY})`,

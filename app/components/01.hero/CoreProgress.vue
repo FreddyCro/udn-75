@@ -1,11 +1,11 @@
 <!--
   core 沿線移動進度的除錯顯示（fixed 右下角，僅 dev 環境）。
-  直接讀取全域共享的 useHeroCoreProgress（單一來源），顯示百分比與當前 stage；
+  直接讀取全域共享的 useOrangeCoreProgress（單一來源），顯示百分比與當前 stage；
   正式環境整個元件不 render，故不需外部傳 prop、也不涉入任何行為驅動。
 -->
 <script setup lang="ts">
 const { stage, stageProgress, pathProgress, pinProgress } =
-  useHeroCoreProgress();
+  useOrangeCoreProgress();
 
 const pct = (v: number) => Math.round(v * 100);
 </script>

@@ -1,11 +1,11 @@
 <!--
   forum SymbolFace 序列進度的除錯顯示（fixed 右側，僅 dev 環境）。對應 hero 的 CoreProgress。
-  讀取全域共享的 useHeroCoreProgress：symbolProgress（forum pin scrub 寫入）與解出的目標 mode / enter。
+  讀取全域共享的 useOrangeCoreProgress：symbolProgress（forum pin scrub 寫入）與解出的目標 mode / enter。
   放在 index.vue 的 <DevOnly> 內（不放進 sec2）——sec2 會被 forum pin 釘住，
   fixed 子孫會受 pin 的 containing block 影響而跑位，故提到 page 層。
 -->
 <script setup lang="ts">
-const { symbolProgress, symbolTarget } = useHeroCoreProgress();
+const { symbolProgress, symbolTarget } = useOrangeCoreProgress();
 
 const pct = (v: number) => Math.round(v * 100);
 // 目前狀態：越過 enter 門檻顯示 enter（已揭開議程），否則顯示目標 mode。

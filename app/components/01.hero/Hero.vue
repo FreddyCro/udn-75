@@ -21,12 +21,12 @@ const coreEl = computed(() => coreRef.value?.root ?? null);
 
 // core 階段模型（stage 1..6）＋ 各段 local progress：全域共享（單一來源）。
 //   - HeroCorePath 寫 path 軌（stage 1–3）；本元件的 pinST 寫 pin 軌（stage 4–6，見下 setPinProgress）。
-//   - stage / stageProgress 驅動 Core（變長 / 變色）與 HeroTransition（星空放大）。門檻見 useHeroCoreProgress。
+//   - stage / stageProgress 驅動 Core（變長 / 變色）與 HeroTransition（星空放大）。門檻見 ~/utils/orange-core-config。
 //   - transitionDone：轉場是否已離場（跨元件共享）。本元件的 pinST 寫入；index.vue / Forum 亦可控制。
 const { stage, stageProgress, setPinProgress, transitionDone, symbolMode } =
-  useHeroCoreProgress();
+  useOrangeCoreProgress();
 
-// core 移動速度旋鈕：在 date 之前墊出 MOVE_VH 的捲動距離（見 useHeroCoreProgress 的 MOVE_VH）。
+// core 移動速度旋鈕：在 date 之前墊出 MOVE_VH 的捲動距離（見 ~/utils/orange-core-config 的 MOVE_VH）。
 const moveSpacerHeight = `${MOVE_VH * 100}vh`;
 
 // LoadingHero 蓋在最上層，等 hero 影片可播放後才收尾並淡出移除。
@@ -65,7 +65,7 @@ onMounted(() => {
     pinST = ScrollTrigger.create({
       trigger: dateRef.value,
       start: 'bottom bottom', // date 底緣（含 padding-bottom）抵達視窗底 → 釘住
-      end: () => `+=${window.innerHeight * PIN_VH}`, // 釘住 PIN_VH（見 useHeroCoreProgress config）
+      end: () => `+=${window.innerHeight * PIN_VH}`, // 釘住 PIN_VH（見 ~/utils/orange-core-config）
       pin: innerRef.value,
       pinSpacing: true,
       invalidateOnRefresh: true, // 視窗高變動時重算釘住距離
@@ -103,7 +103,7 @@ function applyScrollLock() {
 
 <template>
   <section ref="sec1Ref" class="sec1">
-    <!-- core 沿線移動進度（fixed 右下角，直接讀 useHeroCoreProgress）。
+    <!-- core 沿線移動進度（fixed 右下角，直接讀 useOrangeCoreProgress）。
          <DevOnly>：production build 會整個編譯掉、不進 bundle。 -->
     <DevOnly>
       <CoreProgress />
