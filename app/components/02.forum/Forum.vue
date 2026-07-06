@@ -9,8 +9,14 @@ const { agenda } = str;
 // hero 星空蓋滿後，本區用第二段 pin（forum pin）scrub 驅動 SymbolFace 序列：
 //   預設 disperse → face（集合）→ converge（匯聚成點）→ enter（越過門檻 → transitionDone、星空退場揭開議程）。
 // 門檻與捲動距離見 ~/utils/orange-core-config 的 SYMBOL_STOPS / SYMBOL_VH。因為 scrub，往回捲會自動倒退。
-const { transitionDone, symbolMode, symbolTarget, setSymbolProgress } =
-  useOrangeCoreProgress();
+const {
+  transitionDone,
+  symbolMode,
+  symbolTarget,
+  setSymbolProgress,
+  forumCoreActive,
+  agendaRevealed,
+} = useOrangeCoreProgress();
 
 // forum pin：sec2 頂端貼齊視窗頂時釘住，吃掉 SYMBOL_VH 捲動距離 → 進度寫入 symbolProgress。
 // enter 後 pin 於尾端解除 → 議程從頂端接著捲入。
@@ -80,7 +86,11 @@ const timeline = agenda.sessions.map((session, i) => ({
 
     <!-- pin 範圍：agenda + recap 才是被 forum pin 釘住的內容；
          DevFaceProgress 刻意留在此 div 外面（見下），才不會被 pin 的 containing block 影響。 -->
-    <div ref="pinRef" class="sec2__pin">
+    <div
+      ref="pinRef"
+      class="sec2__pin"
+      :class="{ 'sec2__pin--revealed': agendaRevealed }"
+    >
       <!-- agenda：議程時間軸 -->
       <div class="sec2__agenda">
         <ol class="sec2__timeline">
@@ -159,6 +169,10 @@ const timeline = agenda.sessions.map((session, i) => ({
       </div>
     </div>
 
+    <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊，停在黑畫面）。放在 pinRef 外、section 內：
+         同 DevFaceProgress 之理，sec2 本身無 transform，此 fixed 元素相對視窗定位、不受 forum pin 影響。 -->
+    <ForumCore :active="forumCoreActive" />
+
     <!-- forum SymbolFace 序列進度（僅 dev）。放在 pinRef 外、section 內：
          section 本身沒有 transform，故此 fixed 元素仍相對視窗定位、不受 pin 影響。 -->
     <DevOnly>
@@ -179,6 +193,18 @@ const timeline = agenda.sessions.map((session, i) => ({
   padding: 140px 24px 120px;
   color: #fff;
   background-color: #000;
+}
+
+// pinRef（議程＋recap 整組）：coreOut 前一律藏著，避免 SymbolFace↔橘核心 crossfade 期間
+// （淡出的星空層與淡入的橘核心黑底皆未達全滿）從縫隙短暫露餡；
+// --revealed（agendaRevealed）時隨橘核心淡出而淡入，剛好接上。捲回自動反向。
+.sec2__pin {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+
+  &--revealed {
+    opacity: 1;
+  }
 }
 
 .sec2__face {

@@ -51,18 +51,30 @@ export const MOVE_VH = 0;
 // Core.vue 的 dot 淡出與此同步。
 export const CROSSFADE = 0.01;
 
+// ── forum 接棒門檻：converge 之後「白點 → 橘核心」的 crossfade（symbolProgress 0..1）──
+// coreIn ：SymbolFace 收斂點淡出、同時 ForumCore 橘方塊淡入（crossfade）。＝ converge 段終點，
+//          也是 enter（transitionDone）起點 → HeroForumTransition 星空層同步淡出，改由 ForumCore 黑底補上。
+// coreOut：橘核心淡出 → 露出下方議程。coreIn~coreOut 之間橘核心停在黑畫面（原地停住）。
+// 淡出入為「固定時間」（見 ForumCore 的 CSS transition）；停留長度＝(coreOut−coreIn) 這段 scrub 捲動距離。
+// 往回捲會自動倒退（boolean 觸發的 CSS 轉場可逆）。此處只做 handoff；橘核心接手後的「移動」動態待後續。
+export const FORUM_HANDOFF = {
+  coreIn: 0.75,
+  coreOut: 0.9,
+} as const;
+
 // ── 星空 SymbolFace 序列（hero 星空蓋滿後的第二段 pin，見 Forum.vue）────────
 // forum pin 的捲動進度（symbolProgress, 0..1）依門檻切換 SymbolFace 的 mode，越過 enter → transitionDone。
-// 因為 scrub，往回捲會自動倒退。四狀態：預設 disperse → face（集合）→ converge（匯聚成點）→ enter（消失）。
-// 只改 until 即可調每個狀態起點；mode='enter' 那段不改變視覺、只觸發 transitionDone。
+// 因為 scrub，往回捲會自動倒退。狀態：disperse → face（集合）→ converge（匯聚成點）
+// → enter（收斂點淡出，交棒給 ForumCore 橘核心，見 FORUM_HANDOFF）。
+// 只改 until 即可調每個狀態起點；converge 終點對齊 FORUM_HANDOFF.coreIn（＝交棒時機）。
 export const SYMBOL_STOPS: readonly {
   until: number;
   mode: 'disperse' | 'face' | 'converge' | 'enter';
 }[] = [
-  { until: 0.3, mode: 'disperse' }, // 0.00–0.30 分散（預設）
-  { until: 0.6, mode: 'face' }, //     0.30–0.60 集合（人像）
-  { until: 0.88, mode: 'converge' }, // 0.60–0.88 匯聚成點
-  { until: 1.0, mode: 'enter' }, //    0.88–1.00 enter → transitionDone
+  { until: 0.3, mode: 'disperse' }, //                 0.00–0.30 分散（預設）
+  { until: 0.58, mode: 'face' }, //                    0.30–0.58 集合（人像）
+  { until: FORUM_HANDOFF.coreIn, mode: 'converge' }, // 0.58–coreIn 匯聚成點
+  { until: 1.0, mode: 'enter' }, //                    coreIn–1.00 enter → 收斂點淡出、橘核心接棒
 ];
 
 // 這段序列吃掉的捲動距離（× 視窗高）＝ 速度旋鈕（越大每個狀態停留越久）。

@@ -8,7 +8,11 @@
 //
 // 延伸：orange core 走到後續 section 時，於 orange-core-config 新增該段門檻/距離，
 // 再在此加一條 useState progress 軌 + resolver + expose（照 path/pin/symbol 模式）。
-import { STAGE_STOPS, SYMBOL_STOPS } from '~/utils/orange-core-config';
+import {
+  STAGE_STOPS,
+  SYMBOL_STOPS,
+  FORUM_HANDOFF,
+} from '~/utils/orange-core-config';
 
 export type CoreStage = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -71,6 +75,23 @@ export function useOrangeCoreProgress() {
   // symbolProgress → 目標 mode / enter（供 Forum watch 後指派 symbolMode / transitionDone）。
   const symbolTarget = computed(() => resolveSymbol(symbolProgress.value));
 
+  // forum 接棒視窗：symbolProgress ∈ [coreIn, coreOut) → 橘核心（ForumCore）現身。
+  //   進入（≥coreIn）→ SymbolFace 收斂點淡出、橘核心淡入（crossfade，見 FORUM_HANDOFF）；
+  //   離開（≥coreOut）→ 橘核心淡出、露出議程。捲回會自動反向。
+  // 越過整段 pin（onLeave → symbolProgress=1）時 ≥coreOut，故 forum 之後橘核心不會殘留蓋住畫面。
+  const forumCoreActive = computed(
+    () =>
+      symbolProgress.value >= FORUM_HANDOFF.coreIn &&
+      symbolProgress.value < FORUM_HANDOFF.coreOut,
+  );
+
+  // forum 議程揭露：越過 coreOut（橘核心開始淡出）才顯示議程。coreOut 之前一律藏著，
+  // 確保 SymbolFace↔橘核心 crossfade 期間（兩層黑底皆未達全滿）下方議程不會短暫露餡；
+  // coreOut 時議程隨橘核心淡出而淡入，剛好接上。捲回會自動反向。
+  const agendaRevealed = computed(
+    () => symbolProgress.value >= FORUM_HANDOFF.coreOut,
+  );
+
   // pin 一啟動（>0）即進入 stage 4–6；否則依 path 落在 stage 1–3。
   const resolved = computed(() =>
     pinProgress.value > 0
@@ -88,6 +109,8 @@ export function useOrangeCoreProgress() {
     symbolMode,
     symbolProgress,
     symbolTarget,
+    forumCoreActive,
+    agendaRevealed,
     setPathProgress,
     setPinProgress,
     setSymbolProgress,
