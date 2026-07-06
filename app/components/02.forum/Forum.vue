@@ -35,15 +35,17 @@ const timeline = agenda.sessions.map((session, i) => ({
   <section id="forum" class="sec2">
     <!-- 星空蓋滿後出現的「進入論壇」按鈕：按下才關閉 hero 星空轉場（fixed，浮在星空之上）。 -->
 
-    <!-- symbol 狀態 switch：星空轉場期間（SymbolFace 現身時）切換集合／分散／匯聚，浮在星空之上。 -->
-    <div v-if="stage >= 5 && !transitionDone" class="sec2__symbol-switch">
+    <!-- symbol 狀態 switch：stage ≥5 後常駐（進入論壇後也不消失），切換集合／分散／匯聚。 -->
+    <div v-if="stage >= 5" class="sec2__symbol-switch">
+      <!-- 進入 / 返回論壇：toggle transitionDone —— 未進入時「進入論壇」揭開議程；
+           已進入時「返回論壇」回到星空轉場（SymbolFace 重新現身）。 -->
       <button
-        v-if="stage >= 6 && !transitionDone"
+        v-if="stage >= 6"
         class="sec2__enter"
         type="button"
-        @click="transitionDone = true"
+        @click="transitionDone = !transitionDone"
       >
-        進入論壇
+        {{ transitionDone ? '返回論壇' : '進入論壇' }}
       </button>
       <button
         v-for="m in SYMBOL_MODES"
