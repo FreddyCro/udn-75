@@ -1,12 +1,12 @@
 <!--
   orange core：影片退場後於第一屏中央淡入的橘點，沿驅動線移動、依 stage 變化。
-  位置與切線旋轉由 HeroCorePath 以 GSAP 驅動（需要真實 DOM 元素 → 對外曝露 root el）。
+  位置與切線旋轉由 OrangeCorePath 以 GSAP 驅動（需要真實 DOM 元素 → 對外曝露 root el）。
   本元件只負責 dot 的外觀：
     stage 1–2：點（移動中）
     stage 3  ：point → line（隨 stageProgress 漸進變長）
     stage 4  ：橘 → 黑（隨 stageProgress 漸進變色；黑＝section 2 星空底色）
     stage 5  ：邊放大邊淡出，與星空淡入同步交融（CROSSFADE 控制快慢）
-    stage 6  ：已隱去，放大後續由 HeroTransition 星空遮罩承接
+    stage 6  ：已隱去，放大後續由 HeroForumTransition 星空遮罩承接
 -->
 <script setup lang="ts">
 import type { CoreStage } from '~/composables/useOrangeCoreProgress';
@@ -20,7 +20,7 @@ const props = defineProps<{
   visible?: boolean;
 }>();
 
-// HeroCorePath 以 gsap.set 驅動位置，需要真實 DOM 元素 → 對外曝露 root el。
+// OrangeCorePath 以 gsap.set 驅動位置，需要真實 DOM 元素 → 對外曝露 root el。
 const root = ref<HTMLElement | null>(null);
 defineExpose({ root });
 
@@ -71,21 +71,21 @@ const dotStyle = computed(() => {
 
 <template>
   <!--
-    外層 root：位置 + 切線 rotation 由 HeroCorePath 的 GSAP 驅動（x/y/rotation + xPercent/yPercent:-50）；
+    外層 root：位置 + 切線 rotation 由 OrangeCorePath 的 GSAP 驅動（x/y/rotation + xPercent/yPercent:-50）；
     此處不設 transform，避免覆蓋 GSAP。內層 dot 的形狀/顏色由 dotStyle（stage 驅動）決定。
   -->
   <span
     ref="root"
-    class="sec1__core"
+    class="sec1__orange-core"
     :class="{ 'is-visible': visible }"
     aria-hidden="true"
   >
-    <span class="sec1__core-dot" :style="dotStyle" />
+    <span class="sec1__orange-core-dot" :style="dotStyle" />
   </span>
 </template>
 
 <style lang="scss" scoped>
-.sec1__core {
+.sec1__orange-core {
   position: absolute;
   top: 0;
   left: 0;
@@ -102,7 +102,7 @@ const dotStyle = computed(() => {
 }
 
 // 內層 dot：transform / background 皆由 JS（dotStyle）依 stage 驅動。
-.sec1__core-dot {
+.sec1__orange-core-dot {
   display: block;
   width: 100%;
   height: 100%;
@@ -110,7 +110,7 @@ const dotStyle = computed(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sec1__core {
+  .sec1__orange-core {
     transition: none;
   }
 }

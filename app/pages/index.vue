@@ -29,33 +29,14 @@ useSeoMeta({
 
     <!-- 02 -->
     <Forum />
-    <!-- forum SymbolFace 序列進度（僅 dev）；放 page 層避免受 forum pin 的 containing block 影響。 -->
-    <DevOnly>
-      <FaceProgress />
-    </DevOnly>
 
+    <!-- Yumi  -->
     <!-- 03 -->
     <Blessing />
 
-    <!-- Yumi  -->
     <!-- 04 -->
     <Media />
   </div>
 </template>
 
-<style scoped>
-/* dev 按鈕：固定左下角，浮在最上層 */
-.dev-transition-reset {
-  position: fixed;
-  bottom: 16px;
-  left: 16px;
-  z-index: 2000;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
-  cursor: pointer;
-}
-</style>
+<style scoped></style>

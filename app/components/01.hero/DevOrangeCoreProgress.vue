@@ -12,24 +12,24 @@ const pct = (v: number) => Math.round(v * 100);
 
 <template>
   <div
-    class="core-progress fixed z-1000 right-4 bottom-1/2 px-2 py-1 rounded-xl text-white"
+    class="orange-core-progress fixed z-1000 right-4 bottom-1/2 px-2 py-1 rounded-xl text-white"
     aria-hidden="true"
   >
     stage {{ stage }} · {{ pct(stageProgress) }}%
-    <span class="core-progress__raw">
+    <span class="orange-core-progress__raw">
       (path {{ pct(pathProgress) }} / pin {{ pct(pinProgress) }})
     </span>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.core-progress {
+.orange-core-progress {
   background: rgba(0, 0, 0, 0.6);
   font-size: 12px;
   line-height: 1.4;
 }
 
-.core-progress__raw {
+.orange-core-progress__raw {
   opacity: 0.6;
 }
 </style>

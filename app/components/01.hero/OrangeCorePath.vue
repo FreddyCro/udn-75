@@ -19,7 +19,7 @@ const props = defineProps<{
   /** .sec1：core / path 的座標範圍，也是 ScrollTrigger 的 trigger */
   sectionEl: HTMLElement | null;
   /** orange core：被驅動沿線移動的元素 */
-  coreEl: HTMLElement | null;
+  orangeCoreEl: HTMLElement | null;
   /** date 大標：設計原點，用來錨定曲線（尾端對齊「/」） */
   anchorEl: HTMLElement | null;
 }>();
@@ -91,7 +91,7 @@ function build() {
 // 先過 easeMove（MOVE_EASE 速度曲線）→ 得 path 進度 p，再定位；切線由前後各取 1px 的鄰近點
 // 連線求得，兩端皆穩定（不會因 eps=0 歸零）。p 同時寫回 path 軌，故 stage 判定與定位一致。
 function place(rawP: number) {
-  const core = props.coreEl;
+  const core = props.orangeCoreEl;
   const motion = motionEl.value;
   if (!core || !motion || !motionLen) return;
   const p = easeMove(rawP); // 套用移動速度曲線
@@ -107,11 +107,11 @@ function place(rawP: number) {
 }
 
 function init() {
-  if (ready || !props.sectionEl || !props.coreEl || !props.anchorEl) return;
+  if (ready || !props.sectionEl || !props.orangeCoreEl || !props.anchorEl) return;
   ready = true;
 
   gsap.registerPlugin(ScrollTrigger);
-  gsap.set(props.coreEl, { xPercent: -50, yPercent: -50 }); // 讓 (x,y) 對齊 core 中心
+  gsap.set(props.orangeCoreEl, { xPercent: -50, yPercent: -50 }); // 讓 (x,y) 對齊 core 中心
   build();
 
   st = ScrollTrigger.create({
@@ -138,7 +138,7 @@ onMounted(() => {
   // props 來自父層 template ref，可能於下一 tick 才就緒。
   if (!ready) {
     const stop = watch(
-      () => [props.sectionEl, props.coreEl, props.anchorEl],
+      () => [props.sectionEl, props.orangeCoreEl, props.anchorEl],
       () => {
         init();
         if (ready) stop();
@@ -156,17 +156,17 @@ onBeforeUnmount(() => {
 
 <template>
   <svg
-    class="sec1__core-path"
+    class="sec1__orange-core-path"
     aria-hidden="true"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <path ref="lineEl" class="sec1__core-path-line" />
+    <path ref="lineEl" class="sec1__orange-core-path-line" />
     <path ref="motionEl" fill="none" stroke="none" />
   </svg>
 </template>
 
 <style lang="scss" scoped>
-.sec1__core-path {
+.sec1__orange-core-path {
   position: absolute;
   // inset: 0;
   top: 0;
@@ -177,7 +177,7 @@ onBeforeUnmount(() => {
   z-index: 1;
 }
 
-.sec1__core-path-line {
+.sec1__orange-core-path-line {
   fill: none;
   stroke: #898989;
   stroke-width: 1;

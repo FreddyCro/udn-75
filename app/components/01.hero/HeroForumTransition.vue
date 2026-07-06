@@ -15,7 +15,7 @@ const props = defineProps<{
   /** 該 stage 內的 local progress（0..1）：stage 5 用來撐大遮罩 */
   stageProgress: number;
   /** core 元素：讀取斜槓的螢幕位置與角度，作為遮罩起點/方向 */
-  coreEl?: HTMLElement | null;
+  orangeCoreEl?: HTMLElement | null;
   /** 已捲過 pin 進入 section 2 → 整層淡出，露出真正的 section 2 */
   done?: boolean;
 }>();
@@ -33,7 +33,7 @@ const active = computed(() => !props.done && props.stage >= 5);
 
 // 由 core 元素讀出中心點（螢幕 px）與旋轉角（GSAP 以 tangent 設定 rotation → 從 transform matrix 取）。
 function readCore() {
-  const el = props.coreEl;
+  const el = props.orangeCoreEl;
   const fallback = {
     cx: window.innerWidth / 2,
     cy: window.innerHeight / 2,

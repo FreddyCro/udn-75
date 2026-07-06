@@ -8,10 +8,10 @@ defineProps({ dev: { type: Boolean, default: false } });
 const { state, setState, skip } = useHeroVideo();
 
 const label: Record<HeroState, string> = {
-  main: '主要內容',
-  loop: 'Loop',
-  outro: '退場',
-  gone: '消失',
+  main: '1.主要內容',
+  loop: '2.Loop',
+  outro: '3.退場',
+  gone: '4.消失',
 };
 const canSkip = computed(() => state.value === 'main' || state.value === 'loop');
 </script>

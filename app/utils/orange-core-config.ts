@@ -2,14 +2,14 @@
 //
 // 純資料模組（無 Vue runtime），Nuxt auto-import；由 useOrangeCoreProgress 與各 hero/forum 元件共用同一份。
 // 這裡集中「序列骨幹」：時間軸門檻、pin/移動距離、core 形變、星空遮罩尺寸（從 core 推導）、路徑幾何。
-// 刻意「不含」子元件自身外觀參數：LoadingHero（方塊/顏色）、SymbolFace（粒子物理/取樣/配色）——那些留在各元件。
+// 刻意「不含」子元件自身外觀參數：HeroLoader（方塊/顏色）、SymbolFace（粒子物理/取樣/配色）——那些留在各元件。
 //
 // 延伸做法：orange core 走到後續 section 時，在此新增該段的 *_STOPS / *_VH / 幾何，
 // 再於 useOrangeCoreProgress 加一條對應的 progress 軌 + resolver（照 path/pin/symbol 模式）。
 
 // ── stage 門檻：要調時間點，改這裡 ──────────────────────────────────
 // 兩條 progress 軌（各 0..1）合成「目前 stage」＋該 stage 內 local progress（stageProgress）：
-//   path：core 沿驅動線移動（HeroCorePath scrub）→ stage 1–3。
+//   path：core 沿驅動線移動（OrangeCorePath scrub）→ stage 1–3。
 //   pin ：inner 釘住後（長度＝PIN_VH）→ stage 4–6。
 export const STAGE_STOPS = {
   // stage 1–3：沿 core 移動路徑（path scrub，progress 0..1）
@@ -21,7 +21,7 @@ export const STAGE_STOPS = {
   // stage 4–6：pin 內（pin scrub，progress 0..1）
   pin: [
     { until: 0.25, stage: 4 }, // 4 變色（橘→黑）
-    { until: 0.9, stage: 5 }, // 5 星空放大（HeroTransition 接手）
+    { until: 0.9, stage: 5 }, // 5 星空放大（HeroForumTransition 接手）
     { until: 1.0, stage: 6 }, // 6 end：fixed 成 section 2 底
   ],
 } as const;
@@ -35,7 +35,7 @@ export const MOVE_EASE = 'none';
 // ── pin 釘住距離（× 視窗高）：stage 4–6 ─────────────────────────────
 // core 停在斜槓後，變色 → 星空放大 → fixed 都在這段內完成。
 //   - Hero.vue 的 pinST：end = `+=${innerHeight * PIN_VH}`（釘住多久）。
-//   - HeroCorePath 的 path scrub：end = `bottom bottom-=${innerHeight * PIN_VH}`（尾端扣掉同量，core 剛好在 pin 起點到斜槓）。
+//   - OrangeCorePath 的 path scrub：end = `bottom bottom-=${innerHeight * PIN_VH}`（尾端扣掉同量，core 剛好在 pin 起點到斜槓）。
 // 兩處共用此值 → 必須一致，否則 core 會在 pin 期間繼續移動、脫離斜槓。
 export const PIN_VH = 0.3;
 
@@ -79,7 +79,7 @@ export const CORE = {
 };
 
 // ── hero → section 2 星空遮罩「起點尺寸」：一律從 CORE 推導，永遠對齊那條「線」──
-// （先前 Core.vue LINE_SCALE_X 與 HeroTransition LINE_HALF_* 靠註解人工同步＝會 drift 的地雷；
+// （先前 OrangeCore.vue LINE_SCALE_X 與 HeroForumTransition LINE_HALF_* 靠註解人工同步＝會 drift 的地雷；
 //   改為單一推導後，改 CORE.lineScaleX 遮罩起點就跟著變，不會再脫鉤。）
 export const TRANSITION = {
   lineHalfLen: (CORE.dotSize * CORE.lineScaleX) / 2, // = 120（半長）
@@ -87,7 +87,7 @@ export const TRANSITION = {
 };
 
 // ── 桌機 core 路徑幾何（設計中心線 viewBox 0 0 481 1073）────────────────
-// curve：只含 C / L 的座標片段，x,y 交替、以 x 起始（供 HeroCorePath 整體平移 shift）。
+// curve：只含 C / L 的座標片段，x,y 交替、以 x 起始（供 OrangeCorePath 整體平移 shift）。
 // anchorOffset：svg(0,0) 相對「date 大標左上角」的位移（沿用驗證過的設計定位）。
 export const PATH = {
   stub: { x: 59.3574, bottom: 176.115 },

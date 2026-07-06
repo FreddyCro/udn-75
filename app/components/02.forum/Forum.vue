@@ -14,17 +14,21 @@ const { transitionDone, symbolMode, symbolTarget, setSymbolProgress } =
 
 // forum pin：sec2 頂端貼齊視窗頂時釘住，吃掉 SYMBOL_VH 捲動距離 → 進度寫入 symbolProgress。
 // enter 後 pin 於尾端解除 → 議程從頂端接著捲入。
+// pin 作用在內層 pinRef（agenda + recap）而非 section 本身：GSAP pin 會對被釘元素套
+// transform，形成 fixed 子孫的 containing block。把 pin 收在內層 div，section 內、pin 外
+// 的 fixed 子孫（如 DevFaceProgress）就不會落入該 containing block 而跑位。
 const sec2Ref = ref<HTMLElement | null>(null);
+const pinRef = ref<HTMLElement | null>(null);
 let symbolST: ScrollTrigger | null = null;
 
 onMounted(() => {
-  if (!sec2Ref.value) return;
+  if (!sec2Ref.value || !pinRef.value) return;
   gsap.registerPlugin(ScrollTrigger);
   symbolST = ScrollTrigger.create({
-    trigger: sec2Ref.value,
+    trigger: sec2Ref.value, // 起訖仍以 section 頂端計，維持原本 pin 時機
     start: 'top top',
     end: () => `+=${window.innerHeight * SYMBOL_VH}`,
-    pin: true,
+    pin: pinRef.value, // 只釘內層，避免波及 section 內的 fixed 子孫
     pinSpacing: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => setSymbolProgress(self.progress),
@@ -40,12 +44,20 @@ onBeforeUnmount(() => {
 
 // scroll 主導：symbolProgress 解出的目標 → 指派 SymbolFace mode 與 transitionDone。
 // 分兩個 watch 只在「值真的改變」時觸發（mode 改變才會讓 SymbolFace 跑補間）。
-watch(() => symbolTarget.value.mode, (m) => (symbolMode.value = m), {
-  immediate: true,
-});
-watch(() => symbolTarget.value.enter, (e) => (transitionDone.value = e), {
-  immediate: true,
-});
+watch(
+  () => symbolTarget.value.mode,
+  (m) => (symbolMode.value = m),
+  {
+    immediate: true,
+  },
+);
+watch(
+  () => symbolTarget.value.enter,
+  (e) => (transitionDone.value = e),
+  {
+    immediate: true,
+  },
+);
 
 // 依場次順序建立時間軸。標記每個時段（上午／下午）的第一場，
 // 以便在時間軸中插入時段封面標題（對應 Figma 的上午場／下午場封面）。
@@ -66,87 +78,97 @@ const timeline = agenda.sessions.map((session, i) => ({
     <!-- SymbolFace 序列（disperse→face→converge→enter）已改由 forum pin scrub 驅動（見 script）；
          原本的手動 switch 已移除。 -->
 
-    <!-- agenda：議程時間軸 -->
-    <div class="sec2__agenda">
-      <ol class="sec2__timeline">
-        <template v-for="(item, i) in timeline" :key="i">
-          <!-- 時段封面標題（上午場／下午場） -->
-          <li v-if="item.periodStart" class="sec2__period">
-            <span class="sec2__period-label">{{ item.periodInfo.label }}</span>
-            <h3 class="sec2__period-title">{{ item.periodInfo.title }}</h3>
-            <p class="sec2__period-desc">{{ item.periodInfo.desc }}</p>
-          </li>
+    <!-- pin 範圍：agenda + recap 才是被 forum pin 釘住的內容；
+         DevFaceProgress 刻意留在此 div 外面（見下），才不會被 pin 的 containing block 影響。 -->
+    <div ref="pinRef" class="sec2__pin">
+      <!-- agenda：議程時間軸 -->
+      <div class="sec2__agenda">
+        <ol class="sec2__timeline">
+          <template v-for="(item, i) in timeline" :key="i">
+            <!-- 時段封面標題（上午場／下午場） -->
+            <li v-if="item.periodStart" class="sec2__period">
+              <span class="sec2__period-label">{{ item.periodInfo.label }}</span>
+              <h3 class="sec2__period-title">{{ item.periodInfo.title }}</h3>
+              <p class="sec2__period-desc">{{ item.periodInfo.desc }}</p>
+            </li>
 
-          <!-- 場次 -->
-          <li class="sec2__session" :data-period="item.period">
-            <div class="sec2__session-head">
-              <span class="sec2__session-time">{{ item.time }}</span>
-              <span class="sec2__session-label">{{ item.label }}</span>
-            </div>
-            <h4 class="sec2__session-title">{{ item.title }}</h4>
-
-            <p class="sec2__info-label">{{ agenda.speakerInfoLabel }}</p>
-
-            <!-- 一般場次：講者列表 -->
-            <ul
-              v-if="item.speakers && item.speakers.length"
-              class="sec2__speakers"
-            >
-              <li
-                v-for="(sp, j) in item.speakers"
-                :key="j"
-                class="sec2__speaker"
-              >
-                <span class="sec2__speaker-role">{{ sp.role }}</span>
-                <span class="sec2__speaker-name">{{ sp.name }}</span>
-              </li>
-            </ul>
-
-            <!-- 對談場次：主持人 + 分題講者 -->
-            <template v-if="item.topics">
-              <p v-if="item.moderator" class="sec2__moderator">
-                <span class="sec2__moderator-tag">主持</span>
-                <span class="sec2__speaker-role">{{
-                  item.moderator.role
-                }}</span>
-                <span class="sec2__speaker-name">{{
-                  item.moderator.name
-                }}</span>
-              </p>
-              <div
-                v-for="(topic, k) in item.topics"
-                :key="k"
-                class="sec2__topic"
-              >
-                <p class="sec2__topic-question">{{ topic.question }}</p>
-                <ul class="sec2__speakers">
-                  <li
-                    v-for="(sp, l) in topic.speakers"
-                    :key="l"
-                    class="sec2__speaker"
-                  >
-                    <span class="sec2__speaker-role">{{ sp.role }}</span>
-                    <span class="sec2__speaker-name">{{ sp.name }}</span>
-                  </li>
-                </ul>
+            <!-- 場次 -->
+            <li class="sec2__session" :data-period="item.period">
+              <div class="sec2__session-head">
+                <span class="sec2__session-time">{{ item.time }}</span>
+                <span class="sec2__session-label">{{ item.label }}</span>
               </div>
-            </template>
-          </li>
-        </template>
-      </ol>
+              <h4 class="sec2__session-title">{{ item.title }}</h4>
+
+              <p class="sec2__info-label">{{ agenda.speakerInfoLabel }}</p>
+
+              <!-- 一般場次：講者列表 -->
+              <ul
+                v-if="item.speakers && item.speakers.length"
+                class="sec2__speakers"
+              >
+                <li
+                  v-for="(sp, j) in item.speakers"
+                  :key="j"
+                  class="sec2__speaker"
+                >
+                  <span class="sec2__speaker-role">{{ sp.role }}</span>
+                  <span class="sec2__speaker-name">{{ sp.name }}</span>
+                </li>
+              </ul>
+
+              <!-- 對談場次：主持人 + 分題講者 -->
+              <template v-if="item.topics">
+                <p v-if="item.moderator" class="sec2__moderator">
+                  <span class="sec2__moderator-tag">主持</span>
+                  <span class="sec2__speaker-role">{{
+                    item.moderator.role
+                  }}</span>
+                  <span class="sec2__speaker-name">{{
+                    item.moderator.name
+                  }}</span>
+                </p>
+                <div
+                  v-for="(topic, k) in item.topics"
+                  :key="k"
+                  class="sec2__topic"
+                >
+                  <p class="sec2__topic-question">{{ topic.question }}</p>
+                  <ul class="sec2__speakers">
+                    <li
+                      v-for="(sp, l) in topic.speakers"
+                      :key="l"
+                      class="sec2__speaker"
+                    >
+                      <span class="sec2__speaker-role">{{ sp.role }}</span>
+                      <span class="sec2__speaker-name">{{ sp.name }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </template>
+            </li>
+          </template>
+        </ol>
+      </div>
+
+      <!-- recap：活動回顧 -->
+      <div class="sec2__recap">
+        <h3>{{ str.recap.heading }}</h3>
+        <p>{{ str.recap.body }}</p>
+        <a class="sec2__recap-more" href="#">{{ str.recap.readMore }}</a>
+      </div>
     </div>
 
-    <!-- recap：活動回顧 -->
-    <div class="sec2__recap">
-      <h3>{{ str.recap.heading }}</h3>
-      <p>{{ str.recap.body }}</p>
-      <a class="sec2__recap-more" href="#">{{ str.recap.readMore }}</a>
-    </div>
+    <!-- forum SymbolFace 序列進度（僅 dev）。放在 pinRef 外、section 內：
+         section 本身沒有 transform，故此 fixed 元素仍相對視窗定位、不受 pin 影響。 -->
+    <DevOnly>
+      <DevFaceProgress />
+    </DevOnly>
   </section>
 </template>
 
 <style lang="scss" scoped>
-// placeholder：先給 section 2 一個與 HeroTransition 星空同底色的深藍綠背景，
+// placeholder：先給 section 2 一個與 HeroForumTransition 星空同底色的深藍綠背景，
 // 讓 hero pin 轉場層淡出交棒時不會閃白。正式版由 SymbolFace（three.js 星空）取代。
 // padding-top：SymbolFace 序列改由 forum pin（見 script）hold 住，不再需要 100vh 墊高；
 // 只保留讓議程 enter 後不被固定 header 壓到的上緣間距。

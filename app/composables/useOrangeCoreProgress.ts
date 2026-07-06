@@ -2,7 +2,7 @@
 //
 // 純狀態 / 行為；所有可調數值（門檻、距離、形變、幾何）集中在 ~/utils/orange-core-config。
 // 兩條 progress 軌（各 0..1，互不干擾；交界＝斜槓＝pin 起點，屬結構性）：
-//   - path：core 沿驅動線移動（HeroCorePath scrub 寫入）→ stage 1–3。
+//   - path：core 沿驅動線移動（OrangeCorePath scrub 寫入）→ stage 1–3。
 //   - pin ：inner 釘住後（長度＝PIN_VH）的進度（Hero 的 pinST scrub 寫入）→ stage 4–6。
 // 依 STAGE_STOPS 合成「目前 stage」與該 stage 內 local progress（stageProgress）。
 //
