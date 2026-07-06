@@ -63,6 +63,36 @@ export const MOVE_VH = 0;
 // Core.vue 的 dot 淡出與此同步（星空淡入多少、core 就淡出多少）。
 export const CROSSFADE = 0.01;
 
+// ── 星空 SymbolFace 序列 config（hero 星空蓋滿後的第二段 pin，見 Forum.vue）──────────
+// 這段 pin 的捲動進度（symbolProgress, 0..1）依下方門檻切換 SymbolFace 的 mode，
+// 最後越過 enter 門檻 → transitionDone=true（星空退場、揭開議程）。因為 scrub，往回捲會自動倒退。
+// 四個狀態：預設 disperse → face（集合）→ converge（匯聚成點）→ enter（消失）。
+// 只改 until 門檻即可調整每個狀態的起點；mode='enter' 那段不改變視覺、只觸發 transitionDone。
+export const SYMBOL_STOPS: readonly { until: number; mode: SymbolMode | 'enter' }[] = [
+  { until: 0.3, mode: 'disperse' }, // 0.00–0.30 分散（預設）
+  { until: 0.6, mode: 'face' }, //     0.30–0.60 集合（人像）
+  { until: 0.88, mode: 'converge' }, // 0.60–0.88 匯聚成點
+  { until: 1.0, mode: 'enter' }, //    0.88–1.00 enter → transitionDone
+];
+
+// 這段序列吃掉的捲動距離（× 視窗高）＝ 速度旋鈕（越大每個狀態停留越久）。
+export const SYMBOL_VH = 1.6;
+
+// 依 symbolProgress 解出「目標 mode」與「是否已越過 enter」。
+// enter 段沿用前一個真實 mode（converge），只把 enter 旗標打開 → 視覺不跳、單純觸發退場。
+function resolveSymbol(p: number): { mode: SymbolMode; enter: boolean } {
+  let last: SymbolMode = 'disperse';
+  for (const s of SYMBOL_STOPS) {
+    if (p < s.until) {
+      return s.mode === 'enter'
+        ? { mode: last, enter: true }
+        : { mode: s.mode, enter: false };
+    }
+    if (s.mode !== 'enter') last = s.mode;
+  }
+  return { mode: last, enter: true }; // p ≥ 最後門檻（1.0）→ enter
+}
+
 type Stop = { until: number; stage: number };
 
 // 依 stops 找出 p（0..1）落在哪個 stage，並回傳該 stage 內的 local progress（0..1）。
@@ -91,11 +121,17 @@ export function useHeroCoreProgress() {
   // hero → section 2 轉場是否已離場（捲過 pin → 轉場層淡出）。跨元件共享：
   // Hero 的 pinST 會寫入，但 index.vue / Forum 也能覆寫控制（例如回到 hero 時強制 false）。
   const transitionDone = useState<boolean>('hero-transition-done', () => false);
-  // SymbolFace 三態：Hero 的 <SymbolFace> 綁 v-model:mode，Forum 的 switch 指派切換。
+  // SymbolFace 三態：Hero 的 <SymbolFace> 綁 v-model:mode，由 Forum 的 forum pin scrub 指派切換。
   const symbolMode = useState<SymbolMode>('symbol-mode', () => 'disperse');
+  // 第二段 pin（forum pin）的捲動進度（0..1）：Forum 寫入，driving SymbolFace 序列（見 SYMBOL_STOPS）。
+  const symbolProgress = useState<number>('symbol-progress', () => 0);
 
   const setPathProgress = (p: number) => (pathProgress.value = clamp01(p));
   const setPinProgress = (p: number) => (pinProgress.value = clamp01(p));
+  const setSymbolProgress = (p: number) => (symbolProgress.value = clamp01(p));
+
+  // symbolProgress → 目標 mode / enter（供 Forum watch 後指派 symbolMode / transitionDone）。
+  const symbolTarget = computed(() => resolveSymbol(symbolProgress.value));
 
   // pin 一啟動（>0）即進入 stage 4–6；否則依 path 落在 stage 1–3。
   const resolved = computed(() =>
@@ -112,8 +148,11 @@ export function useHeroCoreProgress() {
     pinProgress,
     transitionDone,
     symbolMode,
+    symbolProgress,
+    symbolTarget,
     setPathProgress,
     setPinProgress,
+    setSymbolProgress,
     stage,
     stageProgress,
   };

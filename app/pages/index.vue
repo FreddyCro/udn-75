@@ -29,6 +29,10 @@ useSeoMeta({
 
     <!-- 02 -->
     <Forum />
+    <!-- forum SymbolFace 序列進度（僅 dev）；放 page 層避免受 forum pin 的 containing block 影響。 -->
+    <DevOnly>
+      <FaceProgress />
+    </DevOnly>
 
     <!-- 03 -->
     <Blessing />

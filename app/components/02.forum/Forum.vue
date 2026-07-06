@@ -1,21 +1,51 @@
 <script setup lang="ts">
 // Section 2：face / agenda / recap（智慧論壇）
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section2.json';
-import type { SymbolMode } from '~/composables/useHeroCoreProgress';
 
 const { agenda } = str;
 
-// hero → section 2 星空轉場：由 section 2 決定何時關閉（不自動消失）。
-// 星空蓋滿（stage 6）後才出現「進入論壇」按鈕，按下才把 transitionDone 設 true → 星空退場、露出論壇。
-// symbolMode：SymbolFace 三態，同樣提升到全域，由本區的 switch 切換（Hero 端 v-model 綁定）。
-const { stage, transitionDone, symbolMode } = useHeroCoreProgress();
+// hero 星空蓋滿後，本區用第二段 pin（forum pin）scrub 驅動 SymbolFace 序列：
+//   預設 disperse → face（集合）→ converge（匯聚成點）→ enter（越過門檻 → transitionDone、星空退場揭開議程）。
+// 門檻與捲動距離見 useHeroCoreProgress 的 SYMBOL_STOPS / SYMBOL_VH。因為 scrub，往回捲會自動倒退。
+const { transitionDone, symbolMode, symbolTarget, setSymbolProgress } =
+  useHeroCoreProgress();
 
-// symbol 狀態切換 switch 選項：對應 SymbolFace 的三個互斥態。
-const SYMBOL_MODES: { value: SymbolMode; label: string }[] = [
-  { value: 'disperse', label: '01.分散' },
-  { value: 'face', label: '02.集合' },
-  { value: 'converge', label: '03.匯聚成點' },
-];
+// forum pin：sec2 頂端貼齊視窗頂時釘住，吃掉 SYMBOL_VH 捲動距離 → 進度寫入 symbolProgress。
+// enter 後 pin 於尾端解除 → 議程從頂端接著捲入。
+const sec2Ref = ref<HTMLElement | null>(null);
+let symbolST: ScrollTrigger | null = null;
+
+onMounted(() => {
+  if (!sec2Ref.value) return;
+  gsap.registerPlugin(ScrollTrigger);
+  symbolST = ScrollTrigger.create({
+    trigger: sec2Ref.value,
+    start: 'top top',
+    end: () => `+=${window.innerHeight * SYMBOL_VH}`,
+    pin: true,
+    pinSpacing: true,
+    invalidateOnRefresh: true,
+    onUpdate: (self) => setSymbolProgress(self.progress),
+    onLeaveBack: () => setSymbolProgress(0), // 捲回 pin 之前 → 回到 disperse、星空重新覆蓋
+    onLeave: () => setSymbolProgress(1), //     捲過 pin 之後 → 維持 enter（已進入論壇）
+  });
+});
+
+onBeforeUnmount(() => {
+  symbolST?.kill();
+  symbolST = null;
+});
+
+// scroll 主導：symbolProgress 解出的目標 → 指派 SymbolFace mode 與 transitionDone。
+// 分兩個 watch 只在「值真的改變」時觸發（mode 改變才會讓 SymbolFace 跑補間）。
+watch(() => symbolTarget.value.mode, (m) => (symbolMode.value = m), {
+  immediate: true,
+});
+watch(() => symbolTarget.value.enter, (e) => (transitionDone.value = e), {
+  immediate: true,
+});
 
 // 依場次順序建立時間軸。標記每個時段（上午／下午）的第一場，
 // 以便在時間軸中插入時段封面標題（對應 Figma 的上午場／下午場封面）。
@@ -32,32 +62,9 @@ const timeline = agenda.sessions.map((session, i) => ({
 </script>
 
 <template>
-  <section id="forum" class="sec2">
-    <!-- 星空蓋滿後出現的「進入論壇」按鈕：按下才關閉 hero 星空轉場（fixed，浮在星空之上）。 -->
-
-    <!-- symbol 狀態 switch：stage ≥5 後常駐（進入論壇後也不消失），切換集合／分散／匯聚。 -->
-    <div v-if="stage >= 5" class="sec2__symbol-switch">
-      <!-- 進入 / 返回論壇：toggle transitionDone —— 未進入時「進入論壇」揭開議程；
-           已進入時「返回論壇」回到星空轉場（SymbolFace 重新現身）。 -->
-      <button
-        v-if="stage >= 6"
-        class="sec2__enter"
-        type="button"
-        @click="transitionDone = !transitionDone"
-      >
-        {{ transitionDone ? '返回論壇' : '進入論壇' }}
-      </button>
-      <button
-        v-for="m in SYMBOL_MODES"
-        :key="m.value"
-        class="sec2__symbol-mode"
-        :class="{ 'is-active': symbolMode === m.value }"
-        type="button"
-        @click="symbolMode = m.value"
-      >
-        {{ m.label }}
-      </button>
-    </div>
+  <section id="forum" ref="sec2Ref" class="sec2">
+    <!-- SymbolFace 序列（disperse→face→converge→enter）已改由 forum pin scrub 驅動（見 script）；
+         原本的手動 switch 已移除。 -->
 
     <!-- agenda：議程時間軸 -->
     <div class="sec2__agenda">
@@ -141,72 +148,15 @@ const timeline = agenda.sessions.map((session, i) => ({
 <style lang="scss" scoped>
 // placeholder：先給 section 2 一個與 HeroTransition 星空同底色的深藍綠背景，
 // 讓 hero pin 轉場層淡出交棒時不會閃白。正式版由 SymbolFace（three.js 星空）取代。
-// 注意：padding-top: 100vh 是刻意保留，供 hero pin 轉場交棒使用，
-// 議程內容因此位於第一個 viewport 之下。
+// padding-top：SymbolFace 序列改由 forum pin（見 script）hold 住，不再需要 100vh 墊高；
+// 只保留讓議程 enter 後不被固定 header 壓到的上緣間距。
 .sec2 {
   --accent: #ff7f00;
 
   min-height: 100vh;
-  padding: 100vh 24px 120px;
+  padding: 140px 24px 120px;
   color: #fff;
   background-color: #000;
-}
-
-// 「進入論壇」按鈕：固定於畫面、浮在 HeroTransition 星空（z-index 10）之上、header（1000）之下。
-.sec2__enter {
-  z-index: 50;
-  padding: 14px 36px;
-  margin-right: 20px;
-  font-size: 15px;
-  letter-spacing: 0.15em;
-  color: #fff;
-  background: rgba(255, 127, 0, 0.9);
-  border: 0;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-// symbol 狀態 switch：固定於畫面頂端置中，與「進入論壇」同層浮在星空之上。
-.sec2__symbol-switch {
-  position: fixed;
-  left: 50%;
-  bottom: 32px;
-  transform: translateX(-50%);
-  z-index: 50;
-  display: flex;
-  gap: 6px;
-  padding: 6px;
-  background: rgba(10, 28, 43, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 999px;
-  backdrop-filter: blur(4px);
-}
-
-.sec2__symbol-mode {
-  padding: 8px 18px;
-  font-size: 14px;
-  letter-spacing: 0.08em;
-  color: #fff;
-  background: transparent;
-  border: 0;
-  border-radius: 999px;
-  cursor: pointer;
-  transition:
-    background 0.2s ease,
-    color 0.2s ease;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.14);
-  }
-
-  &.is-active {
-    color: #10141b;
-    background: rgba(255, 127, 0, 0.95);
-  }
-
-  &.is-active:hover {
-    background: rgba(255, 127, 0, 0.95);
-  }
 }
 
 .sec2__face {
