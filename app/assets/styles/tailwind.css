@@ -1,7 +1,49 @@
 @import 'tailwindcss';
 
 @theme {
-  /* 主題色與字級暫不設定，待設計 token 確定後再補。 */
+  /* ── 色票（對齊 Figma 類分頁 design variables）──
+     用法：class 用 text-orange / bg-orange…；SCSS 內用 var(--color-orange)。 */
+  --color-orange: #ff7f00; /* orange — 主色（進度條、強調、hover 底線） */
+  --color-blue: #9fd6ff; /* light blue — 進度條底軌／淺藍點綴 */
+  --color-red: #cb2529; /* R2 — 紅色強調 */
+  --color-gold: #c69a5d; /* 得獎項目金色變體（首獎／銅牌） */
+  --color-text: #232323; /* B2 — 深色文字 */
+  --color-body: #404040; /* B3 — 子頁內文／H3 小標文字 */
+  --color-gray: #686868; /* dark gray — 次要文字（單元名） */
+  --color-gray-light: #898989; /* light gray — 輔助文字（撰文者） */
+  --color-gray-mid: #808080; /* B4 */
+  --color-line: #d8d8d8; /* B5 — 分隔線／邊框 */
+  --color-bg-muted: #f1f1f1; /* B6 — 淺灰底 */
+  --color-ink: #0a1c2b; /* orange-core dark（星空底色，非文字色） */
+
+  /* ── 字級（Noto Sans TC；--text-x--line-height 對齊 Figma text styles）── */
+  --text-caption: 15px; /* 圖說、製作團隊 400/22 */
+  --text-caption--line-height: 22px;
+  --text-body: 18px; /* P 內文 300/36 */
+  --text-body--line-height: 36px;
+  --text-h5: 20px; /* pc_H5 500/32 */
+  --text-h5--line-height: 32px;
+  --text-unit: 24px; /* 單元名 400/48 tracking .1em */
+  --text-unit--line-height: 48px;
+  --text-h4: 28px; /* pc_H4 400/46 */
+  --text-h4--line-height: 46px;
+  --text-h3: 32px; /* pc_H3 400/48 */
+  --text-h3--line-height: 48px;
+  --text-intro: 36px; /* 引言 lead（Figma 36/60 Light） */
+  --text-intro--line-height: 60px;
+
+  /* ── 子頁版型間距（section 內：title→desc→img；section 之間）──
+     共用旋鈕，四頁一致；SCSS 內以 var(--sp-*) 取用。 */
+  --subpage-wide-w: 1064px; /* hero／引言／得獎作品寬欄 */
+  --subpage-awards-w: 686px; /* 得獎項目桂冠 grid 寬（置中於寬欄內） */
+  --subpage-content-w: 630px; /* 內文窄欄（可讀行長） */
+  --sp-section: 80px; /* section 之間（＝內文→下一個 H3 小標） */
+  --sp-title-desc: 24px; /* H3 小標 → 內文 */
+  --sp-para: 36px; /* 內文段落之間（＝ Figma 一個空行高） */
+  --sp-desc-img: 40px; /* 內文 → 圖 */
+  --sp-img-caption: 12px; /* 圖 → 圖說 */
+  --sp-intro: 96px; /* 引言 → 第一個 section */
+  --sp-work-y: 16px; /* 得獎作品每列上下內距 */
 
   --breakpoint-xxs: 375px;
   --breakpoint-xs: 414px;

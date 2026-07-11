@@ -1,0 +1,46 @@
+@use 'sass:map';
+
+// ── RWD 斷點與 mixin ────────────────────────────────────────────────
+// 依 CLAUDE.md：RWD 寫在 BEM element 內部、用 rwd-xxx mixin 包住，同一 class
+// 只定義一次、各斷點集中同處。斷點值對齊 app/utils/constants.ts 的正式定義。
+//
+// 用法（desktop-first，往小螢幕覆蓋）：
+//   .block__element {
+//     font-size: 24px;
+//     @include rwd-tablet { font-size: 20px; }  // ≤ 768px
+//     @include rwd-mobile { font-size: 16px; }  // ≤ 414px
+//   }
+$breakpoints: (
+  'mobile': 414px,  // MOBILE_BREAKPOINTS
+  'tablet': 768px,  // TABLET_BREAKPOINTS
+  'pc': 1280px,     // PC_BREAKPOINTS
+);
+
+@function bp($name) {
+  @if map.has-key($breakpoints, $name) {
+    @return map.get($breakpoints, $name);
+  }
+  @return $name; // 允許直接傳入自訂像素值
+}
+
+// 「此斷點（含）以下」— desktop-first 覆蓋
+@mixin rwd-max($name) {
+  @media screen and (max-width: #{bp($name) - 0.02px}) {
+    @content;
+  }
+}
+
+// 「此斷點（含）以上」— mobile-first 覆蓋
+@mixin rwd-min($name) {
+  @media screen and (min-width: #{bp($name)}) {
+    @content;
+  }
+}
+
+// 語意別名（desktop-first，最常用）
+@mixin rwd-tablet {
+  @include rwd-max('tablet') { @content; } // ≤ 768px（平板以下）
+}
+@mixin rwd-mobile {
+  @include rwd-max('mobile') { @content; } // ≤ 414px（手機）
+}

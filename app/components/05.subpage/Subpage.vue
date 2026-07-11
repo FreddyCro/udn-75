@@ -1,0 +1,203 @@
+<script lang="ts" setup>
+/**
+ * Subpage — 四個「類分頁」共用版型骨架，內容由 JSON（content）驅動。
+ *  - 共用 chrome（header / footer）由 subpage layout 提供。
+ *  - 首屏 hero 順序對齊 Figma：主標題 → 副標 → 單元名 → 撰文者。
+ *    （Figma 中主標題／副標為 SVG 藝術字，之後設計師補圖再改；此處先以 live text 呈現。）
+ *  - 引言（intro）為 lead 段落。
+ *  - 內文由 sections[] 逐塊渲染成 <SubpageSection>（title / desc / img）。
+ *
+ * 用法（頁面 script setup 內）：
+ *   import content from '~/locales/digital.json'
+ *   然後 <Subpage :content="content" />
+ */
+export interface SubpageAward {
+  name?: string;
+  year?: string;
+  category?: string;
+  variant?: 'gold' | 'dark';
+}
+export interface SubpageWork {
+  title?: string;
+  desc?: string;
+  url?: string;
+}
+export interface SubpageSectionData {
+  title?: string;
+  desc?: string[];
+  img?: string;
+  imgAlt?: string;
+  caption?: string;
+  awards?: SubpageAward[];
+  works?: SubpageWork[];
+  placeholder?: string;
+}
+export interface SubpageNavData {
+  backUrl?: string;
+  backLabel?: string;
+  next?: { title?: string; url?: string };
+}
+export interface SubpageContent {
+  hero: {
+    title: string;
+    subtitle?: string;
+    unit?: string;
+    author?: string;
+  };
+  intro?: string;
+  sections?: SubpageSectionData[];
+  nav?: SubpageNavData;
+}
+
+defineProps<{ content: SubpageContent }>();
+</script>
+
+<template>
+  <article class="subpage">
+    <!-- 首屏 hero -->
+    <header class="subpage__hero">
+      <div class="subpage__col subpage__col--wide">
+        <h1 class="subpage__title">{{ content.hero.title }}</h1>
+        <p v-if="content.hero.subtitle" class="subpage__subtitle">
+          {{ content.hero.subtitle }}
+        </p>
+        <p v-if="content.hero.unit" class="subpage__unit">
+          {{ content.hero.unit }}
+        </p>
+        <p v-if="content.hero.author" class="subpage__author">
+          撰文／{{ content.hero.author }}
+        </p>
+      </div>
+    </header>
+
+    <!-- 引言 -->
+    <div v-if="content.intro" class="subpage__intro">
+      <div class="subpage__col subpage__col--wide">
+        <p class="subpage__intro-text">{{ content.intro }}</p>
+      </div>
+    </div>
+
+    <!-- 內文（各 section 自行決定欄寬：文字窄欄、桂冠／得獎作品寬欄） -->
+    <div v-if="content.sections?.length" class="subpage__body">
+      <SubpageSection
+        v-for="(s, i) in content.sections"
+        :key="i"
+        v-bind="s"
+      />
+    </div>
+
+    <!-- 最下方：返回 / 下一篇 -->
+    <SubpageNav
+      v-if="content.nav"
+      :back-url="content.nav.backUrl"
+      :back-label="content.nav.backLabel"
+      :next="content.nav.next"
+    />
+  </article>
+</template>
+
+<style lang="scss" scoped>
+.subpage {
+  width: 100%;
+  color: var(--color-body); // 內文／H3 = B3 #404040
+}
+
+// 共用內容欄：置中、小螢幕留左右邊距。內文用窄欄(630)、hero/引言用寬欄(1064)。
+.subpage__col {
+  width: 100%;
+  max-width: var(--subpage-content-w);
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.subpage__col--wide {
+  max-width: var(--subpage-wide-w);
+}
+
+.subpage__hero {
+  display: flex;
+  align-items: center;
+  min-height: calc(100vh - var(--header-height));
+}
+
+.subpage__title {
+  margin: 0;
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.3;
+
+  @include rwd-tablet {
+    font-size: 36px;
+  }
+  @include rwd-mobile {
+    font-size: 28px;
+  }
+}
+
+.subpage__subtitle {
+  margin: 12px 0 0;
+  font-size: var(--text-h4);
+  line-height: var(--text-h4--line-height);
+  font-weight: 400;
+
+  @include rwd-mobile {
+    font-size: var(--text-h5);
+    line-height: var(--text-h5--line-height);
+  }
+}
+
+.subpage__unit {
+  margin: 24px 0 0;
+  font-size: var(--text-unit);
+  line-height: var(--text-unit--line-height);
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: var(--color-gray);
+
+  @include rwd-mobile {
+    font-size: var(--text-h5);
+    line-height: var(--text-h5--line-height);
+  }
+}
+
+.subpage__author {
+  margin: 4px 0 0;
+  font-size: var(--text-body);
+  line-height: 32px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: var(--color-gray-light);
+  opacity: 0.7;
+}
+
+.subpage__intro {
+  padding: 96px 0;
+
+  @include rwd-mobile {
+    padding: 56px 0;
+  }
+}
+
+.subpage__intro-text {
+  margin: 0;
+  font-size: var(--text-intro); // Figma 引言 36 / 60 / Light
+  line-height: var(--text-intro--line-height);
+  font-weight: 300;
+  color: var(--color-gray);
+  text-align: justify;
+
+  @include rwd-tablet {
+    font-size: var(--text-h3);
+    line-height: var(--text-h3--line-height);
+  }
+  @include rwd-mobile {
+    font-size: var(--text-h4);
+    line-height: var(--text-h4--line-height);
+  }
+}
+
+// 內文結束後由 SubpageNav 的 padding-top(60) 拉開與導覽的距離，故此處不再留下方留白。
+.subpage__body {
+  padding-bottom: 0;
+}
+</style>

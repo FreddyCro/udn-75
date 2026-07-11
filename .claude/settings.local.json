@@ -20,7 +20,10 @@
       "Bash(curl -s -o \"C:/Users/fredd/AppData/Local/Temp/claude/C--Users-fredd-Documents-works-projects-udn-75/c2125390-347e-4e7d-8e25-63cf1090c9ba/scratchpad/sec1-frame.png\" \"https://www.figma.com/api/mcp/asset/36eaec42-6038-41c4-be12-0af92c7205ba\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/demo)",
       "Bash(mkdir -p app/components/Section1)",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "Bash(curl -sL -o digital-hero.png \"https://www.figma.com/api/mcp/asset/444de6de-cf61-4c9e-bf98-a2ba766687c4\")",
+      "Bash(node \"C:\\\\Users\\\\yiting\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-yiting-Desktop-udn\\\\2d2dee25-f7fc-49fc-9358-6ebe67421e48\\\\scratchpad\\\\gen-subpage-json.mjs\")",
+      "Bash(node -e \"for\\(const p of ['digital','visual','news','data']\\){const j=require\\('./app/locales/'+p+'.json'\\);console.log\\(p+': '+j.hero.title+' / '+j.hero.subtitle\\)}\")"
     ]
   }
 }

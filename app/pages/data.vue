@@ -1,7 +1,11 @@
-<script lang="ts" setup></script>
+<script lang="ts" setup>
+import content from '~/locales/data.json';
+
+definePageMeta({ layout: 'subpage' });
+</script>
 
 <template>
-  <div>data</div>
+  <Subpage :content="content" />
 </template>
 
 <style></style>

@@ -23,6 +23,7 @@ export default defineNuxtConfig({
     { path: '~/components/02.forum', pathPrefix: false },
     { path: '~/components/03.blessing', pathPrefix: false },
     { path: '~/components/04.media', pathPrefix: false },
+    { path: '~/components/05.subpage', pathPrefix: false },
     '~/components',
   ],
 
@@ -76,10 +77,9 @@ export default defineNuxtConfig({
           // （自家 assets/styles 用 @use，不受影響；保留 quietDeps 壓其餘 deps 警告。）
           quietDeps: true,
           silenceDeprecations: ['import'],
-          additionalData: `
-          `,
-          // @use "@/assets/styles/mixins.scss" as *;
-          // @use "@/assets/styles/variables.scss" as *;
+          // 只放「不產生 CSS 輸出」的 @use（mixin / function / 變數），
+          // 才能安全地 prepend 進每個 SCSS 進入點而不重複輸出樣式。
+          additionalData: `@use "@/assets/styles/mixins.scss" as *;\n`,
         },
       },
     },

@@ -1,7 +1,11 @@
-<script lang="ts" setup></script>
+<script lang="ts" setup>
+import content from '~/locales/digital.json';
+
+definePageMeta({ layout: 'subpage' });
+</script>
 
 <template>
-  <div>digital</div>
+  <Subpage :content="content" />
 </template>
 
 <style></style>
