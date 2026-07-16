@@ -16,8 +16,6 @@ export default defineNuxtConfig({
   // section 元件用「數字前綴資料夾排序 + 語意檔名」：資料夾 01./02./… 直接放在
   // components/ 下（無 sections/ 包一層），故在檔案總管會排在最前面、依序排列。
   // pathPrefix: false 讓元件名只取檔名、忽略資料夾前綴（如 04.media），
-  // 元件名仍為 <Media> / <HeartMetaball> 等乾淨語意名（否則會變 04Media 之類的壞名）。
-  // Nuxt 的 path 不吃萬用字元，故每個 section 資料夾各列一筆；其餘 ~/components 維持預設。
   components: [
     { path: '~/components/01.hero', pathPrefix: false },
     { path: '~/components/02.forum', pathPrefix: false },

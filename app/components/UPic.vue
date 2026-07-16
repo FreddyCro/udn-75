@@ -1,31 +1,41 @@
 <script setup lang="ts">
 /**
- * LPic - Responsive Picture Component
+ * UPic — 響應式圖片元件（Responsive Picture Component）
  *
- * 自動處理響應式圖片的元件，支援不同裝置尺寸、WebP 格式和 Retina 顯示
+ * 依斷點輸出 <picture>：每個 srcset 斷點產生一組 <source>（WebP + 原格式），
+ * 最後附一個 <img> 作為 fallback。支援裝置尺寸、WebP、Retina（@2x）。
+ * src 路徑會被 runtimeConfig 的 APP_ASSETS_PATH 前綴（dev/prod 為空字串）。
  *
- * 使用範例：
+ * 使用範例（對應本專案 public/img 實況，完整清單見 pages/resources.vue）：
  *
- * 1. 基本用法：
- *    <LPic src="/images/hero" alt="Hero Image" />
+ * 1. 標準多斷點照片（檔名含 _pc/_pad/_mob；usePrefix 預設 true）：
+ *    <UPic src="/img/hero" alt="Hero" />
  *
- * 2. 自訂 breakpoint 和擴展名：
- *    <LPic src="/images/banner" ext="png" :srcset="['pc', 'mob']" alt="Banner" />
+ * 2. 僅密度變體、無裝置後綴（同一張圖 + @2x + WebP）：
+ *    <UPic src="/img/udn75_pic01_01" :use-prefix="false" :srcset="['mob']" alt="pic01_01" />
  *
- * 3. 不使用 2x 圖片和前綴：
- *    <LPic src="/images/logo" :use2x="false" :usePrefix="false" alt="Logo" />
+ * 3. 單檔圖（僅一種格式、無 WebP / Retina，例：底圖、PNG）：
+ *    <UPic src="/img/service/udn75_bg_service" :use-prefix="false" :use2x="false" :webp="false" alt="bg" />
+ *    <UPic src="/img/visual/udn75_pic17_02" ext="png" :use-prefix="false" :use2x="false" :webp="false" alt="pic17" />
  *
- * 4. 預加載重要圖片：
- *    <LPic src="/images/hero" loading="eager" alt="Hero Image" />
+ * 4. SVG 圖表，PC／平板共用一張 + 手機一張（pcpad / mob）：
+ *    <UPic src="/img/udn75_chart06_01" ext="svg" :srcset="['pcpad', 'mob']"
+ *          default="pcpad" :use2x="false" :webp="false" alt="chart06" />
+ *
+ * 5. 首屏重要圖片改為立即載入：
+ *    <UPic src="/img/hero" loading="eager" alt="Hero" />
  *
  * 圖片命名規則：
- * - 預設：{src}_pc.jpg, {src}_pc@2x.jpg, {src}_pad.jpg, {src}_pad@2x.jpg, {src}_mob.jpg, {src}_mob@2x.jpg
- * - WebP：{src}_pc.webp, {src}_pc@2x.webp, {src}_pad.webp, {src}_pad@2x.webp, {src}_mob.webp, {src}_mob@2x.webp
- * - usePrefix=false：{src}.jpg, {src}@2x.jpg
+ * - 預設（usePrefix=true）：{src}_pc.jpg, {src}_pc@2x.jpg, {src}_pad.jpg, {src}_pad@2x.jpg, {src}_mob.jpg, {src}_mob@2x.jpg
+ * - WebP：對應上列各檔的 .webp
+ * - usePrefix=false：{src}.jpg, {src}@2x.jpg（同一張圖，僅密度變體）
+ * - pcpad（PC 與平板共用一張，常用於 SVG 圖表）：
+ *   :srcset="['pcpad', 'mob']" → {src}_pcpad.svg（≥768px）, {src}_mob.svg（<768px）
+ *   注意：fallback <img> 建議設 default="pcpad"，避免落到不存在的 _pc 檔。
  */
 import { PC_BREAKPOINTS, TABLET_BREAKPOINTS } from '@/utils/constants';
 
-type SrcsetType = Array<'mob' | 'pad' | 'pc'>;
+type SrcsetType = Array<'mob' | 'pad' | 'pc' | 'pcpad'>;
 
 interface UPicProps {
   /** 圖片的 ID 屬性 */
@@ -41,7 +51,7 @@ interface UPicProps {
   srcset?: SrcsetType;
 
   /** 預設圖片類型（作為 fallback），預設：'pc' */
-  default?: 'mob' | 'pad' | 'pc';
+  default?: 'mob' | 'pad' | 'pc' | 'pcpad';
 
   /** 圖片副檔名，預設：'jpg' */
   ext?: string;
@@ -95,6 +105,8 @@ const usePrefixValue = computed(() => props.usePrefix ?? true);
 const mediaQueries = {
   pc: `(min-width: ${props.pcBreakpoint || PC_BREAKPOINTS}px)`,
   pad: `(min-width: ${TABLET_BREAKPOINTS}px)`,
+  // PC 與平板共用（≥ 平板斷點）；搭配 mob 即可涵蓋全斷點
+  pcpad: `(min-width: ${TABLET_BREAKPOINTS}px)`,
   mob: '',
 };
 
