@@ -220,7 +220,7 @@ onBeforeUnmount(() => {
   stroke-width: 2;
 }
 
-// 中心 block
+// 中心 block：與四角 block 同一套樣式（白底橘框卡片），僅尺寸較大
 .formula__center {
   position: absolute;
   top: 50%;
@@ -234,8 +234,9 @@ onBeforeUnmount(() => {
   height: 160px;
   padding: 20px;
   text-align: center;
-  color: #fff;
-  background: var(--color-orange);
+  color: var(--color-text);
+  background: #fff;
+  border: 2px solid var(--color-orange);
   border-radius: 12px;
   transform: translate(-50%, -50%);
 
@@ -250,6 +251,7 @@ onBeforeUnmount(() => {
   font-size: var(--text-caption);
   line-height: var(--text-caption--line-height);
   letter-spacing: 0.08em;
+  color: var(--color-orange);
 }
 
 .formula__center-title {
@@ -264,15 +266,14 @@ onBeforeUnmount(() => {
   }
 }
 
-// 四角 block：CSS 定位即動畫終點
+// 四角 block：CSS 定位即動畫終點；樣式與中心 block 一致
 .formula__block {
   position: absolute;
   width: 240px;
   padding: 20px 24px;
   background: #fff;
-  border: 1px solid var(--color-line);
+  border: 2px solid var(--color-orange);
   border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
 
   @include rwd-mobile {
     width: 156px;

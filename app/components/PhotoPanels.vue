@@ -1,10 +1,10 @@
 <script lang="ts" setup>
 /**
- * PhotoPanels — 數張照片綁滾動（news 頁）。
- *  - section pin 住，滾動推進：照片一張張從畫面下方滑入，帶少量旋轉，
- *    依預設版位（錯落擺放）堆疊成相片牆。
- *  - 版位表循環使用，照片數量不限；reduced-motion 直接呈現完成態。
- * TODO(figma): 版位／尺寸先照參考站（doodle p-top-about__panels-wrap）
+ * PhotoPanels — 數張照片「由左至右」綁滾動（news 頁）。
+ *  - section pin 住，滾動推進：水平照片軌道往左平移，照片依序
+ *    由左至右進入畫面（scrub）；每張照片下方有各自的圖說。
+ *  - reduced-motion：不 pin，軌道改為原生橫向捲動。
+ * TODO(figma): 照片尺寸／間距先照參考站（doodle p-top-about__panels-wrap）
  *   估值，取得檔案權限後對稿；圖片為佔位圖。
  */
 import { gsap } from 'gsap';
@@ -13,6 +13,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 export interface PanelPhoto {
   src: string;
   alt?: string;
+  caption?: string;
 }
 
 const props = withDefaults(
@@ -27,31 +28,22 @@ const props = withDefaults(
   },
 );
 
-/** 錯落版位表（相對 stage 中心的 % 位移與旋轉），照片多於表長時循環 */
-const LAYOUT = [
-  { x: -26, y: -10, r: -7 },
-  { x: 24, y: -16, r: 6 },
-  { x: -12, y: 14, r: -4 },
-  { x: 27, y: 12, r: 8 },
-  { x: 0, y: -2, r: 2 },
-  { x: -30, y: 4, r: 5 },
-];
-
-const slotOf = (i: number) => LAYOUT[i % LAYOUT.length]!;
-
 const rootRef = ref<HTMLElement | null>(null);
-const photoEls: HTMLElement[] = [];
-const setPhoto = (el: any, i: number) => {
-  if (el) photoEls[i] = el as HTMLElement;
-};
+const stageRef = ref<HTMLElement | null>(null);
+const trackRef = ref<HTMLElement | null>(null);
 
 let tl: gsap.core.Timeline | null = null;
+let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
-onMounted(() => {
+function build() {
   const root = rootRef.value;
-  if (!root || photoEls.length === 0) return;
-  gsap.registerPlugin(ScrollTrigger);
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const stage = stageRef.value;
+  const track = trackRef.value;
+  if (!root || !stage || !track) return;
+
+  // 軌道超出舞台的量 = 需要平移的距離（含左右緩衝 padding）
+  const shift = Math.max(0, track.scrollWidth - stage.clientWidth);
+  if (shift === 0) return; // 照片不夠寬就不動
 
   tl = gsap.timeline({
     scrollTrigger: {
@@ -62,44 +54,53 @@ onMounted(() => {
       scrub: 0.5,
     },
   });
-  photoEls.forEach((el, i) => {
-    tl!.from(
-      el,
-      {
-        yPercent: 180,
-        rotation: slotOf(i).r + (i % 2 === 0 ? 18 : -18),
-        autoAlpha: 0,
-        duration: 1,
-        ease: 'power2.out',
-      },
-      i * 0.85,
-    );
-  });
-  tl.to({}, { duration: 0.3 }); // 尾端停留
+  tl.fromTo(track, { x: 0 }, { x: -shift, ease: 'none', duration: 1 });
+}
+
+function teardown() {
+  tl?.scrollTrigger?.kill();
+  tl?.kill();
+  tl = null;
+  if (trackRef.value) gsap.set(trackRef.value, { clearProps: 'x' });
+}
+
+function onResize() {
+  if (resizeTimer) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    teardown();
+    build();
+    ScrollTrigger.refresh();
+  }, 200);
+}
+
+onMounted(() => {
+  gsap.registerPlugin(ScrollTrigger);
+  // 降級：不 pin，交給 CSS 原生橫向捲動（.photo-panels--static）
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    rootRef.value?.classList.add('photo-panels--static');
+    return;
+  }
+  build();
+  window.addEventListener('resize', onResize);
 });
 
 onBeforeUnmount(() => {
-  tl?.scrollTrigger?.kill();
-  tl?.kill();
+  if (resizeTimer) clearTimeout(resizeTimer);
+  window.removeEventListener('resize', onResize);
+  teardown();
 });
 </script>
 
 <template>
   <section ref="rootRef" class="photo-panels">
-    <div class="photo-panels__stage">
-      <div
-        v-for="(p, i) in photos"
-        :key="i"
-        :ref="(el) => setPhoto(el, i)"
-        class="photo-panels__item"
-        :style="{
-          '--px': `${slotOf(i).x}%`,
-          '--py': `${slotOf(i).y}%`,
-          '--pr': `${slotOf(i).r}deg`,
-          zIndex: i + 1,
-        }"
-      >
-        <img class="photo-panels__img" :src="p.src" :alt="p.alt ?? ''" />
+    <div ref="stageRef" class="photo-panels__stage">
+      <div ref="trackRef" class="photo-panels__track">
+        <figure v-for="(p, i) in photos" :key="i" class="photo-panels__item">
+          <img class="photo-panels__img" :src="p.src" :alt="p.alt ?? ''" />
+          <figcaption v-if="p.caption" class="photo-panels__caption">
+            {{ p.caption }}
+          </figcaption>
+        </figure>
       </div>
     </div>
   </section>
@@ -112,23 +113,33 @@ onBeforeUnmount(() => {
 }
 
 .photo-panels__stage {
-  position: relative;
+  display: flex;
+  align-items: center;
   width: 100%;
   height: 100vh;
   overflow: hidden;
 }
 
-// 版位：以 stage 中心為原點，用 CSS 變數擺到各自定位（動畫終點）
-.photo-panels__item {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: min(34vw, 480px);
-  transform: translate(-50%, -50%) translate(var(--px), var(--py))
-    rotate(var(--pr));
+// 水平軌道：x 位移由 timeline 依滾動推進（由左至右看完整排照片）
+.photo-panels__track {
+  display: flex;
+  align-items: center;
+  gap: 48px;
+  padding: 0 8vw;
+  will-change: transform;
 
   @include rwd-mobile {
-    width: 64vw;
+    gap: 24px;
+  }
+}
+
+.photo-panels__item {
+  flex-shrink: 0;
+  width: min(46vw, 660px);
+  margin: 0;
+
+  @include rwd-mobile {
+    width: 78vw;
   }
 }
 
@@ -137,6 +148,20 @@ onBeforeUnmount(() => {
   width: 100%;
   height: auto;
   border-radius: 8px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.14);
+}
+
+.photo-panels__caption {
+  margin-top: var(--sp-img-caption);
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
+  color: var(--color-gray);
+}
+
+// reduced-motion 降級：原生橫向捲動
+.photo-panels--static .photo-panels__stage {
+  height: auto;
+  padding: 40px 0;
+  overflow-x: auto;
 }
 </style>
