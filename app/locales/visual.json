@@ -16,8 +16,24 @@
     },
     {
       "title": "瞧一瞧哪一張是AI生成圖?",
-      "img": "https://placehold.co/600x400/png",
-      "caption": "AI 生成圖辨識（正確／錯誤解釋）"
+      "component": "AiImageQuiz",
+      "componentProps": {
+        "options": [
+          {
+            "src": "https://placehold.co/800x520/5a6b52/ffffff/png?text=A",
+            "alt": "選項 A：實景照片",
+            "isAi": false
+          },
+          {
+            "src": "https://placehold.co/800x520/44506b/ffffff/png?text=B",
+            "alt": "選項 B：AI 生成圖",
+            "isAi": true
+          }
+        ],
+        "correctTitle": "答對了！右邊這張是AI生成圖。",
+        "wrongTitle": "答錯了，其實右邊這張才是AI生成圖。",
+        "explain": "AI工具的效果逼真程度令人毛骨悚然，光影、質地幾可亂真；但仔細觀察細節——手指數量、文字扭曲、背景邏輯——仍可能找到破綻。身為媒體視覺工作者，我們畫出了一條底線：不偽造、不剝奪創作者的機會。"
+      }
     },
     {
       "desc": [
@@ -83,7 +99,11 @@
           "title": "喪屍青年如何誕生 依托咪酯悄悄毒害新生代",
           "desc": "SND插畫/銅牌獎 、頁面設計/優選。SND評審團評語「評審認為整體製作與視覺設計高度整合，帶來強烈的沉浸感，彷彿置身於作品所建構的世界之中」，評審特別指出，作品具有很強的吸引力，能夠有效將讀者帶入其中。",
           "url": "#",
-          "thumb": "https://placehold.co/600x760/1f2a44/ffffff/png"
+          "thumbs": [
+            "https://placehold.co/960x600/1f2a44/ffffff/png",
+            "https://placehold.co/640x400/7a5230/ffffff/png",
+            "https://placehold.co/640x400/2f4a3a/ffffff/png"
+          ]
         },
         {
           "title": "台灣塑膠袋上癮了嗎？限塑喊很大 卻年年用更多",
@@ -96,6 +116,66 @@
           "desc": "SND頁面設計、插畫/二項優選",
           "url": "#",
           "thumb": "https://placehold.co/600x760/2f4a3a/ffffff/png"
+        },
+        {
+          "title": "喪屍青年如何誕生 依托咪酯悄悄毒害新生代",
+          "desc": "SND插畫/銅牌獎 、頁面設計/優選。SND評審團評語「評審認為整體製作與視覺設計高度整合，帶來強烈的沉浸感，彷彿置身於作品所建構的世界之中」，評審特別指出，作品具有很強的吸引力，能夠有效將讀者帶入其中。",
+          "url": "#",
+          "thumbs": [
+            "https://placehold.co/960x600/1f2a44/ffffff/png",
+            "https://placehold.co/640x400/7a5230/ffffff/png",
+            "https://placehold.co/640x400/2f4a3a/ffffff/png"
+          ]
+        },
+        {
+          "title": "台灣塑膠袋上癮了嗎？限塑喊很大 卻年年用更多",
+          "desc": "SND頁面設計/銅牌獎。SND評審團評語：「評審認為這件作品極具創意，特別讚賞在頁面上方運用連續動畫來吸引讀者注意。他們指出，作品以不同但有效的方式呈現內容，並且明確考量了讀者的觀看體驗。評審也特別提到桌機版流暢的動態呈現、精緻且執行到位的小型圖像設計，以及透過人物購買雜貨的情境，有效幫助讀者理解內容」。",
+          "url": "#",
+          "thumb": "https://placehold.co/600x760/7a5230/ffffff/png"
+        },
+        {
+          "title": "放下溫體肉迷思 給豬的最後一口溫柔",
+          "desc": "SND頁面設計、插畫/二項優選",
+          "url": "#",
+          "thumb": "https://placehold.co/600x760/2f4a3a/ffffff/png"
+        },
+        {
+          "title": "喪屍青年如何誕生 依托咪酯悄悄毒害新生代",
+          "desc": "SND插畫/銅牌獎 、頁面設計/優選。SND評審團評語「評審認為整體製作與視覺設計高度整合，帶來強烈的沉浸感，彷彿置身於作品所建構的世界之中」，評審特別指出，作品具有很強的吸引力，能夠有效將讀者帶入其中。",
+          "url": "#",
+          "thumbs": [
+            "https://placehold.co/960x600/1f2a44/ffffff/png",
+            "https://placehold.co/640x400/7a5230/ffffff/png",
+            "https://placehold.co/640x400/2f4a3a/ffffff/png"
+          ]
+        },
+        {
+          "title": "台灣塑膠袋上癮了嗎？限塑喊很大 卻年年用更多",
+          "desc": "SND頁面設計/銅牌獎。SND評審團評語：「評審認為這件作品極具創意，特別讚賞在頁面上方運用連續動畫來吸引讀者注意。他們指出，作品以不同但有效的方式呈現內容，並且明確考量了讀者的觀看體驗。評審也特別提到桌機版流暢的動態呈現、精緻且執行到位的小型圖像設計，以及透過人物購買雜貨的情境，有效幫助讀者理解內容」。",
+          "url": "#",
+          "thumb": "https://placehold.co/600x760/7a5230/ffffff/png"
+        },
+        {
+          "title": "放下溫體肉迷思 給豬的最後一口溫柔",
+          "desc": "SND頁面設計、插畫/二項優選",
+          "url": "#",
+          "thumb": "https://placehold.co/600x760/2f4a3a/ffffff/png"
+        },
+        {
+          "title": "喪屍青年如何誕生 依托咪酯悄悄毒害新生代",
+          "desc": "SND插畫/銅牌獎 、頁面設計/優選。SND評審團評語「評審認為整體製作與視覺設計高度整合，帶來強烈的沉浸感，彷彿置身於作品所建構的世界之中」，評審特別指出，作品具有很強的吸引力，能夠有效將讀者帶入其中。",
+          "url": "#",
+          "thumbs": [
+            "https://placehold.co/960x600/1f2a44/ffffff/png",
+            "https://placehold.co/640x400/7a5230/ffffff/png",
+            "https://placehold.co/640x400/2f4a3a/ffffff/png"
+          ]
+        },
+        {
+          "title": "台灣塑膠袋上癮了嗎？限塑喊很大 卻年年用更多",
+          "desc": "SND頁面設計/銅牌獎。SND評審團評語：「評審認為這件作品極具創意，特別讚賞在頁面上方運用連續動畫來吸引讀者注意。他們指出，作品以不同但有效的方式呈現內容，並且明確考量了讀者的觀看體驗。評審也特別提到桌機版流暢的動態呈現、精緻且執行到位的小型圖像設計，以及透過人物購買雜貨的情境，有效幫助讀者理解內容」。",
+          "url": "#",
+          "thumb": "https://placehold.co/600x760/7a5230/ffffff/png"
         }
       ]
     }
@@ -104,7 +184,7 @@
     "backUrl": "/",
     "next": {
       "title": "永續影響：持續創造有價值的新聞",
-      "url": "/news"
+      "url": "/service"
     }
   }
 }
