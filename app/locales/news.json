@@ -33,8 +33,16 @@
       ]
     },
     {
-      "img": "https://placehold.co/600x400/png",
-      "caption": "綁滾動輪播（得獎照片）"
+      "component": "PhotoPanels",
+      "componentProps": {
+        "photos": [
+          { "src": "https://placehold.co/900x600/1f2a44/ffffff/png?text=1", "alt": "得獎照片 1" },
+          { "src": "https://placehold.co/900x600/7a5230/ffffff/png?text=2", "alt": "得獎照片 2" },
+          { "src": "https://placehold.co/900x600/2f4a3a/ffffff/png?text=3", "alt": "得獎照片 3" },
+          { "src": "https://placehold.co/900x600/8a3b2e/ffffff/png?text=4", "alt": "得獎照片 4" },
+          { "src": "https://placehold.co/900x600/3a3550/ffffff/png?text=5", "alt": "得獎照片 5" }
+        ]
+      }
     },
     {
       "title": "AI革命全面進化 打造媒體新典範",
@@ -44,12 +52,30 @@
         "它將聯合報系的機構智慧透過RAG對接數據基礎，以大型語言模型輸出最佳化的過程，預判閱讀需求，協助新聞部決策者在報網合一架構下，最快可在70秒內協助歸納出資深副總們的經驗智慧，並產出整合版、平台版（即時、 付費內容、 社群、影音及報版）兩種分析稿單，最終由新聞室最高階主管依當下情勢判斷選用。",
         "最大的亮點是使用超簡單！只要在LINE上對話框輸入「類別：、標題：、內容：」，它立即就會產生簡易版一主五配的角度規劃及資訊圖表的建議，附帶連結內有完整的「報版、即時、數位版、社群、影音」等多模態，適用全媒體發動的推薦，還提供競媒的第一波數位比報，快速協助決策者預判、洞悉讀者需求，更有效率執行議題滾動。",
         "新聞部由內容長范凌嘉、總編輯王茂臻領軍，從上而下執行「Publish X 議題智囊包」落地應用，追蹤一年的流量成效，增益倍數最高達4.5倍。這項創新的AI工具，同時在2026年世界新聞出版協會（WAN-IFRA）、國際新聞媒體協會（INMA）所辦的兩大媒體數位大賽上，大放異彩，更一舉拿下WAN-IFRA「最佳創新數位產品」全球金獎！"
-      ]
+      ],
+      "component": "FormulaBlocks",
+      "componentProps": {
+        "center": { "eyebrow": "Publish X", "title": "議題智囊包" },
+        "items": [
+          { "title": "報版", "desc": "報網合一架構下的版面規劃建議" },
+          { "title": "即時・數位版", "desc": "一主五配的角度規劃與資訊圖表建議" },
+          { "title": "社群", "desc": "分眾策略與社群擴散節奏" },
+          { "title": "影音", "desc": "多模態內容的全媒體發動推薦" }
+        ]
+      }
     },
     {
       "title": "智慧內容計劃方案 (Curate X Program) 獲獎歷程",
-      "img": "https://placehold.co/600x400/png",
-      "caption": "獲獎歷程時間軸"
+      "component": "AwardTimeline",
+      "componentProps": {
+        "items": [
+          { "year": "2020", "title": "《聯合報數位版》訂閱制上線", "desc": "先讀懂用戶的心，再向用戶收費" },
+          { "year": "2022", "title": "智慧內容 Curate X 啟動", "desc": "依主題共識地圖分類內容、評估受眾興趣" },
+          { "year": "2024", "title": "UDN智慧策展aiAssist", "desc": "最高以四分之一稿量轉換全站近半訂單" },
+          { "year": "2025", "title": "Publish X 議題智囊包", "desc": "8大發動流程、41個採訪情境的結構化知識庫" },
+          { "year": "2026", "title": "WAN-IFRA 最佳創新數位產品 全球金獎", "desc": "並於 INMA 全球媒體數位大賽大放異彩" }
+        ]
+      }
     },
     {
       "desc": [

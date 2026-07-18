@@ -14,12 +14,18 @@ import type { Component } from 'vue';
 import ShowcaseGallery from '~/components/ShowcaseGallery.vue';
 import AiSearch from '~/components/AiSearch.vue';
 import AiImageQuiz from '~/components/AiImageQuiz.vue';
+import FormulaBlocks from '~/components/FormulaBlocks.vue';
+import PhotoPanels from '~/components/PhotoPanels.vue';
+import AwardTimeline from '~/components/AwardTimeline.vue';
 
 /** JSON 可嵌入的互動元件白名單（section 的 component 欄位 → 實際元件） */
 const EMBEDS: Record<string, Component> = {
   ShowcaseGallery,
   AiSearch,
   AiImageQuiz,
+  FormulaBlocks,
+  PhotoPanels,
+  AwardTimeline,
 };
 
 export interface AwardItem {
