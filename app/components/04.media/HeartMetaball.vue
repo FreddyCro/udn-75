@@ -274,9 +274,13 @@ onMounted(() => {
   // autoRoam prop 可在桌機強制此行為以預覽手機效果。
   const roamOnly =
     props.autoRoam || window.matchMedia('(hover: none)').matches;
+  // 事件綁定範圍：預設綁自己；若外層有 [data-metaball-scope]（如 Media section
+  // 把 canvas 墊在內容下層），改綁該祖先 → 游標移到內容上方也能持續追蹤。
+  const listenEl =
+    (wrap.closest('[data-metaball-scope]') as HTMLElement | null) ?? wrap;
   if (!roamOnly) {
-    wrap.addEventListener('pointermove', onPointerMove);
-    wrap.addEventListener('pointerdown', onPointerMove);
+    listenEl.addEventListener('pointermove', onPointerMove);
+    listenEl.addEventListener('pointerdown', onPointerMove);
   }
 
   // ---------- render loop（IntersectionObserver 控制啟停） ----------
@@ -477,8 +481,8 @@ onMounted(() => {
     cancelAnimationFrame(raf);
     observer.disconnect();
     resizeObserver.disconnect();
-    wrap.removeEventListener('pointermove', onPointerMove);
-    wrap.removeEventListener('pointerdown', onPointerMove);
+    listenEl.removeEventListener('pointermove', onPointerMove);
+    listenEl.removeEventListener('pointerdown', onPointerMove);
   });
 });
 </script>

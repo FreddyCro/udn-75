@@ -9,9 +9,33 @@
     { "title": "智慧心媒體", "target": "media" }
   ],
   "subpageAnchors": [
-    { "title": "數位革命", "url": "/news" },
-    { "title": "視覺敘事", "url": "/visual" },
-    { "title": "永續影響", "url": "/service" },
-    { "title": "智慧新聞", "url": "/data" }
+    {
+      "title": "數位革命",
+      "subtitle": "十年轉型路重塑影響力",
+      "unit": "新聞部 X 數據發展部",
+      "author": "林以君撰／熊迺群整理",
+      "url": "/news"
+    },
+    {
+      "title": "視覺敘事",
+      "subtitle": "用故事與創意抓住目光",
+      "unit": "視覺設計中心",
+      "author": "董谷音撰",
+      "url": "/visual"
+    },
+    {
+      "title": "永續影響",
+      "subtitle": "持續創造有價值的新聞",
+      "unit": "新聞營運中心",
+      "author": "蔡佩蓉撰",
+      "url": "/service"
+    },
+    {
+      "title": "智慧新聞",
+      "subtitle": "比讀者早一步洞察需求",
+      "unit": "數據中心",
+      "author": "李承宇撰",
+      "url": "/data"
+    }
   ]
 }

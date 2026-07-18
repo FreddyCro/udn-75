@@ -1,23 +1,20 @@
 <script setup lang="ts">
-// Section 4：newmedia（智慧「心」媒體）
-//  - 整個 section hover 時浮現 HeartMetaball 互動底紋（觸控裝置常駐顯示，
-//    元件自身在 hover:none 環境會切換成自動遊走）。
-//  - 內容層 pointer-events: none 讓游標事件穿透到底紋 canvas；
-//    連結恢復 auto 維持可點擊。
-//  - list 為四個子頁入口，hover 文字放大。
+// Section 4：newmedia（智慧「心」媒體）— 版面對齊 Figma 智慧心媒體7（658:33068）
+//  - 標題左上（live text，SVG 藝術字待設計師補圖）、內文左欄 509px、
+//    下方 01–04 清單（編號＋標題：副標＋單位＋撰文者，全寬分隔線）。
+//  - HeartMetaball 互動底紋墊在內容下層、常駐顯示（閒置時自動遊走成
+//    像素心團 = 設計稿右側圖樣）；section 掛 data-metaball-scope，
+//    游標移到內容/清單上方也持續追蹤（對應 hover 列底紋跟隨，frame 658:33384）。
+//  - list hover：編號與標題放大（frame「76」）。
 //
-// ── 開場 motion（7 步驟，ScrollTrigger 進場觸發一次）──
-//  1. 80vw 橘色塊左右縮小成直條
-//  2. 直條上下縮小成中心點
-//  3. 標題文字與兩側 bar 從中心點向兩側出現
-//  4. 兩側 bar 在文字到位後消失
-//  5. 中心點抽高成與文字同高的直線
-//  6. 直線展開成上下引號「」
+// ── 開場 motion（分鏡 智慧心媒體1→7，ScrollTrigger 進場觸發一次）──
+//  1. 80vw 橘色塊左右縮成直條　2. 直條上下縮成中心點
+//  3. 標題文字與兩側 bar 從中心點向兩側出現　4. bar 消失
+//  5. 中心點抽高成與文字同高的直線　6. 直線展開成上下引號（橘）
 //  7. 中心字「心」出現
-//  標題以 JSON 字串逐字拆 span（智慧／「／心／」／媒體），動畫結束後
-//  即為自然排版的 live text；reduced-motion 或無 JS 時直接顯示完整標題。
-//
-// TODO(figma): 色塊尺寸／節奏／bar 樣式先照規格描述估值，取得檔案權限後對稿。
+//  8. 銜接最終版面：標題從畫面中央移回左上、引號轉灰，
+//     內文、清單列（01→04 依序）與底紋淡入。
+//  標題以 JSON 字串逐字拆 span；reduced-motion 或無 JS 直接顯示完成態。
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section4.json';
@@ -44,9 +41,15 @@ const titleChars = (() => {
 
 const sectionRef = ref<HTMLElement | null>(null);
 const titleRef = ref<HTMLElement | null>(null);
+const bodyRef = ref<HTMLElement | null>(null);
+const bgRef = ref<HTMLElement | null>(null);
 const morphRef = ref<HTMLElement | null>(null);
 const barLRef = ref<HTMLElement | null>(null);
 const barRRef = ref<HTMLElement | null>(null);
+const rowEls: HTMLElement[] = [];
+const setRow = (el: any, i: number) => {
+  if (el) rowEls[i] = el as HTMLElement;
+};
 
 let tl: gsap.core.Timeline | null = null;
 let trigger: ScrollTrigger | null = null;
@@ -58,7 +61,7 @@ onMounted(() => {
   const barL = barLRef.value;
   const barR = barRRef.value;
   if (!section || !title || !morph || !barL || !barR) return;
-  // 降級：不跑動畫，直接顯示標題（初始隱藏全靠 JS set，不寫在 CSS）
+  // 降級：不跑動畫，直接顯示完成態（初始隱藏全靠 JS set，不寫在 CSS）
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   gsap.registerPlugin(ScrollTrigger);
@@ -66,15 +69,25 @@ onMounted(() => {
   const parts = Array.from(
     title.querySelectorAll<HTMLElement>('.media__title-part'),
   );
+  const revealEls = [bgRef.value, bodyRef.value, ...rowEls].filter(Boolean);
   gsap.set(parts, { autoAlpha: 0 });
+  gsap.set(revealEls, { autoAlpha: 0 });
 
   trigger = ScrollTrigger.create({
     trigger: section,
     start: 'top 60%',
     once: true,
     onEnter: () => {
-      // 觸發當下量測（字型已載入），把每個字的起點設在標題中心
+      // 觸發當下量測（字型已載入）
+      const secRect = section.getBoundingClientRect();
       const titleRect = title.getBoundingClientRect();
+      // 標題於 motion 期間組裝在 section 中心 → 整體先位移過去
+      const wrapDx =
+        secRect.left + secRect.width / 2 - (titleRect.left + titleRect.width / 2);
+      const wrapDy =
+        secRect.top + secRect.height / 2 - (titleRect.top + titleRect.height / 2);
+      gsap.set(title, { x: wrapDx, y: wrapDy });
+
       const centerX = titleRect.left + titleRect.width / 2;
       const byRole = (r: CharRole) =>
         parts.filter((_, i) => titleChars[i]!.role === r);
@@ -87,7 +100,7 @@ onMounted(() => {
       const quotes = [...byRole('open'), ...byRole('close')];
       const heart = byRole('heart');
       sides.forEach((el) => gsap.set(el, { x: dxOf(el) }));
-      quotes.forEach((el) => gsap.set(el, { x: dxOf(el) }));
+      quotes.forEach((el) => gsap.set(el, { x: dxOf(el), color: '#ff7f00' }));
       gsap.set(heart, { scale: 0.6, transformOrigin: '50% 50%' });
 
       // 兩側 bar：與文字同高的直條，從中心跟著文字的前緣往外走
@@ -127,6 +140,17 @@ onMounted(() => {
           heart,
           { autoAlpha: 1, scale: 1, duration: 0.4, ease: 'back.out(2)' },
           'quotes+=0.35',
+        )
+        // 8. 銜接最終版面：標題移回左上、引號轉灰、內容依序淡入
+        .addLabel('settle', '+=0.35')
+        .to(title, { x: 0, y: 0, duration: 0.8, ease: 'power3.inOut' }, 'settle')
+        .to(quotes, { color: '#686868', duration: 0.5 }, 'settle+=0.2')
+        .to(bgRef.value, { autoAlpha: 1, duration: 0.6 }, 'settle+=0.3')
+        .to(bodyRef.value, { autoAlpha: 1, y: 0, duration: 0.5 }, 'settle+=0.4')
+        .to(
+          rowEls,
+          { autoAlpha: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out' },
+          'settle+=0.55',
         );
     },
   });
@@ -139,38 +163,49 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section id="media" ref="sectionRef" class="media">
-    <!-- 互動底紋（hover 浮現；aria-hidden 純裝飾） -->
-    <div class="media__bg" aria-hidden="true">
+  <section id="media" ref="sectionRef" class="media" data-metaball-scope>
+    <!-- 互動底紋：常駐（閒置自動遊走成像素心團），墊在內容下層 -->
+    <div ref="bgRef" class="media__bg" aria-hidden="true">
       <HeartMetaball :idle-blob-min="0.1" :idle-blob-max="0.2" :life="3" />
     </div>
 
     <div class="media__inner">
-      <a class="media__entry" href="#">{{ newmedia.entryLabel }}</a>
+      <h2 ref="titleRef" class="media__title">
+        <span
+          v-for="(c, i) in titleChars"
+          :key="i"
+          class="media__title-part"
+          >{{ c.ch }}</span
+        >
+      </h2>
 
-      <!-- 標題＋開場 motion：morph 色塊與兩側 bar 均為裝飾層 -->
-      <div class="media__title-stage">
-        <div ref="morphRef" class="media__morph" aria-hidden="true" />
-        <div ref="barLRef" class="media__bar" aria-hidden="true" />
-        <div ref="barRRef" class="media__bar" aria-hidden="true" />
-        <h2 ref="titleRef" class="media__title">
-          <span
-            v-for="(c, i) in titleChars"
-            :key="i"
-            class="media__title-part"
-            >{{ c.ch }}</span
-          >
-        </h2>
-      </div>
+      <p ref="bodyRef" class="media__body">{{ newmedia.body }}</p>
 
-      <p class="media__body">{{ newmedia.body }}</p>
-
-      <!-- 四個子頁入口：hover 文字放大 -->
-      <ul class="media__list">
-        <li v-for="a in subpageAnchors" :key="a.url" class="media__item">
-          <NuxtLink class="media__link" :to="a.url">{{ a.title }}</NuxtLink>
+      <!-- 01–04 清單：編號＋標題：副標＋單位＋撰文者，hover 放大（frame 76） -->
+      <ol class="media__list">
+        <li
+          v-for="(a, i) in subpageAnchors"
+          :key="a.url"
+          :ref="(el) => setRow(el, i)"
+          class="media__item"
+        >
+          <NuxtLink class="media__row" :to="a.url">
+            <span class="media__num">0{{ i + 1 }}</span>
+            <span class="media__row-title"
+              >{{ a.title }}：{{ a.subtitle }}</span
+            >
+            <span class="media__unit">{{ a.unit }}</span>
+            <span class="media__author">{{ a.author }}</span>
+          </NuxtLink>
         </li>
-      </ul>
+      </ol>
+    </div>
+
+    <!-- 開場 motion 舞台：morph 色塊與兩側 bar（絕對置中於 section） -->
+    <div class="media__stage" aria-hidden="true">
+      <div ref="morphRef" class="media__morph" />
+      <div ref="barLRef" class="media__bar" />
+      <div ref="barRRef" class="media__bar" />
     </div>
   </section>
 </template>
@@ -183,60 +218,136 @@ onBeforeUnmount(() => {
   background: #fff;
 }
 
-// 底紋層：預設隱藏，section hover 時淡入；觸控環境（無 hover）常駐顯示
+// 底紋層：常駐顯示（開場 motion 結束後淡入）
 .media__bg {
   position: absolute;
   inset: 0;
-  opacity: 0;
-  transition: opacity 0.4s ease;
 
   // HeartMetaball 自帶 height: 100vh，改為填滿本層
   :deep(.metaballs) {
     height: 100%;
   }
-
-  .media:hover & {
-    opacity: 1;
-  }
-
-  @media (hover: none) {
-    opacity: 1;
-  }
 }
 
-// 內容層：pointer-events 穿透到底紋 canvas，連結恢復可互動
+// 內容層：pointer-events 穿透到底紋（事件由 section 轉送），連結恢復可互動
 .media__inner {
   position: relative;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: 96px 20px;
-  text-align: center;
+  max-width: 1152px; // 1280 - 兩側 64（對齊 Figma 658:33068）
+  margin: 0 auto;
+  padding: 46px 20px 140px;
   pointer-events: none;
 }
 
-.media__entry {
-  color: var(--color-orange);
-  font-size: var(--text-caption);
-  line-height: var(--text-caption--line-height);
-  text-decoration: none;
-  pointer-events: auto;
+.media__title {
+  margin: 0;
+  color: var(--color-gray); // 對齊 Figma：主標 #686868
+  font-size: clamp(40px, 5vw, 64px);
+  line-height: 1.32;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
 
-  &:hover {
-    text-decoration: underline;
+// 逐字 span：inline-block 供 transform；動畫結束後即自然排版
+.media__title-part {
+  display: inline-block;
+  will-change: transform;
+}
+
+.media__body {
+  max-width: 509px; // Figma 內文欄寬
+  margin: 28px 0 0;
+  color: var(--color-gray);
+  font-size: 18px;
+  line-height: 32px; // Figma 18/32 Light
+  font-weight: 300;
+  text-align: justify;
+}
+
+.media__list {
+  margin: 118px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+// 清單列：上緣全寬分隔線（設計稿線橫貫整個視窗）
+.media__item {
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 100vw;
+    height: 1px;
+    background: var(--color-line);
+    transform: translateX(-50%);
   }
 }
 
-// 標題舞台：morph 色塊／bar 以標題為定位基準置中
-.media__title-stage {
-  position: relative;
-  display: flex;
+.media__row {
+  display: grid;
+  grid-template-columns: 96px 1fr 214px 200px;
   align-items: center;
-  justify-content: center;
-  margin-top: 16px;
+  min-height: 60px;
+  padding: 7px 0;
+  color: var(--color-gray);
+  text-decoration: none;
+  pointer-events: auto;
+
+  @include rwd-tablet {
+    grid-template-columns: 48px 1fr;
+  }
+}
+
+.media__num {
+  font-size: 24px;
+  line-height: 46px;
+  font-weight: 300;
+  transform-origin: left center;
+  transition: transform 0.25s ease;
+
+  .media__row:hover & {
+    transform: scale(1.25); // hover 放大（frame 76）
+  }
+}
+
+.media__row-title {
+  font-size: var(--text-h5); // 20
+  line-height: 46px;
+  font-weight: 400;
+  transform-origin: left center;
+  transition: transform 0.25s ease;
+
+  .media__row:hover & {
+    transform: scale(1.2);
+  }
+
+  @include rwd-mobile {
+    font-size: var(--text-body);
+    line-height: 32px;
+  }
+}
+
+.media__unit,
+.media__author {
+  font-size: 16px;
+  line-height: 46px;
+  font-weight: 300;
+  white-space: nowrap;
+
+  @include rwd-tablet {
+    display: none; // TODO(figma): 對 mob 稿後補行動版排法
+  }
+}
+
+// motion 舞台：置中於 section，純裝飾
+.media__stage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
 }
 
 // 開場 morph 色塊：80vw 色塊 → 直條 → 中心點 → 直線（尺寸由 timeline 控制）
@@ -261,63 +372,5 @@ onBeforeUnmount(() => {
   background: var(--color-orange);
   transform: translate(-50%, -50%);
   visibility: hidden;
-}
-
-.media__title {
-  margin: 0;
-  color: var(--color-text);
-  font-size: var(--text-h3);
-  line-height: var(--text-h3--line-height);
-  font-weight: 700;
-
-  @include rwd-mobile {
-    font-size: var(--text-h4);
-    line-height: var(--text-h4--line-height);
-  }
-}
-
-// 逐字 span：inline-block 供 transform；動畫結束後即自然排版
-.media__title-part {
-  display: inline-block;
-  will-change: transform;
-}
-
-.media__body {
-  max-width: var(--subpage-content-w);
-  margin: 24px 0 0;
-  color: var(--color-body);
-  font-size: var(--text-body);
-  line-height: var(--text-body--line-height);
-  font-weight: 300;
-}
-
-.media__list {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  margin: 64px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.media__link {
-  display: inline-block;
-  color: var(--color-text);
-  font-size: var(--text-h4);
-  line-height: var(--text-h4--line-height);
-  font-weight: 400;
-  text-decoration: none;
-  transition: transform 0.2s ease, color 0.2s ease;
-  pointer-events: auto;
-
-  &:hover {
-    color: var(--color-orange);
-    transform: scale(1.15); // list hover 文字放大
-  }
-
-  @include rwd-mobile {
-    font-size: var(--text-h5);
-    line-height: var(--text-h5--line-height);
-  }
 }
 </style>
