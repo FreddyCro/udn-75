@@ -7,5 +7,11 @@
     { "title": "論壇", "target": "forum" },
     { "title": "永續祝福", "target": "blessing" },
     { "title": "智慧心媒體", "target": "media" }
+  ],
+  "subpageAnchors": [
+    { "title": "數位革命", "url": "/news" },
+    { "title": "視覺敘事", "url": "/visual" },
+    { "title": "永續影響", "url": "/service" },
+    { "title": "智慧新聞", "url": "/data" }
   ]
 }

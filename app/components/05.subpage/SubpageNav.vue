@@ -114,4 +114,32 @@ withDefaults(
   width: 50px;
   height: 50px;
 }
+
+// 前往下一篇：圓框箭頭大小循環呼吸縮放；Default＝圓形放大（scale 1）。
+// hover 時取消 keyframes、以 transition 收斂回 Default（放大）狀態。
+// TODO(figma): 縮放幅度／週期先照規格描述估值，取得檔案權限後對 #大小循環呼吸縮放動態 校正。
+.subpage-nav__link--next .subpage-nav__icon {
+  animation: subpage-nav-breathe 2.4s ease-in-out infinite;
+  transition: transform 0.3s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+.subpage-nav__link--next:hover .subpage-nav__icon {
+  animation: none;
+  transform: scale(1);
+}
+
+@keyframes subpage-nav-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(0.7);
+  }
+}
 </style>
