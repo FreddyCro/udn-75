@@ -4,12 +4,23 @@
  * 各元素之間、以及 section 之間的間距，全部走共用 token（--sp-*），四頁一致。
  * 欄寬由內容決定：一般文字用窄欄(630)；含 awards（桂冠）／works（得獎作品）的區塊改用寬欄(1064)。
  *
- * ── 得獎作品「懸浮縮圖」POC ──
- *  hover 得獎作品清單的每一列（電腦）／滾動至畫面中央（手機）時，該列文字背後浮出縮圖：
- *   先 glitch 雜訊分割 → feTurbulence 像素溶解出現 → 微微懸浮飄移；電腦另有滑鼠追蹤跟隨。
- *  觸發區是「列」本身（非桂冠 ART）；縮圖圖片 hover／滾入時才設 src（不影響初始 loading）。
+ * ── 得獎作品「懸浮縮圖」（GlitchImage）──
+ *  hover 得獎作品清單的每一列（電腦）／滾動至畫面中央（手機）時，浮出該列縮圖，
+ *  以 GlitchImage 跑多階段 glitch reveal。縮圖水平固定在畫面正中央、蓋在文字上層
+ *  （不跟隨滑鼠）；垂直依該列在視窗的位置決定顯示於列的上方或下方。
  */
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import type { Component } from 'vue';
+import ShowcaseGallery from '~/components/ShowcaseGallery.vue';
+import AiSearch from '~/components/AiSearch.vue';
+import AiImageQuiz from '~/components/AiImageQuiz.vue';
+
+/** JSON 可嵌入的互動元件白名單（section 的 component 欄位 → 實際元件） */
+const EMBEDS: Record<string, Component> = {
+  ShowcaseGallery,
+  AiSearch,
+  AiImageQuiz,
+};
 
 export interface AwardItem {
   name?: string;
@@ -22,7 +33,11 @@ export interface AwardWorkItem {
   title?: string;
   desc?: string;
   url?: string;
+  /** 懸浮縮圖（單張；與 thumbs 擇一，thumbs 優先） */
   thumb?: string;
+  /** 懸浮縮圖多重疊圖（最多 3 張，依序 = 主卡 → 左上小卡 → 右下小卡）
+   *  TODO: 影片素材支援待 GlitchImage 加入 <video> 卡片後開通 */
+  thumbs?: string[];
 }
 
 const props = defineProps<{
@@ -34,6 +49,10 @@ const props = defineProps<{
   awards?: AwardItem[];
   works?: AwardWorkItem[];
   placeholder?: string;
+  /** 嵌入的互動元件名（EMBEDS 白名單 key），滿版呈現於該 section 內容之後 */
+  component?: string;
+  /** 嵌入元件的 props（原樣 v-bind 傳入） */
+  componentProps?: Record<string, unknown>;
 }>();
 
 // 含桂冠或得獎作品清單的區塊改用寬欄。
@@ -41,65 +60,62 @@ const isWide = () => !!(props.awards?.length || props.works?.length);
 
 /* ── 懸浮縮圖狀態（觸發區＝得獎作品清單的每一列）── */
 const worksWrap = ref<HTMLElement | null>(null);
-const thumbEl = ref<HTMLElement | null>(null);
-const filterSvg = ref<SVGSVGElement | null>(null);
-const thumb = reactive({ active: false, src: '' });
+const thumbBox = ref<HTMLElement | null>(null);
+const thumb = reactive({
+  visible: false,
+  images: [] as string[],
+  key: 0, // 每次觸發 +1 → 強制 GlitchImage 重掛，換列 hover 也必定重播 glitch
+  top: 0,
+});
 
-const pos = { x: 0, y: 0, ex: 0, ey: 0 }; // target / eased（相對 wrap）
+const THUMB_GAP = 24; // 縮圖與列的垂直間距（px）
+
 let canHover = false;
-let rafId = 0;
+let activeIdx = -1; // 觸發中的列，避免重複觸發（手機滾動每 frame 進來）
 let onScroll: (() => void) | null = null;
 
-function clamp(v: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, v));
+/** 顯示第 i 列的縮圖：水平固定畫面中央（CSS）；
+ *  垂直如 tooltip——依該列在視窗（100vh）的位置決定貼列的上方或下方 */
+async function activate(i: number, rowEl: HTMLElement) {
+  const wrap = worksWrap.value;
+  const w = props.works?.[i];
+  if (!wrap || !w) return;
+  const images = w.thumbs?.length ? w.thumbs : w.thumb ? [w.thumb] : [];
+  if (!images.length) return;
+  if (i === activeIdx && thumb.visible) return;
+  activeIdx = i;
+
+  thumb.images = images; // hover／滾入才設 src → GlitchImage lazy 載入
+  thumb.key++; // 重掛 → :active 於 onMounted 自動重播
+  thumb.visible = true;
+
+  // 等 GlitchImage 掛載（stage 依 aspect-ratio 即有高度）再量測、決定上下位置
+  await nextTick();
+  const box = thumbBox.value;
+  if (!box) return;
+  const wrapRect = wrap.getBoundingClientRect();
+  const rowRect = rowEl.getBoundingClientRect();
+  const rowCenterY = rowRect.top + rowRect.height / 2;
+  // 列在視窗上半 → 縮圖貼列下方；列在下半 → 貼列上方
+  const showBelow = rowCenterY < window.innerHeight / 2;
+  thumb.top = showBelow
+    ? rowRect.bottom - wrapRect.top + THUMB_GAP
+    : rowRect.top - wrapRect.top - THUMB_GAP - box.offsetHeight;
 }
 
-function playReveal(w: AwardWorkItem) {
-  thumb.src = w.thumb ?? ''; // 換 src（不重建 <img>，避免空白幀閃爍）
-  thumb.active = true;
-  nextTick(() => {
-    const el = thumbEl.value;
-    if (el) {
-      // 移除 → 強制 reflow → 重加，讓 glitch 動畫每次 hover 重播
-      el.classList.remove('is-revealing');
-      void el.offsetWidth;
-      el.classList.add('is-revealing');
-    }
-    // 同步觸發濾鏡內所有 SMIL：條狀位移 + RGB 色差一起收斂 → 雜訊分割後出現圖
-    filterSvg.value
-      ?.querySelectorAll('animate')
-      .forEach((a) => (a as SVGAnimateElement).beginElement?.());
-  });
+function deactivate() {
+  activeIdx = -1;
+  thumb.visible = false; // v-if 卸載 GlitchImage → 內部 rAF／timeline 自行清理
 }
 
-function applyTransform() {
-  if (thumbEl.value) {
-    thumbEl.value.style.transform =
-      `translate(${pos.ex}px, ${pos.ey}px) translate(-50%, -50%)`;
-  }
-}
-
-function loop() {
-  pos.ex += (pos.x - pos.ex) * 0.12;
-  pos.ey += (pos.y - pos.ey) * 0.12;
-  applyTransform();
-  rafId = requestAnimationFrame(loop);
-}
-
-/* 電腦：hover 該列觸發 + 滑鼠追蹤 */
-function onEnter(w: AwardWorkItem) {
+/* 電腦：hover 列觸發；離開整個清單才收起 */
+function onEnter(i: number, e: Event) {
   if (!canHover) return;
-  playReveal(w);
+  activate(i, e.currentTarget as HTMLElement);
 }
-function onMove(e: MouseEvent) {
-  if (!canHover || !worksWrap.value) return;
-  const r = worksWrap.value.getBoundingClientRect();
-  pos.x = clamp(e.clientX - r.left, 0, r.width);
-  pos.y = clamp(e.clientY - r.top, 0, r.height);
-}
-function onLeave() {
+function onLeaveWrap() {
   if (!canHover) return;
-  thumb.active = false;
+  deactivate();
 }
 
 /* 手機：滾動至畫面中央的列自動浮出 */
@@ -119,18 +135,11 @@ function setupMobile() {
         best = i;
       }
     });
-    const w = best >= 0 ? props.works?.[best] : undefined;
-    if (!w || bestD > window.innerHeight * 0.5) {
-      thumb.active = false;
+    if (best < 0 || bestD > window.innerHeight * 0.5) {
+      deactivate();
       return;
     }
-    playReveal(w);
-    const r = wrap.getBoundingClientRect();
-    pos.x = r.width / 2;
-    pos.y = clamp(cy - r.top, 0, r.height);
-    pos.ex = pos.x;
-    pos.ey = pos.y;
-    applyTransform();
+    activate(best, items[best]!);
   };
   window.addEventListener('scroll', onScroll, { passive: true });
   onScroll();
@@ -139,15 +148,10 @@ function setupMobile() {
 onMounted(() => {
   if (!props.works?.length) return;
   canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  if (canHover) {
-    rafId = requestAnimationFrame(loop);
-  } else {
-    setupMobile();
-  }
+  if (!canHover) setupMobile();
 });
 
 onBeforeUnmount(() => {
-  if (rafId) cancelAnimationFrame(rafId);
   if (onScroll) window.removeEventListener('scroll', onScroll);
 });
 </script>
@@ -191,99 +195,32 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- 得獎作品（一列一列清單）＋ 懸浮縮圖 POC（hover 每一列觸發） -->
-      <div v-if="works?.length" ref="worksWrap" class="subpage-section__works-wrap">
-        <!-- glitch 雜訊分割濾鏡：條狀位移 + RGB 色差，hover 由 JS 同步觸發所有 animate -->
-        <svg ref="filterSvg" class="subpage-section__filter" aria-hidden="true">
-          <filter
-            id="award-dissolve"
-            x="-15%"
-            y="-15%"
-            width="130%"
-            height="130%"
-            color-interpolation-filters="sRGB"
-          >
-            <!-- 低 X 頻率→寬橫條、高 Y 頻率→多條 = 水平條狀噪點 -->
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency="0.012 0.55"
-              numOctaves="2"
-              seed="4"
-              result="noise"
-            />
-            <!-- 雜訊分割：依噪點做水平位移，量 large→0（改 dur 調整精簡秒數） -->
-            <feDisplacementMap
-              in="SourceGraphic"
-              in2="noise"
-              xChannelSelector="R"
-              yChannelSelector="G"
-              scale="0"
-              result="disp"
-            >
-              <animate
-                attributeName="scale"
-                from="55"
-                to="0"
-                dur="0.45s"
-                begin="indefinite"
-                fill="freeze"
-                calcMode="spline"
-                keyTimes="0;1"
-                keySplines="0.16 0.8 0.24 1"
-              />
-            </feDisplacementMap>
-            <!-- RGB 色差分裂：紅通道右移、青(綠+藍)通道左移，位移 large→0 後合一 -->
-            <feColorMatrix
-              in="disp"
-              type="matrix"
-              values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"
-              result="chR"
-            />
-            <feOffset in="chR" dy="0" result="chRo">
-              <animate
-                attributeName="dx"
-                from="12"
-                to="0"
-                dur="0.45s"
-                begin="indefinite"
-                fill="freeze"
-                calcMode="spline"
-                keyTimes="0;1"
-                keySplines="0.16 0.8 0.24 1"
-              />
-            </feOffset>
-            <feColorMatrix
-              in="disp"
-              type="matrix"
-              values="0 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"
-              result="chC"
-            />
-            <feOffset in="chC" dy="0" result="chCo">
-              <animate
-                attributeName="dx"
-                from="-12"
-                to="0"
-                dur="0.45s"
-                begin="indefinite"
-                fill="freeze"
-                calcMode="spline"
-                keyTimes="0;1"
-                keySplines="0.16 0.8 0.24 1"
-              />
-            </feOffset>
-            <feBlend in="chRo" in2="chCo" mode="screen" />
-          </filter>
-        </svg>
-
+      <!-- 得獎作品（一列一列清單）＋ 懸浮縮圖（GlitchImage，hover 每一列觸發） -->
+      <div
+        v-if="works?.length"
+        ref="worksWrap"
+        class="subpage-section__works-wrap"
+        @mouseleave="onLeaveWrap"
+      >
+        <!-- 懸浮縮圖：水平固定畫面中央（CSS）、top 由 JS 依列位置貼列的上方或下方。
+             多重疊圖走 GlitchImage 預設三卡版面（主卡＋左上／右下小卡） -->
         <div
-          ref="thumbEl"
-          class="award-thumb"
-          :class="{ 'is-active': thumb.active }"
+          ref="thumbBox"
+          class="works-thumb"
+          :class="{ 'is-visible': thumb.visible }"
+          :style="{ top: `${thumb.top}px` }"
           aria-hidden="true"
         >
-          <div class="award-thumb__inner">
-            <img v-if="thumb.src" class="award-thumb__img" :src="thumb.src" alt="" />
-          </div>
+          <GlitchImage
+            v-if="thumb.visible"
+            :key="thumb.key"
+            :images="thumb.images"
+            :active="true"
+            :duration="1.2"
+            :pieces="16"
+            :parallax-amp="0"
+            bg-color="#ffffff"
+          />
         </div>
 
         <div class="subpage-section__works">
@@ -293,9 +230,7 @@ onBeforeUnmount(() => {
             :title="w.title"
             :desc="w.desc"
             :url="w.url"
-            @mouseenter="onEnter(w)"
-            @mousemove="onMove"
-            @mouseleave="onLeave"
+            @mouseenter="onEnter(i, $event)"
           />
         </div>
       </div>
@@ -304,6 +239,14 @@ onBeforeUnmount(() => {
       <div v-if="placeholder" class="subpage-section__placeholder">
         {{ placeholder }}
       </div>
+    </div>
+
+    <!-- 嵌入互動元件：滿版、蓋過右側錨點 rail（z-index 約定，見 SubpageAnchor） -->
+    <div
+      v-if="component && EMBEDS[component]"
+      class="subpage-section__embed"
+    >
+      <component :is="EMBEDS[component]" v-bind="componentProps" />
     </div>
   </section>
 </template>
@@ -409,91 +352,30 @@ onBeforeUnmount(() => {
   }
 }
 
-.subpage-section__filter {
+/* ── 懸浮縮圖（GlitchImage）── */
+// 水平固定在畫面正中央（works 欄置中於視窗 → left: 50% 即視窗中線）；
+// top 由 JS 依 hover 列的畫面位置設在該列上方或下方。
+// 蓋在列文字之上（不再穿透文字），pointer-events: none 不擋列的 hover。
+.works-thumb {
   position: absolute;
-  width: 0;
-  height: 0;
-}
-
-/* ── 懸浮縮圖 ── */
-.award-thumb {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 2; // 分隔線(z1)之上、列文字(z3)之下
-  width: var(--thumb-w, 300px);
-  height: var(--thumb-h, 380px);
+  left: 50%;
+  z-index: 4; // 分隔線(z1) < 列文字(z3) < 縮圖(z4)
+  width: var(--thumb-w, min(560px, 48vw)); // 多卡疊圖版面，主卡約佔 60%
+  transform: translateX(-50%);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.18s ease; // 快速淡入，不與 glitch 打架
-  will-change: transform;
+  transition: opacity 0.18s ease; // 快速淡入，重播交給 GlitchImage
 
   @include rwd-mobile {
-    --thumb-w: 240px;
-    --thumb-h: 304px;
+    --thumb-w: 280px;
   }
 }
 
-.award-thumb.is-active {
+.works-thumb.is-visible {
   opacity: 1;
 }
 
-.award-thumb__inner {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  border-radius: 6px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
-}
-
-// glitch 抖動：只動 transform（含 scale≥1 避免露邊），不碰 opacity → 不閃爍。
-// 每次 hover 由 JS 加 .is-revealing 重播；--glitch-dur 調整精簡秒數。
-.award-thumb.is-revealing .award-thumb__inner {
-  animation: award-glitch var(--glitch-dur, 0.22s) steps(3, end) 1;
-}
-
-.award-thumb__img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: url(#award-dissolve); // 靜止 scale=0（乾淨），hover 觸發溶解
-  animation: award-float 6s ease-in-out infinite; // 出現後微微懸浮飄移
-}
-
-@keyframes award-glitch {
-  0% {
-    transform: translate3d(-2.5%, 0, 0) scale(1.06);
-  }
-  33% {
-    transform: translate3d(1.8%, 0, 0) scale(1.05);
-  }
-  66% {
-    transform: translate3d(-1%, 0, 0) scale(1.04);
-  }
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-@keyframes award-float {
-  0%,
-  100% {
-    transform: translate(0, 0) rotate(0deg);
-  }
-  50% {
-    transform: translate(0, -9px) rotate(0.5deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .award-thumb.is-revealing .award-thumb__inner,
-  .award-thumb__img {
-    animation: none;
-  }
-}
-
-// 得獎作品：wrap 建立獨立堆疊脈絡，三層 → 分隔線(z1) < 縮圖(z2) < 文字(z3)
+// 得獎作品：wrap 建立獨立堆疊脈絡（分隔線 < 文字 < 縮圖）
 .subpage-section__works-wrap {
   position: relative;
   z-index: 0;
@@ -509,5 +391,14 @@ onBeforeUnmount(() => {
   color: var(--color-gray);
   border: 1px dashed var(--color-line);
   background: var(--color-bg-muted);
+}
+
+// 嵌入互動元件：滿版區塊。position + z-index + 不透明背景 → 捲過時
+// 蓋過右側錨點 rail（rail z-index: 1，見 SubpageAnchor 的約定）
+.subpage-section__embed {
+  position: relative;
+  z-index: 2;
+  margin-top: var(--sp-desc-img);
+  background: #fff;
 }
 </style>

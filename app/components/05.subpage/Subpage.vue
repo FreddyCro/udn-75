@@ -8,7 +8,7 @@
  *  - 內文由 sections[] 逐塊渲染成 <SubpageSection>（title / desc / img）。
  *
  * 用法（頁面 script setup 內）：
- *   import content from '~/locales/digital.json'
+ *   import content from '~/locales/news.json'
  *   然後 <Subpage :content="content" />
  */
 export interface SubpageAward {
@@ -21,6 +21,10 @@ export interface SubpageWork {
   title?: string;
   desc?: string;
   url?: string;
+  /** 懸浮縮圖（單張；與 thumbs 擇一，thumbs 優先） */
+  thumb?: string;
+  /** 懸浮縮圖多重疊圖（最多 3 張：主卡 → 左上小卡 → 右下小卡） */
+  thumbs?: string[];
 }
 export interface SubpageSectionData {
   title?: string;
@@ -31,6 +35,10 @@ export interface SubpageSectionData {
   awards?: SubpageAward[];
   works?: SubpageWork[];
   placeholder?: string;
+  /** 嵌入的互動元件名（SubpageSection EMBEDS 白名單 key） */
+  component?: string;
+  /** 嵌入元件的 props（原樣 v-bind 傳入） */
+  componentProps?: Record<string, unknown>;
 }
 export interface SubpageNavData {
   backUrl?: string;

@@ -3,6 +3,8 @@
  * SubpageWork — 「得獎作品」清單的單一列。
  * 左：作品標題（H5 Medium）＋描述（caption 灰）；右：橘色「點擊看專題」＋圓框箭頭。
  * 每列上緣一條分隔線；有 url 時整列為連結。
+ * 預設收合只顯示標題＋圓框箭頭；hover 時標題轉橘、描述向下展開、
+ * 「點擊看專題」浮現（觸控環境無 hover → 一律展開）。
  */
 withDefaults(
   defineProps<{
@@ -24,7 +26,9 @@ withDefaults(
   >
     <div class="award-work__text">
       <p v-if="title" class="award-work__title">{{ title }}</p>
-      <p v-if="desc" class="award-work__desc">{{ desc }}</p>
+      <div v-if="desc" class="award-work__desc-wrap">
+        <p class="award-work__desc">{{ desc }}</p>
+      </div>
     </div>
 
     <span class="award-work__more">
@@ -111,8 +115,25 @@ withDefaults(
   }
 }
 
+// 描述收合／展開：grid-template-rows 0fr ↔ 1fr 平滑過渡（內容高度未知也可動畫）
+.award-work__desc-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease;
+
+  .award-work:hover & {
+    grid-template-rows: 1fr;
+  }
+
+  @media (hover: none) {
+    grid-template-rows: 1fr; // 觸控環境無 hover → 一律展開
+  }
+}
+
 .award-work__desc {
   margin: 0;
+  min-height: 0;
+  overflow: hidden;
   font-size: var(--text-caption); // 15 / 22
   line-height: var(--text-caption--line-height);
   font-weight: 400;
@@ -135,6 +156,16 @@ withDefaults(
   line-height: var(--text-caption--line-height);
   font-weight: 400;
   white-space: nowrap;
+  opacity: 0; // 收合時只露圓框箭頭，hover 才浮現文字
+  transition: opacity 0.2s ease;
+
+  .award-work:hover & {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    opacity: 1;
+  }
 }
 
 .award-work__arrow {
