@@ -81,13 +81,8 @@ onMounted(() => {
       // 觸發當下量測（字型已載入）
       const secRect = section.getBoundingClientRect();
       const titleRect = title.getBoundingClientRect();
-      // 標題於 motion 期間組裝在 section 中心 → 整體先位移過去
-      const wrapDx =
-        secRect.left + secRect.width / 2 - (titleRect.left + titleRect.width / 2);
-      const wrapDy =
-        secRect.top + secRect.height / 2 - (titleRect.top + titleRect.height / 2);
-      gsap.set(title, { x: wrapDx, y: wrapDy });
-
+      // 每字相對標題中心的偏移：必須在整體位移「之前」量測（自然版面座標），
+      // 否則字會從搬移前的標題位置聚合，而不是從畫面中心點出現
       const centerX = titleRect.left + titleRect.width / 2;
       const byRole = (r: CharRole) =>
         parts.filter((_, i) => titleChars[i]!.role === r);
@@ -103,9 +98,23 @@ onMounted(() => {
       quotes.forEach((el) => gsap.set(el, { x: dxOf(el), color: '#ff7f00' }));
       gsap.set(heart, { scale: 0.6, transformOrigin: '50% 50%' });
 
-      // 兩側 bar：與文字同高的直條，從中心跟著文字的前緣往外走
-      const lineH = titleRect.height;
-      const barDist = titleRect.width / 2 + 24;
+      // 標題於 motion 期間放大並組裝在 section 中心 → settle 再縮回左上定位
+      // （設計稿：中央組裝態約為定位態的 1.45 倍，TODO(figma) 可微調）
+      const SCALE = 1.45;
+      const wrapDx =
+        secRect.left + secRect.width / 2 - (titleRect.left + titleRect.width / 2);
+      const wrapDy =
+        secRect.top + secRect.height / 2 - (titleRect.top + titleRect.height / 2);
+      gsap.set(title, {
+        x: wrapDx,
+        y: wrapDy,
+        scale: SCALE,
+        transformOrigin: '50% 50%',
+      });
+
+      // 兩側 bar：與（放大後）文字同高的直條，從中心跟著文字的前緣往外走
+      const lineH = titleRect.height * SCALE;
+      const barDist = (titleRect.width * SCALE) / 2 + 24;
       gsap.set([barL, barR], { height: lineH, x: 0, autoAlpha: 0 });
 
       tl = gsap.timeline();
@@ -141,9 +150,13 @@ onMounted(() => {
           { autoAlpha: 1, scale: 1, duration: 0.4, ease: 'back.out(2)' },
           'quotes+=0.35',
         )
-        // 8. 銜接最終版面：標題移回左上、引號轉灰、內容依序淡入
+        // 8. 銜接最終版面：標題從中央縮回左上定位、引號轉灰、內容依序淡入
         .addLabel('settle', '+=0.35')
-        .to(title, { x: 0, y: 0, duration: 0.8, ease: 'power3.inOut' }, 'settle')
+        .to(
+          title,
+          { x: 0, y: 0, scale: 1, duration: 0.8, ease: 'power3.inOut' },
+          'settle',
+        )
         .to(quotes, { color: '#686868', duration: 0.5 }, 'settle+=0.2')
         .to(bgRef.value, { autoAlpha: 1, duration: 0.6 }, 'settle+=0.3')
         .to(bodyRef.value, { autoAlpha: 1, y: 0, duration: 0.5 }, 'settle+=0.4')
@@ -240,6 +253,7 @@ onBeforeUnmount(() => {
 }
 
 .media__title {
+  width: fit-content; // 收縮到文字寬：motion 的置中/縮放都以「文字中心」為基準
   margin: 0;
   color: var(--color-gray); // 對齊 Figma：主標 #686868
   font-size: clamp(40px, 5vw, 64px);
