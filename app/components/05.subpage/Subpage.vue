@@ -51,6 +51,8 @@ export interface SubpageContent {
     subtitle?: string;
     unit?: string;
     author?: string;
+    /** 首屏背景圖（單檔 jpg，不含副檔名），如 /img/news/udn75_bg_news */
+    bg?: string;
   };
   intro?: string;
   sections?: SubpageSectionData[];
@@ -64,6 +66,17 @@ defineProps<{ content: SubpageContent }>();
   <article class="subpage">
     <!-- 首屏 hero -->
     <header class="subpage__hero">
+      <!-- 首屏背景圖（設計稿：滿版鋪底） -->
+      <UPic
+        v-if="content.hero.bg"
+        :src="content.hero.bg"
+        classname="subpage__hero-bg"
+        :use-prefix="false"
+        :use2x="false"
+        :webp="false"
+        loading="eager"
+        alt=""
+      />
       <div class="subpage__col subpage__col--wide">
         <h1 class="subpage__title">{{ content.hero.title }}</h1>
         <p v-if="content.hero.subtitle" class="subpage__subtitle">
@@ -123,9 +136,22 @@ defineProps<{ content: SubpageContent }>();
 }
 
 .subpage__hero {
+  position: relative;
   display: flex;
   align-items: center;
   min-height: calc(100vh - var(--header-height));
+  overflow: hidden;
+}
+
+// 首屏背景圖：滿版鋪底、文字在上
+:deep(.subpage__hero-bg) {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
 }
 
 .subpage__title {

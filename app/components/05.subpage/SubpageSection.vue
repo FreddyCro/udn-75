@@ -50,6 +50,8 @@ const props = defineProps<{
   title?: string;
   desc?: string[];
   img?: string;
+  /** SVG 圖表（不含副檔名），pcpad / mob 兩斷點，如 /img/news/udn75_chart19_01 */
+  chart?: string;
   imgAlt?: string;
   caption?: string;
   awards?: AwardItem[];
@@ -180,6 +182,22 @@ onBeforeUnmount(() => {
         <img
           class="subpage-section__img"
           :src="img"
+          :alt="imgAlt ?? caption ?? ''"
+        />
+        <figcaption v-if="caption" class="subpage-section__caption">
+          {{ caption }}
+        </figcaption>
+      </figure>
+
+      <!-- SVG 圖表：PC/平板共用一張 + 手機一張 -->
+      <figure v-else-if="chart" class="subpage-section__figure">
+        <UPic
+          :src="chart"
+          ext="svg"
+          :srcset="['pcpad', 'mob']"
+          default="pcpad"
+          :use2x="false"
+          :webp="false"
           :alt="imgAlt ?? caption ?? ''"
         />
         <figcaption v-if="caption" class="subpage-section__caption">

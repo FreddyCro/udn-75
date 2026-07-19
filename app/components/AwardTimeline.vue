@@ -119,16 +119,13 @@ onBeforeUnmount(() => {
             :key="i"
             :ref="(el) => setItem(el, i)"
             class="award-timeline__item"
-            :class="{ 'award-timeline__item--below': i % 2 === 1 }"
           >
             <span class="award-timeline__dot" aria-hidden="true" />
-            <div class="award-timeline__card">
-              <p class="award-timeline__year">{{ item.year }}</p>
-              <p class="award-timeline__title">{{ item.title }}</p>
-              <p v-if="item.desc" class="award-timeline__desc">
-                {{ item.desc }}
-              </p>
-            </div>
+            <p class="award-timeline__year">{{ item.year }}</p>
+            <p class="award-timeline__title">{{ item.title }}</p>
+            <p v-if="item.desc" class="award-timeline__desc">
+              {{ item.desc }}
+            </p>
           </li>
         </ol>
       </div>
@@ -160,10 +157,10 @@ onBeforeUnmount(() => {
   will-change: transform;
 }
 
-// 水平中線：置於軌道垂直中央，scaleX 由左至右長出
+// 水平線：位於卡片上緣（對齊設計稿：線在上、卡片在下），scaleX 由左至右長出
 .award-timeline__line {
   position: absolute;
-  top: 50%;
+  top: 0;
   right: 8vw;
   left: 8vw;
   height: 2px;
@@ -173,10 +170,10 @@ onBeforeUnmount(() => {
 
 .award-timeline__list {
   display: flex;
-  align-items: center;
-  gap: 64px;
+  align-items: flex-start;
+  gap: 56px;
   margin: 0;
-  padding: 0;
+  padding: 36px 0 0; // 與上方時間線的距離
   list-style: none;
 
   @include rwd-mobile {
@@ -184,45 +181,31 @@ onBeforeUnmount(() => {
   }
 }
 
-// 里程碑：li 高度 0、被 flex 垂直置中 → 正好落在中線上；
-// 卡片以絕對定位放在中線上方，--below 交錯放到下方
+// 里程碑：卡片在線下方一排
 .award-timeline__item {
   position: relative;
   flex-shrink: 0;
-  width: 240px;
-  height: 0;
+  width: 300px;
 
   @include rwd-mobile {
-    width: 200px;
+    width: 240px;
   }
 }
 
-// 節點方點（像素感）：貼齊中線
+// 節點方點（像素感）：貼齊上方時間線
 .award-timeline__dot {
   position: absolute;
-  top: -6px;
+  top: -42px; // list padding 36 + 半點高
   left: 0;
   width: 12px;
   height: 12px;
   background: var(--color-orange);
 }
 
-.award-timeline__card {
-  position: absolute;
-  bottom: 28px;
-  left: 0;
-  width: 100%;
-
-  .award-timeline__item--below & {
-    top: 28px;
-    bottom: auto;
-  }
-}
-
 .award-timeline__year {
   margin: 0;
-  font-size: var(--text-h4);
-  line-height: var(--text-h4--line-height);
+  font-size: var(--text-h5);
+  line-height: var(--text-h5--line-height);
   font-weight: 700;
   color: var(--color-orange);
 }
