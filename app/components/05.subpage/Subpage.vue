@@ -143,15 +143,27 @@ defineProps<{ content: SubpageContent }>();
   overflow: hidden;
 }
 
-// 首屏背景圖：滿版鋪底、文字在上
+// 首屏裝飾圖：像素風圖樣（素材 856x400 = @2x，自然顯示 428x200），
+// 定尺寸置於 hero 右側，不滿版鋪底。
+// TODO(figma): 確切位置待設計稿 hero 畫面確認（目前對照智慧心媒體版面
+// 「標題左、像素圖右」的構圖估位）。
 :deep(.subpage__hero-bg) {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  right: 6vw;
   z-index: -1;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  width: min(428px, 34vw);
+  height: auto;
+  transform: translateY(-50%);
   pointer-events: none;
+
+  @include rwd-mobile {
+    top: auto;
+    right: 20px;
+    bottom: 8%;
+    width: min(300px, 64vw);
+    transform: none;
+  }
 }
 
 .subpage__title {
