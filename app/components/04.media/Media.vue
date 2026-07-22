@@ -1,31 +1,4 @@
 <script setup lang="ts">
-// Section 4：newmedia（智慧「心」媒體）— 版面對齊 Figma 智慧心媒體7（658:33068）
-//  - 標題左上（正式 SVG 藝術字：完成態用 media_title.svg 完整標題，開場 motion
-//    以 wisdom／quote／heart／media 分件組字、結束後交棒）、內文左欄 509px、
-//    下方 01–04 清單（編號＋標題：副標＋單位＋撰文者，全寬分隔線）。
-//  - HeartMetaball 互動底紋墊在內容下層、常駐顯示（閒置時自動遊走成
-//    像素心團 = 設計稿右側圖樣）；section 掛 data-metaball-scope，
-//    游標移到內容/清單上方也持續追蹤（對應 hover 列底紋跟隨，frame 658:33384）。
-//  - list hover：編號與標題放大（frame「76」）。
-//
-// ── 開場 motion（分鏡 智慧心媒體1→7，ScrollTrigger 進場觸發一次）──
-//  1. 80vw 橘色塊左右縮成直條　2. 直條上下縮成中心點
-//  3. 直條縮成 12×82 短棒的同時，文字「貼齊中線」淡入（分鏡3：智慧右緣＝
-//     媒體左緣＝畫面中線）
-//  4. 短棒縮成 8×8 點；文字滑開到中停點（∓152），bar 從中心分裂、
-//     飛到文字外緣（分鏡4：左bar＝智慧左緣、右bar＝媒體右緣）
-//  5. bar 變細（12→3）往外甩並淡出，文字同步再外挪 10px（分鏡4→4b）；
-//     中心點抽高成 8×96 直線（分鏡5，非全字高）
-//  6. 直線分裂成兩條、騎著引號「外緣」飛出後淡出；引號滑入、
-//     文字同時向外撐開到定位（分鏡5→6）
-//  7. 中心字「心」出現
-//  8. 銜接最終版面：標題從畫面中央移回左上，移動途中引號轉灰、
-//     分件層交棒（crossfade）給完整標題 media_title.svg（抵達前換完，
-//     位移遮住細微錯位），內文、清單列（01→04 依序）與底紋淡入。
-//  分件皆為 img，依 media_title.svg 內的相對位置絕對定位（中央組裝態＝定位態
-//  1.5 倍＝素材原寸，皆為 Figma 量測值）。引號素材為橘色，轉灰用 grayscale
-//  filter；morph 全程以 scale 變形（不觸發 reflow，避免卡頓）。
-//  reduced-motion 或無 JS 直接顯示完成態（media_title.svg）。
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section4.json';
@@ -319,9 +292,9 @@ onBeforeUnmount(() => {
 <template>
   <section id="media" ref="sectionRef" class="media" data-metaball-scope>
     <!-- 互動底紋 -->
-    <!-- <div ref="bgRef" class="media__bg" aria-hidden="true">
+    <div ref="bgRef" class="media__bg" aria-hidden="true">
       <HeartMetaball :idle-blob-min="0.1" :idle-blob-max="0.2" :life="3" />
-    </div> -->
+    </div>
 
     <div class="media__inner">
       <h2 ref="titleRef" class="media__title">
