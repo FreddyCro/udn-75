@@ -22,12 +22,32 @@
       ],
       "component": "FormulaBlocks",
       "componentProps": {
-        "center": { "eyebrow": "Publish X", "title": "議題智囊包" },
+        "center": {
+          "img": "/img/news/udn75_news_title_publishx.svg",
+          "eyebrow": "Publish X",
+          "title": "議題智囊包"
+        },
         "items": [
-          { "title": "報版", "desc": "報網合一架構下的版面規劃建議" },
-          { "title": "即時・數位版", "desc": "一主五配的角度規劃與資訊圖表建議" },
-          { "title": "社群", "desc": "分眾策略與社群擴散節奏" },
-          { "title": "影音", "desc": "多模態內容的全媒體發動推薦" }
+          {
+            "titleImg": "/img/news/udn75_news_title_tl.svg",
+            "title": "核心功能",
+            "points": ["匯集資深主管30+年智慧", "8大新聞模組", "41個採訪情境結構化"]
+          },
+          {
+            "titleImg": "/img/news/udn75_news_title_tr.svg",
+            "title": "使用方式",
+            "points": ["LINE輸入：類別、標題、內容", "立即產出一主五配角度+資訊圖表", "提供報版/即時/數位版/社群/影音"]
+          },
+          {
+            "titleImg": "/img/news/udn75_news_title_bl.svg",
+            "title": "關鍵技術",
+            "points": ["RAG+ LLM", "競媒數位比報", "預判閱讀需求"]
+          },
+          {
+            "titleImg": "/img/news/udn75_news_title_br.svg",
+            "title": "實際效益",
+            "points": ["最高流量增益4.5倍", "提升決策效率", "獲國際賽肯定"]
+          }
         ]
       }
     },
