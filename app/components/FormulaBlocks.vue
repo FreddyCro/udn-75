@@ -1,13 +1,7 @@
 <script lang="ts" setup>
 /**
- * FormulaBlocks — 「Publish X 議題智囊包」放射圖（news 頁，對稿 Figma 1837:73149）。
- *  - 版面：1064×524 舞台。中央橘塊 + 四角議題格子 + 四條像素分支線（PixelBranch）。
- *  - 像素外框（4px 線 + 缺角補 4px 方塊）以 CSS 多重背景繪製 → 寬度伸縮時
- *    像素不變形（設計師備註：外框 RWD、方塊比例不可壓扁）。
- *  - 進場（IntersectionObserver 觸發一次）：中央塊 → 分支線逐格往外畫 → 格子依序浮現。
- *  - 藝術字標題（格子 ×4、Publish X）為固定尺寸 SVG 圖；列點為 15px 活字。
- *  - TODO(rwd): 目前為 PC 版定稿；pad（76×60 斜線）與 mob（直排＋直向連接線）
- *    版面待做，暫以整體 scale 因應 <1064 的視窗。
+ * FormulaBlocks — 「Publish X 議題智囊包」放射圖（news 頁）。
+ * TODO(rwd): 目前為 PC 版定稿；pad 與 mob 版面待做，暫以整體 scale 因應 <1064 的視窗。
  */
 export interface FormulaItem {
   /** 藝術字標題圖（SVG 路徑；無圖時 fallback 為 title 文字） */
@@ -43,10 +37,10 @@ const BRANCH: Record<
   br: { flip: false, from: 'start' },
 };
 
-// 進場時序（秒）：中央塊 0 → 四線同時逐格延伸（0.35 + 8×0.03 ≈ 0.59 畫完）
-// → 四格同時浮現
-const BRANCH_DELAY = 0.35;
-const BOX_DELAY = 0.62;
+// 進場時序（秒）：中央塊 → 四格滑出 → 分支線逐格畫 → 橘轉灰定版
+const BOX_DELAY = 0.3;
+const BRANCH_DELAY = 0.65;
+const SETTLE_DELAY_MS = 1000;
 
 const STAGE_W = 1064;
 const STAGE_H = 524;
@@ -54,9 +48,11 @@ const STAGE_H = 524;
 const rootRef = ref<HTMLElement | null>(null);
 const viewportRef = ref<HTMLElement | null>(null);
 const on = ref(false);
+const settled = ref(false); // 分支線接上後四格橘轉灰
 const scale = ref(1);
 
 let io: IntersectionObserver | null = null;
+let settleTimer: number | undefined;
 
 function onResize() {
   // 量 viewport（padding 內側）而非 section，縮放後才保得住左右留白
@@ -69,12 +65,16 @@ onMounted(() => {
   window.addEventListener('resize', onResize);
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     on.value = true; // 直接呈現完成態（CSS 端同時停用 animation）
+    settled.value = true;
     return;
   }
   io = new IntersectionObserver(
     (entries) => {
       if (entries.some((e) => e.isIntersecting)) {
         on.value = true;
+        settleTimer = window.setTimeout(() => {
+          settled.value = true;
+        }, SETTLE_DELAY_MS);
         io?.disconnect();
         io = null;
       }
@@ -87,11 +87,16 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize);
   io?.disconnect();
+  window.clearTimeout(settleTimer);
 });
 </script>
 
 <template>
-  <section ref="rootRef" class="formula" :class="{ 'is-on': on }">
+  <section
+    ref="rootRef"
+    class="formula"
+    :class="{ 'is-on': on, 'is-settled': settled }"
+  >
     <div
       ref="viewportRef"
       class="formula__viewport"
@@ -197,6 +202,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 182px;
   left: 352px;
+  z-index: 1; // 高於四角格子：進場時格子自中央塊「後方」滑出
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -278,8 +284,10 @@ onBeforeUnmount(() => {
   }
 }
 
-// ── 四角議題格子：像素外框（灰）+ 灰標題列 + 置中列點 ──
+// ── 四角議題格子 ──
+// 進場滑出階段為橘色態（--box-c），is-settled 後瞬間轉灰（多重背景外框無法平滑過渡）
 .formula__box {
+  --box-c: var(--color-orange);
   position: absolute;
   width: 324px;
   height: 154px;
@@ -287,11 +295,11 @@ onBeforeUnmount(() => {
   opacity: 0;
 
   &::before {
-    @include pixel-frame(var(--color-gray-light));
+    @include pixel-frame(var(--box-c));
   }
 
   .formula.is-on & {
-    animation: formula-box-in 0.5s ease both;
+    animation: formula-box-in 0.55s ease-out both;
     animation-delay: var(--delay, 0s);
 
     @media (prefers-reduced-motion: reduce) {
@@ -300,21 +308,34 @@ onBeforeUnmount(() => {
     }
   }
 
+  .formula.is-settled & {
+    --box-c: var(--color-gray-light);
+  }
+
+  // --from-*：滑出起點（中央塊正後方）到定位點的位移量
   &--tl {
     top: 0;
     left: 0;
+    --from-x: 370px;
+    --from-y: 185px;
   }
   &--tr {
     top: 0;
     right: 0;
+    --from-x: -370px;
+    --from-y: 185px;
   }
   &--bl {
     bottom: 0;
     left: 0;
+    --from-x: 370px;
+    --from-y: -185px;
   }
   &--br {
     bottom: 0;
     right: 0;
+    --from-x: -370px;
+    --from-y: -185px;
   }
 }
 
@@ -331,7 +352,7 @@ onBeforeUnmount(() => {
   font-size: var(--text-h5);
   font-weight: 500;
   color: #fff;
-  background: var(--color-gray-light);
+  background: var(--box-c);
 }
 
 .formula__box-logo {
@@ -364,7 +385,7 @@ onBeforeUnmount(() => {
     left: 0;
     width: 4px;
     height: 4px;
-    background: var(--color-gray-light);
+    background: var(--box-c);
   }
 }
 
@@ -379,12 +400,16 @@ onBeforeUnmount(() => {
   }
 }
 
+// 起點藏在中央塊正後方；前 12% 快速轉不透明 → 現身瞬間仍被遮蔽，看不到淡入
 @keyframes formula-box-in {
-  from {
+  0% {
     opacity: 0;
-    transform: scale(0.94);
+    transform: translate(var(--from-x), var(--from-y));
   }
-  to {
+  12% {
+    opacity: 1;
+  }
+  100% {
     opacity: 1;
     transform: none;
   }
