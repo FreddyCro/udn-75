@@ -1,20 +1,25 @@
 <script lang="ts" setup>
 /**
- * AwardTimeline — 獲獎歷程「由左至右」綁滾動橫向時間軸（news 頁）。
- *  - section pin 住，滾動推進：水平中線由左往右長出（scaleX），
- *    里程碑（年份＋獎項）依序淡入，卡片上下交錯；
- *    軌道比舞台寬時同步往左平移（小螢幕）。
- *  - reduced-motion：不 pin，全部直接顯示、軌道原生橫向捲動。
- * TODO(figma): 樣式先照參考站（Junto WorkSteps theme-blue → 本站橘）
- *   估值，取得檔案權限後對稿；里程碑內容為佔位示意。
+ * AwardTimeline — 獲獎歷程橫向時間軸（pin + scrub，news 頁）。
+ * reduced-motion 改原生橫向捲動。
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
+export interface TimelineAward {
+  /** 獎項機構 */
+  org: string;
+  /** 獎項名稱（多個獎項 = 多行） */
+  titles: string[];
+  /** 作品名（「作品：」前綴由元件補） */
+  work?: string;
+}
+
 export interface TimelineItem {
   year: string;
-  title: string;
-  desc?: string;
+  /** 欄寬（px，對稿各欄不同；預設 277） */
+  width?: number;
+  awards: TimelineAward[];
 }
 
 const props = withDefaults(
@@ -33,6 +38,7 @@ const rootRef = ref<HTMLElement | null>(null);
 const stageRef = ref<HTMLElement | null>(null);
 const trackRef = ref<HTMLElement | null>(null);
 const lineRef = ref<HTMLElement | null>(null);
+const activeIdx = ref(0);
 const itemEls: HTMLElement[] = [];
 const setItem = (el: any, i: number) => {
   if (el) itemEls[i] = el as HTMLElement;
@@ -48,7 +54,9 @@ function build() {
   const line = lineRef.value;
   if (!root || !stage || !track || !line || itemEls.length === 0) return;
 
-  const shift = Math.max(0, track.scrollWidth - stage.clientWidth);
+  // 軌道超出舞台的量（函式值 + invalidateOnRefresh：resize 後 refresh 即重算）
+  const shift = () => Math.max(0, track.scrollWidth - stage.clientWidth);
+  const n = itemEls.length;
 
   tl = gsap.timeline({
     scrollTrigger: {
@@ -56,20 +64,25 @@ function build() {
       start: 'top top',
       end: `+=${props.pinDistance}`,
       pin: true,
-      scrub: 0.5,
+      anticipatePin: 1,
+      scrub: 1,
+      invalidateOnRefresh: true,
+      onUpdate: (self) => {
+        activeIdx.value = Math.min(n - 1, Math.floor(self.progress * n));
+      },
     },
   });
-  // 中線由左至右長出；里程碑跟著線頭依序浮現；軌道同步左移（過寬時）
   tl.fromTo(line, { scaleX: 0 }, { scaleX: 1, ease: 'none', duration: 1 }, 0);
   itemEls.forEach((el, i) => {
-    tl!.from(
+    tl!.fromTo(
       el,
-      { autoAlpha: 0, y: 32, duration: 0.18, ease: 'power2.out' },
-      (i / itemEls.length) * 0.9 + 0.04, // 線頭抵達該節點的近似時間點
+      { opacity: 0.3 },
+      { opacity: 1, duration: 0.12, ease: 'none' },
+      (i / n) * 0.85 + 0.05, // 線頭抵達該欄的近似時間點
     );
   });
-  if (shift > 0) {
-    tl.fromTo(track, { x: 0 }, { x: -shift, ease: 'none', duration: 1 }, 0);
+  if (shift() > 0) {
+    tl.fromTo(track, { x: 0 }, { x: () => -shift(), ease: 'none', duration: 1 }, 0);
   }
 }
 
@@ -84,11 +97,8 @@ function teardown() {
 
 function onResize() {
   if (resizeTimer) clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    teardown();
-    build();
-    ScrollTrigger.refresh();
-  }, 200);
+  // end 固定、其餘皆函式值 → refresh 即可，免重建
+  resizeTimer = setTimeout(() => ScrollTrigger.refresh(), 200);
 }
 
 onMounted(() => {
@@ -112,22 +122,53 @@ onBeforeUnmount(() => {
   <section ref="rootRef" class="award-timeline">
     <div ref="stageRef" class="award-timeline__stage">
       <div ref="trackRef" class="award-timeline__track">
-        <div ref="lineRef" class="award-timeline__line" aria-hidden="true" />
+        <!-- 歷程線（藍，scaleX 延伸）+ 橘色像素箭頭（定於左端） -->
+        <div class="award-timeline__head" aria-hidden="true">
+          <img
+            ref="lineRef"
+            class="award-timeline__line"
+            src="/img/news/udn75_news_timeline_line.svg"
+            alt=""
+          />
+          <img
+            class="award-timeline__arrow"
+            src="/img/news/udn75_news_timeline_arrow.svg"
+            alt=""
+          />
+        </div>
+
         <ol class="award-timeline__list">
           <li
             v-for="(item, i) in items"
             :key="i"
             :ref="(el) => setItem(el, i)"
             class="award-timeline__item"
+            :style="{ '--w': `${item.width ?? 277}px` }"
           >
-            <span class="award-timeline__dot" aria-hidden="true" />
             <p class="award-timeline__year">{{ item.year }}</p>
-            <p class="award-timeline__title">{{ item.title }}</p>
-            <p v-if="item.desc" class="award-timeline__desc">
-              {{ item.desc }}
-            </p>
+            <div
+              v-for="(a, j) in item.awards"
+              :key="j"
+              class="award-timeline__award"
+            >
+              <p class="award-timeline__org">{{ a.org }}</p>
+              <p v-for="(t, k) in a.titles" :key="k" class="award-timeline__title">
+                {{ t }}
+              </p>
+              <p v-if="a.work" class="award-timeline__work">作品：{{ a.work }}</p>
+            </div>
           </li>
         </ol>
+      </div>
+
+      <!-- 分頁點（進度指示，置中且不隨軌道平移） -->
+      <div class="award-timeline__dots" aria-hidden="true">
+        <span
+          v-for="(_, i) in items"
+          :key="i"
+          class="award-timeline__dot"
+          :class="{ 'award-timeline__dot--active': i === activeIdx }"
+        />
       </div>
     </div>
   </section>
@@ -141,39 +182,56 @@ onBeforeUnmount(() => {
 
 .award-timeline__stage {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
   width: 100%;
   height: 100vh;
   overflow: hidden;
 }
 
-// 水平軌道：內容比舞台寬時由 timeline 左移
+// 水平軌道：寬度跟著內容長（歷程線才能鋪滿全部年份欄位），過寬時由 timeline 左移
 .award-timeline__track {
-  position: relative;
-  display: flex;
-  align-items: center;
+  width: max-content;
   min-width: 100%;
-  padding: 0 8vw;
+  padding: 0 108px;
   will-change: transform;
+
+  @include rwd-mobile {
+    padding: 0 20px;
+  }
 }
 
-// 水平線：位於卡片上緣（對齊設計稿：線在上、卡片在下），scaleX 由左至右長出
+// 歷程線列（44 高）：藍線落在 y20–24，與箭頭尾線同高、被其覆蓋後自箭頭尖端露出
+.award-timeline__head {
+  position: relative;
+  height: 44px;
+}
+
 .award-timeline__line {
   position: absolute;
-  top: 0;
-  right: 8vw;
-  left: 8vw;
-  height: 2px;
-  background: var(--color-orange);
+  top: 20px;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 4px;
   transform-origin: 0 50%;
+}
+
+.award-timeline__arrow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 153px;
+  height: 44px;
 }
 
 .award-timeline__list {
   display: flex;
   align-items: flex-start;
-  gap: 56px;
-  margin: 0;
-  padding: 36px 0 0; // 與上方時間線的距離
+  gap: 48px;
+  margin: 16px 0 0;
+  padding: 0;
   list-style: none;
 
   @include rwd-mobile {
@@ -181,49 +239,72 @@ onBeforeUnmount(() => {
   }
 }
 
-// 里程碑：卡片在線下方一排
+// 年份欄位：寬度對稿各欄不同（--w 由 template 帶入）
 .award-timeline__item {
-  position: relative;
   flex-shrink: 0;
-  width: 300px;
+  width: var(--w, 277px);
 
   @include rwd-mobile {
     width: 240px;
   }
 }
 
-// 節點方點（像素感）：貼齊上方時間線
-.award-timeline__dot {
-  position: absolute;
-  top: -42px; // list padding 36 + 半點高
-  left: 0;
-  width: 12px;
-  height: 12px;
-  background: var(--color-orange);
+// 年份數字：對稿為向量字，以活字近似
+.award-timeline__year {
+  margin: 0 0 8px;
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 300;
+  color: var(--color-gray);
 }
 
-.award-timeline__year {
+.award-timeline__award {
+  margin-top: 8px;
+}
+
+.award-timeline__org {
   margin: 0;
   font-size: var(--text-h5);
   line-height: var(--text-h5--line-height);
-  font-weight: 700;
+  font-weight: 400;
   color: var(--color-orange);
 }
 
 .award-timeline__title {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: var(--text-h5);
   line-height: var(--text-h5--line-height);
-  font-weight: 500;
-  color: var(--color-text);
-}
-
-.award-timeline__desc {
-  margin: 8px 0 0;
-  font-size: var(--text-caption);
-  line-height: var(--text-caption--line-height);
   font-weight: 400;
   color: var(--color-gray);
+}
+
+.award-timeline__work {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
+  font-weight: 300;
+  color: var(--color-gray-light);
+  text-align: justify; // 對稿：作品行左右對齊
+}
+
+.award-timeline__dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 16px;
+}
+
+.award-timeline__dot {
+  width: 6px;
+  height: 6px;
+  background: #d9d9d9; // 對稿分頁點淺灰（非全站 token）
+
+  &--active {
+    width: 10px;
+    height: 10px;
+    background: var(--color-gray);
+  }
 }
 
 // reduced-motion 降級：原生橫向捲動、全部顯示

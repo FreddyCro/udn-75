@@ -2,6 +2,8 @@
   "hero": {
     "title": "數位革命",
     "subtitle": "十年轉型路重塑影響力",
+    "titleImg": "/img/news/udn75_news_hero_title.svg",
+    "subtitleImg": "/img/news/udn75_news_hero_subtitle.svg",
     "unit": "新聞部×數據發展部",
     "author": "林以君",
     "bg": "/img/news/udn75_bg_news"
@@ -53,7 +55,7 @@
     },
     {
       "chart": "/img/news/udn75_chart19_01",
-      "imgAlt": "全媒體平台圖解：新聞網即時滾動、粉團社群擴散、數位版內容加值、報版收斂精緻化"
+      "imgAlt": "新聞部近年得獎：吳舜文新聞獎國際新聞報導獎與深度報導獎融媒體類、全球華文永續報導獎專業組融媒體類與平面類首獎、金鼎獎優良出版品數位內容推薦、SOPA 卓越新聞獎人權報導獎中文類榮譽獎"
     },
     {
       "desc": [
@@ -68,34 +70,34 @@
       "componentProps": {
         "photos": [
           {
-            "src": "/img/news/udn75_pic04_01.jpg",
-            "alt": "新聞智囊包政治主題討論",
-            "caption": "內容長范凌嘉（右）參與聯合報新聞部新聞智囊包政治主題討論。攝影／高彬原"
-          },
-          {
-            "src": "/img/news/udn75_pic04_02.jpg",
-            "alt": "Google 亞太區 CEO 與 AI 總監交流",
-            "caption": "Google 亞太區 CEO 與 AI 總監 Durga Raghunath（左）對聯合報系的 Publish X「議題發動智囊包」的發展過程相當好奇，會後不斷與林以君組長討論。攝影／林沂伶"
-          },
-          {
-            "src": "/img/news/udn75_pic04_03.jpg",
-            "alt": "WAN-IFRA 世界數位媒體大賽領獎",
-            "caption": "聯合報系在 WAN-IFRA 世界數位媒體大賽中，勇奪「最佳 AI 營收策略應用」全球金獎，聯合報社長游美月（右）與聯合線上執行長孫志華（左）代表領獎。"
-          },
-          {
-            "src": "/img/news/udn75_pic04_04.jpg",
-            "alt": "2024 年冠軍獎座",
-            "caption": "2024年冠軍獎座，左起WAN-IFRA-亞洲冠軍、INMA-全球冠軍、WAN-IFRA-全球冠軍。高彬原／攝影"
-          },
-          {
-            "src": "/img/news/udn75_pic04_05.jpg",
-            "alt": "2025 WAN-IFRA Digital Media Awards Asia",
-            "caption": "2025 WAN-IFRA Digital Media Awards Asia 金獎銀獎。"
-          },
-          {
-            "src": "/img/news/udn75_pic04_06.jpg",
+            "src": "/img/news/udn75_pic04_01",
             "alt": "聯合報系專業開發團隊合影",
             "caption": "聯合報系專業開發團隊，由左至右，分別是新聞部突發新聞總監熊迺群，數據發展部林沂伶，新聞部政治中心林以君。高彬原／攝影"
+          },
+          {
+            "src": "/img/news/udn75_pic04_02",
+            "alt": "新聞智囊包政治主題討論",
+            "caption": "內容長范凌嘉（右）參與聯合報新聞部新聞智囊包政治主題討論。高彬原／攝影"
+          },
+          {
+            "src": "/img/news/udn75_pic04_03",
+            "alt": "WAN-IFRA 亞洲大賽領獎",
+            "caption": "聯合報系推出數位訂閱制產品四年，2024年4月24日在馬來西亞吉隆坡舉行的世界新聞出版協會（WAN-IFRA）亞洲大賽，拿下「最佳數位訂閱制／讀者收益策略」亞洲金獎，由聯合報政治中心組長林以君（中）代表領獎。圖／WAN-IFRA提供"
+          },
+          {
+            "src": "/img/news/udn75_pic04_04",
+            "alt": "世界新聞出版協會年會領獎",
+            "caption": "「世界新聞出版協會」年會2026年6月1日於法國馬賽舉行，聯合報系以「Publish X」獲得「最佳創新數位產品獎」，聯合報系執行董事項國寧（中）上台領獎。張宗智／攝影"
+          },
+          {
+            "src": "/img/news/udn75_pic04_05",
+            "alt": "WAN-IFRA 世界數位媒體大賽金獎領獎",
+            "caption": "聯合報系在 WAN-IFRA 世界數位媒體大賽中，勇奪「最佳 AI 營收策略應用」全球金獎，聯合報社長游美月（右）與聯合線上執行長孫志華（左）代表領獎。圖／聯合報系資料照"
+          },
+          {
+            "src": "/img/news/udn75_pic04_06",
+            "alt": "WAN-IFRA 與 INMA 得獎獎座",
+            "caption": "聯合報系運用「智慧內容（Curate X）」智慧策展模組，獲WAN-IFRA 亞洲及世界金獎，也在INMA獲世界第一。高彬原／攝影"
           }
         ]
       }
@@ -111,34 +113,93 @@
       ]
     },
     {
-      "title": "智慧內容計劃方案 (Curate X Program) 獲獎歷程",
+      "title": "獲獎歷程",
       "component": "AwardTimeline",
       "componentProps": {
         "items": [
           {
-            "year": "2022年6月",
-            "title": "INMA 最佳新聞室轉型創新專案 全球季軍",
-            "desc": "美國-紐約／國際新聞媒體協會-全球（INMA Global Media Award 2023）Third Place - Best Innovation in Newsroom Transformations"
+            "year": "2022",
+            "width": 277,
+            "awards": [
+              {
+                "org": "INMA",
+                "titles": ["最佳新聞室創新轉型 - 全球銅獎"],
+                "work": "數據驅動設計垂直新聞產品"
+              }
+            ]
           },
           {
-            "year": "2023年10月",
-            "title": "WAN-IFRA 最佳數位訂閱／讀者收入專案 亞洲冠軍",
-            "desc": "新加坡／世界新聞出版協會-亞洲（2023 Digital Media Award Asia）獲獎主題：Curate X Program - Data Driven Consensus Map Approach"
+            "year": "2023",
+            "width": 237,
+            "awards": [
+              {
+                "org": "WAN-IFRA",
+                "titles": ["最佳訂閱制計畫 - 亞洲金獎"],
+                "work": "數據驅動設計垂直新聞產品"
+              }
+            ]
           },
           {
-            "year": "2024年4月25日",
-            "title": "WAN-IFRA 最佳數位訂閱／讀者收入專案 亞洲冠軍",
-            "desc": "馬來西亞-吉隆坡／世界新聞出版協會-亞洲（2024 Digital Media Award Asia）獲獎主題：Cracking the Code : Curate X Reshaped Subscription Growth"
+            "year": "2024",
+            "width": 277,
+            "awards": [
+              {
+                "org": "WAN-IFRA",
+                "titles": ["最佳數位訂閱 / 讀者收益計劃 - 全球金獎 / 亞洲金獎"],
+                "work": "Cracking the Code : Curate X Reshaped Subscription Growth"
+              },
+              {
+                "org": "INMA",
+                "titles": ["最佳訂閱增長倡議 - 全球金獎"],
+                "work": "Curate X 數據驅動策展"
+              }
+            ]
           },
           {
-            "year": "2024年4月26日",
-            "title": "INMA 最佳數位訂閱成長計畫 全球冠軍",
-            "desc": "英國-倫敦／國際新聞媒體協會-全球（INMA Global Media Award 2024）獲獎主題：Cracking the Code: How Our Homegrown Data-Driven Curation Program Reshaped Subscription Growth"
+            "year": "2025",
+            "width": 400,
+            "awards": [
+              {
+                "org": "INMA",
+                "titles": ["最佳訂閱增長倡議 - 榮譽獎", "最佳 AI 生產應用 - 榮譽獎"],
+                "work": "AIAssist：AI-Embedded Newsroom"
+              },
+              {
+                "org": "INMA",
+                "titles": ["最佳廣告銷售增長創意 - 全球金獎"],
+                "work": "Smart Strategies for Tough Times"
+              },
+              {
+                "org": "WAN-IFRA",
+                "titles": [
+                  "最佳 AI 營收策略應用 - 全球金獎 / 亞洲金獎",
+                  "最佳新聞室 AI 應用 - 亞洲金獎",
+                  "最佳數位訂閱 - 亞洲銀獎"
+                ],
+                "work": "Smart Strategies for Tough Times"
+              }
+            ]
           },
           {
-            "year": "2024年5月27日",
-            "title": "WAN-IFRA 最佳數位訂閱／讀者收入專案 全球冠軍",
-            "desc": "丹麥-哥本哈根／世界新聞出版協會-全球（2024 Digital Media Award Worldwide）獲獎主題：Cracking the Code : Curate X Reshaped Subscription Growth"
+            "year": "2026",
+            "width": 400,
+            "awards": [
+              {
+                "org": "WAN-IFRA",
+                "titles": ["最佳創新數位產品 - 全球金獎"],
+                "work": "Publish X 議題智囊包 — A Digital Product for Scalable Editorial Decision-Making"
+              },
+              {
+                "org": "WAN-IFRA ASIA",
+                "titles": ["年度最具創新數位產品 - 亞洲金獎", "最佳 AI 驅動新聞產品 - 銀獎"],
+                "work": "Publish X 議題智囊包 — A Digital Product for Scalable Editorial Decision-Making"
+              },
+              {
+                "org": "INMA",
+                "titles": ["最佳新聞室轉型創新 - 全球銅獎"],
+                "work": "Publish X 議題智囊包：Institutionalising Editorial Judgment"
+              }
+            ]
           }
         ]
       }

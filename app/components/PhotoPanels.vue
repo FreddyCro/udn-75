@@ -1,30 +1,24 @@
 <script lang="ts" setup>
 /**
- * PhotoPanels — 數張照片「由左至右」綁滾動（news 頁）。
- *  - section pin 住，滾動推進：水平照片軌道往左平移，照片依序
- *    由左至右進入畫面（scrub）；每張照片下方有各自的圖說。
- *  - reduced-motion：不 pin，軌道改為原生橫向捲動。
- * TODO(figma): 照片尺寸／間距先照參考站（doodle p-top-about__panels-wrap）
- *   估值，取得檔案權限後對稿；圖片為佔位圖。
+ * PhotoPanels — 照片橫向軌道綁滾動平移（pin + scrub，news 頁）。
+ * reduced-motion 改原生橫向捲動。
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 export interface PanelPhoto {
+  /** UPic 圖片路徑（不含副檔名與裝置後綴，如 /img/news/udn75_pic04_01） */
   src: string;
   alt?: string;
   caption?: string;
 }
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     photos?: PanelPhoto[];
-    /** pin 期間可捲動距離（px） */
-    pinDistance?: number;
   }>(),
   {
     photos: () => [],
-    pinDistance: 2000,
   },
 );
 
@@ -42,19 +36,22 @@ function build() {
   if (!root || !stage || !track) return;
 
   // 軌道超出舞台的量 = 需要平移的距離（含左右緩衝 padding）
-  const shift = Math.max(0, track.scrollWidth - stage.clientWidth);
-  if (shift === 0) return; // 照片不夠寬就不動
+  // 以函式回傳 + invalidateOnRefresh：resize 後 refresh 即重算，不必重建
+  const shift = () => Math.max(0, track.scrollWidth - stage.clientWidth);
+  if (shift() === 0) return; // 照片不夠寬就不動
 
   tl = gsap.timeline({
     scrollTrigger: {
       trigger: root,
       start: 'top top',
-      end: `+=${props.pinDistance}`,
+      end: () => `+=${shift()}`, // 捲動距離 = 位移量 → 垂直水平 1:1，不搶拍
       pin: true,
-      scrub: 0.5,
+      anticipatePin: 1,
+      scrub: 1,
+      invalidateOnRefresh: true,
     },
   });
-  tl.fromTo(track, { x: 0 }, { x: -shift, ease: 'none', duration: 1 });
+  tl.fromTo(track, { x: 0 }, { x: () => -shift(), ease: 'none', duration: 1 });
 }
 
 function teardown() {
@@ -66,11 +63,8 @@ function teardown() {
 
 function onResize() {
   if (resizeTimer) clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    teardown();
-    build();
-    ScrollTrigger.refresh();
-  }, 200);
+  // end / x 皆為函式值 + invalidateOnRefresh → refresh 即重算，免重建
+  resizeTimer = setTimeout(() => ScrollTrigger.refresh(), 200);
 }
 
 onMounted(() => {
@@ -96,7 +90,15 @@ onBeforeUnmount(() => {
     <div ref="stageRef" class="photo-panels__stage">
       <div ref="trackRef" class="photo-panels__track">
         <figure v-for="(p, i) in photos" :key="i" class="photo-panels__item">
-          <img class="photo-panels__img" :src="p.src" :alt="p.alt ?? ''" />
+          <UPic
+            classname="photo-panels__img"
+            :src="p.src"
+            :use-prefix="false"
+            :srcset="['mob']"
+            :width="480"
+            :height="320"
+            :alt="p.alt ?? ''"
+          />
           <figcaption v-if="p.caption" class="photo-panels__caption">
             {{ p.caption }}
           </figcaption>
@@ -123,19 +125,21 @@ onBeforeUnmount(() => {
 // 水平軌道：x 位移由 timeline 依滾動推進（由左至右看完整排照片）
 .photo-panels__track {
   display: flex;
-  align-items: center;
-  gap: 48px;
-  padding: 0 8vw;
+  align-items: flex-start; // 照片同尺寸頂端對齊；圖說行數不影響照片水平線
+  gap: 80px;
+  padding: 0 108px;
   will-change: transform;
 
   @include rwd-mobile {
     gap: 24px;
+    padding: 0 20px;
   }
 }
 
+// 寬度 = 設計稿定值 480px（同 @1x 素材自然尺寸，不放大不失真）
 .photo-panels__item {
   flex-shrink: 0;
-  width: min(46vw, 660px);
+  width: 480px;
   margin: 0;
 
   @include rwd-mobile {
@@ -143,16 +147,14 @@ onBeforeUnmount(() => {
   }
 }
 
-.photo-panels__img {
+.photo-panels__item :deep(.photo-panels__img) {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 8px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.14);
 }
 
 .photo-panels__caption {
-  margin-top: var(--sp-img-caption);
+  margin-top: 16px; // 對稿定值（此區 16，非全站 --sp-img-caption 的 12）
   font-size: var(--text-caption);
   line-height: var(--text-caption--line-height);
   color: var(--color-gray);
