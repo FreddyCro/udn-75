@@ -54,6 +54,18 @@ const groups: AssetGroup[] = [
     items: [
       ...seq('/img/udn75_pic01_', 18),
       ...seq('/img/udn75_pic02_', 2),
+      // 子頁上／下一頁按鈕（SubpageNav）
+      logo('/img/udn75_nav_prev'),
+      logo('/img/udn75_nav_next'),
+      // 右側錨點藝術字（SubpageAnchor：標題＋編號）
+      logo('/img/udn75_anchor_title_news'),
+      logo('/img/udn75_anchor_title_visual'),
+      logo('/img/udn75_anchor_title_service'),
+      logo('/img/udn75_anchor_title_data'),
+      logo('/img/udn75_anchor_num_01'),
+      logo('/img/udn75_anchor_num_02'),
+      logo('/img/udn75_anchor_num_03'),
+      logo('/img/udn75_anchor_num_04'),
       video('/img/udn75_bg_video_opening_pc'),
     ],
   },
@@ -63,21 +75,40 @@ const groups: AssetGroup[] = [
   },
   {
     title: 'data',
-    items: [single('/img/data/udn75_bg_data')],
+    items: [
+      single('/img/data/udn75_bg_data'),
+      // 首屏藝術字（Subpage hero）
+      logo('/img/data/udn75_data_hero_title'),
+      logo('/img/data/udn75_data_hero_subtitle'),
+      // AI 搜尋區 icon（AiSearch）
+      logo('/img/data/udn75_data_ai_search'),
+      logo('/img/data/udn75_data_ai_spark'),
+      logo('/img/data/udn75_data_icon_udnvip'),
+      logo('/img/data/udn75_data_icon_udnnews'),
+    ],
   },
   {
     title: 'news',
     items: [
       single('/img/news/udn75_bg_news'),
+      // 首屏藝術字（Subpage hero）
+      logo('/img/news/udn75_news_hero_title'),
+      logo('/img/news/udn75_news_hero_subtitle'),
       ...seq('/img/news/udn75_pic04_', 6),
       // SVG 圖表：pcpad（≥768px）／ mob 兩斷點
       chart('/img/news/udn75_chart19_01'),
+      // 獲獎歷程時間軸素材（AwardTimeline）
+      logo('/img/news/udn75_news_timeline_arrow'),
+      logo('/img/news/udn75_news_timeline_line'),
     ],
   },
   {
     title: 'service',
     items: [
       single('/img/service/udn75_bg_service'),
+      // 首屏藝術字（Subpage hero）
+      logo('/img/service/udn75_service_hero_title'),
+      logo('/img/service/udn75_service_hero_subtitle'),
       single('/img/service/udn75_pic21_01'),
       single('/img/service/udn75_pic22_01'),
       single('/img/service/udn75_pic24_01'),
@@ -94,6 +125,9 @@ const groups: AssetGroup[] = [
     title: 'visual',
     items: [
       single('/img/visual/udn75_bg_visual'),
+      // 首屏藝術字（Subpage hero）
+      logo('/img/visual/udn75_visual_hero_title'),
+      logo('/img/visual/udn75_visual_hero_subtitle'),
       ...seq('/img/visual/udn75_pic05_', 2),
       single('/img/visual/udn75_pic09_01'),
       single('/img/visual/udn75_pic11_01'),
