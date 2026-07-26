@@ -1,15 +1,8 @@
 <script lang="ts" setup>
 /**
- * Subpage — 四個「類分頁」共用版型骨架，內容由 JSON（content）驅動。
- *  - 共用 chrome（header / footer）由 subpage layout 提供。
- *  - 首屏 hero 順序對齊 Figma：主標題 → 副標 → 單元名 → 撰文者。
- *    （Figma 中主標題／副標為 SVG 藝術字，之後設計師補圖再改；此處先以 live text 呈現。）
- *  - 引言（intro）為 lead 段落。
- *  - 內文由 sections[] 逐塊渲染成 <SubpageSection>（title / desc / img）。
- *
- * 用法（頁面 script setup 內）：
- *   import content from '~/locales/news.json'
- *   然後 <Subpage :content="content" />
+ * Subpage — 四個「類分頁」共用版型骨架，內容由 JSON 驅動：
+ * <Subpage :content="content" />（content = ~/locales/xxx.json）。
+ * header / footer 由 subpage layout 提供。
  */
 export interface SubpageAward {
   name?: string;
@@ -49,6 +42,10 @@ export interface SubpageContent {
   hero: {
     title: string;
     subtitle?: string;
+    /** 主標題藝術字（SVG 完整路徑）；title 文字作為 alt */
+    titleImg?: string;
+    /** 副標藝術字（SVG 完整路徑）；subtitle 文字作為 alt */
+    subtitleImg?: string;
     unit?: string;
     author?: string;
     /** 首屏背景圖（單檔 jpg，不含副檔名），如 /img/news/udn75_bg_news */
@@ -66,7 +63,6 @@ defineProps<{ content: SubpageContent }>();
   <article class="subpage">
     <!-- 首屏 hero -->
     <header class="subpage__hero">
-      <!-- 首屏背景圖（設計稿：滿版鋪底） -->
       <UPic
         v-if="content.hero.bg"
         :src="content.hero.bg"
@@ -78,9 +74,23 @@ defineProps<{ content: SubpageContent }>();
         alt=""
       />
       <div class="subpage__col subpage__col--wide">
-        <h1 class="subpage__title">{{ content.hero.title }}</h1>
+        <h1 class="subpage__title">
+          <img
+            v-if="content.hero.titleImg"
+            class="subpage__title-img"
+            :src="content.hero.titleImg"
+            :alt="content.hero.title"
+          />
+          <template v-else>{{ content.hero.title }}</template>
+        </h1>
         <p v-if="content.hero.subtitle" class="subpage__subtitle">
-          {{ content.hero.subtitle }}
+          <img
+            v-if="content.hero.subtitleImg"
+            class="subpage__subtitle-img"
+            :src="content.hero.subtitleImg"
+            :alt="content.hero.subtitle"
+          />
+          <template v-else>{{ content.hero.subtitle }}</template>
         </p>
         <p v-if="content.hero.unit" class="subpage__unit">
           {{ content.hero.unit }}
@@ -98,7 +108,7 @@ defineProps<{ content: SubpageContent }>();
       </div>
     </div>
 
-    <!-- 內文（各 section 自行決定欄寬：文字窄欄、桂冠／得獎作品寬欄） -->
+    <!-- 內文 -->
     <div v-if="content.sections?.length" class="subpage__body">
       <SubpageSection
         v-for="(s, i) in content.sections"
@@ -189,6 +199,43 @@ defineProps<{ content: SubpageContent }>();
   @include rwd-mobile {
     font-size: var(--text-h5);
     line-height: var(--text-h5--line-height);
+  }
+}
+
+// SVG 藝術字：依設計稿定高（主標 72、副標 64），寬度隨比例、超出欄寬等比縮小
+.subpage__title-img {
+  display: block;
+  width: auto;
+  height: 72px;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+
+  @include rwd-tablet {
+    height: 54px;
+  }
+  @include rwd-mobile {
+    height: 42px;
+  }
+}
+
+.subpage__subtitle-img {
+  display: block;
+  width: auto;
+  height: 64px;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+  // 設計稿主標(163+72)→副標(267) 間距 32；蓋掉 subtitle 文字版的 12px margin
+  margin-top: 20px;
+
+  @include rwd-tablet {
+    height: 48px;
+  }
+  @include rwd-mobile {
+    width: 100%;
+    height: auto;
+    margin-top: 12px;
   }
 }
 
