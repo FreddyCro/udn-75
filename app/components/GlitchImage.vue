@@ -13,12 +13,24 @@
         zIndex: card.z,
       }"
     >
-      <!-- lazy：started 之前不綁 src → 不會在網站初始 loading 時就下載 -->
+      <!-- lazy：started 之前不綁 src → 不會在網站初始 loading 時就下載。
+           影片卡：img 綁定自影片第一格擷取的 poster（dataURL），glitch 跑在 poster 上 -->
       <img
         :ref="(el) => setImgRef(el, i)"
         class="glitch-card__img"
-        :src="started ? card.src : undefined"
+        :src="started ? (card.video ? posters[i] : card.src) : undefined"
         :alt="card.alt"
+      />
+      <!-- 影片卡：glitch reveal 結束後淡入接手播放 -->
+      <video
+        v-if="card.video"
+        :ref="(el) => setVideoRef(el, i)"
+        class="glitch-card__video"
+        :src="started ? card.src : undefined"
+        muted
+        loop
+        playsinline
+        preload="auto"
       />
       <div
         :ref="(el) => setOverlayRef(el, i)"
@@ -42,19 +54,9 @@
 import { gsap } from 'gsap';
 
 /**
- * 多卡 glitch 「懸浮縮圖」：最多 3 張圖以疊卡版面呈現（大卡置中、小卡左上/右下溢出），
- * 每張卡各自跑四階段收斂式 glitch、依序 stagger 出現：
- *   a. 看不到圖片（短暫留白）
- *   b. 隨機圖片碎塊 + 目標圖的破碎色塊（從目標圖採樣顏色的純色矩形）
- *   c. 目標圖色塊 + 目標圖真實碎片交錯
- *   d. 碎片全數歸位，拼湊出完整目標圖
- *
- * 觸發改為 API 控制：不自動播放，由外層呼叫 start()（或 active prop）。圖片 lazy 載入
- * （start 後才下載，不影響網站初始 loading）。reveal 完成後卡片持續微微懸浮飄移，
- * 電腦版另疊一層滑鼠追蹤的些微視差偏移。
- *
- * NOTE 影片可行性：卡片內容目前為 <img>；要支援影片時，把卡片元素換成 <video>
- *   （preload="none"、start() 後才 load()/play()），glitch reveal 與 float/parallax 流程不變。
+ * 多卡 glitch 懸浮縮圖：最多 3 張圖疊卡呈現，每張卡各自跑四階段收斂式 glitch、
+ * 依序 stagger 出現（階段見 playCard）。由外層以 start()／active prop 觸發，
+ * 圖片 lazy 載入。.mp4 項目為影片卡：以第一格 poster 跑 glitch，完成後淡入接播。
  */
 type Slot = { x: number; y: number; w: number; z?: number };
 
@@ -111,9 +113,9 @@ const props = withDefaults(
 );
 
 const rootRef = ref<HTMLElement | null>(null);
-// v-for 動態 ref：以 index 收集每張卡的 card / img / overlay 元素
 const cardEls: (HTMLElement | null)[] = [];
 const imgEls: (HTMLImageElement | null)[] = [];
+const videoEls: (HTMLVideoElement | null)[] = [];
 const overlayEls: (HTMLElement | null)[] = [];
 const setCardRef = (el: any, i: number) => {
   cardEls[i] = el as HTMLElement | null;
@@ -121,17 +123,67 @@ const setCardRef = (el: any, i: number) => {
 const setImgRef = (el: any, i: number) => {
   imgEls[i] = el as HTMLImageElement | null;
 };
+const setVideoRef = (el: any, i: number) => {
+  videoEls[i] = el as HTMLVideoElement | null;
+};
 const setOverlayRef = (el: any, i: number) => {
   overlayEls[i] = el as HTMLElement | null;
 };
 
-// 取前 N 張圖，各自配上對應 slot（slot 不足則退回最後一個）
+// 取前 N 張圖，各自配上對應 slot（slot 不足則退回最後一個）；.mp4 = 影片卡
 const cards = computed(() =>
   props.images.slice(0, props.layout.length || 3).map((src, i) => {
     const slot = props.layout[i] ?? props.layout[props.layout.length - 1]!;
-    return { src, alt: props.alt[i] ?? '', x: slot.x, y: slot.y, w: slot.w, z: slot.z ?? 1 };
+    return {
+      src,
+      video: /\.mp4$/i.test(src),
+      alt: props.alt[i] ?? '',
+      x: slot.x,
+      y: slot.y,
+      w: slot.w,
+      z: slot.z ?? 1,
+    };
   }),
 );
+
+// 影片 poster 快取（index → 第一格 dataURL）；綁定於影片卡的 <img>
+const posters = reactive<Record<number, string>>({});
+
+/** 擷取影片第一格為 poster dataURL（失敗 / 無元素回傳 null） */
+const grabPoster = (i: number): Promise<string | null> => {
+  const v = videoEls[i];
+  if (!v) return Promise.resolve(null);
+  if (posters[i]) return Promise.resolve(posters[i]!);
+  return new Promise((resolve) => {
+    const done = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth;
+        c.height = v.videoHeight;
+        c.getContext('2d')!.drawImage(v, 0, 0);
+        posters[i] = c.toDataURL('image/jpeg', 0.85);
+        resolve(posters[i]!);
+      } catch {
+        resolve(null);
+      }
+    };
+    if (v.readyState >= 2) {
+      done();
+    } else {
+      v.addEventListener('loadeddata', done, { once: true });
+      v.addEventListener('error', () => resolve(null), { once: true });
+      v.load();
+    }
+  });
+};
+
+/** 影片卡 reveal：淡入 <video> 蓋過 poster 並開始播放 */
+const revealVideo = (i: number) => {
+  const v = videoEls[i];
+  if (!v) return;
+  gsap.set(v, { autoAlpha: 1 });
+  void v.play().catch(() => {});
+};
 
 const started = ref(false); // 是否已觸發（綁定 src 的開關 → lazy 載入）
 const captionVisible = ref(false);
@@ -169,22 +221,27 @@ const randomRects = (count: number): PieceRect[] =>
 const reducedMotion = () =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** 對單一張卡跑四階段 glitch。delay 用於依序 stagger 啟動。回傳 timeline 供 kill。 */
+/** 對單一張卡跑四階段 glitch。delay 用於依序 stagger 啟動。回傳 timeline 供 kill。
+ *  noiseSrcs：階段 b 亂入碎塊的來源圖（須為可當 CSS background 的圖檔／dataURL）。
+ *  onRevealed：拼圖完成（img 現身）當下呼叫——影片卡在此接手播放。 */
 const playCard = async (
   img: HTMLImageElement,
   overlay: HTMLElement,
   src: string,
   delay: number,
+  noiseSrcs: string[] = [],
+  onRevealed?: () => void,
 ): Promise<gsap.core.Timeline | null> => {
   try {
     await img.decode();
   } catch {
     gsap.set(img, { autoAlpha: 1 });
+    onRevealed?.();
     return null;
   }
 
   const D = props.duration;
-  const others = props.images.filter((s) => s !== src);
+  const others = noiseSrcs.filter((s) => s !== src);
   const noiseImages = others.length ? others : [src];
 
   let colorAt: (xPct: number, yPct: number) => string;
@@ -309,6 +366,7 @@ const playCard = async (
   tl.set(img, { autoAlpha: 1 }, D1 * D);
   tl.set(overlay, { autoAlpha: 0 }, D1 * D + 0.02 * D);
   if (overlay.parentElement) tl.set(overlay.parentElement, { boxShadow: props.shadow }, D1 * D);
+  if (onRevealed) tl.call(onRevealed, [], D1 * D); // glitch 結束 → 影片卡開始播放
   tl.set({}, {}, D);
   return tl;
 };
@@ -318,11 +376,11 @@ let tls: gsap.core.Timeline[] = [];
 let captionCall: gsap.core.Tween | null = null;
 
 const play = () => {
-  // 降級：直接顯示完整圖 + 陰影 + 文字，不跑動畫
+  // 降級：直接顯示完整圖（影片直接播放）+ 陰影 + 文字，不跑動畫
   if (reducedMotion()) {
-    cards.value.forEach((_, i) => {
-      const img = imgEls[i];
-      if (img) gsap.set(img, { autoAlpha: 1 });
+    cards.value.forEach((card, i) => {
+      if (card.video) revealVideo(i);
+      else if (imgEls[i]) gsap.set(imgEls[i], { autoAlpha: 1 });
       if (cardEls[i]) cardEls[i]!.style.boxShadow = props.shadow;
     });
     captionVisible.value = true;
@@ -330,20 +388,45 @@ const play = () => {
   }
 
   cards.value.forEach((_, i) => {
-    const img = imgEls[i];
-    if (img) gsap.set(img, { autoAlpha: 0 });
+    if (imgEls[i]) gsap.set(imgEls[i], { autoAlpha: 0 });
+    const v = videoEls[i];
+    if (v) {
+      v.pause();
+      gsap.set(v, { autoAlpha: 0 });
+    }
   });
 
   let maxEnd = 0;
   cards.value.forEach((card, i) => {
-    const img = imgEls[i];
     const overlay = overlayEls[i];
-    if (!img || !overlay) return;
+    if (!overlay) return;
     const delay = i * props.stagger; // 依序 stagger
     maxEnd = Math.max(maxEnd, delay + props.duration);
-    void playCard(img, overlay, card.src, delay).then((tl) => {
+    void (async () => {
+      // 影片卡：先擷取第一格為 poster，glitch 跑在 poster 上
+      const src = card.video ? await grabPoster(i) : card.src;
+      if (card.video && !src) {
+        // poster 擷取失敗（載入錯誤等）：略過 glitch，時間到直接播影片
+        gsap.delayedCall(delay, () => revealVideo(i));
+        return;
+      }
+      await nextTick(); // 等 posters[i] 綁上 <img> 的 src
+      const img = imgEls[i];
+      if (!img || !src) return;
+      // 亂入碎塊來源：其他卡的顯示圖（影片卡用 poster）
+      const noise = cards.value
+        .map((c, k) => (c.video ? posters[k] : c.src))
+        .filter((s): s is string => !!s);
+      const tl = await playCard(
+        img,
+        overlay,
+        src,
+        delay,
+        noise,
+        card.video ? () => revealVideo(i) : undefined,
+      );
       if (tl) tls.push(tl);
-    });
+    })();
   });
 
   // 簡介文字在整體 reveal 完成後淡入
@@ -374,6 +457,11 @@ const reset = () => {
   cards.value.forEach((_, i) => {
     const img = imgEls[i];
     if (img) gsap.set(img, { autoAlpha: 0 });
+    const v = videoEls[i];
+    if (v) {
+      v.pause();
+      gsap.set(v, { autoAlpha: 0 });
+    }
     overlayEls[i]?.replaceChildren();
     const card = cardEls[i];
     if (card) {
@@ -424,7 +512,6 @@ const onPointerMove = (e: PointerEvent) => {
 onMounted(() => {
   hoverCapable = window.matchMedia('(hover: hover)').matches;
   if (hoverCapable) window.addEventListener('pointermove', onPointerMove);
-  // 也支援以 prop 觸發
   if (props.active) void start();
 });
 
@@ -467,6 +554,17 @@ defineExpose({ start, reset });
   /* 動畫開始前先隱藏（從首次繪製就藏），避免閃一下；之後由 JS 顯示。
      visibility:hidden 仍佔版面 → 卡片高度/overlay 尺寸正確 */
   visibility: hidden;
+}
+
+/* 影片卡：疊滿整張卡（尺寸由 poster <img> 撐出），reveal 後由 JS 淡入接手 */
+.glitch-card__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  visibility: hidden;
+  opacity: 0;
 }
 
 .glitch-card__overlay {

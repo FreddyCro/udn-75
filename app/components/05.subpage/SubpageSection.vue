@@ -1,13 +1,7 @@
 <script lang="ts" setup>
 /**
- * SubpageSection — 子頁內文的單一區塊。結構統一為：小標(title) → 內文(desc) → 圖(img)／得獎項目(awards)／得獎作品(works)。
- * 各元素之間、以及 section 之間的間距，全部走共用 token（--sp-*），四頁一致。
- * 欄寬由內容決定：一般文字用窄欄(630)；含 awards（桂冠）／works（得獎作品）的區塊改用寬欄(1064)。
- *
- * ── 得獎作品「懸浮縮圖」（GlitchImage）──
- *  hover 得獎作品清單的每一列（電腦）／滾動至畫面中央（手機）時，浮出該列縮圖，
- *  以 GlitchImage 跑多階段 glitch reveal。縮圖水平固定在畫面正中央、蓋在文字上層
- *  （不跟隨滑鼠）；垂直依該列在視窗的位置決定顯示於列的上方或下方。
+ * SubpageSection — 子頁內文的單一區塊：小標 → 內文 → 圖／得獎項目／得獎作品。
+ * works 列 hover（電腦）／滾至畫面中央（手機）時浮出懸浮縮圖（GlitchImage）。
  */
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import type { Component } from 'vue';
@@ -41,9 +35,15 @@ export interface AwardWorkItem {
   url?: string;
   /** 懸浮縮圖（單張；與 thumbs 擇一，thumbs 優先） */
   thumb?: string;
-  /** 懸浮縮圖多重疊圖（最多 3 張，依序 = 主卡 → 左上小卡 → 右下小卡）
-   *  TODO: 影片素材支援待 GlitchImage 加入 <video> 卡片後開通 */
+  /** 懸浮縮圖多重疊圖（最多 3 張，依序對應 thumbLayout 的 slot）。
+   *  .mp4 結尾 = 影片：GlitchImage 以第一格 poster 跑 glitch，結束後接播影片 */
   thumbs?: string[];
+  /** 縮圖舞台寬（px；未給時走 CSS 預設） */
+  thumbW?: number;
+  /** 縮圖舞台寬高比（w / h；未給時走 GlitchImage 預設） */
+  thumbRatio?: number;
+  /** 各張縮圖的版面 slot（x/y/w 為舞台寬高 %、z 疊序；未給時走預設三卡版面） */
+  thumbLayout?: { x: number; y: number; w: number; z?: number }[];
 }
 
 const props = defineProps<{
@@ -54,6 +54,8 @@ const props = defineProps<{
   chart?: string;
   imgAlt?: string;
   caption?: string;
+  /** 多圖並排（窄欄內均分、各自圖說；src 為 UPic 路徑，不含副檔名） */
+  figures?: { src: string; caption?: string; alt?: string }[];
   awards?: AwardItem[];
   works?: AwardWorkItem[];
   placeholder?: string;
@@ -63,7 +65,6 @@ const props = defineProps<{
   componentProps?: Record<string, unknown>;
 }>();
 
-// 含桂冠或得獎作品清單的區塊改用寬欄。
 const isWide = () => !!(props.awards?.length || props.works?.length);
 
 /* ── 懸浮縮圖狀態（觸發區＝得獎作品清單的每一列）── */
@@ -74,6 +75,10 @@ const thumb = reactive({
   images: [] as string[],
   key: 0, // 每次觸發 +1 → 強制 GlitchImage 重掛，換列 hover 也必定重播 glitch
   top: 0,
+  // per-work 版面（null = 走預設）
+  w: null as number | null,
+  ratio: null as number | null,
+  layout: null as { x: number; y: number; w: number; z?: number }[] | null,
 });
 
 const THUMB_GAP = 24; // 縮圖與列的垂直間距（px）
@@ -94,6 +99,9 @@ async function activate(i: number, rowEl: HTMLElement) {
   activeIdx = i;
 
   thumb.images = images; // hover／滾入才設 src → GlitchImage lazy 載入
+  thumb.w = w.thumbW ?? null;
+  thumb.ratio = w.thumbRatio ?? null;
+  thumb.layout = w.thumbLayout ?? null;
   thumb.key++; // 重掛 → :active 於 onMounted 自動重播
   thumb.visible = true;
 
@@ -189,6 +197,25 @@ onBeforeUnmount(() => {
         </figcaption>
       </figure>
 
+      <!-- 多圖並排：窄欄內均分兩欄、各自圖說 -->
+      <div v-else-if="figures?.length" class="subpage-section__figures">
+        <figure
+          v-for="(f, i) in figures"
+          :key="i"
+          class="subpage-section__figures-item"
+        >
+          <UPic
+            :src="f.src"
+            :use-prefix="false"
+            :srcset="['mob']"
+            :alt="f.alt ?? f.caption ?? ''"
+          />
+          <figcaption v-if="f.caption" class="subpage-section__caption">
+            {{ f.caption }}
+          </figcaption>
+        </figure>
+      </div>
+
       <!-- SVG 圖表：PC/平板共用一張 + 手機一張 -->
       <figure v-else-if="chart" class="subpage-section__figure">
         <UPic
@@ -226,19 +253,23 @@ onBeforeUnmount(() => {
         class="subpage-section__works-wrap"
         @mouseleave="onLeaveWrap"
       >
-        <!-- 懸浮縮圖：水平固定畫面中央（CSS）、top 由 JS 依列位置貼列的上方或下方。
-             多重疊圖走 GlitchImage 預設三卡版面（主卡＋左上／右下小卡） -->
+        <!-- 懸浮縮圖：水平固定畫面中央（CSS）、top 由 JS 依列位置決定 -->
         <div
           ref="thumbBox"
           class="works-thumb"
           :class="{ 'is-visible': thumb.visible }"
-          :style="{ top: `${thumb.top}px` }"
+          :style="[
+            { top: `${thumb.top}px` },
+            thumb.w ? { '--thumb-w': `${thumb.w}px` } : null,
+          ]"
           aria-hidden="true"
         >
           <GlitchImage
             v-if="thumb.visible"
             :key="thumb.key"
             :images="thumb.images"
+            :layout="thumb.layout ?? undefined"
+            :aspect-ratio="thumb.ratio ?? undefined"
             :active="true"
             :duration="1.2"
             :pieces="16"
@@ -299,6 +330,30 @@ onBeforeUnmount(() => {
   max-width: var(--subpage-wide-w);
 }
 
+// 寬欄區塊（含 works／awards）內的圖表維持窄欄寬度置中（對稿：桂冠圖 630）
+.subpage-section--wide .subpage-section__figure {
+  max-width: calc(var(--subpage-content-w) - 40px); // 扣 __inner 左右 padding
+  margin-right: auto;
+  margin-left: auto;
+}
+
+// 多圖並排：窄欄內均分兩欄（對稿 295+40+295=630），手機改直排
+.subpage-section__figures {
+  display: flex;
+  gap: 40px;
+
+  @include rwd-mobile {
+    flex-direction: column;
+    gap: 24px;
+  }
+}
+
+.subpage-section__figures-item {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
 .subpage-section__title {
   margin: 0;
   font-size: var(--text-h3);
@@ -329,6 +384,8 @@ onBeforeUnmount(() => {
 // 圖／得獎項目／得獎作品：接在內文或小標之後都拉開 --sp-desc-img。
 .subpage-section__desc + .subpage-section__figure,
 .subpage-section__title + .subpage-section__figure,
+.subpage-section__desc + .subpage-section__figures,
+.subpage-section__title + .subpage-section__figures,
 .subpage-section__desc + .subpage-section__awards-wrap,
 .subpage-section__title + .subpage-section__awards-wrap,
 .subpage-section__desc + .subpage-section__works-wrap,
@@ -377,21 +434,21 @@ onBeforeUnmount(() => {
 }
 
 /* ── 懸浮縮圖（GlitchImage）── */
-// 水平固定在畫面正中央（works 欄置中於視窗 → left: 50% 即視窗中線）；
-// top 由 JS 依 hover 列的畫面位置設在該列上方或下方。
-// 蓋在列文字之上（不再穿透文字），pointer-events: none 不擋列的 hover。
+// works 欄置中於視窗 → left: 50% 即視窗中線；top 由 JS 帶入。
+// pointer-events: none 不擋列的 hover。
 .works-thumb {
   position: absolute;
   left: 50%;
   z-index: 4; // 分隔線(z1) < 列文字(z3) < 縮圖(z4)
-  width: var(--thumb-w, min(560px, 48vw)); // 多卡疊圖版面，主卡約佔 60%
+  // --thumb-w = 對稿各 work 舞台寬（inline 帶入）；48vw 為窄視窗保底
+  width: min(var(--thumb-w, 560px), 48vw);
   transform: translateX(-50%);
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.18s ease; // 快速淡入，重播交給 GlitchImage
 
   @include rwd-mobile {
-    --thumb-w: 280px;
+    width: min(var(--thumb-w, 280px), 80vw);
   }
 }
 

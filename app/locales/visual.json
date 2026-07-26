@@ -2,6 +2,8 @@
   "hero": {
     "title": "視覺敘事",
     "subtitle": "用故事與創意抓住目光",
+    "titleImg": "/img/visual/udn75_visual_hero_title.svg",
+    "subtitleImg": "/img/visual/udn75_visual_hero_subtitle.svg",
     "unit": "視覺設計中心",
     "author": "董谷音",
     "bg": "/img/visual/udn75_bg_visual"
@@ -16,24 +18,25 @@
       ]
     },
     {
-      "title": "瞧一瞧哪一張是AI生成圖?",
+      "title": "哪一張是AI生成圖?",
       "component": "AiImageQuiz",
       "componentProps": {
         "options": [
           {
-            "src": "/img/visual/udn75_pic05_01.jpg",
-            "alt": "選項一",
-            "isAi": false
+            "src": "/img/visual/udn75_pic05_01",
+            "alt": "RSPCA 救援行動中發布的大量犬隻照片",
+            "label": "左圖",
+            "isAi": false,
+            "explain": "2026年4月英國皇家防止虐待動物協會 (RSPCA)在一次救援行動後，於網路發布了一張照片，卻受到公眾指責為AI工具生成，RSPCA不得不特別澄清，否認照片為人工智慧偽造的指控。"
           },
           {
-            "src": "/img/visual/udn75_pic05_02.jpg",
-            "alt": "選項二",
-            "isAi": true
+            "src": "/img/visual/udn75_pic05_02",
+            "alt": "愛爾蘭獵狼犬與成年男性合照",
+            "label": "右圖",
+            "isAi": true,
+            "explain": "影像顯示一隻愛爾蘭獵狼犬和一位成年男性；這張是AI工具生成的，所以它沒有故事。"
           }
-        ],
-        "correctTitle": "答對了！右邊這張是AI生成圖。",
-        "wrongTitle": "答錯了，其實右邊這張才是AI生成圖。",
-        "explain": "AI工具的效果逼真程度令人毛骨悚然，光影、質地幾可亂真；但仔細觀察細節——手指數量、文字扭曲、背景邏輯——仍可能找到破綻。身為媒體視覺工作者，我們畫出了一條底線：不偽造、不剝奪創作者的機會。"
+        ]
       }
     },
     {
@@ -57,126 +60,158 @@
       ]
     },
     {
-      "title": "近年得獎專題",
-      "awards": [
-        {
-          "name": "SND\nAWARDS",
-          "year": "2026",
-          "category": "頁面設計銅牌",
-          "variant": "gold",
-          "thumb": "https://placehold.co/600x760/7a5230/ffffff/png"
-        },
-        {
-          "name": "SND\nAWARDS",
-          "year": "2026",
-          "category": "插畫銅牌",
-          "variant": "gold",
-          "thumb": "https://placehold.co/600x760/8a3b2e/ffffff/png"
-        },
-        {
-          "name": "SND\nAWARDS",
-          "year": "2026",
-          "category": "頁面設計優選",
-          "variant": "dark",
-          "thumb": "https://placehold.co/600x760/1f2a44/ffffff/png"
-        },
-        {
-          "name": "SND\nAWARDS",
-          "year": "2026",
-          "category": "頁面設計優選",
-          "variant": "dark",
-          "thumb": "https://placehold.co/600x760/2f4a3a/ffffff/png"
-        },
-        {
-          "name": "SND\nAWARDS",
-          "year": "2026",
-          "category": "插畫優選",
-          "variant": "dark",
-          "thumb": "https://placehold.co/600x760/3a3550/ffffff/png"
-        }
-      ],
+      "title": "近年得獎獎項",
+      "chart": "/img/visual/udn75_chart06_01",
+      "imgAlt": "近年得獎：SND AWARDS 2026 頁面設計銅牌、插畫銅牌、頁面設計優選兩項、插畫優選；金鼎獎第50屆數位內容類入圍",
       "works": [
         {
           "title": "喪屍青年如何誕生 依托咪酯悄悄毒害新生代",
           "desc": "SND插畫/銅牌獎 、頁面設計/優選。SND評審團評語「評審認為整體製作與視覺設計高度整合，帶來強烈的沉浸感，彷彿置身於作品所建構的世界之中」，評審特別指出，作品具有很強的吸引力，能夠有效將讀者帶入其中。",
           "url": "#",
           "thumbs": [
-            "https://placehold.co/960x600/1f2a44/ffffff/png",
-            "https://placehold.co/640x400/7a5230/ffffff/png",
-            "https://placehold.co/640x400/2f4a3a/ffffff/png"
+            "/img/visual/udn75_video07_01.mp4",
+            "/img/visual/udn75_video07_02.mp4"
+          ],
+          "thumbW": 528,
+          "thumbRatio": 1.219,
+          "thumbLayout": [
+            { "x": 0, "y": 0, "w": 83.3, "z": 1 },
+            { "x": 54.5, "y": 58.4, "w": 45.5, "z": 2 }
           ]
         },
         {
           "title": "台灣塑膠袋上癮了嗎？限塑喊很大 卻年年用更多",
           "desc": "SND頁面設計/銅牌獎。SND評審團評語：「評審認為這件作品極具創意，特別讚賞在頁面上方運用連續動畫來吸引讀者注意。他們指出，作品以不同但有效的方式呈現內容，並且明確考量了讀者的觀看體驗。評審也特別提到桌機版流暢的動態呈現、精緻且執行到位的小型圖像設計，以及透過人物購買雜貨的情境，有效幫助讀者理解內容」。",
           "url": "#",
-          "thumb": "https://placehold.co/600x760/7a5230/ffffff/png"
+          "thumbs": [
+            "/img/visual/udn75_video08_01.mp4",
+            "/img/visual/udn75_video08_02.mp4"
+          ],
+          "thumbW": 532,
+          "thumbRatio": 1.404,
+          "thumbLayout": [
+            { "x": 0, "y": 0, "w": 82.7, "z": 1 },
+            { "x": 66.2, "y": 64.4, "w": 33.8, "z": 2 }
+          ]
         },
         {
           "title": "放下溫體肉迷思 給豬的最後一口溫柔",
           "desc": "SND頁面設計、插畫/二項優選",
           "url": "#",
-          "thumb": "https://placehold.co/600x760/2f4a3a/ffffff/png"
-        },
-        {
-          "title": "喪屍青年如何誕生 依托咪酯悄悄毒害新生代",
-          "desc": "SND插畫/銅牌獎 、頁面設計/優選。SND評審團評語「評審認為整體製作與視覺設計高度整合，帶來強烈的沉浸感，彷彿置身於作品所建構的世界之中」，評審特別指出，作品具有很強的吸引力，能夠有效將讀者帶入其中。",
-          "url": "#",
           "thumbs": [
-            "https://placehold.co/960x600/1f2a44/ffffff/png",
-            "https://placehold.co/640x400/7a5230/ffffff/png",
-            "https://placehold.co/640x400/2f4a3a/ffffff/png"
+            "/img/visual/udn75_pic09_01.jpg",
+            "/img/visual/udn75_video09_02.mp4",
+            "/img/visual/udn75_video09_03.mp4"
+          ],
+          "thumbW": 512,
+          "thumbRatio": 1.243,
+          "thumbLayout": [
+            { "x": 38.3, "y": 0, "w": 48.4, "z": 1 },
+            { "x": 0, "y": 33.5, "w": 61.7, "z": 3 },
+            { "x": 66, "y": 68.4, "w": 34, "z": 2 }
           ]
         },
         {
-          "title": "台灣塑膠袋上癮了嗎？限塑喊很大 卻年年用更多",
-          "desc": "SND頁面設計/銅牌獎。SND評審團評語：「評審認為這件作品極具創意，特別讚賞在頁面上方運用連續動畫來吸引讀者注意。他們指出，作品以不同但有效的方式呈現內容，並且明確考量了讀者的觀看體驗。評審也特別提到桌機版流暢的動態呈現、精緻且執行到位的小型圖像設計，以及透過人物購買雜貨的情境，有效幫助讀者理解內容」。",
-          "url": "#",
-          "thumb": "https://placehold.co/600x760/7a5230/ffffff/png"
-        },
-        {
-          "title": "放下溫體肉迷思 給豬的最後一口溫柔",
-          "desc": "SND頁面設計、插畫/二項優選",
-          "url": "#",
-          "thumb": "https://placehold.co/600x760/2f4a3a/ffffff/png"
-        },
-        {
-          "title": "喪屍青年如何誕生 依托咪酯悄悄毒害新生代",
-          "desc": "SND插畫/銅牌獎 、頁面設計/優選。SND評審團評語「評審認為整體製作與視覺設計高度整合，帶來強烈的沉浸感，彷彿置身於作品所建構的世界之中」，評審特別指出，作品具有很強的吸引力，能夠有效將讀者帶入其中。",
+          "title": "防老存肌力 人生下半場最怕不運動",
           "url": "#",
           "thumbs": [
-            "https://placehold.co/960x600/1f2a44/ffffff/png",
-            "https://placehold.co/640x400/7a5230/ffffff/png",
-            "https://placehold.co/640x400/2f4a3a/ffffff/png"
+            "/img/visual/udn75_video10_01.mp4",
+            "/img/visual/udn75_video10_02.mp4",
+            "/img/visual/udn75_video10_03.mp4"
+          ],
+          "thumbW": 542,
+          "thumbRatio": 1.269,
+          "thumbLayout": [
+            { "x": 0, "y": 19.2, "w": 70.1, "z": 2 },
+            { "x": 55.7, "y": 0, "w": 44.3, "z": 1 },
+            { "x": 57.6, "y": 68.4, "w": 33.2, "z": 3 }
           ]
         },
         {
-          "title": "台灣塑膠袋上癮了嗎？限塑喊很大 卻年年用更多",
-          "desc": "SND頁面設計/銅牌獎。SND評審團評語：「評審認為這件作品極具創意，特別讚賞在頁面上方運用連續動畫來吸引讀者注意。他們指出，作品以不同但有效的方式呈現內容，並且明確考量了讀者的觀看體驗。評審也特別提到桌機版流暢的動態呈現、精緻且執行到位的小型圖像設計，以及透過人物購買雜貨的情境，有效幫助讀者理解內容」。",
-          "url": "#",
-          "thumb": "https://placehold.co/600x760/7a5230/ffffff/png"
-        },
-        {
-          "title": "放下溫體肉迷思 給豬的最後一口溫柔",
-          "desc": "SND頁面設計、插畫/二項優選",
-          "url": "#",
-          "thumb": "https://placehold.co/600x760/2f4a3a/ffffff/png"
-        },
-        {
-          "title": "喪屍青年如何誕生 依托咪酯悄悄毒害新生代",
-          "desc": "SND插畫/銅牌獎 、頁面設計/優選。SND評審團評語「評審認為整體製作與視覺設計高度整合，帶來強烈的沉浸感，彷彿置身於作品所建構的世界之中」，評審特別指出，作品具有很強的吸引力，能夠有效將讀者帶入其中。",
+          "title": "小宅屋主告白 美夢成真還是一場豪賭？",
           "url": "#",
           "thumbs": [
-            "https://placehold.co/960x600/1f2a44/ffffff/png",
-            "https://placehold.co/640x400/7a5230/ffffff/png",
-            "https://placehold.co/640x400/2f4a3a/ffffff/png"
+            "/img/visual/udn75_pic11_01.jpg",
+            "/img/visual/udn75_video11_02.mp4"
+          ],
+          "thumbW": 514,
+          "thumbRatio": 1.315,
+          "thumbLayout": [
+            { "x": 22.2, "y": 0, "w": 77.8, "z": 1 },
+            { "x": 0, "y": 50.9, "w": 49.8, "z": 2 }
           ]
         },
         {
-          "title": "台灣塑膠袋上癮了嗎？限塑喊很大 卻年年用更多",
-          "desc": "SND頁面設計/銅牌獎。SND評審團評語：「評審認為這件作品極具創意，特別讚賞在頁面上方運用連續動畫來吸引讀者注意。他們指出，作品以不同但有效的方式呈現內容，並且明確考量了讀者的觀看體驗。評審也特別提到桌機版流暢的動態呈現、精緻且執行到位的小型圖像設計，以及透過人物購買雜貨的情境，有效幫助讀者理解內容」。",
+          "title": "地表最強戰車來了 M1A2T全解析",
           "url": "#",
-          "thumb": "https://placehold.co/600x760/7a5230/ffffff/png"
+          "thumbs": [
+            "/img/visual/udn75_video12_01.mp4",
+            "/img/visual/udn75_video12_02.mp4"
+          ],
+          "thumbW": 508,
+          "thumbRatio": 1.16,
+          "thumbLayout": [
+            { "x": 0, "y": 0, "w": 86.6, "z": 1 },
+            { "x": 56.7, "y": 62.6, "w": 43.3, "z": 2 }
+          ]
+        },
+        {
+          "title": "你體內也有永世之毒？ 無所不在的PFAS",
+          "url": "#",
+          "thumbs": ["/img/visual/udn75_video13_01.mp4"],
+          "thumbW": 480,
+          "thumbRatio": 1.33,
+          "thumbLayout": [{ "x": 0, "y": 0, "w": 100, "z": 1 }]
+        },
+        {
+          "title": "如何辨別心理症狀並尋求協助",
+          "url": "#",
+          "thumbs": [
+            "/img/visual/udn75_video14_01.mp4",
+            "/img/visual/udn75_video14_02.mp4"
+          ],
+          "thumbW": 508,
+          "thumbRatio": 1.239,
+          "thumbLayout": [
+            { "x": 0, "y": 0, "w": 86.6, "z": 1 },
+            { "x": 56.7, "y": 59.8, "w": 43.3, "z": 2 }
+          ]
+        },
+        {
+          "title": "氣候沸騰時代來臨",
+          "url": "#",
+          "thumbs": ["/img/visual/udn75_video15_01.mp4"],
+          "thumbW": 480,
+          "thumbRatio": 1.341,
+          "thumbLayout": [{ "x": 0, "y": 0, "w": 100, "z": 1 }]
+        },
+        {
+          "title": "選票變鈔票 補助款一票值多少？",
+          "url": "#",
+          "thumbs": [
+            "/img/visual/udn75_video16_01.mp4",
+            "/img/visual/udn75_pic16_02.jpg"
+          ],
+          "thumbW": 559,
+          "thumbRatio": 1.325,
+          "thumbLayout": [
+            { "x": 14.1, "y": 0, "w": 85.9, "z": 1 },
+            { "x": 0, "y": 52.6, "w": 35.8, "z": 2 }
+          ]
+        },
+        {
+          "title": "如果台灣發生戰爭 小老百姓如何保命",
+          "url": "#",
+          "thumbs": [
+            "/img/visual/udn75_video17_01.mp4",
+            "/img/visual/udn75_pic17_02.png"
+          ],
+          "thumbW": 538,
+          "thumbRatio": 1.303,
+          "thumbLayout": [
+            { "x": 0, "y": 0, "w": 89.2, "z": 1 },
+            { "x": 74, "y": 31, "w": 26, "z": 2 }
+          ]
         }
       ]
     }

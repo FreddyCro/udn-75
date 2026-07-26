@@ -1,11 +1,5 @@
 <script lang="ts" setup>
-/**
- * SubpageWork — 「得獎作品」清單的單一列。
- * 左：作品標題（H5 Medium）＋描述（caption 灰）；右：橘色「點擊看專題」＋圓框箭頭。
- * 每列上緣一條分隔線；有 url 時整列為連結。
- * 預設收合只顯示標題＋圓框箭頭；hover 時標題轉橘、描述向下展開、
- * 「點擊看專題」浮現（觸控環境無 hover → 一律展開）。
- */
+/** SubpageWork — 「得獎作品」清單的單一列；有 url 時整列為連結。 */
 withDefaults(
   defineProps<{
     title?: string;
@@ -33,21 +27,12 @@ withDefaults(
 
     <span class="award-work__more">
       <span class="award-work__label">點擊看專題</span>
-      <svg
+      <img
         class="award-work__arrow"
-        viewBox="0 0 30 30"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
+        src="/img/udn75_nav_prev.svg"
+        alt=""
         aria-hidden="true"
-      >
-        <circle cx="15" cy="15" r="14.5" stroke="currentColor" />
-        <path
-          d="M13.8 12.6L16.2 15.3L13.8 17.7"
-          stroke="currentColor"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
+      />
     </span>
   </component>
 </template>
@@ -140,7 +125,6 @@ withDefaults(
   color: var(--color-body);
 }
 
-// 右側連結：橘色文字 + 圓框箭頭（同色，走 currentColor）
 .award-work__more {
   position: relative;
   z-index: 3; // 連結在縮圖之上
@@ -148,7 +132,7 @@ withDefaults(
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  color: var(--color-orange);
+  color: var(--color-gray);
 }
 
 .award-work__label {
@@ -173,5 +157,6 @@ withDefaults(
   flex-shrink: 0;
   width: 30px;
   height: 30px;
+  transform: scaleX(-1); // 素材箭頭朝左 → 鏡射指向右側
 }
 </style>

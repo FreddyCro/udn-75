@@ -1,77 +1,126 @@
 <script lang="ts" setup>
 /**
- * AiImageQuiz — 「哪一張是 AI 生成圖？」二選一測驗（visual 頁）。
- *  - 兩張圖並排，各自為可點選按鈕。
- *  - 選擇後：解釋面板向下展開（依答對／答錯顯示不同開頭），
- *    非 AI 的錯誤照片蓋上遮罩 rgba(0, 0, 0, 0.45)，AI 圖標上「AI生成」徽章。
- *  - 作答後鎖定不可再選。
- * TODO(figma): 版面（並排比例、徽章、結果樣式）先照規格描述估值，
- *   取得檔案權限後對 #選擇圖片 對稿；圖片目前為佔位圖。
+ * AiImageQuiz — 「哪一張是AI生成圖?」二選一測驗（visual 頁）。
+ * 作答後鎖定：展開解說、非 AI 的照片蓋上遮罩。
  */
 export interface QuizOption {
+  /** UPic 圖片路徑（不含副檔名與裝置後綴） */
   src: string;
   alt?: string;
+  /** 作答按鈕文字 */
+  label?: string;
   /** 這張是否為 AI 生成圖（= 正確答案） */
   isAi?: boolean;
+  /** 作答後顯示的解說 */
+  explain?: string;
 }
 
 const props = withDefaults(
   defineProps<{
     options?: QuizOption[];
-    /** 答對時的開頭 */
-    correctTitle?: string;
-    /** 答錯時的開頭 */
-    wrongTitle?: string;
-    /** 共同解釋文字 */
-    explain?: string;
+    correctLabel?: string;
+    wrongLabel?: string;
   }>(),
   {
     options: () => [],
-    correctTitle: '答對了！',
-    wrongTitle: '答錯了，其實是這一張。',
-    explain: '',
+    correctLabel: '正確',
+    wrongLabel: '錯誤',
   },
 );
 
 const picked = ref(-1); // 使用者選的 index；-1 = 未作答
 const answered = computed(() => picked.value >= 0);
 const isCorrect = computed(() => props.options[picked.value]?.isAi === true);
+const explain = computed(() => props.options[picked.value]?.explain ?? '');
 
 function pick(i: number) {
-  if (answered.value) return; // 作答後鎖定
+  if (answered.value) return;
   picked.value = i;
 }
 </script>
 
 <template>
   <div class="ai-quiz">
+    <!-- 兩張圖同高並排（寬度依 @1x 素材比例分配） -->
     <div class="ai-quiz__options">
-      <button
+      <figure
         v-for="(o, i) in options"
         :key="i"
         class="ai-quiz__option"
-        :class="{
-          'ai-quiz__option--masked': answered && !o.isAi, // 錯誤照片遮罩
-          'ai-quiz__option--answer': answered && o.isAi,
-          'ai-quiz__option--picked': answered && picked === i,
-        }"
+        :class="{ 'ai-quiz__option--masked': answered && !o.isAi }"
+        :style="{ flex: `${i === 0 ? 394 : 235} 0 0%` }"
+      >
+        <UPic
+          classname="ai-quiz__img"
+          :src="o.src"
+          :use-prefix="false"
+          :srcset="['mob']"
+          :alt="o.alt ?? ''"
+        />
+      </figure>
+    </div>
+
+    <div class="ai-quiz__controls">
+      <button
+        v-for="(o, i) in options"
+        :key="i"
+        class="ai-quiz__btn"
         type="button"
         :disabled="answered"
         :aria-pressed="picked === i"
         @click="pick(i)"
       >
-        <img class="ai-quiz__img" :src="o.src" :alt="o.alt ?? ''" />
-        <span v-if="answered && o.isAi" class="ai-quiz__badge">AI生成</span>
+        <img
+          v-if="i === 0"
+          class="ai-quiz__btn-icon"
+          src="/img/udn75_nav_prev.svg"
+          alt=""
+          aria-hidden="true"
+        />
+        <span class="ai-quiz__btn-label">{{ o.label }}</span>
+        <img
+          v-if="i !== 0"
+          class="ai-quiz__btn-icon ai-quiz__btn-icon--flip"
+          src="/img/udn75_nav_prev.svg"
+          alt=""
+          aria-hidden="true"
+        />
       </button>
     </div>
 
-    <!-- 解釋：選擇後向下展開 -->
-    <div class="ai-quiz__panel" :class="{ 'ai-quiz__panel--open': answered }">
-      <div class="ai-quiz__panel-body">
-        <p class="ai-quiz__result" :class="{ 'ai-quiz__result--correct': isCorrect }">
-          {{ isCorrect ? correctTitle : wrongTitle }}
-        </p>
-        <p v-if="explain" class="ai-quiz__explain">{{ explain }}</p>
+    <div class="ai-quiz__panel">
+      <p class="ai-quiz__hint">說明：</p>
+      <div class="ai-quiz__body" :class="{ 'ai-quiz__body--open': answered }">
+        <div class="ai-quiz__body-inner">
+          <p class="ai-quiz__badge" aria-live="polite">
+            <svg
+              class="ai-quiz__badge-icon"
+              viewBox="0 0 28 28"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <circle cx="14" cy="14" r="12.5" stroke="#fff" stroke-width="1.5" />
+              <path
+                v-if="isCorrect"
+                d="m8.5 14.5 3.8 3.8 7.2-8"
+                stroke="#fff"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                v-else
+                d="M9.5 9.5 18.5 18.5M18.5 9.5 9.5 18.5"
+                stroke="#fff"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+            {{ isCorrect ? correctLabel : wrongLabel }}
+          </p>
+          <p v-if="explain" class="ai-quiz__explain">{{ explain }}</p>
+        </div>
       </div>
     </div>
   </div>
@@ -80,33 +129,20 @@ function pick(i: number) {
 <style lang="scss" scoped>
 .ai-quiz {
   width: 100%;
-  max-width: var(--subpage-wide-w); // 兩圖並排用寬欄
+  max-width: var(--subpage-content-w); // 窄欄 630，對稿
   margin: 0 auto;
   padding: 0 20px;
 }
 
 .ai-quiz__options {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 24px;
-
-  @include rwd-mobile {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
+  display: flex;
 }
 
 .ai-quiz__option {
   position: relative;
-  padding: 0;
-  overflow: hidden;
-  border: 2px solid transparent;
-  border-radius: 8px;
-  background: none;
-  cursor: pointer;
-  transition: transform 0.2s ease, border-color 0.2s ease;
+  margin: 0;
 
-  // 遮罩層：作答後蓋在錯誤照片上（規格指定 45% 黑）
+  // 遮罩層：作答後蓋在非 AI 的照片上（對稿指定 45% 黑）
   &::after {
     content: '';
     position: absolute;
@@ -116,68 +152,106 @@ function pick(i: number) {
     transition: opacity 0.3s ease;
     pointer-events: none;
   }
-
-  &:hover:not(:disabled) {
-    transform: scale(1.02);
-  }
-
-  &:disabled {
-    cursor: default;
-  }
 }
 
 .ai-quiz__option--masked::after {
   opacity: 1;
 }
 
-.ai-quiz__option--answer {
-  border-color: var(--color-orange);
-}
-
-.ai-quiz__img {
+.ai-quiz__option :deep(.ai-quiz__img) {
   display: block;
   width: 100%;
   height: auto;
 }
 
-.ai-quiz__badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  padding: 4px 12px;
-  font-size: var(--text-caption);
-  line-height: var(--text-caption--line-height);
-  color: #fff;
-  background: var(--color-orange);
-  border-radius: 999px;
+.ai-quiz__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
 }
 
-// 解釋面板：grid-rows 0fr ↔ 1fr 平滑下展
+.ai-quiz__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-gray);
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.ai-quiz__btn-icon {
+  display: block;
+  width: 48px;
+  height: 48px;
+
+  &--flip {
+    transform: scaleX(-1);
+  }
+}
+
+.ai-quiz__btn-label {
+  font-size: var(--text-body); // 18 / 36 Light
+  line-height: var(--text-body--line-height);
+  font-weight: 300;
+  letter-spacing: 10px;
+}
+
+// 說明面板：淺灰底，「說明：」常駐；作答後 body 以 grid-rows 0fr ↔ 1fr 下展
 .ai-quiz__panel {
+  margin-top: 16px;
+  padding: 16px 24px;
+  background: #f7f7f7; // 對稿近似（面板淺灰底，非全站 token）
+}
+
+.ai-quiz__hint {
+  margin: 0;
+  font-size: 16px; // 對稿「解釋文字」樣式 16 / 24 Light
+  line-height: 24px;
+  font-weight: 300;
+  color: var(--color-gray-light);
+}
+
+.ai-quiz__body {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.4s ease;
 }
 
-.ai-quiz__panel--open {
+.ai-quiz__body--open {
   grid-template-rows: 1fr;
 }
 
-.ai-quiz__panel-body {
+.ai-quiz__body-inner {
   min-height: 0;
   overflow: hidden;
 }
 
-.ai-quiz__result {
-  margin: 24px 0 0;
+.ai-quiz__badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 12px auto 0;
+  padding: 7px 16px;
   font-size: var(--text-h5);
   line-height: var(--text-h5--line-height);
-  font-weight: 500;
-  color: var(--color-body);
+  font-weight: 400;
+  color: #fff;
+  background: var(--color-orange);
+}
 
-  &--correct {
-    color: var(--color-orange);
-  }
+.ai-quiz__badge-icon {
+  display: block;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
 }
 
 .ai-quiz__explain {
