@@ -1,51 +1,70 @@
 <template>
-  <section ref="sectionRef" class="gallery">
+  <section ref="sectionRef" class="showcase-gallery">
     <!-- 隱藏的母路徑（單峰常態分佈鐘形）；getPointAtLength 取沿線座標 -->
-    <svg class="path-def" viewBox="0 0 1000 1000" aria-hidden="true">
+    <svg class="showcase-gallery__path-def" viewBox="0 0 1000 1000" aria-hidden="true">
       <path ref="pathRef" :d="BELL_D" fill="none" />
     </svg>
 
-    <div ref="stageRef" class="stage">
-      <img
+    <div ref="stageRef" class="showcase-gallery__stage">
+      <div
         v-for="(c, i) in cards"
         :key="i"
         ref="cardRefs"
-        class="card"
-        :src="c.src"
-        :alt="c.alt"
-        draggable="false"
-      />
+        class="showcase-gallery__card"
+        :style="{ width: `${(c.w / DESIGN_W) * 100}%`, aspectRatio: `${c.w} / ${c.h}` }"
+      >
+        <img
+          v-if="c.src"
+          class="showcase-gallery__img"
+          :src="c.src"
+          :alt="c.alt ?? ''"
+          draggable="false"
+        />
+      </div>
     </div>
-
-    <div ref="counterRef" class="counter">0%</div>
   </section>
 </template>
+
+<script lang="ts">
+/** 單張卡片：設計稿尺寸（px @1280 stage）＋（可選）正式素材 */
+export interface ShowcaseSlide {
+  w: number;
+  h: number;
+  src?: string;
+  alt?: string;
+}
+
+// 「綁滾動多圖輪播」7 種素材尺寸，正式截圖到位前先以灰色 placeholder 呈現
+// （module scope：defineProps 的 default 會被 hoist，不能引用 setup 區域變數）
+const DESIGN_SLIDES: ShowcaseSlide[] = [
+  { w: 241, h: 301 },
+  { w: 273, h: 149 },
+  { w: 237, h: 275 },
+  { w: 141, h: 56 },
+  { w: 173, h: 204 },
+  { w: 208, h: 112 },
+  { w: 94, h: 94 },
+];
+</script>
 
 <script setup lang="ts">
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import face from '~/assets/img/face.png';
-import einstein from '~/assets/img/einstein.png';
-import glitch1 from '~/assets/img/glitch-01.jpg';
-import glitch2 from '~/assets/img/glitch-02.jpg';
-import glitch3 from '~/assets/img/glitch-03.jpg';
 
 const props = defineProps({
-  /** 圖片來源（字串陣列）；張數不足會自動循環填滿 count */
-  images: {
-    type: Array as () => string[],
-    default: () => [face, einstein, glitch1, glitch2, glitch3],
+  /** 卡片清單（設計稿尺寸＋素材）；張數不足會自動循環填滿 count */
+  slides: {
+    type: Array as () => ShowcaseSlide[],
+    default: () => DESIGN_SLIDES,
   },
   /** 同時鋪在路徑上的卡片數（越多越像連續 stream） */
-  count: { type: Number, default: 12 },
+  count: { type: Number, default: 14 },
   /** pin 期間可捲動距離（px）；越大動得越慢 */
   pinDistance: { type: Number, default: 2000 },
   /** 端點最小縮放（路徑兩端） */
-  minScale: { type: Number, default: 0.12 },
+  minScale: { type: Number, default: 0.3 },
   /** 峰頂最大縮放 */
   maxScale: { type: Number, default: 1.1 },
-  /** 卡片基準寬（相對 min(視窗寬高) 的比例） */
-  cardWidthRatio: { type: Number, default: 0.22 },
   /** 元件寬度：路徑兩端（出現/消失點）占視窗寬的比例。1=貼齊兩側、<1=往內縮、>1=推到畫面外 */
   widthRatio: { type: Number, default: 0.9 },
   /** 每張 rotateX 的分佈上限（度）；各卡分散在 [-range, +range]，±180 = 上下鏡像 */
@@ -54,6 +73,9 @@ const props = defineProps({
   scaleYMin: { type: Number, default: 0.6 },
   scaleYMax: { type: Number, default: 1.3 },
 });
+
+/** 設計稿 stage 寬（卡片尺寸以此換算為 %） */
+const DESIGN_W = 1280;
 
 // 母路徑：單峰常態分佈鐘形（左右對稱）。改這條即可調整波形。
 const BELL_D =
@@ -64,14 +86,13 @@ const BELL_D =
 const sectionRef = ref<HTMLElement | null>(null);
 const stageRef = ref<HTMLDivElement | null>(null);
 const pathRef = ref<SVGPathElement | null>(null);
-const counterRef = ref<HTMLDivElement | null>(null);
-const cardRefs = ref<HTMLImageElement[]>([]);
+const cardRefs = ref<HTMLDivElement[]>([]);
 
 const cards = computed(() =>
-  Array.from({ length: props.count }, (_, i) => ({
-    src: props.images[i % props.images.length]!,
-    alt: `showcase ${i + 1}`,
-  })),
+  Array.from(
+    { length: props.count },
+    (_, i) => props.slides[i % props.slides.length]!,
+  ),
 );
 
 onMounted(() => {
@@ -98,13 +119,12 @@ onMounted(() => {
   const ySpan = yMax - yMin || 1;
   const xExtent = (xMax - xMin) / 1000 || 1; // 路徑水平總寬（正規化 0..1）
 
-  let S = 0; // 垂直 / 卡片尺寸基準（依 min(視窗寬高) 等比）
+  let S = 0; // 垂直基準（依 min(視窗寬高) 等比）
   let SX = 0; // 水平展開基準（由 widthRatio × 視窗寬 決定）
   const measure = () => {
     const w = section.clientWidth;
     S = Math.min(w, section.clientHeight) * 0.95;
     SX = (props.widthRatio * w) / xExtent; // 路徑兩端落在 ±widthRatio×寬/2
-    stage.style.setProperty('--card-w', `${S * props.cardWidthRatio}px`);
   };
   measure();
 
@@ -138,13 +158,10 @@ onMounted(() => {
         props.minScale + (props.maxScale - props.minScale) * heightFactor;
       el.style.left = `calc(50% + ${hx * SX}px)`;
       el.style.top = `calc(50% + ${hy * S}px)`;
-      // 只有 path（hy 乘 cosθ）會 rotate；圖片本身保持正立，不壓縮/翻轉
+      // 只有 path（hy 乘 cosθ）會 rotate；卡片本身保持正立，不壓縮/翻轉
       el.style.transform = `translate(-50%, -50%) scale(${vs})`;
       el.style.zIndex = String(Math.round(vs * 100));
       el.style.opacity = String(Math.min(1, heightFactor * 2.4)); // 端點淡出，藏接縫
-    }
-    if (counterRef.value) {
-      counterRef.value.textContent = `${Math.round(state.p * 100)}%`;
     }
   };
 
@@ -177,53 +194,48 @@ onMounted(() => {
 });
 </script>
 
-<style scoped>
-.gallery {
+<style lang="scss" scoped>
+.showcase-gallery {
   position: relative;
   width: 100%;
   height: 100vh;
   overflow: hidden;
-  background: #0a0a0a;
+  background: #fff;
 }
 
-/* 隱藏母路徑，但保留幾何可量測（不可用 display:none） */
-.path-def {
+// 隱藏母路徑，但保留幾何可量測（不可用 display:none）
+.showcase-gallery__path-def {
   position: absolute;
   width: 1px;
   height: 1px;
   overflow: visible;
   opacity: 0;
   pointer-events: none;
+
+  path {
+    stroke: #fff;
+  }
 }
 
-.stage {
+.showcase-gallery__stage {
   position: absolute;
   inset: 0;
 }
 
-.card {
+// 正式素材到位前以灰色 placeholder 呈現（尺寸依設計稿）
+.showcase-gallery__card {
   position: absolute;
-  width: var(--card-w, 240px);
-  height: auto;
-  border-radius: 10px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  background: #d9d9d9;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   will-change: transform, opacity;
   user-select: none;
 }
 
-.counter {
-  position: absolute;
-  right: 32px;
-  bottom: 28px;
-  z-index: 9999;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  color: #b6f24a;
-  pointer-events: none;
-}
-
-path {
-  stroke: #fff;
+.showcase-gallery__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 </style>
