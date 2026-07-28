@@ -64,6 +64,15 @@ const playMotion = () => {
   if (!morph || !barL || !barR || !lineL || !lineR || !heart) return;
   if (sides.length < 2 || quotes.length < 2) return;
 
+  // 三段版型與樣式斷點一致：mob（≤767）分件改「直向」組裝（智慧上、心中、
+  // 媒體下，分鏡素材原寸 252 ≈ 定位態 2.15 倍）；pad（768–1279）沿用橫向、
+  // 依設計縮為 1.2 倍（518×1.2=622）；pc 維持 1.5 倍
+  const isMob = window.matchMedia('(max-width: 767.98px)').matches;
+  const isPad = !isMob && window.matchMedia('(max-width: 1279.98px)').matches;
+  const SCALE = isMob ? 2.15 : isPad ? 1.2 : 1.5;
+  // 分鏡 1 色塊寬（vw）：mob 214/414、pad 510/768 ≈ 0.66，pc 沿用 0.8
+  const BLOCK_VW = isMob ? 0.52 : isPad ? 0.66 : 0.8;
+
   const revealEls = [bgRef.value, bodyRef.value, ...rowEls].filter(Boolean);
 
   // 起播前重置：清掉可能殘留的 inline transform / filter（如 HMR），
@@ -81,7 +90,6 @@ const playMotion = () => {
 
   // 觸發當下量測：所有偏移都在自然版面（未加任何 transform）先量完，
   // 否則分件會從搬移後的位置聚合，而不是從畫面中心點出現
-  const SCALE = 1.5; // 中央組裝態＝定位態 1.5 倍（分鏡素材原寸，Figma 量測）
   const secRect = section.getBoundingClientRect();
   const titleRect = title.getBoundingClientRect();
   const centerX = titleRect.left + titleRect.width / 2;
@@ -100,9 +108,11 @@ const playMotion = () => {
   );
   // 外推方向：左分件往左（-1）、右分件往右（+1）
   const outSign = (dx: number) => (dx > 0 ? -1 : 1);
-  // 相對 1280 設計稿的整體縮放（分鏡座標值換算用）
-  const f = titleRect.width / 518;
+  // 相對 pc 分鏡素材原寸（518×1.5）的整體縮放（nudge 距離換算用）：
+  // pc＝1、pad＝0.8、mob（414 稿）≈1（分鏡素材同 pc 原寸）
+  const f = (titleRect.width * SCALE) / 777;
 
+  // ── 橫向組裝（pc / pad）───────────────────────────────────────────
   // 分鏡 3：文字「貼齊中線」出現（智慧右緣＝媒體左緣＝標題中心）
   const xButt = sideDxs.map(
     (dx, i) => dx + (outSign(dx) * sideHalf[i]!) / SCALE,
@@ -115,12 +125,37 @@ const playMotion = () => {
     (x, i) => x + (outSign(sideDxs[i]!) * 10 * f) / SCALE,
   );
   // bar 目標＝分鏡 4 文字的外緣（左字左緣、右字右緣），與文字同步滑出。
-  // 文字位移在 1.5 倍的標題座標系內，bar 在未縮放的 stage 層，故乘上 SCALE
+  // 文字位移在 SCALE 倍的標題座標系內，bar 在未縮放的 stage 層，故乘上 SCALE
   const barTargets = sideDxs.map(
     (dx, i) => -dx * INNER * SCALE + outSign(dx) * sideHalf[i]!,
   );
   // 分鏡 4b：bar 變細淡出時再往外甩 34（Figma ∓281→∓315）
   const barOut = barTargets.map((t, i) => t + outSign(sideDxs[i]!) * 34 * f);
+
+  // ── 直向組裝（mob）────────────────────────────────────────────────
+  // 分件橫向先置中（x=dx 固定），縱向：貼齊中線互撞 → 滑開到中停點 →
+  // 疊到定版堆疊位（智慧上、心中、媒體下），settle 再收回單行標題
+  const ySign = [-1, 1]; // 智慧在上、媒體在下
+  const sideRectH = sides.map((el) => el.getBoundingClientRect().height);
+  const sideHalfH = sideRectH.map((h) => (h * SCALE) / 2);
+  // 心分件外框（quote＋heart 的容器）高，堆疊縱距以其半高為基準
+  const heartBoxH = heart.parentElement!.getBoundingClientRect().height;
+  // 堆疊間距 14.5＝414 稿量測（心外緣 ↔ 字外緣），隨標題寬等比
+  const stackGap = 14.5 * (titleRect.width / 362);
+  const yStack = sides.map(
+    (_, i) => ySign[i]! * (heartBoxH / 2 + stackGap + sideRectH[i]! / 2),
+  );
+  // 分鏡 3（直向）：字貼齊水平中線（智慧下緣＝媒體上緣＝標題中心）
+  const yButt = sides.map((_, i) => ySign[i]! * (sideRectH[i]! / 2));
+  // 分鏡 4（直向）：滑開到堆疊距的 67%（414 稿量測 ∓96/∓143）
+  const yInner = yStack.map((y) => y * 0.67);
+  const yInner2 = yInner.map((y, i) => y + (ySign[i]! * 10 * f) / SCALE);
+  // bar 轉橫後沿縱軸飛到字外緣（上字上緣、下字下緣），再外甩 34
+  const barTargetsV = yInner.map(
+    (y, i) => y * SCALE + ySign[i]! * sideHalfH[i]!,
+  );
+  const barOutV = barTargetsV.map((t, i) => t + ySign[i]! * 34 * f);
+
   // 分鏡 6：兩條直線騎著引號「外緣」飛出（左引號左緣、右引號右緣）
   const lineTargets = quoteDxs.map(
     (dx, i) => -dx * SCALE + outSign(dx) * quoteHalf[i]!,
@@ -128,7 +163,14 @@ const playMotion = () => {
 
   // 起始定位：文字貼齊中線（分鏡3）、引號聚在標題中心；引號素材本身是
   // 橘色，motion 期間先拿掉完成態的灰階 filter 還原橘
-  sides.forEach((el, i) => gsap.set(el, { x: xButt[i]! }));
+  if (isMob) {
+    sides.forEach((el, i) =>
+      gsap.set(el, { x: sideDxs[i]!, y: yButt[i]! }),
+    );
+    gsap.set([barL, barR], { rotation: 90 }); // 直棒轉橫，沿縱軸飛出
+  } else {
+    sides.forEach((el, i) => gsap.set(el, { x: xButt[i]! }));
+  }
   quotes.forEach((el, i) =>
     gsap.set(el, { x: quoteDxs[i]!, filter: 'grayscale(0) brightness(1)' }),
   );
@@ -147,21 +189,31 @@ const playMotion = () => {
     transformOrigin: '50% 50%',
   });
 
-  // 中央直線（分鏡 5）目標高度：設計稿 8×96，相對完成態標題高 87 換算
-  const lineH = (titleRect.height * 96) / 87;
+  // 中央直線（分鏡 5）目標高度：設計稿 8×96，相對完成態標題高 87 換算；
+  // 分鏡素材在畫面上的實際尺寸＝定位態 × SCALE，故再乘 SCALE/1.5 校正
+  // （pc ×1、pad ×0.8、mob 還原回分鏡原寸）
+  const lineH = ((titleRect.height * 96) / 87) * (SCALE / 1.5);
 
   // morph 基準尺寸＝bar.svg（12×82）：全程以 scale 變形（純 transform 不觸發
   // reflow，避免卡頓）；分鏡 3 的直條即等於 scale(1, 1)
   const MORPH_W = 12;
   const MORPH_H = 82;
 
+  // 位移軸依版型切換：mob 直向組裝走 y、其餘走 x
+  const innerStop = (i: number) => (isMob ? { y: yInner[i]! } : { x: xInner[i]! });
+  const innerStop2 = (i: number) =>
+    isMob ? { y: yInner2[i]! } : { x: xInner2[i]! };
+  const barStop = (i: number) =>
+    isMob ? { y: barTargetsV[i]! } : { x: barTargets[i]! };
+  const barFling = (i: number) => (isMob ? { y: barOutV[i]! } : { x: barOut[i]! });
+
   tl = gsap.timeline();
   tl
-    // 1. 80vw×100vh 色塊左右縮小成直條
+    // 1. BLOCK_VW×100vh 色塊左右縮小成直條
     .fromTo(
       morph,
       {
-        scaleX: (window.innerWidth * 0.8) / MORPH_W,
+        scaleX: (window.innerWidth * BLOCK_VW) / MORPH_W,
         scaleY: window.innerHeight / MORPH_H,
         autoAlpha: 1,
       },
@@ -183,30 +235,24 @@ const playMotion = () => {
       },
       'text',
     )
-    .to(
-      sides,
-      { x: (i: number) => xInner[i]!, duration: 0.6, ease: 'power2.inOut' },
-      'text',
-    )
+    .to(sides[0]!, { ...innerStop(0), duration: 0.6, ease: 'power2.inOut' }, 'text')
+    .to(sides[1]!, { ...innerStop(1), duration: 0.6, ease: 'power2.inOut' }, 'text')
     .to([barL, barR], { autoAlpha: 1, duration: 0.2 }, 'text')
-    .to(barL, { x: barTargets[0], duration: 0.6, ease: 'power2.inOut' }, 'text')
-    .to(barR, { x: barTargets[1], duration: 0.6, ease: 'power2.inOut' }, 'text')
+    .to(barL, { ...barStop(0), duration: 0.6, ease: 'power2.inOut' }, 'text')
+    .to(barR, { ...barStop(1), duration: 0.6, ease: 'power2.inOut' }, 'text')
     // 4→4b. bar 變細（12→3）往外甩並淡出，文字同步再外挪（分鏡4b）
     .to(
       barL,
-      { x: barOut[0], scaleX: 3 / MORPH_W, autoAlpha: 0, duration: 0.3, ease: 'power2.in' },
+      { ...barFling(0), scaleX: 3 / MORPH_W, autoAlpha: 0, duration: 0.3, ease: 'power2.in' },
       'text+=0.6',
     )
     .to(
       barR,
-      { x: barOut[1], scaleX: 3 / MORPH_W, autoAlpha: 0, duration: 0.3, ease: 'power2.in' },
+      { ...barFling(1), scaleX: 3 / MORPH_W, autoAlpha: 0, duration: 0.3, ease: 'power2.in' },
       'text+=0.6',
     )
-    .to(
-      sides,
-      { x: (i: number) => xInner2[i]!, duration: 0.3, ease: 'power1.inOut' },
-      'text+=0.6',
-    )
+    .to(sides[0]!, { ...innerStop2(0), duration: 0.3, ease: 'power1.inOut' }, 'text+=0.6')
+    .to(sides[1]!, { ...innerStop2(1), duration: 0.3, ease: 'power1.inOut' }, 'text+=0.6')
     // 5. 中心點抽高成 8×96 直線（分鏡5）
     .to(
       morph,
@@ -223,7 +269,17 @@ const playMotion = () => {
     .set(morph, { autoAlpha: 0 }, 'quotes')
     .to(quotes, { autoAlpha: 1, duration: 0.25 }, 'quotes')
     .to(quotes, { x: 0, duration: 0.55, ease: 'power2.inOut' }, 'quotes')
-    .to(sides, { x: 0, duration: 0.55, ease: 'power2.inOut' }, 'quotes')
+    // 文字撐開到組裝定位：橫向＝回歸自然位（x:0）、直向＝疊到堆疊位
+    .to(
+      sides[0]!,
+      { ...(isMob ? { y: yStack[0]! } : { x: 0 }), duration: 0.55, ease: 'power2.inOut' },
+      'quotes',
+    )
+    .to(
+      sides[1]!,
+      { ...(isMob ? { y: yStack[1]! } : { x: 0 }), duration: 0.55, ease: 'power2.inOut' },
+      'quotes',
+    )
     .to(lineL, { x: lineTargets[0], duration: 0.55, ease: 'power2.inOut' }, 'quotes')
     .to(lineR, { x: lineTargets[1], duration: 0.55, ease: 'power2.inOut' }, 'quotes')
     .to([lineL, lineR], { autoAlpha: 0, duration: 0.2 }, 'quotes+=0.55')
@@ -233,11 +289,17 @@ const playMotion = () => {
       { autoAlpha: 1, scale: 1, duration: 0.4, ease: 'back.out(2)' },
       'quotes+=0.6',
     )
-    // 8. 銜接最終版面：標題從中央縮回左上定位、引號轉灰、內容依序淡入
+    // 8. 銜接最終版面：標題從中央縮回定位、引號轉灰、內容依序淡入；
+    //    mob 的直向堆疊同步收回單行（位移途中 crossfade 遮住重排）
     .addLabel('settle', '+=0.35')
     .to(
       title,
       { x: 0, y: 0, scale: 1, duration: 0.8, ease: 'power3.inOut' },
+      'settle',
+    )
+    .to(
+      sides,
+      { x: 0, y: 0, duration: 0.8, ease: 'power3.inOut' },
       'settle',
     )
     // 引號轉灰：與 CSS 完成態同值（#FF7F00 灰階後亮度 145，×0.717 ≈ #686868）
@@ -375,12 +437,25 @@ onBeforeUnmount(() => {
           class="media__item"
         >
           <NuxtLink class="media__row" :to="a.url">
-            <span class="media__num">0{{ i + 1 }}</span>
-            <span class="media__row-title"
-              >{{ a.title }}：{{ a.subtitle }}</span
-            >
-            <span class="media__unit">{{ a.unit }}</span>
-            <span class="media__author">{{ a.author }}</span>
+            <!-- text / meta 在 pc、pad 攤平成 grid 欄位（display: contents），
+                 mob 稿才收成直排文字塊；break 只在 mob 稿於「：」後換行 -->
+            <span class="media__text">
+              <span class="media__num">0{{ i + 1 }}</span>
+              <span class="media__row-title"
+                >{{ a.title }}：<br class="media__break" />{{ a.subtitle }}</span
+              >
+              <span class="media__meta">
+                <span class="media__unit">{{ a.unit }}</span>
+                <span class="media__author">{{ a.author }}</span>
+              </span>
+            </span>
+            <img
+              class="media__arrow"
+              src="/img/udn75_arrow_circle.svg"
+              width="40"
+              height="40"
+              alt=""
+            />
           </NuxtLink>
         </li>
       </ol>
@@ -438,6 +513,16 @@ onBeforeUnmount(() => {
   margin: 0 auto;
   padding: 46px 20px 140px;
   pointer-events: none;
+
+  // pad 稿（768–1279）：首屏留白加大、清單貼齊視窗底（Figma 776:61759）
+  @include rwd-max('pc') {
+    padding: 128px 20px 0;
+  }
+
+  // mob 稿（≤767）：兩側 26、回到緊湊留白（Figma 951:23488）
+  @include rwd-max('tablet') {
+    padding: 32px 26px 112px;
+  }
 }
 
 // 標題藝術字：完成態 media_title.svg 撐出版面，motion 分件層絕對疊其上；
@@ -447,6 +532,18 @@ onBeforeUnmount(() => {
   width: fit-content; // 收縮到藝術字寬：motion 的置中/縮放都以「標題中心」為基準
   margin: 0;
   font-size: clamp(40px, 5vw, 64px);
+
+  // pad 稿：標題定尺寸（518）水平置中
+  @include rwd-max('pc') {
+    margin-inline: auto;
+    font-size: 64px;
+  }
+
+  // mob 稿：滿版寬（414 稿＝362），em 基準隨視窗等比縮放、上限回到 518
+  @include rwd-max('tablet') {
+    margin-inline: 0;
+    font-size: min(calc((100vw - 52px) / 8.0938), 64px);
+  }
 }
 
 // 完成態完整標題（518×87）
@@ -527,15 +624,33 @@ onBeforeUnmount(() => {
   line-height: 32px; // Figma 18/32 Light
   font-weight: 300;
   text-align: justify;
+
+  // pad 稿：欄寬 500 隨標題置中、行高放寬 18/36
+  @include rwd-max('pc') {
+    max-width: 500px;
+    margin: 16px auto 0;
+    line-height: 36px;
+  }
+
+  // mob 稿：靠左（414 時同滿版）
+  @include rwd-max('tablet') {
+    margin-inline: 0;
+  }
 }
 
 .media__list {
   margin: 118px 0 0;
   padding: 0;
   list-style: none;
+
+  // pad / mob 稿：內文與清單之間讓出一屏中段給互動底紋
+  //（pad 776:61759 量測 385、mob 951:23488→1194:66576 量測 383）
+  @include rwd-max('pc') {
+    margin-top: 384px;
+  }
 }
 
-// 清單列：上緣全寬分隔線（設計稿線橫貫整個視窗）
+// 清單列：上緣全寬分隔線（設計稿線橫貫整個視窗；mob 稿線內縮於欄內、末列補底線）
 .media__item {
   position: relative;
 
@@ -548,12 +663,28 @@ onBeforeUnmount(() => {
     height: 1px;
     background: var(--color-line);
     transform: translateX(-50%);
+
+    @include rwd-max('tablet') {
+      width: 100%;
+    }
+  }
+
+  @include rwd-max('tablet') {
+    &:last-child::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      background: var(--color-line);
+    }
   }
 }
 
 .media__row {
   display: grid;
-  grid-template-columns: 96px 1fr 214px 200px;
+  grid-template-columns: 96px 1fr 214px 200px; // 編號｜標題｜單位｜作者
   align-items: center;
   min-height: 60px;
   padding: 7px 0;
@@ -561,8 +692,36 @@ onBeforeUnmount(() => {
   text-decoration: none;
   pointer-events: auto;
 
-  @include rwd-tablet {
-    grid-template-columns: 48px 1fr;
+  // pad 稿：編號欄縮窄、作者換成箭頭圓鈕、列高 66
+  @include rwd-max('pc') {
+    grid-template-columns: 58px 1fr 214px 40px;
+    min-height: 66px;
+  }
+
+  // mob 稿：卡片式兩欄（文字塊｜箭頭），列高 148
+  @include rwd-max('tablet') {
+    grid-template-columns: 1fr 48px;
+    min-height: 148px;
+  }
+}
+
+// 文字塊：pc / pad 攤平讓子項直接成為 grid 欄位，mob 稿收成直排
+.media__text {
+  display: contents;
+
+  @include rwd-max('tablet') {
+    display: block;
+    padding-left: 4px;
+  }
+}
+
+// 單位＋作者：mob 稿合併成「單位／作者」一行、置於標題下方
+.media__meta {
+  display: contents;
+
+  @include rwd-max('tablet') {
+    display: block;
+    margin-top: 8px;
   }
 }
 
@@ -575,6 +734,12 @@ onBeforeUnmount(() => {
 
   .media__row:hover & {
     transform: scale(1.25); // hover 放大（frame 76）
+  }
+
+  // mob 稿：與標題同行同級（01數位革命：）
+  @include rwd-max('tablet') {
+    line-height: 36px;
+    font-weight: 400;
   }
 }
 
@@ -589,21 +754,71 @@ onBeforeUnmount(() => {
     transform: scale(1.2);
   }
 
-  @include rwd-mobile {
-    font-size: var(--text-body);
-    line-height: 32px;
+  // mob 稿：24/36、於「：」後斷行成兩行
+  @include rwd-max('tablet') {
+    font-size: 24px;
+    line-height: 36px;
   }
 }
 
-.media__unit,
+// mob 稿標題固定於「：」後換行（pc / pad 單行）
+.media__break {
+  display: none;
+
+  @include rwd-max('tablet') {
+    display: inline;
+  }
+}
+
+.media__unit {
+  font-size: 16px;
+  line-height: 46px;
+  font-weight: 300;
+  white-space: nowrap;
+
+  @include rwd-max('tablet') {
+    line-height: 24px;
+    white-space: normal;
+
+    // 與作者之間的全形分隔線
+    &::after {
+      content: '／';
+    }
+  }
+}
+
 .media__author {
   font-size: 16px;
   line-height: 46px;
   font-weight: 300;
   white-space: nowrap;
 
-  @include rwd-tablet {
-    display: none; // TODO(figma): 對 mob 稿後補行動版排法
+  // pad 稿清單不放作者；mob 稿隨單位合併顯示
+  @include rwd-max('pc') {
+    display: none;
+  }
+
+  @include rwd-max('tablet') {
+    display: inline;
+    line-height: 24px;
+    white-space: normal;
+  }
+}
+
+// 箭頭圓鈕：pc 稿沒有；pad 40、mob 48（Figma buttons/Arrow right-circle）
+.media__arrow {
+  display: none;
+
+  @include rwd-max('pc') {
+    display: block;
+    width: 40px;
+    height: 40px;
+    justify-self: end;
+  }
+
+  @include rwd-max('tablet') {
+    width: 48px;
+    height: 48px;
   }
 }
 

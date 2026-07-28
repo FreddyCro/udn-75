@@ -12,8 +12,8 @@
 //   }
 $breakpoints: (
   'mobile': 414px,  // MOBILE_BREAKPOINTS
-  'tablet': 768px,  // TABLET_BREAKPOINTS
-  'pc': 1280px,     // PC_BREAKPOINTS
+  'tablet': 768px,  // TABLET_BREAKPOINTS；三段式切點：mob 稿 ≤767、pad 稿 768–1279
+  'pc': 1280px,     // PC_BREAKPOINTS：pc 稿 ≥1280
 );
 
 @function bp($name) {
