@@ -5,10 +5,10 @@ const { transitionDone } = useOrangeCoreProgress();
 <template>
   <div>
     <!-- 01 -->
-    <!-- <Hero /> -->
+    <Hero />
 
     <!-- 02 -->
-    <!-- <Forum /> -->
+    <Forum />
 
     <!-- 03 -->
     <Blessing />
