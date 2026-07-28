@@ -2,6 +2,12 @@
   // 頂部固定 header 的總高度（進度條 3px ＋ 頂部列 80px），
   // 供錨點捲動偏移補償使用；CSS 與 JS 皆從此變數取得。
   --header-height: 83px;
+
+  // 垂直捲軸寬度：預設 0（SSR 與 overlay 捲軸環境如 macOS／行動裝置皆為 0），
+  // 由 ~/plugins/scrollbar-width.client.ts 於 client 量測後覆寫（Windows 一般為 15~17px）。
+  // 用途：需要「扣掉捲軸寬」的地方一律用 calc(... - var(--scrollbar-width))，
+  // 避免捲軸出現／消失導致可用寬變動而撐出水平捲軸。
+  --scrollbar-width: 0px;
 }
 
 html,
@@ -19,6 +25,24 @@ html {
   font-family: 'Noto Sans TC', sans-serif;
   font-style: normal;
   line-height: 150%;
+
+  // 一律不出現水平捲軸。兩種來源都會冒出來，且都不是版面真的「寬了一截」：
+  //   1. 次像素進位：DPR 非整數時（如 1.5）可用寬會是小數（1570.667px），
+  //      但 GSAP pin-spacer 與 canvas 寫入的是整數寬（1571px）→ 溢出 0.333px，
+  //      Chrome 進位成 1 device px 就渲染出一條水平捲軸。
+  //   2. section 1 的 date 群組／core path 仍是 pc 稿絕對定位（RWD 未做），
+  //      視窗窄於約 1000px 會超出視窗。
+  // 用 clip 而非 hidden：clip 不建立捲動容器，不影響 position:fixed 與 GSAP pin。
+  overflow-x: clip;
+}
+
+// 捲動鎖（hero 影片 main / loop 期間，見 01.hero/Hero.vue 的 applyScrollLock）：
+// overflow:hidden 會讓垂直捲軸消失、可用寬多出一個捲軸寬 → 此時量到的寬度（GSAP
+// pin-spacer、各 100% 寬元素）會比解鎖後多 15px，解鎖捲軸回來就撐出水平捲軸。
+// 補回等寬的 padding-right → 鎖／解鎖的內容寬完全一致，不會有水平捲軸也不會橫向抖動。
+body.is-scroll-locked {
+  overflow: hidden;
+  padding-right: var(--scrollbar-width);
 }
 
 // 視覺上隱藏但保留於 DOM，供螢幕閱讀器與 SEO 讀取。

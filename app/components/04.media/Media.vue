@@ -659,7 +659,8 @@ onBeforeUnmount(() => {
     position: absolute;
     top: 0;
     left: 50%;
-    width: 100vw;
+    // 100vw 含垂直捲軸寬 → 直接用會左右各溢出半個捲軸寬而撐出水平捲軸，故扣掉
+    width: calc(100vw - var(--scrollbar-width));
     height: 1px;
     background: var(--color-line);
     transform: translateX(-50%);

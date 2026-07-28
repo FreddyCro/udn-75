@@ -29,26 +29,35 @@ const { stage, stageProgress, setPinProgress, transitionDone, symbolMode } =
 // core 移動速度旋鈕：在 date 之前墊出 MOVE_VH 的捲動距離（見 ~/utils/orange-core-config 的 MOVE_VH）。
 const moveSpacerHeight = `${MOVE_VH * 100}vh`;
 
-// HeroLoader 蓋在最上層，等 hero 影片可播放後才收尾並淡出移除。
-const loaderDone = ref(false);
-
-// 影片是否已可播放，作為 HeroLoader 的收尾條件。
-// 目前 hero 影片尚未提供，暫用 CSS 假影片，onMounted 後即視為可播放。
-// TODO: 換成真實 <video> 後，移除下方 onMounted 設值，改綁定 <video> 的
-//       @canplaythrough="videoReady = true"（並視需要 preload）。
-const videoReady = ref(false);
-
 // hero 影片四階段（main/loop/outro/gone）全域共享，定義見 composables/useHeroVideo。
 // 此處只讀狀態驅動畫面與捲動鎖：main / loop 鎖捲動、outro 起解鎖。
-const { state: heroState, isGone, shouldLockScroll } = useHeroVideo();
+//
+// 載入層與影片的握手也走同一份全域狀態：
+//   videoReady — HeroVideo 的 <video> canplay（或逾時 / 載入失敗）時設 true → HeroLoader 收尾條件。
+//   loaderDone — HeroLoader @done 時由本元件設 true → HeroVideo 才開始播 main（避免被載入層蓋住白播）。
+const {
+  state: heroState,
+  isGone,
+  shouldLockScroll,
+  videoReady,
+  loaderDone,
+} = useHeroVideo();
 
 watch(heroState, applyScrollLock);
 
 // inner 滑到底後把整組釘住（pin ＝ position:fixed）並延展 PIN_VH 捲動深度的 ScrollTrigger。
 let pinST: ScrollTrigger | null = null;
 
+// 視窗尺寸變動（拖拉視窗、開關 DevTools、行動裝置轉向）後要重新量測 pin：
+// pinSpacing 會把「當下量到的 px 寬高」寫死在 pin-spacer 上，不重量的話會沿用舊寬 ——
+// 視窗變窄時撐出水平捲軸、變寬時右側留白。debounce 避免拖拉期間狂重算。
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+function onWindowResize() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => ScrollTrigger.refresh(), 200);
+}
+
 onMounted(() => {
-  videoReady.value = true;
   // hero 影片體驗一律從頂端開始：停用瀏覽器捲動位置還原，
   // 避免重整後還原到內容區、卻因 main/loop 狀態把 body 鎖死在中途。
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
@@ -80,23 +89,30 @@ onMounted(() => {
       },
     });
   }
+
+  window.addEventListener('resize', onWindowResize);
 });
 
 onBeforeUnmount(() => {
-  document.body.style.overflow = '';
+  document.body.classList.remove('is-scroll-locked');
+  window.removeEventListener('resize', onWindowResize);
+  clearTimeout(refreshTimer);
   pinST?.kill();
   pinST = null;
 });
 
 // main / loop 期間鎖住 body 捲動；其餘（outro / gone）解鎖。
+// 樣式集中在 base.scss 的 body.is-scroll-locked：overflow:hidden ＋ padding-right
+// 補回捲軸寬（--scrollbar-width，由 plugins/scrollbar-width.client.ts 量測）——
+// 否則上鎖期間沒有捲軸、可用寬多 15px，解鎖後捲軸回來就會撐出水平捲軸。
 function applyScrollLock() {
   if (shouldLockScroll.value) {
     // 上鎖前先回頂端：否則重整後瀏覽器把位置還原到內容區、又處於 main/loop，
     // 會被 overflow:hidden 永久鎖死在中途。
     window.scrollTo(0, 0);
-    document.body.style.overflow = 'hidden';
+    document.body.classList.add('is-scroll-locked');
   } else {
-    document.body.style.overflow = '';
+    document.body.classList.remove('is-scroll-locked');
   }
 }
 </script>

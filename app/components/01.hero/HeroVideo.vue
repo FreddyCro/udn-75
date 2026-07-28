@@ -1,22 +1,203 @@
 <script setup lang="ts">
 // hero：第一屏影片區塊（含 SEO 文字、下滑提示、dev 狀態切換列）。
-// 影片四階段狀態自 useHeroVideo 全域共享；此處只讀狀態驅動外觀。
+// 影片四階段狀態自 useHeroVideo 全域共享；「各階段秒數」與「RWD 影片來源」集中在
+// ~/utils/hero-video-config，本元件只負責依設定驅動 <video>（seek / loop / 換狀態）。
 import str from '@/locales/section1.json';
+import { getDeviceTypeByResolution } from '@/utils/get-device';
+import {
+  HERO_VIDEO_POSTER,
+  HERO_VIDEO_READY_TIMEOUT,
+  HERO_VIDEO_SRC,
+  heroVideoSegments,
+  type HeroVideoDevice,
+} from '@/utils/hero-video-config';
 
-const { state: heroState, isGone } = useHeroVideo();
+const {
+  state: heroState,
+  setState,
+  isGone,
+  videoReady,
+  loaderDone,
+  currentTime,
+} = useHeroVideo();
+
+// 資源路徑前綴同 UVid / UPic（dev/prod 為空字串）
+const runtime = useRuntimeConfig();
+const ASSETS_PATH = runtime.public.APP_ASSETS_PATH;
+
+// SSR 安全：先以 'pc' 為預設（與初次 client render 一致，避免 hydration mismatch），
+// 掛載後再依實際解析度校正並監聽 resize（同 UVid）。
+const device = ref<HeroVideoDevice>('pc');
+const videoEl = ref<HTMLVideoElement | null>(null);
+
+const videoSrc = computed(() => `${ASSETS_PATH}${HERO_VIDEO_SRC[device.value]}`);
+const videoPoster = computed(() => {
+  const poster = HERO_VIDEO_POSTER[device.value];
+  return poster ? `${ASSETS_PATH}${poster}` : undefined;
+});
+// 目前裝置的階段秒數（pad / mob 有覆寫就用覆寫）
+const segments = computed(() => heroVideoSegments(device.value));
+
+let readyTimer: ReturnType<typeof setTimeout> | undefined;
+// 切換 RWD 來源會重新載入影片：先記住秒數，metadata 就緒後跳回原處續播
+let resumeAt = 0;
+
+// 放行 HeroLoader（canplay / 逾時 / 載入失敗都算「不再等影片」）
+const markReady = () => {
+  videoReady.value = true;
+  if (readyTimer) {
+    clearTimeout(readyTimer);
+    readyTimer = undefined;
+  }
+};
+
+// muted 由 JS 再確保一次：SSR / hydration 下 template 的 muted 不一定落到 DOM property，
+// 沒 muted 的自動播放會被瀏覽器封鎖。
+async function play() {
+  const v = videoEl.value;
+  if (!v || heroState.value === 'gone') return;
+  v.muted = true;
+  try {
+    await v.play();
+  } catch {
+    // 自動播放被封鎖（muted 影片極少發生）：直接進 gone。
+    // 否則 main / loop 的捲動鎖會把使用者永久鎖在第一屏。
+    markReady();
+    setState('gone');
+  }
+}
+
+function onCanPlay() {
+  markReady();
+}
+
+function onLoadedMetadata() {
+  const v = videoEl.value;
+  if (!v) return;
+  // 換來源（RWD）後跳回原本秒數
+  if (resumeAt > 0) {
+    v.currentTime = resumeAt;
+    resumeAt = 0;
+  }
+  // 載入層已收掉才播（首次載入時通常還沒收，由下方 watch(loaderDone) 接手）
+  if (loaderDone.value) void play();
+}
+
+// 階段推進的單一真相＝影片時間軸：依 config 的段落秒數判斷何時換狀態 / 循環。
+function onTimeUpdate() {
+  const v = videoEl.value;
+  if (!v) return;
+  currentTime.value = v.currentTime;
+  const seg = segments.value;
+
+  switch (heroState.value) {
+    case 'main':
+      if (v.currentTime >= seg.main.end) setState('loop'); // 主要內容播完 → loop 段
+      break;
+    case 'loop':
+      if (v.currentTime >= seg.loop.end) v.currentTime = seg.loop.start; // loop 段循環
+      break;
+    case 'outro':
+      if (v.currentTime >= seg.outro.end) setState('gone'); // 退場結束 → 影片淡出
+      break;
+  }
+}
+
+// 影片播到尾（config 的 end 設得比影片長時會先發生）：視為當前段落結束。
+function onEnded() {
+  const seg = segments.value;
+  if (heroState.value === 'main') {
+    setState('loop'); // 下方 watch 會把時間拉到 loop 起點
+    return;
+  }
+  if (heroState.value === 'loop') {
+    const v = videoEl.value;
+    if (v) v.currentTime = seg.loop.start;
+    void play();
+    return;
+  }
+  if (heroState.value === 'outro') setState('gone');
+}
+
+function onError() {
+  // 影片載入失敗：放行載入層並直接進 gone —— 否則捲動鎖會把整頁鎖死。
+  markReady();
+  setState('gone');
+}
+
+// 狀態改變（dev 控制列 / SKIP / 自動推進）→ 對齊該段起點並續播；gone 則停住影片。
+// 已落在目標段內就不 seek，所以「段落相接」的自動推進不會有跳動。
+watch(heroState, (s) => {
+  const v = videoEl.value;
+  if (!v) return;
+  if (s === 'gone') {
+    v.pause();
+    return;
+  }
+  const seg = segments.value[s];
+  if (v.currentTime < seg.start || v.currentTime >= seg.end) {
+    v.currentTime = seg.start;
+  }
+  void play();
+});
+
+// 載入層收掉後才開始播 main（避免前幾秒被載入層蓋住而白播）
+watch(loaderDone, (done) => {
+  if (done) void play();
+});
+
+function onResize() {
+  const next = getDeviceTypeByResolution();
+  if (next === device.value) return;
+  resumeAt = videoEl.value?.currentTime ?? 0; // 換來源會重新載入，記住進度
+  device.value = next;
+}
+
+onMounted(() => {
+  onResize();
+  window.addEventListener('resize', onResize);
+
+  // ⚠️ <video> 是 SSR 就吐出來的（帶 src + preload="auto"），瀏覽器在 HTML 解析階段就開始載入，
+  // canplay 很可能在 hydration 掛上 @canplay 之前就已經觸發 → 事件永遠等不到，
+  // 載入層會一路卡在 99% 直到 HERO_VIDEO_READY_TIMEOUT 才放行。
+  // 故掛載時先補查 readyState（HAVE_FUTURE_DATA 以上＝已可播放），把漏掉的事件補回來。
+  const v = videoEl.value;
+  if (v && v.readyState >= 3) markReady();
+  else readyTimer = setTimeout(markReady, HERO_VIDEO_READY_TIMEOUT); // 遲遲無法播放時的保險
+
+  if (loaderDone.value) void play(); // HMR / 重新掛載時載入層可能已收掉
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize);
+  if (readyTimer) clearTimeout(readyTimer);
+});
 </script>
 
 <template>
   <!-- id 供 AppHeader 以 IntersectionObserver 監看 hero（捲離後才顯示 header） -->
   <div class="sec1__hero" id="app-hero">
-    <!-- video placeholder（影片尚未提供，暫用 CSS 動畫模擬動態影像）；
-         退場消失（gone）時淡出，露出 hero 白底 -->
+    <!-- 影片層：滿版；退場消失（gone）時淡出，露出 hero 白底 -->
     <div
-      class="sec1__hero-video flex justify-center items-center flex-col"
+      class="sec1__hero-video"
       :class="{ 'is-ended': isGone }"
       aria-hidden="true"
     >
-      <span>(video：{{ heroState }})</span>
+      <video
+        ref="videoEl"
+        class="sec1__hero-video-el"
+        :src="videoSrc"
+        :poster="videoPoster"
+        muted
+        playsinline
+        preload="auto"
+        disablepictureinpicture
+        @canplay="onCanPlay"
+        @loadedmetadata="onLoadedMetadata"
+        @timeupdate="onTimeUpdate"
+        @ended="onEnded"
+        @error="onError"
+      />
     </div>
 
     <!-- 文字保留於 DOM 供 SEO / 螢幕閱讀器，視覺上不顯示 -->
@@ -29,7 +210,7 @@ const { state: heroState, isGone } = useHeroVideo();
       <span class="sec1__hero-scroll-line" aria-hidden="true" />
     </div>
 
-    <!-- 影片狀態切換列（dev 用：狀態切換 + SKIP）；定位在 hero 內、水平置中 -->
+    <!-- 影片狀態切換列（dev 用：狀態切換 + SKIP + 秒數讀數）；定位在 hero 內、水平置中 -->
     <DevHeroVideoControls dev />
   </div>
 </template>
@@ -47,39 +228,33 @@ $light-gray: #898989;
   background: #fff; // 影片淡出後露出的白底
 }
 
-// 假影片：多層漸層 + 緩慢平移／色相位移，模擬動態影像；待真影片到位後移除。
 .sec1__hero-video {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(
-      120% 120% at 20% 25%,
-      rgba(68, 0, 255, 0.55),
-      transparent 60%
-    ),
-    radial-gradient(
-      120% 120% at 82% 30%,
-      rgba(159, 214, 255, 0.7),
-      transparent 55%
-    ),
-    radial-gradient(
-      140% 140% at 50% 88%,
-      rgba(90, 65, 148, 0.3),
-      transparent 62%
-    ),
-    linear-gradient(120deg, #9fd6ff, #ffffff 45%, #ffe6cc);
-  background-size:
-    220% 220%,
-    220% 220%,
-    220% 220%,
-    220% 220%;
-  animation: sec1-fake-video 14s ease-in-out infinite alternate;
-  will-change: background-position, filter;
   transition: opacity 0.8s ease;
 
-  // 影片播放完畢：淡出，露出 hero 白底
+  // 影片播放完畢（gone）：淡出，露出 hero 白底
   &.is-ended {
     opacity: 0;
+  }
+}
+
+// <video> 本體：滿版裁切置中。
+// RWD 影片「來源」在 ~/utils/hero-video-config 依裝置切換；此處預留各斷點的裁切位置
+// （pad / mob 剪輯到位後，再依設計稿調整 object-position / 尺寸）。
+.sec1__hero-video-el {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+
+  @include rwd-max('pc') {
+    object-position: center; // TODO: pad 稿到位後調整
+  }
+  @include rwd-max('tablet') {
+    object-position: center; // TODO: mob 稿到位後調整
   }
 }
 
@@ -110,31 +285,8 @@ $light-gray: #898989;
   background: $light-gray;
 }
 
-@keyframes sec1-fake-video {
-  0% {
-    background-position:
-      0% 50%,
-      100% 50%,
-      50% 0%,
-      0% 0%;
-    filter: hue-rotate(0deg) saturate(1);
-  }
-  50% {
-    filter: hue-rotate(-6deg) saturate(1.12);
-  }
-  100% {
-    background-position:
-      100% 50%,
-      0% 50%,
-      50% 100%,
-      100% 100%;
-    filter: hue-rotate(6deg) saturate(1.04);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .sec1__hero-video {
-    animation: none;
     transition: none;
   }
 }
