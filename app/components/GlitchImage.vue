@@ -14,14 +14,15 @@
       }"
     >
       <!-- lazy：started 之前不綁 src → 不會在網站初始 loading 時就下載。
-           影片卡：img 綁定自影片第一格擷取的 poster（dataURL），glitch 跑在 poster 上 -->
+           影片卡：img 綁定同名靜態 poster（.mp4 → .png），glitch 跑在 poster 上 -->
       <img
         :ref="(el) => setImgRef(el, i)"
         class="glitch-card__img"
-        :src="started ? (card.video ? posters[i] : card.src) : undefined"
+        :src="started ? (card.video ? card.poster : card.src) : undefined"
         :alt="card.alt"
       />
-      <!-- 影片卡：glitch reveal 結束後淡入接手播放 -->
+      <!-- 影片卡：glitch reveal 結束後淡入接手播放。
+           preload=none → hover 當下不下載，reveal 呼叫 play() 才開始載入 -->
       <video
         v-if="card.video"
         :ref="(el) => setVideoRef(el, i)"
@@ -30,7 +31,7 @@
         muted
         loop
         playsinline
-        preload="auto"
+        preload="none"
       />
       <div
         :ref="(el) => setOverlayRef(el, i)"
@@ -130,13 +131,16 @@ const setOverlayRef = (el: any, i: number) => {
   overlayEls[i] = el as HTMLElement | null;
 };
 
-// 取前 N 張圖，各自配上對應 slot（slot 不足則退回最後一個）；.mp4 = 影片卡
+// 取前 N 張圖，各自配上對應 slot（slot 不足則退回最後一個）；.mp4 = 影片卡。
+// 影片卡的 glitch 跑在同名靜態 poster 上（同路徑、副檔名換成 .png）。
 const cards = computed(() =>
   props.images.slice(0, props.layout.length || 3).map((src, i) => {
     const slot = props.layout[i] ?? props.layout[props.layout.length - 1]!;
+    const video = /\.mp4$/i.test(src);
     return {
       src,
-      video: /\.mp4$/i.test(src),
+      video,
+      poster: video ? src.replace(/\.mp4$/i, '.png') : '',
       alt: props.alt[i] ?? '',
       x: slot.x,
       y: slot.y,
@@ -145,37 +149,6 @@ const cards = computed(() =>
     };
   }),
 );
-
-// 影片 poster 快取（index → 第一格 dataURL）；綁定於影片卡的 <img>
-const posters = reactive<Record<number, string>>({});
-
-/** 擷取影片第一格為 poster dataURL（失敗 / 無元素回傳 null） */
-const grabPoster = (i: number): Promise<string | null> => {
-  const v = videoEls[i];
-  if (!v) return Promise.resolve(null);
-  if (posters[i]) return Promise.resolve(posters[i]!);
-  return new Promise((resolve) => {
-    const done = () => {
-      try {
-        const c = document.createElement('canvas');
-        c.width = v.videoWidth;
-        c.height = v.videoHeight;
-        c.getContext('2d')!.drawImage(v, 0, 0);
-        posters[i] = c.toDataURL('image/jpeg', 0.85);
-        resolve(posters[i]!);
-      } catch {
-        resolve(null);
-      }
-    };
-    if (v.readyState >= 2) {
-      done();
-    } else {
-      v.addEventListener('loadeddata', done, { once: true });
-      v.addEventListener('error', () => resolve(null), { once: true });
-      v.load();
-    }
-  });
-};
 
 /** 影片卡 reveal：淡入 <video> 蓋過 poster 並開始播放 */
 const revealVideo = (i: number) => {
@@ -403,19 +376,13 @@ const play = () => {
     const delay = i * props.stagger; // 依序 stagger
     maxEnd = Math.max(maxEnd, delay + props.duration);
     void (async () => {
-      // 影片卡：先擷取第一格為 poster，glitch 跑在 poster 上
-      const src = card.video ? await grabPoster(i) : card.src;
-      if (card.video && !src) {
-        // poster 擷取失敗（載入錯誤等）：略過 glitch，時間到直接播影片
-        gsap.delayedCall(delay, () => revealVideo(i));
-        return;
-      }
-      await nextTick(); // 等 posters[i] 綁上 <img> 的 src
+      // 影片卡：glitch 跑在靜態 poster 圖上；一般卡跑在原圖上
+      const src = card.video ? card.poster : card.src;
       const img = imgEls[i];
       if (!img || !src) return;
-      // 亂入碎塊來源：其他卡的顯示圖（影片卡用 poster）
+      // 亂入碎塊來源：各卡的顯示圖（影片卡用 poster）
       const noise = cards.value
-        .map((c, k) => (c.video ? posters[k] : c.src))
+        .map((c) => (c.video ? c.poster : c.src))
         .filter((s): s is string => !!s);
       const tl = await playCard(
         img,
