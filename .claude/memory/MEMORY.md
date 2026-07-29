@@ -5,3 +5,4 @@
 - [Four animation issues](four-animation-issues.md) — 2026-06-10 確認的四個動態需求摘要，issue 在 temp/issue-01~04
 - [Section component naming](section-component-naming.md) — agenda 議程時間軸在 02.forum（非 section 3）；section 3 已 rename 為 03.blessing/Blessing.vue
 - [RWD breakpoint mapping](rwd-breakpoint-mapping.md) — mob 稿 ≤767、pad 稿 768–1279、pc ≥1280；用 rwd-max('tablet')/rwd-max('pc')
+- [News subpage RWD](news-subpage-rwd.md) — /news 三斷點完成紀錄：FormulaBlocks 三舞台、GlitchImage 1280 觸發、待確認問題

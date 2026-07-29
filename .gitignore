@@ -23,8 +23,7 @@ logs
 .env.*
 !.env.*.example
 
-<<<<<<< HEAD
 temp/
-=======
-temp/
->>>>>>> meta
+
+# Playwright MCP artifacts
+.playwright-mcp/
