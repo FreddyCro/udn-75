@@ -380,14 +380,18 @@ onBeforeUnmount(() => {
   }
 }
 
-// 多圖並排：窄欄內均分兩欄（對稿 295+40+295=630），mob 改直排
+// 多圖並排：窄欄內均分兩欄（對稿 295+40+295=630；pad 249+32+249=530），mob 改直排
 .subpage-section__figures {
   display: flex;
   gap: 40px;
 
+  @include rwd-max('pc') {
+    gap: 32px;
+  }
+
   @include rwd-max('tablet') {
     flex-direction: column;
-    gap: 24px;
+    gap: 32px;
   }
 }
 
@@ -395,6 +399,11 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   margin: 0;
+
+  // 並排圖的圖說間距對稿 8（窄於全站 --sp-img-caption）
+  .subpage-section__caption {
+    margin-top: 8px;
+  }
 }
 
 .subpage-section__title {
