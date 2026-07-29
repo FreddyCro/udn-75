@@ -11,7 +11,7 @@
         :key="i"
         ref="cardRefs"
         class="showcase-gallery__card"
-        :style="{ width: `${(c.w / DESIGN_W) * 100}%`, aspectRatio: `${c.w} / ${c.h}` }"
+        :style="{ width: `${(c.w / designW) * 100}%`, aspectRatio: `${c.w} / ${c.h}` }"
       >
         <img
           v-if="c.src"
@@ -88,6 +88,10 @@ const stageRef = ref<HTMLDivElement | null>(null);
 const pathRef = ref<SVGPathElement | null>(null);
 const cardRefs = ref<HTMLDivElement[]>([]);
 
+// 卡片相對尺寸的分母：pad / mob 稿卡片占視窗比例放大
+//（pc 241/1280≈19%、pad 333/768≈43%、mob 214/414≈52%），measure() 依斷點更新
+const designW = ref(DESIGN_W);
+
 const cards = computed(() =>
   Array.from(
     { length: props.count },
@@ -123,8 +127,15 @@ onMounted(() => {
   let SX = 0; // 水平展開基準（由 widthRatio × 視窗寬 決定）
   const measure = () => {
     const w = section.clientWidth;
-    S = Math.min(w, section.clientHeight) * 0.95;
-    SX = (props.widthRatio * w) / xExtent; // 路徑兩端落在 ±widthRatio×寬/2
+    // pad / mob 稿：卡片放大、路徑向視窗外擴（群組寬 pc 903/1280、
+    // pad 1246/768、mob 800/414），垂直振幅同步放大
+    const isMob = window.matchMedia('(max-width: 767.98px)').matches;
+    const isPad = !isMob && window.matchMedia('(max-width: 1279.98px)').matches;
+    designW.value = isMob ? 467 : isPad ? 556 : DESIGN_W;
+    const spread = isMob ? 2.7 : isPad ? 2.3 : 1;
+    const vScale = isMob ? 1.55 : isPad ? 1.3 : 1;
+    S = Math.min(w, section.clientHeight) * 0.95 * vScale;
+    SX = (props.widthRatio * spread * w) / xExtent; // 路徑兩端落在 ±widthRatio×spread×寬/2
   };
   measure();
 

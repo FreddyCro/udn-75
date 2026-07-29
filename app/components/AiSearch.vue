@@ -258,11 +258,19 @@ onBeforeUnmount(() => {
 <style lang="scss" scoped>
 .ai-search {
   width: 100%;
-  max-width: var(--subpage-content-w); // 與內文窄欄對齊
+  max-width: var(--subpage-content-w); // 與內文窄欄對齊（pc 稿搜尋框 630）
   margin: 0 auto;
 
-  @include rwd-mobile {
+  // pad 稿：與內文欄同寬（570 含 padding 20 → 530）
+  @include rwd-max('pc') {
+    max-width: 570px;
     padding: 0 20px;
+  }
+
+  // mob 稿：滿版、左右邊距 26
+  @include rwd-max('tablet') {
+    max-width: none;
+    padding: 0 26px;
   }
 }
 
@@ -297,7 +305,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   font-size: var(--text-body);
   font-weight: 300;
-  color: var(--color-gray-light);
+  color: #bcbcbc; // 對稿 placeholder 灰（非全站 token）
 }
 
 .ai-search__term {
@@ -333,7 +341,7 @@ onBeforeUnmount(() => {
 // AI 摘要面板（淺灰底；標題列常駐、內文向下展開）
 .ai-search__panel {
   margin-top: 16px;
-  background: #f8f8f8;
+  background: #fafafa; // 對稿面板底色
 }
 
 .ai-search__head {
@@ -455,6 +463,10 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: center;
   margin-top: 32px;
+
+  @include rwd-max('tablet') {
+    margin-top: 28px;
+  }
 }
 
 .ai-search__cta {
