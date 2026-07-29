@@ -60,6 +60,7 @@ function pick(i: number) {
       </figure>
     </div>
 
+    <!-- 作答按鈕：pc / pad 為圓鈕＋文字；mob 稿改為邊框盒＋像素箭頭（兩顆均分欄寬） -->
     <div class="ai-quiz__controls">
       <button
         v-for="(o, i) in options"
@@ -77,7 +78,21 @@ function pick(i: number) {
           alt=""
           aria-hidden="true"
         />
+        <img
+          v-if="i === 0"
+          class="ai-quiz__btn-pixel ai-quiz__btn-pixel--left"
+          src="/img/udn75_arrow_pixel.svg"
+          alt=""
+          aria-hidden="true"
+        />
         <span class="ai-quiz__btn-label">{{ o.label }}</span>
+        <img
+          v-if="i !== 0"
+          class="ai-quiz__btn-pixel ai-quiz__btn-pixel--right"
+          src="/img/udn75_arrow_pixel.svg"
+          alt=""
+          aria-hidden="true"
+        />
         <img
           v-if="i !== 0"
           class="ai-quiz__btn-icon ai-quiz__btn-icon--flip"
@@ -132,6 +147,17 @@ function pick(i: number) {
   max-width: var(--subpage-content-w); // 窄欄 630，對稿
   margin: 0 auto;
   padding: 0 20px;
+
+  // pad 稿：與內文欄同寬（570 含 padding 20 → 530）
+  @include rwd-max('pc') {
+    max-width: 570px;
+  }
+
+  // mob 稿：滿版、左右邊距 26
+  @include rwd-max('tablet') {
+    max-width: none;
+    padding: 0 26px;
+  }
 }
 
 .ai-quiz__options {
@@ -169,6 +195,12 @@ function pick(i: number) {
   align-items: center;
   justify-content: space-between;
   margin-top: 16px;
+
+  // mob 稿：兩顆邊框盒按鈕置中均分（177 + 8 + 177 = 362）
+  @include rwd-max('tablet') {
+    gap: 8px;
+    margin-top: 14px;
+  }
 }
 
 .ai-quiz__btn {
@@ -184,6 +216,20 @@ function pick(i: number) {
   &:disabled {
     cursor: default;
   }
+
+  // mob 稿：177×60 邊框盒，箭頭貼外側、文字靠內
+  @include rwd-max('tablet') {
+    flex: 1;
+    gap: 16px;
+    justify-content: flex-start;
+    height: 60px;
+    padding: 0 20px;
+    border: 0.5px solid var(--color-gray);
+
+    &:last-child {
+      justify-content: flex-end;
+    }
+  }
 }
 
 .ai-quiz__btn-icon {
@@ -194,18 +240,47 @@ function pick(i: number) {
   &--flip {
     transform: scaleX(-1);
   }
+
+  @include rwd-max('tablet') {
+    display: none;
+  }
+}
+
+// mob 稿專用像素箭頭（素材 22×12 朝下，旋轉指向外側）
+.ai-quiz__btn-pixel {
+  display: none;
+
+  @include rwd-max('tablet') {
+    display: block;
+    width: 22px;
+    height: 12px;
+  }
+
+  &--left {
+    transform: rotate(90deg);
+  }
+
+  &--right {
+    transform: rotate(-90deg);
+  }
 }
 
 .ai-quiz__btn-label {
-  font-size: var(--text-body); // 18 / 36 Light
+  font-size: var(--text-body); // Button_M 18 / 36 Light、字距 10%
   line-height: var(--text-body--line-height);
   font-weight: 300;
-  letter-spacing: 10px;
+  letter-spacing: 0.1em;
+
+  // mob 稿：Button_S 15 / 26 Light
+  @include rwd-max('tablet') {
+    font-size: 15px;
+    line-height: 26px;
+  }
 }
 
 // 說明面板：淺灰底，「說明：」常駐；作答後 body 以 grid-rows 0fr ↔ 1fr 下展
 .ai-quiz__panel {
-  margin-top: 16px;
+  margin-top: 28px; // 對稿：按鈕 → 面板 28
   padding: 16px 24px;
   background: #f7f7f7; // 對稿近似（面板淺灰底，非全站 token）
 }

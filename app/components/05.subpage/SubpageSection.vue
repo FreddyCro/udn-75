@@ -50,6 +50,8 @@ const props = defineProps<{
   title?: string;
   /** 版面變體：center = 置中導言（H4 標題＋置中引導句） */
   variant?: 'center';
+  /** H3 小標置中（pc / pad；mob 稿仍靠左），如「近年得獎獎項」 */
+  titleCenter?: boolean;
   desc?: string[];
   img?: string;
   /** SVG 圖表（不含副檔名），pcpad / mob 兩斷點，如 /img/news/udn75_chart19_01 */
@@ -86,7 +88,9 @@ const thumb = reactive({
 const THUMB_GAP = 24; // 縮圖與列的垂直間距（px）
 
 let hoverMode = false; // ≥1280 = hover 觸發；<1280 = 滾動觸發
-let activeIdx = -1; // 觸發中的列，避免重複觸發（滾動模式每 frame 進來）
+// 觸發中的列：避免重複觸發（滾動模式每 frame 進來）；
+// 同時傳給 SubpageWork，<1280 由它展開說明與「點擊看專題」
+const activeIdx = ref(-1);
 let onScroll: (() => void) | null = null;
 let mq: MediaQueryList | null = null;
 
@@ -98,8 +102,8 @@ async function activate(i: number, rowEl: HTMLElement) {
   if (!wrap || !w) return;
   const images = w.thumbs?.length ? w.thumbs : w.thumb ? [w.thumb] : [];
   if (!images.length) return;
-  if (i === activeIdx && thumb.visible) return;
-  activeIdx = i;
+  if (i === activeIdx.value && thumb.visible) return;
+  activeIdx.value = i;
 
   thumb.images = images; // hover／滾入才設 src → GlitchImage lazy 載入
   thumb.w = w.thumbW ?? null;
@@ -123,7 +127,7 @@ async function activate(i: number, rowEl: HTMLElement) {
 }
 
 function deactivate() {
-  activeIdx = -1;
+  activeIdx.value = -1;
   thumb.visible = false; // v-if 卸載 GlitchImage → 內部 rAF／timeline 自行清理
 }
 
@@ -196,6 +200,7 @@ onBeforeUnmount(() => {
     :class="{
       'subpage-section--wide': isWide(),
       'subpage-section--center': variant === 'center',
+      'subpage-section--title-center': titleCenter,
     }"
   >
     <div class="subpage-section__inner">
@@ -306,6 +311,7 @@ onBeforeUnmount(() => {
             :title="w.title"
             :desc="w.desc"
             :url="w.url"
+            :active="activeIdx === i"
             @mouseenter="onEnter(i, $event)"
           />
         </div>
@@ -357,11 +363,21 @@ onBeforeUnmount(() => {
   max-width: var(--subpage-wide-w);
 }
 
-// 寬欄區塊（含 works／awards）內的圖表維持窄欄寬度置中（對稿：桂冠圖 630）
+// 寬欄區塊（含 works／awards）內的圖表維持窄欄寬度置中（對稿：桂冠圖 svg 原寸 630，
+// pad 沿用同尺寸不縮、mob 用 _mob 版 362）
 .subpage-section--wide .subpage-section__figure {
-  max-width: calc(var(--subpage-content-w) - 40px); // 扣 __inner 左右 padding
+  max-width: var(--subpage-content-w);
   margin-right: auto;
   margin-left: auto;
+}
+
+// 桂冠圖表 svg 內建上下留白 32 → 貼著小標排即為對稿間距（mob 版 svg 無留白，補 32）
+.subpage-section--wide .subpage-section__title + .subpage-section__figure {
+  margin-top: 0;
+
+  @include rwd-max('tablet') {
+    margin-top: 32px;
+  }
 }
 
 // 多圖並排：窄欄內均分兩欄（對稿 295+40+295=630），mob 改直排
@@ -390,6 +406,15 @@ onBeforeUnmount(() => {
   @include rwd-max('tablet') {
     font-size: var(--text-h4); // mob_H3 28/40
     line-height: 40px;
+  }
+}
+
+// H3 小標置中（近年得獎獎項）：pc / pad 置中、mob 稿靠左
+.subpage-section--title-center .subpage-section__title {
+  text-align: center;
+
+  @include rwd-max('tablet') {
+    text-align: left;
   }
 }
 
@@ -514,10 +539,33 @@ onBeforeUnmount(() => {
   opacity: 1;
 }
 
-// 得獎作品：wrap 建立獨立堆疊脈絡（分隔線 < 文字 < 縮圖）
+// 得獎作品：wrap 建立獨立堆疊脈絡（分隔線 < 文字 < 縮圖）；
+// pad 稿清單收在內文欄寬 530、mob 稿滿版（__inner 邊距 26）
 .subpage-section__works-wrap {
   position: relative;
   z-index: 0;
+
+  @include rwd-max('pc') {
+    max-width: 530px;
+    margin-inline: auto;
+  }
+
+  @include rwd-max('tablet') {
+    max-width: none;
+  }
+}
+
+// 桂冠圖表 → 得獎作品清單：svg 內建下留白 32，補足到對稿 64（pad 48、mob 64）
+.subpage-section__figure + .subpage-section__works-wrap {
+  margin-top: 32px;
+
+  @include rwd-max('pc') {
+    margin-top: 16px;
+  }
+
+  @include rwd-max('tablet') {
+    margin-top: 64px;
+  }
 }
 
 .subpage-section__placeholder {

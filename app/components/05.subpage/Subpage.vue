@@ -23,6 +23,8 @@ export interface SubpageSectionData {
   title?: string;
   /** 版面變體：center = 置中導言（H4 標題＋置中引導句，如 Publish X 議題智囊包） */
   variant?: 'center';
+  /** H3 小標置中（pc / pad；mob 稿仍靠左），如「近年得獎獎項」 */
+  titleCenter?: boolean;
   desc?: string[];
   img?: string;
   imgAlt?: string;

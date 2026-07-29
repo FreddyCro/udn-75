@@ -1,10 +1,12 @@
 <script lang="ts" setup>
-/** SubpageWork — 「得獎作品」清單的單一列；有 url 時整列為連結。 */
+/** SubpageWork — 「得獎作品」清單的單一列；有 url 時整列為連結。
+ *  active = 觸發中的列（pc hover／<1280 滾至畫面中央），<1280 據此展開說明與連結。 */
 withDefaults(
   defineProps<{
     title?: string;
     desc?: string;
     url?: string;
+    active?: boolean;
   }>(),
   { url: '' },
 );
@@ -14,6 +16,7 @@ withDefaults(
   <component
     :is="url ? 'a' : 'div'"
     class="award-work"
+    :class="{ 'award-work--active': active }"
     :href="url || undefined"
     :target="url ? '_blank' : undefined"
     :rel="url ? 'noopener noreferrer' : undefined"
@@ -48,9 +51,10 @@ withDefaults(
   color: inherit;
   text-decoration: none;
 
-  @include rwd-max('tablet') {
+  // pad / mob 稿：直排（標題 → 說明 → 點擊看專題），連結靠右
+  @include rwd-max('pc') {
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
   }
 
   // 分隔線走底層（z1），會被懸浮縮圖(z2)蓋住，只有文字(z3)在圖上。
@@ -82,7 +86,6 @@ withDefaults(
   z-index: 3; // 文字在縮圖之上
   display: flex;
   flex-direction: column;
-  gap: 8px;
   max-width: 847px;
   word-break: break-word;
 }
@@ -98,20 +101,31 @@ withDefaults(
   .award-work:hover & {
     color: var(--color-orange);
   }
+
+  // pad / mob 稿：18 / 30 Regular
+  @include rwd-max('pc') {
+    font-size: 18px;
+    line-height: 30px;
+    font-weight: 400;
+    color: var(--color-gray);
+  }
 }
 
-// 描述收合／展開：grid-template-rows 0fr ↔ 1fr 平滑過渡（內容高度未知也可動畫）
+// 描述收合／展開：grid-template-rows 0fr ↔ 1fr 平滑過渡（內容高度未知也可動畫）；
+// pc hover 展開、<1280 由 active（滾至畫面中央的列）展開
 .award-work__desc-wrap {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.3s ease;
+  // 標題 → 說明間距（8）跟著展開出現，收合列才不會殘留空隙
+  margin-top: 0;
+  transition:
+    grid-template-rows 0.3s ease,
+    margin-top 0.3s ease;
 
-  .award-work:hover & {
+  .award-work:hover &,
+  .award-work--active & {
     grid-template-rows: 1fr;
-  }
-
-  @media (hover: none) {
-    grid-template-rows: 1fr; // 觸控環境無 hover → 一律展開
+    margin-top: 8px;
   }
 }
 
@@ -123,6 +137,12 @@ withDefaults(
   line-height: var(--text-caption--line-height);
   font-weight: 400;
   color: var(--color-body);
+
+  @include rwd-max('pc') {
+    font-weight: 300;
+    color: var(--color-gray);
+    text-align: justify;
+  }
 }
 
 .award-work__more {
@@ -133,6 +153,18 @@ withDefaults(
   gap: 8px;
   flex-shrink: 0;
   color: var(--color-gray);
+
+  // pad / mob 稿：靠右、只在 active 列顯示
+  @include rwd-max('pc') {
+    display: none;
+    align-self: flex-end;
+  }
+
+  .award-work--active & {
+    @include rwd-max('pc') {
+      display: inline-flex;
+    }
+  }
 }
 
 .award-work__label {
@@ -143,11 +175,8 @@ withDefaults(
   opacity: 0; // 收合時只露圓框箭頭，hover 才浮現文字
   transition: opacity 0.2s ease;
 
-  .award-work:hover & {
-    opacity: 1;
-  }
-
-  @media (hover: none) {
+  .award-work:hover &,
+  .award-work--active & {
     opacity: 1;
   }
 }
@@ -158,5 +187,11 @@ withDefaults(
   width: 30px;
   height: 30px;
   transform: scaleX(-1); // 素材箭頭朝左 → 鏡射指向右側
+
+  // mob 稿：48
+  @include rwd-max('tablet') {
+    width: 48px;
+    height: 48px;
+  }
 }
 </style>

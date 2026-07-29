@@ -61,6 +61,7 @@
     },
     {
       "title": "近年得獎獎項",
+      "titleCenter": true,
       "chart": "/img/visual/udn75_chart06_01",
       "imgAlt": "近年得獎：SND AWARDS 2026 頁面設計銅牌、插畫銅牌、頁面設計優選兩項、插畫優選；金鼎獎第50屆數位內容類入圍",
       "works": [
