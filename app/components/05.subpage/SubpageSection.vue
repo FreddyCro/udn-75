@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 /**
  * SubpageSection — 子頁內文的單一區塊：小標 → 內文 → 圖／得獎項目／得獎作品。
- * works 列 hover（電腦）／滾至畫面中央（手機）時浮出懸浮縮圖（GlitchImage）。
+ * works 列浮出懸浮縮圖（GlitchImage）：≥1280 hover 觸發、<1280 滾至畫面中央觸發。
  */
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import type { Component } from 'vue';
@@ -48,6 +48,8 @@ export interface AwardWorkItem {
 
 const props = defineProps<{
   title?: string;
+  /** 版面變體：center = 置中導言（H4 標題＋置中引導句） */
+  variant?: 'center';
   desc?: string[];
   img?: string;
   /** SVG 圖表（不含副檔名），pcpad / mob 兩斷點，如 /img/news/udn75_chart19_01 */
@@ -83,9 +85,10 @@ const thumb = reactive({
 
 const THUMB_GAP = 24; // 縮圖與列的垂直間距（px）
 
-let canHover = false;
-let activeIdx = -1; // 觸發中的列，避免重複觸發（手機滾動每 frame 進來）
+let hoverMode = false; // ≥1280 = hover 觸發；<1280 = 滾動觸發
+let activeIdx = -1; // 觸發中的列，避免重複觸發（滾動模式每 frame 進來）
 let onScroll: (() => void) | null = null;
+let mq: MediaQueryList | null = null;
 
 /** 顯示第 i 列的縮圖：水平固定畫面中央（CSS）；
  *  垂直如 tooltip——依該列在視窗（100vh）的位置決定貼列的上方或下方 */
@@ -124,17 +127,17 @@ function deactivate() {
   thumb.visible = false; // v-if 卸載 GlitchImage → 內部 rAF／timeline 自行清理
 }
 
-/* 電腦：hover 列觸發；離開整個清單才收起 */
+/* ≥1280：hover 列觸發；離開整個清單才收起 */
 function onEnter(i: number, e: Event) {
-  if (!canHover) return;
+  if (!hoverMode) return;
   activate(i, e.currentTarget as HTMLElement);
 }
 function onLeaveWrap() {
-  if (!canHover) return;
+  if (!hoverMode) return;
   deactivate();
 }
 
-/* 手機：滾動至畫面中央的列自動浮出 */
+/* <1280：滾動至畫面中央的列自動浮出 */
 function setupMobile() {
   const wrap = worksWrap.value;
   if (!wrap) return;
@@ -161,21 +164,39 @@ function setupMobile() {
   onScroll();
 }
 
+/** 依視窗寬切換觸發模式（1280 斷點可能因轉向／縮放跨越，需可來回切換） */
+function applyMode(wide: boolean) {
+  hoverMode = wide;
+  deactivate();
+  if (onScroll) {
+    window.removeEventListener('scroll', onScroll);
+    onScroll = null;
+  }
+  if (!wide) setupMobile();
+}
+
+const onMqChange = (e: MediaQueryListEvent) => applyMode(e.matches);
+
 onMounted(() => {
   if (!props.works?.length) return;
-  canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  if (!canHover) setupMobile();
+  mq = window.matchMedia(`(min-width: ${PC_BREAKPOINTS}px)`);
+  mq.addEventListener('change', onMqChange);
+  applyMode(mq.matches);
 });
 
 onBeforeUnmount(() => {
   if (onScroll) window.removeEventListener('scroll', onScroll);
+  mq?.removeEventListener('change', onMqChange);
 });
 </script>
 
 <template>
   <section
     class="subpage-section"
-    :class="{ 'subpage-section--wide': isWide() }"
+    :class="{
+      'subpage-section--wide': isWide(),
+      'subpage-section--center': variant === 'center',
+    }"
   >
     <div class="subpage-section__inner">
       <h2 v-if="title" class="subpage-section__title">{{ title }}</h2>
@@ -310,20 +331,26 @@ onBeforeUnmount(() => {
 .subpage-section + .subpage-section {
   margin-top: var(--sp-section);
 
-  @include rwd-tablet {
+  @include rwd-max('tablet') {
     margin-top: 56px;
-  }
-  @include rwd-mobile {
-    margin-top: 48px;
   }
 }
 
 // 內容欄：一般窄欄(630)置中；寬欄(1064)用於桂冠／得獎作品。
+// pad 稿內文欄 530（570 − 左右 padding 20）；mob 稿左右邊距 26。
 .subpage-section__inner {
   width: 100%;
   max-width: var(--subpage-content-w);
   margin: 0 auto;
   padding: 0 20px;
+
+  @include rwd-max('pc') {
+    max-width: 570px;
+  }
+  @include rwd-max('tablet') {
+    max-width: none;
+    padding: 0 26px;
+  }
 }
 
 .subpage-section--wide .subpage-section__inner {
@@ -337,12 +364,12 @@ onBeforeUnmount(() => {
   margin-left: auto;
 }
 
-// 多圖並排：窄欄內均分兩欄（對稿 295+40+295=630），手機改直排
+// 多圖並排：窄欄內均分兩欄（對稿 295+40+295=630），mob 改直排
 .subpage-section__figures {
   display: flex;
   gap: 40px;
 
-  @include rwd-mobile {
+  @include rwd-max('tablet') {
     flex-direction: column;
     gap: 24px;
   }
@@ -360,9 +387,40 @@ onBeforeUnmount(() => {
   line-height: var(--text-h3--line-height);
   font-weight: 400;
 
-  @include rwd-mobile {
-    font-size: var(--text-h4);
-    line-height: var(--text-h4--line-height);
+  @include rwd-max('tablet') {
+    font-size: var(--text-h4); // mob_H3 28/40
+    line-height: 40px;
+  }
+}
+
+// 置中導言變體：H4 標題＋置中引導句（Publish X 議題智囊包）
+.subpage-section--center .subpage-section__title {
+  font-size: var(--text-h4); // pc_H4 28/46
+  line-height: var(--text-h4--line-height);
+  text-align: center;
+
+  @include rwd-max('pc') {
+    line-height: 40px; // pad/mob 28/40
+  }
+}
+
+.subpage-section--center .subpage-section__para {
+  font-size: var(--text-h5); // 引導句 20/32
+  line-height: var(--text-h5--line-height);
+  font-weight: 400;
+  text-align: center;
+
+  @include rwd-max('tablet') {
+    font-size: 18px; // mob_H5 18/30
+    line-height: 30px;
+  }
+}
+
+.subpage-section--center .subpage-section__title + .subpage-section__desc {
+  margin-top: 8px; // 對稿：置中標 → 引導句間距 8（mob 16）
+
+  @include rwd-max('tablet') {
+    margin-top: 16px;
   }
 }
 
@@ -425,10 +483,10 @@ onBeforeUnmount(() => {
   padding: 0;
   list-style: none;
 
-  @include rwd-tablet {
+  @include rwd-max('pc') {
     grid-template-columns: repeat(2, 1fr);
   }
-  @include rwd-mobile {
+  @include rwd-max('tablet') {
     grid-template-columns: 1fr;
   }
 }
@@ -447,7 +505,7 @@ onBeforeUnmount(() => {
   opacity: 0;
   transition: opacity 0.18s ease; // 快速淡入，重播交給 GlitchImage
 
-  @include rwd-mobile {
+  @include rwd-max('tablet') {
     width: min(var(--thumb-w, 280px), 80vw);
   }
 }

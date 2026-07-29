@@ -48,7 +48,7 @@ withDefaults(
   color: inherit;
   text-decoration: none;
 
-  @include rwd-mobile {
+  @include rwd-max('tablet') {
     flex-direction: column;
     gap: 12px;
   }

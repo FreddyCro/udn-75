@@ -29,7 +29,7 @@
   --text-h4--line-height: 46px;
   --text-h3: 32px; /* pc_H3 400/48 */
   --text-h3--line-height: 48px;
-  --text-intro: 36px; /* 引言 lead（Figma 36/60 Light） */
+  --text-intro: 32px; /* 引言 lead（Figma 四部門引言 32/60 Light；mob 22/40） */
   --text-intro--line-height: 60px;
 
   /* ── 子頁版型間距（section 內：title→desc→img；section 之間）──

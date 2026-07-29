@@ -196,8 +196,11 @@ onBeforeUnmount(() => {
   padding: 0 108px;
   will-change: transform;
 
-  @include rwd-mobile {
-    padding: 0 20px;
+  @include rwd-max('pc') {
+    padding: 0 119px;
+  }
+  @include rwd-max('tablet') {
+    padding: 0 26px;
   }
 }
 
@@ -226,6 +229,7 @@ onBeforeUnmount(() => {
   height: 44px;
 }
 
+// 對稿：三斷點同欄寬（--w）與 gap 48，pad/mob 靠軌道平移看完整排
 .award-timeline__list {
   display: flex;
   align-items: flex-start;
@@ -233,20 +237,12 @@ onBeforeUnmount(() => {
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
-
-  @include rwd-mobile {
-    gap: 40px;
-  }
 }
 
 // 年份欄位：寬度對稿各欄不同（--w 由 template 帶入）
 .award-timeline__item {
   flex-shrink: 0;
   width: var(--w, 277px);
-
-  @include rwd-mobile {
-    width: 240px;
-  }
 }
 
 // 年份數字：對稿為向量字，以活字近似

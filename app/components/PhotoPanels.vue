@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 /**
  * PhotoPanels — 照片橫向軌道綁滾動平移（pin + scrub，news 頁）。
- * reduced-motion 改原生橫向捲動。
+ * mob（<768）改直排圖列不 pin；reduced-motion 改原生橫向捲動。
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -67,6 +67,13 @@ function onResize() {
   resizeTimer = setTimeout(() => ScrollTrigger.refresh(), 200);
 }
 
+// mob（<768）為 CSS 直排圖列，不建 pin；跨斷點時拆掉／重建
+let mq: MediaQueryList | null = null;
+const onMqChange = (e: MediaQueryListEvent) => {
+  teardown();
+  if (e.matches) build();
+};
+
 onMounted(() => {
   gsap.registerPlugin(ScrollTrigger);
   // 降級：不 pin，交給 CSS 原生橫向捲動（.photo-panels--static）
@@ -74,13 +81,16 @@ onMounted(() => {
     rootRef.value?.classList.add('photo-panels--static');
     return;
   }
-  build();
+  mq = window.matchMedia(`(min-width: ${TABLET_BREAKPOINTS}px)`);
+  mq.addEventListener('change', onMqChange);
+  if (mq.matches) build();
   window.addEventListener('resize', onResize);
 });
 
 onBeforeUnmount(() => {
   if (resizeTimer) clearTimeout(resizeTimer);
   window.removeEventListener('resize', onResize);
+  mq?.removeEventListener('change', onMqChange);
   teardown();
 });
 </script>
@@ -120,9 +130,14 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100vh;
   overflow: hidden;
+
+  @include rwd-max('tablet') {
+    height: auto; // mob 直排：不 pin、不滿版
+  }
 }
 
 // 水平軌道：x 位移由 timeline 依滾動推進（由左至右看完整排照片）
+// mob 改直排圖列（gap 32、欄邊距 26、圖說間距 12）
 .photo-panels__track {
   display: flex;
   align-items: flex-start; // 照片同尺寸頂端對齊；圖說行數不影響照片水平線
@@ -130,9 +145,15 @@ onBeforeUnmount(() => {
   padding: 0 108px;
   will-change: transform;
 
-  @include rwd-mobile {
-    gap: 24px;
-    padding: 0 20px;
+  @include rwd-max('pc') {
+    padding: 0 119px;
+  }
+  @include rwd-max('tablet') {
+    flex-direction: column;
+    width: 100%;
+    gap: 32px;
+    padding: 0 26px;
+    will-change: auto;
   }
 }
 
@@ -142,8 +163,8 @@ onBeforeUnmount(() => {
   width: 480px;
   margin: 0;
 
-  @include rwd-mobile {
-    width: 78vw;
+  @include rwd-max('tablet') {
+    width: 100%;
   }
 }
 
@@ -158,6 +179,10 @@ onBeforeUnmount(() => {
   font-size: var(--text-caption);
   line-height: var(--text-caption--line-height);
   color: var(--color-gray);
+
+  @include rwd-max('tablet') {
+    margin-top: 12px;
+  }
 }
 
 // reduced-motion 降級：原生橫向捲動

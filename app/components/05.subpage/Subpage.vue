@@ -21,6 +21,8 @@ export interface SubpageWork {
 }
 export interface SubpageSectionData {
   title?: string;
+  /** 版面變體：center = 置中導言（H4 標題＋置中引導句，如 Publish X 議題智囊包） */
+  variant?: 'center';
   desc?: string[];
   img?: string;
   imgAlt?: string;
@@ -92,14 +94,15 @@ defineProps<{ content: SubpageContent }>();
           />
           <template v-else>{{ content.hero.subtitle }}</template>
         </p>
+        <!-- 對稿：單位與作者合併一行（如「新聞部×數據發展部／林以君」） -->
         <p v-if="content.hero.unit" class="subpage__unit">
-          {{ content.hero.unit }}
-        </p>
-        <p v-if="content.hero.author" class="subpage__author">
-          撰文／{{ content.hero.author }}
+          {{ content.hero.unit }}<template v-if="content.hero.author">／{{ content.hero.author }}</template>
         </p>
       </div>
     </header>
+
+    <!-- <1280 內容錨點列（取代右側 rail，貼在 hero 之下） -->
+    <SubpageAnchorBar />
 
     <!-- 引言 -->
     <div v-if="content.intro" class="subpage__intro">
@@ -143,6 +146,14 @@ defineProps<{ content: SubpageContent }>();
 
 .subpage__col--wide {
   max-width: var(--subpage-wide-w);
+
+  // pad 稿：引言欄 654（768 − 57×2）；mob 稿：左右邊距 26
+  @include rwd-max('pc') {
+    padding: 0 57px;
+  }
+  @include rwd-max('tablet') {
+    padding: 0 26px;
+  }
 }
 
 .subpage__hero {
@@ -153,26 +164,27 @@ defineProps<{ content: SubpageContent }>();
   overflow: hidden;
 }
 
-// 首屏裝飾圖：像素風圖樣（素材 856x400 = @2x，自然顯示 428x200），
-// 定尺寸置於 hero 右側，不滿版鋪底。
-// TODO(figma): 確切位置待設計稿 hero 畫面確認（目前對照智慧心媒體版面
-// 「標題左、像素圖右」的構圖估位）。
+// 首屏裝飾圖：像素風圖樣（素材 856x400 = @2x，自然顯示 428x200）。
+// 對稿：pc 靠右下（右 107、距底 11%）；pad/mob 水平置中、貼近下緣。
 :deep(.subpage__hero-bg) {
   position: absolute;
-  top: 50%;
-  right: 6vw;
+  right: 8vw;
+  bottom: 11%;
   z-index: -1;
   width: min(428px, 34vw);
   height: auto;
-  transform: translateY(-50%);
   pointer-events: none;
 
-  @include rwd-mobile {
-    top: auto;
-    right: 20px;
-    bottom: 8%;
-    width: min(300px, 64vw);
-    transform: none;
+  @include rwd-max('pc') {
+    right: auto;
+    bottom: 26%;
+    left: 50%;
+    width: 428px;
+    transform: translateX(-50%);
+  }
+  @include rwd-max('tablet') {
+    bottom: 23%;
+    width: min(261px, 64vw);
   }
 }
 
@@ -202,7 +214,7 @@ defineProps<{ content: SubpageContent }>();
   }
 }
 
-// SVG 藝術字：依設計稿定高（主標 72、副標 64），寬度隨比例、超出欄寬等比縮小
+// SVG 藝術字：依設計稿定高（主標 pc 72／pad 68／mob 40），寬度隨比例、超出欄寬等比縮小
 .subpage__title-img {
   display: block;
   width: auto;
@@ -211,14 +223,15 @@ defineProps<{ content: SubpageContent }>();
   object-fit: contain;
   object-position: left center;
 
-  @include rwd-tablet {
-    height: 54px;
+  @include rwd-max('pc') {
+    height: 68px;
   }
-  @include rwd-mobile {
-    height: 42px;
+  @include rwd-max('tablet') {
+    height: 40px;
   }
 }
 
+// 副標定高 pc 64／pad 48／mob 29；margin 含 svg 內部留白的補償（對稿視覺間距 32/32/16）
 .subpage__subtitle-img {
   display: block;
   width: auto;
@@ -226,19 +239,19 @@ defineProps<{ content: SubpageContent }>();
   max-width: 100%;
   object-fit: contain;
   object-position: left center;
-  // 設計稿主標(163+72)→副標(267) 間距 32；蓋掉 subtitle 文字版的 12px margin
   margin-top: 20px;
 
-  @include rwd-tablet {
+  @include rwd-max('pc') {
     height: 48px;
+    margin-top: 22px;
   }
-  @include rwd-mobile {
-    width: 100%;
-    height: auto;
-    margin-top: 12px;
+  @include rwd-max('tablet') {
+    height: 29px;
+    margin-top: 10px;
   }
 }
 
+// 單位＋作者合併行（24/48；mob 18/36 Light）
 .subpage__unit {
   margin: 24px 0 0;
   font-size: var(--text-unit);
@@ -247,45 +260,32 @@ defineProps<{ content: SubpageContent }>();
   letter-spacing: 0.1em;
   color: var(--color-gray);
 
-  @include rwd-mobile {
-    font-size: var(--text-h5);
-    line-height: var(--text-h5--line-height);
+  @include rwd-max('tablet') {
+    font-size: 18px;
+    line-height: 36px;
+    font-weight: 300;
   }
-}
-
-.subpage__author {
-  margin: 4px 0 0;
-  font-size: var(--text-body);
-  line-height: 32px;
-  font-weight: 400;
-  letter-spacing: 0.1em;
-  color: var(--color-gray-light);
-  opacity: 0.7;
 }
 
 .subpage__intro {
   padding: 96px 0;
 
-  @include rwd-mobile {
+  @include rwd-max('tablet') {
     padding: 56px 0;
   }
 }
 
 .subpage__intro-text {
   margin: 0;
-  font-size: var(--text-intro); // Figma 引言 36 / 60 / Light
+  font-size: var(--text-intro); // Figma 四部門引言 32/60 Light；mob 22/40
   line-height: var(--text-intro--line-height);
   font-weight: 300;
   color: var(--color-gray);
   text-align: justify;
 
-  @include rwd-tablet {
-    font-size: var(--text-h3);
-    line-height: var(--text-h3--line-height);
-  }
-  @include rwd-mobile {
-    font-size: var(--text-h4);
-    line-height: var(--text-h4--line-height);
+  @include rwd-max('tablet') {
+    font-size: 22px;
+    line-height: 40px;
   }
 }
 

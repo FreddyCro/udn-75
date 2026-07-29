@@ -54,11 +54,14 @@ withDefaults(
   margin: 0 auto;
   padding: 60px 20px 16px;
 
-  @include rwd-mobile {
+  @include rwd-max('pc') {
+    padding: 60px 32px 16px; // pad 稿按鈕列左右邊距 32
+  }
+  @include rwd-max('tablet') {
     flex-direction: column;
     align-items: flex-start;
     gap: 24px;
-    padding: 40px 20px 16px;
+    padding: 40px 26px 16px;
   }
 }
 
@@ -81,7 +84,7 @@ withDefaults(
   letter-spacing: 10px;
   white-space: nowrap;
 
-  @include rwd-mobile {
+  @include rwd-max('tablet') {
     white-space: normal;
   }
 }

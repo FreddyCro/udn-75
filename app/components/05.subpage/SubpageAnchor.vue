@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 /**
- * SubpageAnchor — 子頁右側錨點導覽（桌機限定，≤768px 隱藏），資料來自
- * locales/common.json 的 subpageAnchors。藝術字以 CSS mask + currentColor
+ * SubpageAnchor — 子頁右側錨點導覽（pc 限定，<1280 隱藏、改用 SubpageAnchorBar），
+ * 資料來自 locales/common.json 的 subpageAnchors。藝術字以 CSS mask + currentColor
  * 上色，hover／active 換色不需多份素材。
  * rail 走低 z-index（--subpage-anchor-z，預設 1）：滿版 section 以
  * position: relative + z-index: 2 + 不透明背景即可蓋過，不需 JS 偵測。
@@ -46,7 +46,7 @@ const route = useRoute();
   z-index: var(--subpage-anchor-z, 1); // 滿版區塊 z-index ≥ 2 即蓋過 rail（底層）
   transform: translateY(-50%);
 
-  @include rwd-tablet {
+  @include rwd-max('pc') {
     display: none;
   }
 }

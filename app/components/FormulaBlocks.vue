@@ -1,7 +1,8 @@
 <script lang="ts" setup>
 /**
  * FormulaBlocks — 「Publish X 議題智囊包」放射圖（news 頁）。
- * TODO(rwd): 目前為 PC 版定稿；pad 與 mob 版面待做，暫以整體 scale 因應 <1064 的視窗。
+ * 三段式版面：pc 中央放射 2×2、pad 上下兩排＋斜向棋盤格連接、
+ * mob 直排＋左側垂直棋盤格 rail（連接線為 SVG 素材）。
  */
 export interface FormulaItem {
   /** 藝術字標題圖（SVG 路徑；無圖時 fallback 為 title 文字） */
@@ -42,22 +43,37 @@ const BOX_DELAY = 0.3;
 const BRANCH_DELAY = 0.65;
 const SETTLE_DELAY_MS = 1000;
 
-const STAGE_W = 1064;
-const STAGE_H = 524;
+// 三段式舞台（Figma 座標系）：斷點切換版面、<舞台寬時整體 scale
+const STAGES = {
+  pc: { w: 1064, h: 524 },
+  pad: { w: 610, h: 600 },
+  mob: { w: 360, h: 882 },
+} as const;
+
+// mob 垂直 rail（左側 x=0，依序接到四個格子；第一段接中央塊故較短）
+const RAILS = [
+  { src: '/img/news/udn75_news_formula_rail_01.svg', y: 156, h: 132 },
+  { src: '/img/news/udn75_news_formula_rail_02.svg', y: 284, h: 180 },
+  { src: '/img/news/udn75_news_formula_rail_02.svg', y: 460, h: 180 },
+  { src: '/img/news/udn75_news_formula_rail_02.svg', y: 636, h: 180 },
+];
 
 const rootRef = ref<HTMLElement | null>(null);
 const viewportRef = ref<HTMLElement | null>(null);
 const on = ref(false);
 const settled = ref(false); // 分支線接上後四格橘轉灰
 const scale = ref(1);
+const mode = ref<keyof typeof STAGES>('pc');
 
 let io: IntersectionObserver | null = null;
 let settleTimer: number | undefined;
 
 function onResize() {
+  const vw = window.innerWidth;
+  mode.value = vw >= PC_BREAKPOINTS ? 'pc' : vw >= TABLET_BREAKPOINTS ? 'pad' : 'mob';
   // 量 viewport（padding 內側）而非 section，縮放後才保得住左右留白
-  const w = viewportRef.value?.clientWidth ?? STAGE_W;
-  scale.value = Math.min(1, w / STAGE_W);
+  const w = viewportRef.value?.clientWidth ?? STAGES[mode.value].w;
+  scale.value = Math.min(1, w / STAGES[mode.value].w);
 }
 
 onMounted(() => {
@@ -100,7 +116,7 @@ onBeforeUnmount(() => {
     <div
       ref="viewportRef"
       class="formula__viewport"
-      :style="{ height: `${STAGE_H * scale}px` }"
+      :style="{ height: `${STAGES[mode].h * scale}px` }"
     >
       <div class="formula__stage" :style="{ transform: `translateX(-50%) scale(${scale})` }">
         <!-- 中央 Publish X 塊 -->
@@ -117,7 +133,7 @@ onBeforeUnmount(() => {
           <p class="formula__center-title">{{ center.title }}</p>
         </div>
 
-        <!-- 四條像素分支線：從中央塊角落逐格往四角畫出 -->
+        <!-- pc：四條像素分支線，從中央塊角落逐格往四角畫出 -->
         <PixelBranch
           v-for="p in POS"
           :key="p"
@@ -127,6 +143,28 @@ onBeforeUnmount(() => {
           :flip="BRANCH[p].flip"
           :from="BRANCH[p].from"
           :delay="BRANCH_DELAY"
+        />
+
+        <!-- pad：上下排與中央塊之間的斜向棋盤格連接（SVG 素材） -->
+        <img
+          v-for="p in POS"
+          :key="`link-${p}`"
+          class="formula__link"
+          :class="`formula__link--${p}`"
+          :src="`/img/news/udn75_news_formula_link_${p}.svg`"
+          alt=""
+          aria-hidden="true"
+        />
+
+        <!-- mob：左側垂直棋盤格 rail，逐格接到各格子 -->
+        <img
+          v-for="(r, i) in RAILS"
+          :key="`rail-${i}`"
+          class="formula__rail"
+          :src="r.src"
+          :style="{ top: `${r.y}px`, height: `${r.h}px` }"
+          alt=""
+          aria-hidden="true"
         />
 
         <!-- 四角議題格子 -->
@@ -187,7 +225,7 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-// 舞台固定 1064×524（Figma PC 座標系），<1064 時整體 scale（過渡做法，見 TODO）
+// 舞台依斷點定尺寸（Figma 座標系），視窗小於舞台寬時整體 scale
 .formula__stage {
   position: absolute;
   top: 0;
@@ -195,9 +233,19 @@ onBeforeUnmount(() => {
   width: 1064px;
   height: 524px;
   transform-origin: top center;
+
+  @include rwd-max('pc') {
+    width: 610px;
+    height: 600px;
+  }
+  @include rwd-max('tablet') {
+    width: 360px;
+    height: 882px;
+  }
 }
 
 // ── 中央 Publish X 塊：像素外框（橘）+ 內縮 12px 橘色填色 ──
+// pad 置於兩排之間（400×172）；mob 置頂（360×160）
 .formula__center {
   position: absolute;
   top: 182px;
@@ -211,6 +259,19 @@ onBeforeUnmount(() => {
   width: 360px;
   height: 160px;
   opacity: 0;
+
+  @include rwd-max('pc') {
+    top: 214px;
+    left: 102px;
+    width: 400px;
+    height: 172px;
+  }
+  @include rwd-max('tablet') {
+    top: 0;
+    left: 0;
+    width: 360px;
+    height: 160px;
+  }
 
   &::before {
     @include pixel-frame(var(--color-orange));
@@ -239,6 +300,13 @@ onBeforeUnmount(() => {
   display: block;
   width: 257px;
   height: auto;
+
+  @include rwd-max('pc') {
+    width: 275px;
+  }
+  @include rwd-max('tablet') {
+    width: 257px;
+  }
 }
 
 .formula__center-eyebrow {
@@ -260,7 +328,7 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
-// ── 分支線位置（對稿 Figma：與中央塊/格子角落各斜疊 8px 對接）──
+// ── pc 分支線位置（對稿 Figma：與中央塊/格子角落各斜疊 8px 對接）──
 // 註：加上 .formula__stage 提高特異性，蓋過 PixelBranch 根元素自帶的
 // position: relative（兩者同為單一 class，僅靠載入順序會不穩定）。
 .formula__stage .formula__branch {
@@ -282,10 +350,81 @@ onBeforeUnmount(() => {
     top: 334px;
     left: 704px;
   }
+
+  @include rwd-max('pc') {
+    display: none;
+  }
+}
+
+// ── pad 斜向棋盤格連接（76×60，跨排間 60px 縫隙）──
+.formula__link {
+  position: absolute;
+  display: none;
+  width: 76px;
+  height: 60px;
+  opacity: 0;
+
+  @include rwd-max('pc') {
+    display: block;
+  }
+  @include rwd-max('tablet') {
+    display: none;
+  }
+
+  &--tl {
+    top: 154px;
+    left: 161px;
+  }
+  &--tr {
+    top: 154px;
+    left: 362px;
+  }
+  &--bl {
+    top: 386px;
+    left: 161px;
+  }
+  &--br {
+    top: 386px;
+    left: 362px;
+  }
+
+  .formula.is-on & {
+    animation: formula-conn-in 0.01s steps(1) both;
+    animation-delay: var(--conn-delay, 0.65s);
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+      opacity: 1;
+    }
+  }
+}
+
+// ── mob 左側垂直 rail（44 寬，top/height 由 template 帶入）──
+.formula__rail {
+  position: absolute;
+  left: 0;
+  display: none;
+  width: 44px;
+  opacity: 0;
+
+  @include rwd-max('tablet') {
+    display: block;
+  }
+
+  .formula.is-on & {
+    animation: formula-conn-in 0.01s steps(1) both;
+    animation-delay: var(--conn-delay, 0.65s);
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+      opacity: 1;
+    }
+  }
 }
 
 // ── 四角議題格子 ──
 // 進場滑出階段為橘色態（--box-c），is-settled 後瞬間轉灰（多重背景外框無法平滑過渡）
+// 尺寸：pc 324／pad 273／mob 301 寬（高一律 154）
 .formula__box {
   --box-c: var(--color-orange);
   position: absolute;
@@ -293,6 +432,13 @@ onBeforeUnmount(() => {
   height: 154px;
   padding-top: 68px; // 列點區距格子頂（三版一致的固定值）
   opacity: 0;
+
+  @include rwd-max('pc') {
+    width: 273px;
+  }
+  @include rwd-max('tablet') {
+    width: 301px;
+  }
 
   &::before {
     @include pixel-frame(var(--box-c));
@@ -312,30 +458,79 @@ onBeforeUnmount(() => {
     --box-c: var(--color-gray-light);
   }
 
-  // --from-*：滑出起點（中央塊正後方）到定位點的位移量
+  // --from-*：滑出起點（中央塊正後方）到定位點的位移量。
+  // 貼齊四角的定位 pc/pad 通用（隨舞台尺寸換算）；mob 改直排、原地淡入。
   &--tl {
     top: 0;
     left: 0;
     --from-x: 370px;
     --from-y: 185px;
+
+    @include rwd-max('pc') {
+      --from-x: 165px;
+      --from-y: 223px;
+    }
+    @include rwd-max('tablet') {
+      top: 197px;
+      left: 44px;
+      --from-x: 0px;
+      --from-y: 0px;
+    }
   }
   &--tr {
     top: 0;
     right: 0;
     --from-x: -370px;
     --from-y: 185px;
+
+    @include rwd-max('pc') {
+      --from-x: -171px;
+      --from-y: 223px;
+    }
+    @include rwd-max('tablet') {
+      top: 545px;
+      right: auto;
+      left: 44px;
+      --from-x: 0px;
+      --from-y: 0px;
+    }
   }
   &--bl {
     bottom: 0;
     left: 0;
     --from-x: 370px;
     --from-y: -185px;
+
+    @include rwd-max('pc') {
+      --from-x: 165px;
+      --from-y: -223px;
+    }
+    @include rwd-max('tablet') {
+      top: 371px;
+      bottom: auto;
+      left: 44px;
+      --from-x: 0px;
+      --from-y: 0px;
+    }
   }
   &--br {
     bottom: 0;
     right: 0;
     --from-x: -370px;
     --from-y: -185px;
+
+    @include rwd-max('pc') {
+      --from-x: -171px;
+      --from-y: -223px;
+    }
+    @include rwd-max('tablet') {
+      top: 728px;
+      right: auto;
+      bottom: auto;
+      left: 44px;
+      --from-x: 0px;
+      --from-y: 0px;
+    }
   }
 }
 
@@ -412,6 +607,13 @@ onBeforeUnmount(() => {
   100% {
     opacity: 1;
     transform: none;
+  }
+}
+
+// 連接線素材（pad 斜帶／mob rail）：到點瞬間現身（像素風，不淡入）
+@keyframes formula-conn-in {
+  to {
+    opacity: 1;
   }
 }
 </style>
