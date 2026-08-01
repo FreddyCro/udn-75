@@ -11,7 +11,7 @@ RWD 設計稿與視窗範圍的對應（2026-07-28 使用者指定並修正，�
 - **pad 稿**（768 canvas）→ 套用 **768–1279**（元素多為固定 px，如標題 518 置中）
 - **pc 稿**（1280 canvas）→ **≥1280**（既有基準樣式）
 
-**How to apply:** 樣式沿用專案 desktop-first 慣例：基準寫 pc，`@include rwd-max('pc')`（≤1279）蓋 pad 稿、`@include rwd-max('tablet')`（≤767）蓋 mob 稿，切點即既有 `'tablet': 768px`，不需新增斷點。JS 判斷用 `matchMedia('(max-width: 767.98px)')` / `1279.98px`。
+**How to apply:** **mobile-first**：基準寫 mob 稿，`@include rwd-min('tablet')`（≥768）蓋 pad 稿、`@include rwd-min('pc')`（≥1280）蓋 pc 稿。JS 判斷用 `matchMedia('(max-width: 767.98px)')` / `1279.98px`。
 
 **Why:** 設計稿只出三套，切點與 canvas 同寬（768 起套 pad 稿、1280 起套 pc 稿）。注意使用者最初誤說 mob 到 1023，已更正為 767——勿再引用 1024 當 mob/pad 切點。
 

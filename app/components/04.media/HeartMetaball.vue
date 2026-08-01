@@ -71,7 +71,8 @@
   無任何時間性脹縮／呼吸 → 純粹是「慢慢移動的游標」；移動速度由 idleRoamSpeed 控制。
   另在遊走焦點補一顆「不衰減的持久頭部球」（半徑固定 = (min+max)/2）：遊走偶爾趨近靜止、
   距離補章補不到時 trail 會衰減殆盡，這顆球確保團塊永不完全消失，且固定大小不脹縮。
-  觸控環境（hover:none）或 autoRoam 時不綁手指、一律自走 → 對應 4-2。
+  pad / mob 斷點（≤1279）、觸控環境（hover:none）或 autoRoam 時不綁游標、
+  一律自走 → 對應 4-2；pc 斷點才追蹤滑鼠軌跡。
   ============================================================================
 -->
 <template>
@@ -113,8 +114,12 @@ const props = withDefaults(
     cornerExp?: number;
     /** 邊緣羽化寬度（佔半徑比例 0~1）：越大過渡帶越寬、中心越自然散開融入外圍 */
     edgeFeather?: number;
-    /** 閒置自動遊走的範圍（佔畫面短邊比例）：團塊在中央±此比例內平滑亂走。預設 0.4（原 0.1 的 4 倍） */
+    /** 閒置自動遊走的範圍（佔畫面短邊比例）：團塊在遊走中心±此比例內平滑亂走 */
     idleRoamRange?: number;
+    /** 閒置遊走活動範圍（相對畫布的正規化矩形 0~1）：未提供＝整畫布置中、幅度
+     *  idleRoamRange；提供時團塊「含半徑」被限制在矩形內（幅度內縮團塊半徑、
+     *  團塊尺寸基準改用帶高），不會壓到範圍外的內容 */
+    roamArea?: { x: number; y: number; width: number; height: number };
     /** 閒置遊走速度倍率：越大走越快 */
     idleRoamSpeed?: number;
     /** 閒置團塊半徑下限（顯示範圍／佔短邊比例）：每章在 min~max 間隨機取半徑（同游標） */
@@ -236,8 +241,9 @@ onMounted(() => {
     y: number,
     rScaleMin: number,
     rScaleMax: number,
+    sizeBase?: number, // 半徑基準：預設畫布短邊；閒置＋roamArea 時改用帶高
   ) => {
-    const base = Math.min(width, height);
+    const base = sizeBase ?? Math.min(width, height);
     const count = 1 + (Math.random() < 0.35 ? 1 : 0);
     for (let n = 0; n < count; n++) {
       const s = stamps[stampIndex]!;
@@ -270,10 +276,13 @@ onMounted(() => {
     centerY = e.clientY - rect.top;
     spawn(centerX, centerY);
   };
-  // 4-2：觸控環境（手機，hover:none）手指感應不佳 → 不綁互動，一律自動遊走；
-  // autoRoam prop 可在桌機強制此行為以預覽手機效果。
+  // 互動模式：pc（≥1280）追蹤滑鼠軌跡；pad / mob 斷點改「預設中心範圍隨機
+  // 偏移」自動遊走。觸控環境（hover:none）手指感應不佳，同樣一律自走；
+  // autoRoam prop 可在桌機強制此行為以預覽。
   const roamOnly =
-    props.autoRoam || window.matchMedia('(hover: none)').matches;
+    props.autoRoam ||
+    window.matchMedia('(hover: none)').matches ||
+    window.matchMedia('(max-width: 1279.98px)').matches;
   // 事件綁定範圍：預設綁自己；若外層有 [data-metaball-scope]（如 Media section
   // 把 canvas 墊在內容下層），改綁該祖先 → 游標移到內容上方也能持續追蹤。
   const listenEl =
@@ -297,21 +306,33 @@ onMounted(() => {
     // pointer 互動會暫停，停止互動 IDLE_DELAY 後回到自走（觸控環境則一律自走）。
     if (isIdle) {
       const base = Math.min(width, height);
-      const amp = base * props.idleRoamRange;
+      // roamArea：遊走中心＝矩形中心，逐軸幅度＝半寬/半高內縮團塊半徑，
+      // 團塊尺寸基準改用帶高（帶比畫布短邊窄時縮小團塊才塞得進帶內）
+      const area = props.roamArea;
+      const sizeBase = area ? Math.min(base, height * area.height) : base;
+      const blobMax = sizeBase * props.idleBlobMax;
+      const cx0 = width * (area ? area.x + area.width / 2 : 0.5);
+      const cy0 = height * (area ? area.y + area.height / 2 : 0.5);
+      const ampX = area
+        ? Math.max(0, (width * area.width) / 2 - blobMax)
+        : base * props.idleRoamRange;
+      const ampY = area
+        ? Math.max(0, (height * area.height) / 2 - blobMax)
+        : base * props.idleRoamRange;
       const s = t * props.idleRoamSpeed;
       // 每幀更新焦點 → 中心方塊跟著遊走路徑走；權重和為 1，最大擺幅 = amp
       centerX =
-        width * 0.5 +
+        cx0 +
         (Math.sin(s * 0.13) * 0.5 +
           Math.sin(s * 0.21 + 1.7) * 0.3 +
           Math.sin(s * 0.07 + 4.1) * 0.2) *
-          amp;
+          ampX;
       centerY =
-        height * 0.5 +
+        cy0 +
         (Math.cos(s * 0.11) * 0.5 +
           Math.cos(s * 0.19 + 0.7) * 0.3 +
           Math.sin(s * 0.05 + 2.3) * 0.2) *
-          amp;
+          ampY;
       // 彗星拖尾：像游標一樣「只沿移動路徑」距離補章（移動超過 SPAWN_DIST 才補一章）。
       // 不再用時間定點補章 → 不會在原地一蹦一蹦像心跳；舊章隨壽命衰退留在身後 →
       // 形成隨移動方向淡出的尾巴。多頻遊走持續移動，故團塊不會因停滯而消失。
