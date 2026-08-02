@@ -256,25 +256,24 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
+// 欄寬與 SubpageSection__inner 對齊（此元件為滿版 embed，不吃 section 的內距）
 .ai-search {
   width: 100%;
-  max-width: var(--subpage-content-w); // 與內文窄欄對齊（pc 稿搜尋框 630）
   margin: 0 auto;
+  padding: 0 26px;
 
-  // pad 稿：與內文欄同寬（570 含 padding 20 → 530）
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     max-width: 570px;
     padding: 0 20px;
   }
 
-  // mob 稿：滿版、左右邊距 26
-  @include rwd-max('tablet') {
-    max-width: none;
-    padding: 0 26px;
+  @include rwd-min('pc') {
+    max-width: var(--subpage-content-w);
+    padding: 0;
   }
 }
 
-// 搜尋框（整顆可點，630×40 pill）
+// 搜尋框：整顆可點
 .ai-search__bar {
   display: flex;
   align-items: center;
@@ -296,7 +295,7 @@ onBeforeUnmount(() => {
   }
 }
 
-// 「大家都在看：關鍵字」輪播窗：固定行高裁切，舊句上滑出、新句下滑入
+// 關鍵字輪播窗：固定行高裁切，舊句上滑出、新句下滑入
 .ai-search__term-clip {
   position: relative;
   display: block;
@@ -305,7 +304,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   font-size: var(--text-body);
   font-weight: 300;
-  color: #bcbcbc; // 對稿 placeholder 灰（非全站 token）
+  color: #bcbcbc; // placeholder 灰，非全站 token
 }
 
 .ai-search__term {
@@ -338,10 +337,9 @@ onBeforeUnmount(() => {
   height: 21px;
 }
 
-// AI 摘要面板（淺灰底；標題列常駐、內文向下展開）
 .ai-search__panel {
   margin-top: 16px;
-  background: #fafafa; // 對稿面板底色
+  background: #fafafa; // 面板專用底色，非全站 token
 }
 
 .ai-search__head {
@@ -458,14 +456,13 @@ onBeforeUnmount(() => {
   }
 }
 
-// 深入體驗聯合報數位版（280×68 外框按鈕）
 .ai-search__cta-row {
   display: flex;
   justify-content: center;
-  margin-top: 32px;
+  margin-top: 28px;
 
-  @include rwd-max('tablet') {
-    margin-top: 28px;
+  @include rwd-min('tablet') {
+    margin-top: 32px;
   }
 }
 

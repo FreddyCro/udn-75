@@ -4,6 +4,9 @@
  * <Subpage :content="content" />（content = ~/locales/xxx.json）。
  * header / footer 由 subpage layout 提供。
  */
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
 export interface SubpageAward {
   name?: string;
   year?: string;
@@ -38,37 +41,73 @@ export interface SubpageSectionData {
   componentProps?: Record<string, unknown>;
 }
 export interface SubpageNavData {
-  backUrl?: string;
-  backLabel?: string;
-  next?: { title?: string; url?: string };
+  backUrl: string;
+  next?: { title: string; url: string };
 }
 export interface SubpageContent {
   hero: {
     title: string;
-    subtitle?: string;
+    subtitle: string;
     /** 主標題藝術字（SVG 完整路徑）；title 文字作為 alt */
-    titleImg?: string;
+    titleImg: string;
     /** 副標藝術字（SVG 完整路徑）；subtitle 文字作為 alt */
-    subtitleImg?: string;
-    unit?: string;
-    author?: string;
+    subtitleImg: string;
+    unit: string;
+    author: string;
     /** 首屏背景圖（單檔 jpg，不含副檔名），如 /img/news/udn75_bg_news */
-    bg?: string;
+    bg: string;
   };
-  intro?: string;
-  sections?: SubpageSectionData[];
-  nav?: SubpageNavData;
+  /** 引言：單段字串或多段陣列（每段獨立 <p>，末行不被 justify 拉開） */
+  intro: string | string[];
+  sections: SubpageSectionData[];
+  nav: SubpageNavData;
 }
 
-defineProps<{ content: SubpageContent }>();
+const props = defineProps<{ content: SubpageContent }>();
+
+const introParagraphs = computed(() =>
+  Array.isArray(props.content.intro) ? props.content.intro : [props.content.intro],
+);
+
+const heroInnerRef = ref<HTMLElement | null>(null);
+const introInnerRef = ref<HTMLElement | null>(null);
+
+// 對稿標註：內容由下往上、透明度 0→100%，translate 0.4s
+const REVEAL = { autoAlpha: 0, y: 32, duration: 0.4, ease: 'power2.out' };
+
+let tweens: gsap.core.Tween[] = [];
+
+onMounted(() => {
+  // 降級：不建 tween，內容維持 CSS 的可見狀態
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  // hero 在首屏、一載入就播；引言捲進視窗才播（once，回捲不重播）
+  if (heroInnerRef.value) tweens.push(gsap.from(heroInnerRef.value, REVEAL));
+  if (introInnerRef.value) {
+    tweens.push(
+      gsap.from(introInnerRef.value, {
+        ...REVEAL,
+        scrollTrigger: { trigger: introInnerRef.value, start: 'top 80%', once: true },
+      }),
+    );
+  }
+});
+
+onBeforeUnmount(() => {
+  tweens.forEach((t) => {
+    t.scrollTrigger?.kill();
+    t.kill();
+  });
+  tweens = [];
+});
 </script>
 
 <template>
   <article class="subpage">
-    <!-- 首屏 hero -->
     <header class="subpage__hero">
       <UPic
-        v-if="content.hero.bg"
         :src="content.hero.bg"
         classname="subpage__hero-bg"
         :use-prefix="false"
@@ -77,58 +116,46 @@ defineProps<{ content: SubpageContent }>();
         loading="eager"
         alt=""
       />
-      <div class="subpage__col subpage__col--wide">
+      <div ref="heroInnerRef" class="subpage__col subpage__col--wide subpage__hero-inner">
         <h1 class="subpage__title">
           <img
-            v-if="content.hero.titleImg"
             class="subpage__title-img"
             :src="content.hero.titleImg"
             :alt="content.hero.title"
           />
-          <template v-else>{{ content.hero.title }}</template>
         </h1>
-        <p v-if="content.hero.subtitle" class="subpage__subtitle">
+        <p class="subpage__subtitle">
           <img
-            v-if="content.hero.subtitleImg"
             class="subpage__subtitle-img"
             :src="content.hero.subtitleImg"
             :alt="content.hero.subtitle"
           />
-          <template v-else>{{ content.hero.subtitle }}</template>
         </p>
-        <!-- 對稿：單位與作者合併一行（如「新聞部×數據發展部／林以君」） -->
-        <p v-if="content.hero.unit" class="subpage__unit">
-          {{ content.hero.unit }}<template v-if="content.hero.author">／{{ content.hero.author }}</template>
-        </p>
+        <p class="subpage__unit">{{ content.hero.unit }}／{{ content.hero.author }}</p>
       </div>
     </header>
 
-    <!-- <1280 內容錨點列（取代右側 rail，貼在 hero 之下） -->
-    <SubpageAnchorBar />
+    <!-- hero 之後的內容：不透明背景，維持 rail(z1) / 滿版區塊(z2) 的疊層約定 -->
+    <div class="subpage__content">
+      <!-- <1280 錨點列（取代 pc 的右側 rail） -->
+      <SubpageAnchorBar />
 
-    <!-- 引言 -->
-    <div v-if="content.intro" class="subpage__intro">
-      <div class="subpage__col subpage__col--wide">
-        <p class="subpage__intro-text">{{ content.intro }}</p>
+      <div class="subpage__intro">
+        <div ref="introInnerRef" class="subpage__col subpage__col--wide">
+          <p v-for="(p, i) in introParagraphs" :key="i" class="subpage__intro-text">{{ p }}</p>
+        </div>
       </div>
-    </div>
 
-    <!-- 內文 -->
-    <div v-if="content.sections?.length" class="subpage__body">
-      <SubpageSection
-        v-for="(s, i) in content.sections"
-        :key="i"
-        v-bind="s"
-      />
-    </div>
+      <div class="subpage__body">
+        <SubpageSection
+          v-for="(s, i) in content.sections"
+          :key="i"
+          v-bind="s"
+        />
+      </div>
 
-    <!-- 最下方：返回 / 下一篇 -->
-    <SubpageNav
-      v-if="content.nav"
-      :back-url="content.nav.backUrl"
-      :back-label="content.nav.backLabel"
-      :next="content.nav.next"
-    />
+      <SubpageNav :back-url="content.nav.backUrl" :next="content.nav.next" />
+    </div>
   </article>
 </template>
 
@@ -148,150 +175,161 @@ defineProps<{ content: SubpageContent }>();
 
 .subpage__col--wide {
   max-width: var(--subpage-wide-w);
+  padding: 0 26px;
 
-  // pad 稿：引言欄 654（768 − 57×2）；mob 稿：左右邊距 26
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     padding: 0 57px;
   }
-  @include rwd-max('tablet') {
-    padding: 0 26px;
+  @include rwd-min('pc') {
+    padding: 0 20px;
   }
 }
 
+// 設計稿 canvas＝裝置視窗且 header 疊在 frame 內 → 首屏滿版 100vh（非 100vh − header）；
+// 文案距視窗頂為固定距離（padding-top），非垂直置中。
 .subpage__hero {
-  position: relative;
-  display: flex;
-  align-items: center;
-  min-height: calc(100vh - var(--header-height));
+  position: relative; // hero-bg 的定位基準（%距底要量 hero 高，不是視窗高）
+  min-height: 100vh;
+  min-height: 100svh; // 行動裝置以最小視窗計，避免網址列收合時版面跳動
+  padding-top: 148px;
   overflow: hidden;
+
+  @include rwd-min('tablet') {
+    padding-top: 180px;
+  }
+  @include rwd-min('pc') {
+    padding-top: 163px;
+  }
 }
 
-// 首屏裝飾圖：像素風圖樣（素材 856x400 = @2x，自然顯示 428x200）。
-// 對稿：pc 靠右下（右 107、距底 11%）；pad/mob 水平置中、貼近下緣。
+// hero 之後的內容底。z-index 須維持 auto，否則會建立 stacking context，
+// 破壞 rail(z1) / 滿版區塊(z2) 的約定（見 SubpageAnchor）。
+.subpage__content {
+  position: relative;
+  background: #fff;
+}
+
+// 首屏裝飾圖：素材 856×400 為 @2x，自然顯示 428×200。
+// 距底用 % 而非固定值 —— 對稿距底是滿版 frame 的比例，視窗變高才跟著走。
 :deep(.subpage__hero-bg) {
   position: absolute;
-  right: 8vw;
-  bottom: 11%;
+  bottom: 23%;
+  left: 50%;
   z-index: -1;
-  width: min(428px, 34vw);
+  width: min(261px, 64vw);
   height: auto;
+  transform: translateX(-50%);
   pointer-events: none;
 
-  @include rwd-max('pc') {
-    right: auto;
+  @include rwd-min('tablet') {
     bottom: 26%;
-    left: 50%;
     width: 428px;
-    transform: translateX(-50%);
   }
-  @include rwd-max('tablet') {
-    bottom: 23%;
-    width: min(261px, 64vw);
+  @include rwd-min('pc') {
+    right: 8vw;
+    bottom: 11%;
+    left: auto;
+    width: min(428px, 34vw);
+    transform: none;
   }
 }
 
 .subpage__title {
   margin: 0;
-  font-size: 48px;
-  font-weight: 700;
-  line-height: 1.3;
-
-  @include rwd-tablet {
-    font-size: 36px;
-  }
-  @include rwd-mobile {
-    font-size: 28px;
-  }
 }
 
-.subpage__subtitle {
-  margin: 12px 0 0;
-  font-size: var(--text-h4);
-  line-height: var(--text-h4--line-height);
-  font-weight: 400;
-
-  @include rwd-mobile {
-    font-size: var(--text-h5);
-    line-height: var(--text-h5--line-height);
-  }
-}
-
-// SVG 藝術字：依設計稿定高（主標 pc 72／pad 68／mob 40），寬度隨比例、超出欄寬等比縮小
+// SVG 藝術字：定高、寬度隨比例，超出欄寬時等比縮小
 .subpage__title-img {
   display: block;
   width: auto;
-  height: 72px;
+  height: 40px;
   max-width: 100%;
   object-fit: contain;
   object-position: left center;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     height: 68px;
   }
-  @include rwd-max('tablet') {
-    height: 40px;
+  @include rwd-min('pc') {
+    height: 72px;
   }
 }
 
-// 副標定高 pc 64／pad 48／mob 29；margin 含 svg 內部留白的補償（對稿視覺間距 32/32/16）
 .subpage__subtitle-img {
   display: block;
   width: auto;
-  height: 64px;
+  height: 29px;
   max-width: 100%;
   object-fit: contain;
   object-position: left center;
-  margin-top: 20px;
+  margin-top: 16px;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     height: 48px;
-    margin-top: 22px;
+    margin-top: 32px;
   }
-  @include rwd-max('tablet') {
-    height: 29px;
-    margin-top: 10px;
+  @include rwd-min('pc') {
+    height: 64px;
   }
 }
 
-// 單位＋作者合併行（24/48；mob 18/36 Light）
 .subpage__unit {
-  margin: 24px 0 0;
-  font-size: var(--text-unit);
-  line-height: var(--text-unit--line-height);
-  font-weight: 400;
+  margin-top: 20px;
+  font-size: 18px;
+  line-height: 36px;
+  font-weight: 300;
   letter-spacing: 0.1em;
   color: var(--color-gray);
 
-  @include rwd-max('tablet') {
-    font-size: 18px;
-    line-height: 36px;
-    font-weight: 300;
+  @include rwd-min('tablet') {
+    font-size: var(--text-unit);
+    line-height: var(--text-unit--line-height);
+    font-weight: 400;
+    margin-top: 38px;
+  }
+
+  @include rwd-min('pc') {
+    margin-top: 24px;
   }
 }
 
+// 引言同為滿版一屏：mob/pad 對稿上下留白相等 → 垂直置中；pc 對稿不置中，
+// 改以「靠下 + 底距 80」表達，視窗高度一離開 720 也不會失準。
+// 滿版區塊須依 SubpageAnchor 的約定：relative + z-index 2 + 白底，蓋過 rail(z1)。
 .subpage__intro {
-  padding: 96px 0;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  min-height: 100vh;
+  min-height: 100svh;
+  background: #fff;
+  padding: 56px 0; // 內容超過一屏時（窄機／放大字級）自然撐高，不裁切
 
-  @include rwd-max('tablet') {
-    padding: 56px 0;
+  @include rwd-min('tablet') {
+    padding: 96px 0;
+  }
+  @include rwd-min('pc') {
+    align-items: flex-end;
+    padding-bottom: 80px;
   }
 }
 
 .subpage__intro-text {
   margin: 0;
-  font-size: var(--text-intro); // Figma 四部門引言 32/60 Light；mob 22/40
-  line-height: var(--text-intro--line-height);
+  font-size: 22px;
+  line-height: 40px;
   font-weight: 300;
   color: var(--color-gray);
   text-align: justify;
 
-  @include rwd-max('tablet') {
-    font-size: 22px;
-    line-height: 40px;
+  @include rwd-min('tablet') {
+    font-size: var(--text-intro);
+    line-height: var(--text-intro--line-height);
   }
 }
 
-// 內文結束後由 SubpageNav 的 padding-top(60) 拉開與導覽的距離，故此處不再留下方留白。
+// 與導覽的距離由 SubpageNav 的 padding-top 負責，此處不再留下方留白。
 .subpage__body {
   padding-bottom: 0;
 }

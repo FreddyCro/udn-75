@@ -193,14 +193,14 @@ onBeforeUnmount(() => {
 .award-timeline__track {
   width: max-content;
   min-width: 100%;
-  padding: 0 108px;
+  padding: 0 26px;
   will-change: transform;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     padding: 0 119px;
   }
-  @include rwd-max('tablet') {
-    padding: 0 26px;
+  @include rwd-min('pc') {
+    padding: 0 108px;
   }
 }
 

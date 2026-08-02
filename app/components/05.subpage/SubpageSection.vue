@@ -223,7 +223,6 @@ onBeforeUnmount(() => {
         </figcaption>
       </figure>
 
-      <!-- 多圖並排：窄欄內均分兩欄、各自圖說 -->
       <div v-else-if="figures?.length" class="subpage-section__figures">
         <figure
           v-for="(f, i) in figures"
@@ -242,7 +241,7 @@ onBeforeUnmount(() => {
         </figure>
       </div>
 
-      <!-- SVG 圖表：PC/平板共用一張 + 手機一張 -->
+      <!-- SVG 圖表：pc/pad 共用一張、mob 另一張 -->
       <figure v-else-if="chart" class="subpage-section__figure">
         <UPic
           :src="chart"
@@ -258,7 +257,6 @@ onBeforeUnmount(() => {
         </figcaption>
       </figure>
 
-      <!-- 得獎項目（ART 桂冠 + 文字） -->
       <div v-if="awards?.length" class="subpage-section__awards-wrap">
         <div class="subpage-section__awards">
           <SubpageAward
@@ -272,14 +270,13 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- 得獎作品（一列一列清單）＋ 懸浮縮圖（GlitchImage，hover 每一列觸發） -->
       <div
         v-if="works?.length"
         ref="worksWrap"
         class="subpage-section__works-wrap"
         @mouseleave="onLeaveWrap"
       >
-        <!-- 懸浮縮圖：水平固定畫面中央（CSS）、top 由 JS 依列位置決定 -->
+        <!-- 懸浮縮圖：水平置中由 CSS 固定、top 由 activate() 依列位置算出 -->
         <div
           ref="thumbBox"
           class="works-thumb"
@@ -317,13 +314,11 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- 其餘互動／圖表區塊佔位 -->
       <div v-if="placeholder" class="subpage-section__placeholder">
         {{ placeholder }}
       </div>
     </div>
 
-    <!-- 嵌入互動元件：滿版、蓋過右側錨點 rail（z-index 約定，見 SubpageAnchor） -->
     <div
       v-if="component && EMBEDS[component]"
       class="subpage-section__embed"
@@ -335,27 +330,25 @@ onBeforeUnmount(() => {
 
 <style lang="scss" scoped>
 .subpage-section + .subpage-section {
-  margin-top: var(--sp-section);
+  margin-top: 56px;
 
-  @include rwd-max('tablet') {
-    margin-top: 56px;
+  @include rwd-min('tablet') {
+    margin-top: var(--sp-section);
   }
 }
 
-// 內容欄：一般窄欄(630)置中；寬欄(1064)用於桂冠／得獎作品。
-// pad 稿內文欄 530（570 − 左右 padding 20）；mob 稿左右邊距 26。
+// 內容欄：一般為窄欄置中，寬欄（--wide）用於桂冠／得獎作品。
 .subpage-section__inner {
   width: 100%;
-  max-width: var(--subpage-content-w);
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 26px;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     max-width: 570px;
+    padding: 0 20px;
   }
-  @include rwd-max('tablet') {
-    max-width: none;
-    padding: 0 26px;
+  @include rwd-min('pc') {
+    max-width: var(--subpage-content-w);
   }
 }
 
@@ -363,35 +356,34 @@ onBeforeUnmount(() => {
   max-width: var(--subpage-wide-w);
 }
 
-// 寬欄區塊（含 works／awards）內的圖表維持窄欄寬度置中（對稿：桂冠圖 svg 原寸 630，
-// pad 沿用同尺寸不縮、mob 用 _mob 版 362）
+// 寬欄區塊內的圖表仍維持窄欄寬度置中
 .subpage-section--wide .subpage-section__figure {
   max-width: var(--subpage-content-w);
   margin-right: auto;
   margin-left: auto;
 }
 
-// 桂冠圖表 svg 內建上下留白 32 → 貼著小標排即為對稿間距（mob 版 svg 無留白，補 32）
+// 桂冠圖表 svg 自帶上下留白 32 → pad 以上貼著小標排即為對稿間距；mob 版 svg 無留白，補 32
 .subpage-section--wide .subpage-section__title + .subpage-section__figure {
-  margin-top: 0;
+  margin-top: 32px;
 
-  @include rwd-max('tablet') {
-    margin-top: 32px;
+  @include rwd-min('tablet') {
+    margin-top: 0;
   }
 }
 
-// 多圖並排：窄欄內均分兩欄（對稿 295+40+295=630；pad 249+32+249=530），mob 改直排
+// 多圖並排：mob 直排，pad 以上窄欄內均分兩欄
 .subpage-section__figures {
   display: flex;
-  gap: 40px;
+  flex-direction: column;
+  gap: 32px;
 
-  @include rwd-max('pc') {
-    gap: 32px;
+  @include rwd-min('tablet') {
+    flex-direction: row;
   }
 
-  @include rwd-max('tablet') {
-    flex-direction: column;
-    gap: 32px;
+  @include rwd-min('pc') {
+    gap: 40px;
   }
 }
 
@@ -400,7 +392,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   margin: 0;
 
-  // 並排圖的圖說間距對稿 8（窄於全站 --sp-img-caption）
+  // 並排圖的圖說間距為 8，窄於全站 --sp-img-caption
   .subpage-section__caption {
     margin-top: 8px;
   }
@@ -408,53 +400,53 @@ onBeforeUnmount(() => {
 
 .subpage-section__title {
   margin: 0;
-  font-size: var(--text-h3);
-  line-height: var(--text-h3--line-height);
+  font-size: var(--text-h4);
+  line-height: 40px;
   font-weight: 400;
 
-  @include rwd-max('tablet') {
-    font-size: var(--text-h4); // mob_H3 28/40
-    line-height: 40px;
+  @include rwd-min('tablet') {
+    font-size: var(--text-h3);
+    line-height: var(--text-h3--line-height);
   }
 }
 
-// H3 小標置中（近年得獎獎項）：pc / pad 置中、mob 稿靠左
+// 小標置中變體：mob 仍靠左，pad 以上才置中
 .subpage-section--title-center .subpage-section__title {
-  text-align: center;
+  text-align: left;
 
-  @include rwd-max('tablet') {
-    text-align: left;
+  @include rwd-min('tablet') {
+    text-align: center;
   }
 }
 
-// 置中導言變體：H4 標題＋置中引導句（Publish X 議題智囊包）
+// 置中導言變體：H4 標題＋置中引導句
 .subpage-section--center .subpage-section__title {
-  font-size: var(--text-h4); // pc_H4 28/46
-  line-height: var(--text-h4--line-height);
+  font-size: var(--text-h4);
+  line-height: 40px;
   text-align: center;
 
-  @include rwd-max('pc') {
-    line-height: 40px; // pad/mob 28/40
+  @include rwd-min('pc') {
+    line-height: var(--text-h4--line-height);
   }
 }
 
 .subpage-section--center .subpage-section__para {
-  font-size: var(--text-h5); // 引導句 20/32
-  line-height: var(--text-h5--line-height);
+  font-size: 18px;
+  line-height: 30px;
   font-weight: 400;
   text-align: center;
 
-  @include rwd-max('tablet') {
-    font-size: 18px; // mob_H5 18/30
-    line-height: 30px;
+  @include rwd-min('tablet') {
+    font-size: var(--text-h5);
+    line-height: var(--text-h5--line-height);
   }
 }
 
 .subpage-section--center .subpage-section__title + .subpage-section__desc {
-  margin-top: 8px; // 對稿：置中標 → 引導句間距 8（mob 16）
+  margin-top: 16px;
 
-  @include rwd-max('tablet') {
-    margin-top: 16px;
+  @include rwd-min('tablet') {
+    margin-top: 8px;
   }
 }
 
@@ -512,35 +504,33 @@ onBeforeUnmount(() => {
 
 .subpage-section__awards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;
   gap: 32px 24px;
   padding: 0;
   list-style: none;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     grid-template-columns: repeat(2, 1fr);
   }
-  @include rwd-max('tablet') {
-    grid-template-columns: 1fr;
+  @include rwd-min('pc') {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
-/* ── 懸浮縮圖（GlitchImage）── */
-// works 欄置中於視窗 → left: 50% 即視窗中線；top 由 JS 帶入。
-// pointer-events: none 不擋列的 hover。
+// 懸浮縮圖：works 欄置中於視窗 → left: 50% 即視窗中線；top 由 JS 帶入。
 .works-thumb {
   position: absolute;
   left: 50%;
   z-index: 4; // 分隔線(z1) < 列文字(z3) < 縮圖(z4)
-  // --thumb-w = 對稿各 work 舞台寬（inline 帶入）；48vw 為窄視窗保底
-  width: min(var(--thumb-w, 560px), 48vw);
+  // --thumb-w 由 SubpageSection inline 帶入；vw 上限為窄視窗保底
+  width: min(var(--thumb-w, 280px), 80vw);
   transform: translateX(-50%);
-  pointer-events: none;
+  pointer-events: none; // 不擋列的 hover
   opacity: 0;
-  transition: opacity 0.18s ease; // 快速淡入，重播交給 GlitchImage
+  transition: opacity 0.18s ease;
 
-  @include rwd-max('tablet') {
-    width: min(var(--thumb-w, 280px), 80vw);
+  @include rwd-min('tablet') {
+    width: min(var(--thumb-w, 560px), 48vw);
   }
 }
 
@@ -548,32 +538,31 @@ onBeforeUnmount(() => {
   opacity: 1;
 }
 
-// 得獎作品：wrap 建立獨立堆疊脈絡（分隔線 < 文字 < 縮圖）；
-// pad 稿清單收在內文欄寬 530、mob 稿滿版（__inner 邊距 26）
+// wrap 建立獨立堆疊脈絡（分隔線 < 文字 < 縮圖）
 .subpage-section__works-wrap {
   position: relative;
   z-index: 0;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     max-width: 530px;
     margin-inline: auto;
   }
 
-  @include rwd-max('tablet') {
+  @include rwd-min('pc') {
     max-width: none;
   }
 }
 
-// 桂冠圖表 → 得獎作品清單：svg 內建下留白 32，補足到對稿 64（pad 48、mob 64）
+// 桂冠圖表 → 得獎作品清單：pad 以上須扣掉 svg 自帶的下留白 32
 .subpage-section__figure + .subpage-section__works-wrap {
-  margin-top: 32px;
+  margin-top: 64px;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     margin-top: 16px;
   }
 
-  @include rwd-max('tablet') {
-    margin-top: 64px;
+  @include rwd-min('pc') {
+    margin-top: 32px;
   }
 }
 
@@ -589,8 +578,7 @@ onBeforeUnmount(() => {
   background: var(--color-bg-muted);
 }
 
-// 嵌入互動元件：滿版區塊。position + z-index + 不透明背景 → 捲過時
-// 蓋過右側錨點 rail（rail z-index: 1，見 SubpageAnchor 的約定）
+// 嵌入互動元件為滿版區塊：relative + z-index 2 + 白底才蓋得過 rail(z1)，見 SubpageAnchor
 .subpage-section__embed {
   position: relative;
   z-index: 2;

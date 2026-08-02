@@ -1,9 +1,17 @@
 <script lang="ts" setup>
 /**
  * FormulaBlocks — 「Publish X 議題智囊包」放射圖（news 頁）。
- * 三段式版面：pc 中央放射 2×2、pad 上下兩排＋斜向棋盤格連接、
- * mob 直排＋左側垂直棋盤格 rail（連接線為 SVG 素材）。
+ * 三段式版面：pc 中央放射 2×2、pad 上下兩排、mob 直排＋左側 rail；
+ * 連接線三版皆由像素元件生成（PixelBranch／PixelRail）而非 SVG 素材，才能逐格畫。
+ *
+ * 分鏡稿 6043:77372（五格）：中央塊 → 四格同時往四角滑出 → 四線同時往外畫 → 議題框轉灰。
+ * 五格的頁面位置不動 → pin 住舞台、以捲動 scrub 整段（往回捲自動倒退）；
+ * mob 直排稿不跑分鏡，直接定版（見 build()）。
+ * 進度以 `--p`（0..1）交給 CSS，形變算在 CSS 端。
  */
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
 export interface FormulaItem {
   /** 藝術字標題圖（SVG 路徑；無圖時 fallback 為 title 文字） */
   titleImg?: string;
@@ -13,16 +21,19 @@ export interface FormulaItem {
   points?: string[];
 }
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     /** 中央塊：藝術字圖（img）+ 副標（title）；eyebrow 作為圖的 alt 與 fallback */
     center?: { img?: string; eyebrow?: string; title?: string };
     /** 四角格子（依序：左上、右上、左下、右下） */
     items?: FormulaItem[];
+    /** pad 以上 pin 期間可捲動距離（px）＝整段分鏡的捲動長度 */
+    pinDistance?: number;
   }>(),
   {
     center: () => ({ title: '議題智囊包' }),
     items: () => [],
+    pinDistance: 1400,
   },
 );
 
@@ -38,10 +49,14 @@ const BRANCH: Record<
   br: { flip: false, from: 'start' },
 };
 
-// 進場時序（秒）：中央塊 → 四格滑出 → 分支線逐格畫 → 橘轉灰定版
-const BOX_DELAY = 0.3;
-const BRANCH_DELAY = 0.65;
-const SETTLE_DELAY_MS = 1000;
+// 分鏡時序（捲動進度 0..1）：at＝該段起點、span＝長度。
+// 四格與四線皆不逐格錯開（分鏡稿是齊步的）；settle 之後留白維持定版。
+const STOPS = {
+  center: { at: 0, span: 0.16 },
+  box: { at: 0.16, span: 0.34 },
+  conn: { at: 0.54, span: 0.26 },
+  settle: 0.86,
+} as const;
 
 // 三段式舞台（Figma 座標系）：斷點切換版面、<舞台寬時整體 scale
 const STAGES = {
@@ -50,60 +65,121 @@ const STAGES = {
   mob: { w: 360, h: 882 },
 } as const;
 
-// mob 垂直 rail（左側 x=0，依序接到四個格子；第一段接中央塊故較短）
+// mob 左側垂直 rail（x=0，依序接到四個格子）；rows＝垂直段列數，
+// 第一段自中央塊長出故較短、首列切半（對稿素材 rail_01／rail_02）
 const RAILS = [
-  { src: '/img/news/udn75_news_formula_rail_01.svg', y: 156, h: 132 },
-  { src: '/img/news/udn75_news_formula_rail_02.svg', y: 284, h: 180 },
-  { src: '/img/news/udn75_news_formula_rail_02.svg', y: 460, h: 180 },
-  { src: '/img/news/udn75_news_formula_rail_02.svg', y: 636, h: 180 },
+  { y: 156, rows: 29, shortStart: true },
+  { y: 284, rows: 41 },
+  { y: 460, rows: 41 },
+  { y: 636, rows: 41 },
 ];
+
+// 分支線幾何（對稿素材）：pc 44×44 斜切階梯、pad 76×60 平切斜帶；mob 不顯示分支線
+const BRANCH_GEO = {
+  pc: { steps: 9, cut: 'bevel' },
+  pad: { steps: 15, cut: 'flat' },
+  mob: { steps: 15, cut: 'flat' },
+} as const;
 
 const rootRef = ref<HTMLElement | null>(null);
 const viewportRef = ref<HTMLElement | null>(null);
-const on = ref(false);
-const settled = ref(false); // 分支線接上後四格橘轉灰
+const progress = ref(0); // 整段分鏡的捲動進度（0..1，ScrollTrigger scrub 寫入）
 const scale = ref(1);
 const mode = ref<keyof typeof STAGES>('pc');
+const reduced = ref(false);
 
-let io: IntersectionObserver | null = null;
-let settleTimer: number | undefined;
+// mob 舞台 882 高塞不進一屏 → 不 pin；reduced-motion 亦一律不 pin（直接定版）
+const isPinned = computed(() => !reduced.value && mode.value !== 'mob');
+
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const easeOut = (t: number) => 1 - (1 - t) ** 3;
+/** 某段內的 local 進度（0..1，未套 ease） */
+const local = (at: number, span: number) => clamp01((progress.value - at) / span);
+
+const centerP = computed(() => easeOut(local(STOPS.center.at, STOPS.center.span)));
+// 四格共用一份進度（同時往外）：p＝滑出、o＝不透明度（前 12% 就轉滿，見 CSS）
+const boxP = computed(() => {
+  const t = local(STOPS.box.at, STOPS.box.span);
+  return { p: easeOut(t), o: clamp01(t / 0.12) };
+});
+// 四線共用一份進度；不套 ease，與捲動等速才像逐格描出來
+const connP = computed(() => local(STOPS.conn.at, STOPS.conn.span));
+const settled = computed(() => progress.value >= STOPS.settle);
+
+let st: ScrollTrigger | null = null;
+let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
 function onResize() {
   const vw = window.innerWidth;
   mode.value = vw >= PC_BREAKPOINTS ? 'pc' : vw >= TABLET_BREAKPOINTS ? 'pad' : 'mob';
+  const stage = STAGES[mode.value];
   // 量 viewport（padding 內側）而非 section，縮放後才保得住左右留白
-  const w = viewportRef.value?.clientWidth ?? STAGES[mode.value].w;
-  scale.value = Math.min(1, w / STAGES[mode.value].w);
+  const w = viewportRef.value?.clientWidth ?? stage.w;
+  // pin 模式的舞台要塞進一屏 → 高度也納入縮放
+  const fitH = isPinned.value ? window.innerHeight / stage.h : Infinity;
+  scale.value = Math.min(1, w / stage.w, fitH);
 }
 
-onMounted(() => {
-  onResize();
-  window.addEventListener('resize', onResize);
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    on.value = true; // 直接呈現完成態（CSS 端同時停用 animation）
-    settled.value = true;
+function build() {
+  const root = rootRef.value;
+  if (!root) return;
+  // mob 直排稿不跑分鏡（不能 pin，逐格畫線在窄版反而干擾）→ 直接定版
+  if (mode.value === 'mob') {
+    progress.value = 1;
     return;
   }
-  io = new IntersectionObserver(
-    (entries) => {
-      if (entries.some((e) => e.isIntersecting)) {
-        on.value = true;
-        settleTimer = window.setTimeout(() => {
-          settled.value = true;
-        }, SETTLE_DELAY_MS);
-        io?.disconnect();
-        io = null;
-      }
-    },
-    { threshold: 0.35 },
-  );
-  if (rootRef.value) io.observe(rootRef.value);
+  st = ScrollTrigger.create({
+    trigger: root,
+    start: 'top top',
+    end: `+=${props.pinDistance}`,
+    pin: true,
+    anticipatePin: 1,
+    scrub: true,
+    invalidateOnRefresh: true,
+    onUpdate: (self) => (progress.value = self.progress),
+    onLeave: () => (progress.value = 1), // 捲過整段 → 停在定版（onUpdate 不再進來）
+    onLeaveBack: () => (progress.value = 0),
+  });
+}
+
+function teardown() {
+  st?.kill();
+  st = null;
+}
+
+function onWindowResize() {
+  onResize();
+  if (resizeTimer) clearTimeout(resizeTimer);
+  // end 為定值、其餘皆重算 → refresh 即可，免重建
+  resizeTimer = setTimeout(() => ScrollTrigger.refresh(), 200);
+}
+
+// 跨 768 斷點時 pin 與否會變 → 整組重建
+watch(isPinned, () => {
+  teardown();
+  onResize();
+  build();
+  ScrollTrigger.refresh();
+  // 自 mob 定版切回 pin 版時 progress 仍停在 1 → 以重建後的實際捲動位置校正
+  if (st) progress.value = st.progress;
+});
+
+onMounted(() => {
+  reduced.value = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  onResize();
+  window.addEventListener('resize', onWindowResize);
+  if (reduced.value) {
+    progress.value = 1;
+    return;
+  }
+  gsap.registerPlugin(ScrollTrigger);
+  build();
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', onResize);
-  io?.disconnect();
-  window.clearTimeout(settleTimer);
+  if (resizeTimer) clearTimeout(resizeTimer);
+  window.removeEventListener('resize', onWindowResize);
+  teardown();
 });
 </script>
 
@@ -111,16 +187,22 @@ onBeforeUnmount(() => {
   <section
     ref="rootRef"
     class="formula"
-    :class="{ 'is-on': on, 'is-settled': settled }"
+    :class="{ 'formula--pin': isPinned, 'is-settled': settled }"
   >
     <div
       ref="viewportRef"
       class="formula__viewport"
-      :style="{ height: `${STAGES[mode].h * scale}px` }"
+      :style="{ height: isPinned ? '100vh' : `${STAGES[mode].h * scale}px` }"
     >
-      <div class="formula__stage" :style="{ transform: `translateX(-50%) scale(${scale})` }">
-        <!-- 中央 Publish X 塊 -->
-        <div class="formula__center">
+      <div
+        class="formula__stage"
+        :style="{
+          transform: isPinned
+            ? `translate(-50%, -50%) scale(${scale})`
+            : `translateX(-50%) scale(${scale})`,
+        }"
+      >
+        <div class="formula__center" :style="{ '--p': centerP }">
           <img
             v-if="center.img"
             class="formula__center-logo"
@@ -133,47 +215,36 @@ onBeforeUnmount(() => {
           <p class="formula__center-title">{{ center.title }}</p>
         </div>
 
-        <!-- pc：四條像素分支線，從中央塊角落逐格往四角畫出 -->
+        <!-- pc / pad：四條像素分支線同時自中央塊角落逐格往外畫（幾何差異見 BRANCH_GEO） -->
         <PixelBranch
           v-for="p in POS"
           :key="p"
           class="formula__branch"
           :class="`formula__branch--${p}`"
-          :active="on"
+          :progress="connP"
           :flip="BRANCH[p].flip"
           :from="BRANCH[p].from"
-          :delay="BRANCH_DELAY"
+          :steps="BRANCH_GEO[mode].steps"
+          :cut="BRANCH_GEO[mode].cut"
         />
 
-        <!-- pad：上下排與中央塊之間的斜向棋盤格連接（SVG 素材） -->
-        <img
-          v-for="p in POS"
-          :key="`link-${p}`"
-          class="formula__link"
-          :class="`formula__link--${p}`"
-          :src="`/img/news/udn75_news_formula_link_${p}.svg`"
-          alt=""
-          aria-hidden="true"
-        />
-
-        <!-- mob：左側垂直棋盤格 rail，逐格接到各格子 -->
-        <img
+        <!-- mob：左側垂直棋盤格 rail，自上往下逐列畫到各格子 -->
+        <PixelRail
           v-for="(r, i) in RAILS"
           :key="`rail-${i}`"
           class="formula__rail"
-          :src="r.src"
-          :style="{ top: `${r.y}px`, height: `${r.h}px` }"
-          alt=""
-          aria-hidden="true"
+          :style="{ top: `${r.y}px` }"
+          :progress="connP"
+          :rows="r.rows"
+          :short-start="r.shortStart"
         />
 
-        <!-- 四角議題格子 -->
         <div
           v-for="(b, i) in items.slice(0, 4)"
           :key="i"
           class="formula__box"
           :class="`formula__box--${POS[i]}`"
-          :style="{ '--delay': `${BOX_DELAY}s` }"
+          :style="{ '--p': boxP.p, '--o': boxP.o }"
         >
           <p class="formula__box-head">
             <img
@@ -220,36 +291,47 @@ onBeforeUnmount(() => {
   background: #fff;
 }
 
+// pin 模式：viewport 撐滿一屏（inline style），故左右留白照舊、上下不留
+.formula--pin {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 .formula__viewport {
   position: relative;
   width: 100%;
 }
 
-// 舞台依斷點定尺寸（Figma 座標系），視窗小於舞台寬時整體 scale
+// 舞台依斷點定尺寸（Figma 座標系）；尺寸須與 script 的 STAGES 一致
 .formula__stage {
   position: absolute;
   top: 0;
   left: 50%;
-  width: 1064px;
-  height: 524px;
+  width: 360px;
+  height: 882px;
   transform-origin: top center;
 
-  @include rwd-max('pc') {
+  // pin 模式（transform 由 template 換成 translate(-50%, -50%)）：舞台垂直置中於一屏
+  .formula--pin & {
+    top: 50%;
+    transform-origin: center;
+  }
+
+  @include rwd-min('tablet') {
     width: 610px;
     height: 600px;
   }
-  @include rwd-max('tablet') {
-    width: 360px;
-    height: 882px;
+  @include rwd-min('pc') {
+    width: 1064px;
+    height: 524px;
   }
 }
 
-// ── 中央 Publish X 塊：像素外框（橘）+ 內縮 12px 橘色填色 ──
-// pad 置於兩排之間（400×172）；mob 置頂（360×160）
+// ── 中央 Publish X 塊：像素外框 + 內縮 12px 填色 ──
 .formula__center {
   position: absolute;
-  top: 182px;
-  left: 352px;
+  top: 0;
+  left: 0;
   z-index: 1; // 高於四角格子：進場時格子自中央塊「後方」滑出
   display: flex;
   flex-direction: column;
@@ -258,17 +340,19 @@ onBeforeUnmount(() => {
   gap: 4px;
   width: 360px;
   height: 160px;
-  opacity: 0;
+  // 分鏡 1：現身（--p ＝ script 的 centerP）
+  opacity: var(--p, 0);
+  transform: scale(calc(0.88 + 0.12 * var(--p, 0)));
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     top: 214px;
     left: 102px;
     width: 400px;
     height: 172px;
   }
-  @include rwd-max('tablet') {
-    top: 0;
-    left: 0;
+  @include rwd-min('pc') {
+    top: 182px;
+    left: 352px;
     width: 360px;
     height: 160px;
   }
@@ -284,15 +368,6 @@ onBeforeUnmount(() => {
     z-index: 0;
     background: var(--color-orange);
   }
-
-  .formula.is-on & {
-    animation: formula-center-in 0.45s ease both;
-
-    @media (prefers-reduced-motion: reduce) {
-      animation: none;
-      opacity: 1;
-    }
-  }
 }
 
 .formula__center-logo {
@@ -301,10 +376,10 @@ onBeforeUnmount(() => {
   width: 257px;
   height: auto;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     width: 275px;
   }
-  @include rwd-max('tablet') {
+  @include rwd-min('pc') {
     width: 257px;
   }
 }
@@ -328,208 +403,169 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
-// ── pc 分支線位置（對稿 Figma：與中央塊/格子角落各斜疊 8px 對接）──
-// 註：加上 .formula__stage 提高特異性，蓋過 PixelBranch 根元素自帶的
-// position: relative（兩者同為單一 class，僅靠載入順序會不穩定）。
+// ── 分支線（pad 斜帶／pc 四角斜線，與角落各斜疊 8px 對接）──
+// 尺寸由 PixelBranch 依 steps／cut 自算，此處只定位。
+// 掛 .formula__stage 提高特異性，蓋過 PixelBranch 根元素自帶的 position: relative
+// （兩者同為單一 class，僅靠載入順序會不穩定）。
 .formula__stage .formula__branch {
   position: absolute;
+  display: none; // mob 改用 .formula__rail
 
-  &--tl {
-    top: 146px;
-    left: 316px;
-  }
-  &--tr {
-    top: 146px;
-    left: 704px;
-  }
-  &--bl {
-    top: 334px;
-    left: 316px;
-  }
-  &--br {
-    top: 334px;
-    left: 704px;
-  }
-
-  @include rwd-max('pc') {
-    display: none;
-  }
-}
-
-// ── pad 斜向棋盤格連接（76×60，跨排間 60px 縫隙）──
-.formula__link {
-  position: absolute;
-  display: none;
-  width: 76px;
-  height: 60px;
-  opacity: 0;
-
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     display: block;
   }
-  @include rwd-max('tablet') {
-    display: none;
-  }
 
   &--tl {
     top: 154px;
     left: 161px;
+
+    @include rwd-min('pc') {
+      top: 146px;
+      left: 316px;
+    }
   }
   &--tr {
     top: 154px;
     left: 362px;
+
+    @include rwd-min('pc') {
+      top: 146px;
+      left: 704px;
+    }
   }
   &--bl {
     top: 386px;
     left: 161px;
+
+    @include rwd-min('pc') {
+      top: 334px;
+      left: 316px;
+    }
   }
   &--br {
     top: 386px;
     left: 362px;
-  }
 
-  .formula.is-on & {
-    animation: formula-conn-in 0.01s steps(1) both;
-    animation-delay: var(--conn-delay, 0.65s);
-
-    @media (prefers-reduced-motion: reduce) {
-      animation: none;
-      opacity: 1;
+    @include rwd-min('pc') {
+      top: 334px;
+      left: 704px;
     }
   }
 }
 
-// ── mob 左側垂直 rail（44 寬，top/height 由 template 帶入）──
-.formula__rail {
+// ── mob 左側垂直 rail（top 由 template 的 RAILS 帶入；寬高由 PixelRail 自算）──
+.formula__stage .formula__rail {
   position: absolute;
   left: 0;
-  display: none;
-  width: 44px;
-  opacity: 0;
+  display: block;
 
-  @include rwd-max('tablet') {
-    display: block;
-  }
-
-  .formula.is-on & {
-    animation: formula-conn-in 0.01s steps(1) both;
-    animation-delay: var(--conn-delay, 0.65s);
-
-    @media (prefers-reduced-motion: reduce) {
-      animation: none;
-      opacity: 1;
-    }
+  @include rwd-min('tablet') {
+    display: none;
   }
 }
 
 // ── 四角議題格子 ──
-// 進場滑出階段為橘色態（--box-c），is-settled 後瞬間轉灰（多重背景外框無法平滑過渡）
-// 尺寸：pc 324／pad 273／mob 301 寬（高一律 154）
+// 進場滑出階段為橘色（--box-c），is-settled 後瞬間轉灰——多重背景外框無法平滑過渡
 .formula__box {
   --box-c: var(--color-orange);
   position: absolute;
-  width: 324px;
+  width: 301px;
   height: 154px;
-  padding-top: 68px; // 列點區距格子頂（三版一致的固定值）
-  opacity: 0;
+  padding-top: 68px; // 列點區距格子頂，三斷點一致
+  // 分鏡 2–3：自中央塊後方（--from-*）滑到定位（位移歸零）。
+  // --o 於滑出前 12% 就轉滿 → 現身瞬間仍被中央塊遮住，看不到淡入（像素風不淡入）
+  opacity: var(--o, 0);
+  transform: translate(
+    calc(var(--from-x) * (1 - var(--p, 0))),
+    calc(var(--from-y) * (1 - var(--p, 0)))
+  );
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     width: 273px;
   }
-  @include rwd-max('tablet') {
-    width: 301px;
+  @include rwd-min('pc') {
+    width: 324px;
   }
 
   &::before {
     @include pixel-frame(var(--box-c));
   }
 
-  .formula.is-on & {
-    animation: formula-box-in 0.55s ease-out both;
-    animation-delay: var(--delay, 0s);
-
-    @media (prefers-reduced-motion: reduce) {
-      animation: none;
-      opacity: 1;
-    }
-  }
-
   .formula.is-settled & {
     --box-c: var(--color-gray-light);
   }
 
-  // --from-*：滑出起點（中央塊正後方）到定位點的位移量。
-  // 貼齊四角的定位 pc/pad 通用（隨舞台尺寸換算）；mob 改直排、原地淡入。
+  // --from-*：滑出起點（中央塊正後方）到定位點的位移量；mob 直排故為 0（原地淡入）
   &--tl {
-    top: 0;
-    left: 0;
-    --from-x: 370px;
-    --from-y: 185px;
+    top: 197px;
+    left: 44px;
+    --from-x: 0px;
+    --from-y: 0px;
 
-    @include rwd-max('pc') {
+    @include rwd-min('tablet') {
+      top: 0;
+      left: 0;
       --from-x: 165px;
       --from-y: 223px;
     }
-    @include rwd-max('tablet') {
-      top: 197px;
-      left: 44px;
-      --from-x: 0px;
-      --from-y: 0px;
+    @include rwd-min('pc') {
+      --from-x: 370px;
+      --from-y: 185px;
     }
   }
   &--tr {
-    top: 0;
-    right: 0;
-    --from-x: -370px;
-    --from-y: 185px;
+    top: 545px;
+    left: 44px;
+    --from-x: 0px;
+    --from-y: 0px;
 
-    @include rwd-max('pc') {
+    @include rwd-min('tablet') {
+      top: 0;
+      right: 0;
+      left: auto;
       --from-x: -171px;
       --from-y: 223px;
     }
-    @include rwd-max('tablet') {
-      top: 545px;
-      right: auto;
-      left: 44px;
-      --from-x: 0px;
-      --from-y: 0px;
+    @include rwd-min('pc') {
+      --from-x: -370px;
+      --from-y: 185px;
     }
   }
   &--bl {
-    bottom: 0;
-    left: 0;
-    --from-x: 370px;
-    --from-y: -185px;
+    top: 371px;
+    left: 44px;
+    --from-x: 0px;
+    --from-y: 0px;
 
-    @include rwd-max('pc') {
+    @include rwd-min('tablet') {
+      top: auto;
+      bottom: 0;
+      left: 0;
       --from-x: 165px;
       --from-y: -223px;
     }
-    @include rwd-max('tablet') {
-      top: 371px;
-      bottom: auto;
-      left: 44px;
-      --from-x: 0px;
-      --from-y: 0px;
+    @include rwd-min('pc') {
+      --from-x: 370px;
+      --from-y: -185px;
     }
   }
   &--br {
-    bottom: 0;
-    right: 0;
-    --from-x: -370px;
-    --from-y: -185px;
+    top: 728px;
+    left: 44px;
+    --from-x: 0px;
+    --from-y: 0px;
 
-    @include rwd-max('pc') {
+    @include rwd-min('tablet') {
+      top: auto;
+      right: 0;
+      bottom: 0;
+      left: auto;
       --from-x: -171px;
       --from-y: -223px;
     }
-    @include rwd-max('tablet') {
-      top: 728px;
-      right: auto;
-      bottom: auto;
-      left: 44px;
-      --from-x: 0px;
-      --from-y: 0px;
+    @include rwd-min('pc') {
+      --from-x: -370px;
+      --from-y: -185px;
     }
   }
 }
@@ -560,7 +596,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 239px; // 內容區固定寬、格子內置中（padding 差異其實是置中的結果）
+  width: 239px; // 內容區固定寬、格子內置中（三斷點格子寬不同，左右內距因此不等）
   margin: 0 auto;
   padding: 0;
   list-style: none;
@@ -581,39 +617,6 @@ onBeforeUnmount(() => {
     width: 4px;
     height: 4px;
     background: var(--box-c);
-  }
-}
-
-@keyframes formula-center-in {
-  from {
-    opacity: 0;
-    transform: scale(0.85);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-// 起點藏在中央塊正後方；前 12% 快速轉不透明 → 現身瞬間仍被遮蔽，看不到淡入
-@keyframes formula-box-in {
-  0% {
-    opacity: 0;
-    transform: translate(var(--from-x), var(--from-y));
-  }
-  12% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-// 連接線素材（pad 斜帶／mob rail）：到點瞬間現身（像素風，不淡入）
-@keyframes formula-conn-in {
-  to {
-    opacity: 1;
   }
 }
 </style>

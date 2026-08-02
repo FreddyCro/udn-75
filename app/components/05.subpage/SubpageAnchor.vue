@@ -44,10 +44,11 @@ const route = useRoute();
   top: 50%;
   right: 24px;
   z-index: var(--subpage-anchor-z, 1); // 滿版區塊 z-index ≥ 2 即蓋過 rail（底層）
+  display: none; // <1280 改用 SubpageAnchorBar
   transform: translateY(-50%);
 
-  @include rwd-max('pc') {
-    display: none;
+  @include rwd-min('pc') {
+    display: block;
   }
 }
 

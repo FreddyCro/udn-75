@@ -44,20 +44,20 @@ withDefaults(
 .award-work {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 40px;
+  gap: 8px;
   padding: var(--sp-work-y) 0;
   color: inherit;
   text-decoration: none;
 
-  // pad / mob 稿：直排（標題 → 說明 → 點擊看專題），連結靠右
-  @include rwd-max('pc') {
-    flex-direction: column;
-    gap: 8px;
+  @include rwd-min('pc') {
+    flex-direction: row;
+    gap: 40px;
   }
 
-  // 分隔線走底層（z1），會被懸浮縮圖(z2)蓋住，只有文字(z3)在圖上。
+  // 分隔線走底層（z1），會被懸浮縮圖蓋住；只有文字(z3)浮在圖上。
   &::before {
     content: '';
     position: absolute;
@@ -92,31 +92,29 @@ withDefaults(
 
 .award-work__title {
   margin: 0;
-  font-size: var(--text-h5); // 20 / 32 Medium
-  line-height: var(--text-h5--line-height);
-  font-weight: 500;
-  color: var(--color-body);
+  font-size: 18px;
+  line-height: 30px;
+  font-weight: 400;
+  color: var(--color-gray);
   transition: color 0.2s ease;
 
   .award-work:hover & {
     color: var(--color-orange);
   }
 
-  // pad / mob 稿：18 / 30 Regular
-  @include rwd-max('pc') {
-    font-size: 18px;
-    line-height: 30px;
-    font-weight: 400;
-    color: var(--color-gray);
+  @include rwd-min('pc') {
+    font-size: var(--text-h5);
+    line-height: var(--text-h5--line-height);
+    font-weight: 500;
+    color: var(--color-body);
   }
 }
 
-// 描述收合／展開：grid-template-rows 0fr ↔ 1fr 平滑過渡（內容高度未知也可動畫）；
-// pc hover 展開、<1280 由 active（滾至畫面中央的列）展開
+// 描述收合／展開：grid-template-rows 0fr ↔ 1fr，內容高度未知也能平滑過渡
 .award-work__desc-wrap {
   display: grid;
   grid-template-rows: 0fr;
-  // 標題 → 說明間距（8）跟著展開出現，收合列才不會殘留空隙
+  // margin 跟著一起過渡，收合列才不會殘留空隙
   margin-top: 0;
   transition:
     grid-template-rows 0.3s ease,
@@ -133,37 +131,36 @@ withDefaults(
   margin: 0;
   min-height: 0;
   overflow: hidden;
-  font-size: var(--text-caption); // 15 / 22
+  font-size: var(--text-caption);
   line-height: var(--text-caption--line-height);
-  font-weight: 400;
-  color: var(--color-body);
+  font-weight: 300;
+  color: var(--color-gray);
+  text-align: justify;
 
-  @include rwd-max('pc') {
-    font-weight: 300;
-    color: var(--color-gray);
-    text-align: justify;
+  @include rwd-min('pc') {
+    font-weight: 400;
+    color: var(--color-body);
+    text-align: left;
   }
 }
 
 .award-work__more {
   position: relative;
   z-index: 3; // 連結在縮圖之上
-  display: inline-flex;
+  display: none; // <1280 只在 active 列顯示；pc 常駐
+  align-self: flex-end;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
   color: var(--color-gray);
 
-  // pad / mob 稿：靠右、只在 active 列顯示
-  @include rwd-max('pc') {
-    display: none;
-    align-self: flex-end;
+  .award-work--active & {
+    display: inline-flex;
   }
 
-  .award-work--active & {
-    @include rwd-max('pc') {
-      display: inline-flex;
-    }
+  @include rwd-min('pc') {
+    display: inline-flex;
+    align-self: auto;
   }
 }
 
@@ -184,14 +181,13 @@ withDefaults(
 .award-work__arrow {
   display: block;
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
+  width: 48px;
+  height: 48px;
   transform: scaleX(-1); // 素材箭頭朝左 → 鏡射指向右側
 
-  // mob 稿：48
-  @include rwd-max('tablet') {
-    width: 48px;
-    height: 48px;
+  @include rwd-min('tablet') {
+    width: 30px;
+    height: 30px;
   }
 }
 </style>

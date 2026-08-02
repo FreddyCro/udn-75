@@ -47,21 +47,23 @@ withDefaults(
 
 .subpage-nav__inner {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 24px;
   width: 100%;
-  max-width: var(--subpage-wide-w); // 1064，與內文寬欄對齊
+  max-width: var(--subpage-wide-w); // 與內文寬欄對齊
   margin: 0 auto;
-  padding: 60px 20px 16px;
+  padding: 40px 26px 16px;
 
-  @include rwd-max('pc') {
-    padding: 60px 32px 16px; // pad 稿按鈕列左右邊距 32
+  @include rwd-min('tablet') {
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+    padding: 60px 32px 16px;
   }
-  @include rwd-max('tablet') {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 24px;
-    padding: 40px 26px 16px;
+  @include rwd-min('pc') {
+    padding: 60px 20px 16px;
   }
 }
 
@@ -78,14 +80,14 @@ withDefaults(
 }
 
 .subpage-nav__label {
-  font-size: var(--text-body); // 18 / 36 Light
+  font-size: var(--text-body);
   line-height: var(--text-body--line-height);
   font-weight: 300;
-  letter-spacing: 10px;
-  white-space: nowrap;
+  letter-spacing: 1.8px;
+  white-space: normal;
 
-  @include rwd-max('tablet') {
-    white-space: normal;
+  @include rwd-min('tablet') {
+    white-space: nowrap;
   }
 }
 

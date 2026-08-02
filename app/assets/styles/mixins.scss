@@ -4,16 +4,17 @@
 // 依 CLAUDE.md：RWD 寫在 BEM element 內部、用 rwd-xxx mixin 包住，同一 class
 // 只定義一次、各斷點集中同處。斷點值對齊 app/utils/constants.ts 的正式定義。
 //
-// 用法（desktop-first，往小螢幕覆蓋）：
+// 新寫的樣式一律 mobile-first：基底＝mob 稿，再用 rwd-min 往大螢幕覆蓋。
 //   .block__element {
-//     font-size: 24px;
-//     @include rwd-tablet { font-size: 20px; }  // ≤ 768px
-//     @include rwd-mobile { font-size: 16px; }  // ≤ 414px
+//     font-size: 16px;                                 // mob 稿（≤767）
+//     @include rwd-min('tablet') { font-size: 20px; }  // pad 稿（768–1279）
+//     @include rwd-min('pc') { font-size: 24px; }      // pc 稿（≥1280）
 //   }
+// rwd-max／rwd-tablet／rwd-mobile 為 desktop-first 的舊寫法，僅存量檔案沿用。
 $breakpoints: (
   'mobile': 414px,  // MOBILE_BREAKPOINTS
-  'tablet': 768px,  // TABLET_BREAKPOINTS；三段式切點：mob 稿 ≤767、pad 稿 768–1279
-  'pc': 1280px,     // PC_BREAKPOINTS：pc 稿 ≥1280
+  'tablet': 768px,  // TABLET_BREAKPOINTS
+  'pc': 1280px,     // PC_BREAKPOINTS
 );
 
 @function bp($name) {

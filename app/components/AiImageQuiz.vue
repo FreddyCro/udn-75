@@ -41,7 +41,7 @@ function pick(i: number) {
 
 <template>
   <div class="ai-quiz">
-    <!-- 兩張圖同高並排（寬度依 @1x 素材比例分配） -->
+    <!-- 兩張圖同高並排，寬度依 @1x 素材比例分配 -->
     <div class="ai-quiz__options">
       <figure
         v-for="(o, i) in options"
@@ -60,7 +60,7 @@ function pick(i: number) {
       </figure>
     </div>
 
-    <!-- 作答按鈕：pc / pad 為圓鈕＋文字；mob 稿改為邊框盒＋像素箭頭（兩顆均分欄寬） -->
+    <!-- 作答按鈕：pad 以上為圓鈕＋文字，mob 改為邊框盒＋像素箭頭 -->
     <div class="ai-quiz__controls">
       <button
         v-for="(o, i) in options"
@@ -142,21 +142,19 @@ function pick(i: number) {
 </template>
 
 <style lang="scss" scoped>
+// 欄寬與 SubpageSection__inner 對齊（此元件為滿版 embed，不吃 section 的內距）
 .ai-quiz {
   width: 100%;
-  max-width: var(--subpage-content-w); // 窄欄 630，對稿
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 26px;
 
-  // pad 稿：與內文欄同寬（570 含 padding 20 → 530）
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     max-width: 570px;
+    padding: 0 20px;
   }
 
-  // mob 稿：滿版、左右邊距 26
-  @include rwd-max('tablet') {
-    max-width: none;
-    padding: 0 26px;
+  @include rwd-min('pc') {
+    max-width: var(--subpage-content-w);
   }
 }
 
@@ -168,7 +166,7 @@ function pick(i: number) {
   position: relative;
   margin: 0;
 
-  // 遮罩層：作答後蓋在非 AI 的照片上（對稿指定 45% 黑）
+  // 遮罩層：作答後蓋在非 AI 的照片上
   &::after {
     content: '';
     position: absolute;
@@ -194,21 +192,25 @@ function pick(i: number) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 16px;
+  gap: 8px;
+  margin-top: 14px;
 
-  // mob 稿：兩顆邊框盒按鈕置中均分（177 + 8 + 177 = 362）
-  @include rwd-max('tablet') {
-    gap: 8px;
-    margin-top: 14px;
+  @include rwd-min('tablet') {
+    gap: 0;
+    margin-top: 16px;
   }
 }
 
+// mob：邊框盒，箭頭貼外側、文字靠內；pad 以上為純文字＋圓框箭頭
 .ai-quiz__btn {
   display: inline-flex;
+  flex: 1;
   align-items: center;
-  gap: 8px;
-  padding: 0;
-  border: 0;
+  justify-content: flex-start;
+  gap: 16px;
+  height: 60px;
+  padding: 0 20px;
+  border: 0.5px solid var(--color-gray);
   background: none;
   color: var(--color-gray);
   cursor: pointer;
@@ -217,23 +219,25 @@ function pick(i: number) {
     cursor: default;
   }
 
-  // mob 稿：177×60 邊框盒，箭頭貼外側、文字靠內
-  @include rwd-max('tablet') {
-    flex: 1;
-    gap: 16px;
-    justify-content: flex-start;
-    height: 60px;
-    padding: 0 20px;
-    border: 0.5px solid var(--color-gray);
+  &:last-child {
+    justify-content: flex-end;
 
-    &:last-child {
-      justify-content: flex-end;
+    @include rwd-min('tablet') {
+      justify-content: flex-start;
     }
+  }
+
+  @include rwd-min('tablet') {
+    flex: 0 1 auto;
+    gap: 8px;
+    height: auto;
+    padding: 0;
+    border: 0;
   }
 }
 
 .ai-quiz__btn-icon {
-  display: block;
+  display: none;
   width: 48px;
   height: 48px;
 
@@ -241,19 +245,19 @@ function pick(i: number) {
     transform: scaleX(-1);
   }
 
-  @include rwd-max('tablet') {
-    display: none;
+  @include rwd-min('tablet') {
+    display: block;
   }
 }
 
-// mob 稿專用像素箭頭（素材 22×12 朝下，旋轉指向外側）
+// mob 專用像素箭頭：素材朝下，旋轉指向外側
 .ai-quiz__btn-pixel {
-  display: none;
+  display: block;
+  width: 22px;
+  height: 12px;
 
-  @include rwd-max('tablet') {
-    display: block;
-    width: 22px;
-    height: 12px;
+  @include rwd-min('tablet') {
+    display: none;
   }
 
   &--left {
@@ -266,28 +270,27 @@ function pick(i: number) {
 }
 
 .ai-quiz__btn-label {
-  font-size: var(--text-body); // Button_M 18 / 36 Light、字距 10%
-  line-height: var(--text-body--line-height);
+  font-size: 15px;
+  line-height: 26px;
   font-weight: 300;
   letter-spacing: 0.1em;
 
-  // mob 稿：Button_S 15 / 26 Light
-  @include rwd-max('tablet') {
-    font-size: 15px;
-    line-height: 26px;
+  @include rwd-min('tablet') {
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
   }
 }
 
-// 說明面板：淺灰底，「說明：」常駐；作答後 body 以 grid-rows 0fr ↔ 1fr 下展
+// 說明面板：「說明：」常駐，作答後 body 以 grid-rows 0fr ↔ 1fr 下展
 .ai-quiz__panel {
-  margin-top: 28px; // 對稿：按鈕 → 面板 28
+  margin-top: 28px;
   padding: 16px 24px;
-  background: #f7f7f7; // 對稿近似（面板淺灰底，非全站 token）
+  background: #f7f7f7; // 面板專用底色，非全站 token
 }
 
 .ai-quiz__hint {
   margin: 0;
-  font-size: 16px; // 對稿「解釋文字」樣式 16 / 24 Light
+  font-size: 16px;
   line-height: 24px;
   font-weight: 300;
   color: var(--color-gray-light);

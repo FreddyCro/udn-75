@@ -35,8 +35,8 @@ function build() {
   const track = trackRef.value;
   if (!root || !stage || !track) return;
 
-  // 軌道超出舞台的量 = 需要平移的距離（含左右緩衝 padding）
-  // 以函式回傳 + invalidateOnRefresh：resize 後 refresh 即重算，不必重建
+  // 軌道超出舞台的量 = 需平移的距離。以函式回傳搭配 invalidateOnRefresh，
+  // resize 後 refresh 即重算，不必重建 timeline。
   const shift = () => Math.max(0, track.scrollWidth - stage.clientWidth);
   if (shift() === 0) return; // 照片不夠寬就不動
 
@@ -63,7 +63,6 @@ function teardown() {
 
 function onResize() {
   if (resizeTimer) clearTimeout(resizeTimer);
-  // end / x 皆為函式值 + invalidateOnRefresh → refresh 即重算，免重建
   resizeTimer = setTimeout(() => ScrollTrigger.refresh(), 200);
 }
 
@@ -128,43 +127,45 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 100vh;
+  height: auto; // mob 直排：不 pin、不滿版
   overflow: hidden;
 
-  @include rwd-max('tablet') {
-    height: auto; // mob 直排：不 pin、不滿版
+  @include rwd-min('tablet') {
+    height: 100vh;
   }
 }
 
-// 水平軌道：x 位移由 timeline 依滾動推進（由左至右看完整排照片）
-// mob 改直排圖列（gap 32、欄邊距 26、圖說間距 12）
+// mob 直排；pad 以上為水平軌道，x 位移由 timeline 依滾動推進
 .photo-panels__track {
   display: flex;
+  flex-direction: column;
   align-items: flex-start; // 照片同尺寸頂端對齊；圖說行數不影響照片水平線
-  gap: 80px;
-  padding: 0 108px;
-  will-change: transform;
+  width: 100%;
+  gap: 32px;
+  padding: 0 26px;
+  will-change: auto;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
+    flex-direction: row;
+    width: auto;
+    gap: 80px;
     padding: 0 119px;
+    will-change: transform;
   }
-  @include rwd-max('tablet') {
-    flex-direction: column;
-    width: 100%;
-    gap: 32px;
-    padding: 0 26px;
-    will-change: auto;
+
+  @include rwd-min('pc') {
+    padding: 0 108px;
   }
 }
 
-// 寬度 = 設計稿定值 480px（同 @1x 素材自然尺寸，不放大不失真）
+// pad 以上寬度＝ @1x 素材自然尺寸，不放大不失真
 .photo-panels__item {
   flex-shrink: 0;
-  width: 480px;
+  width: 100%;
   margin: 0;
 
-  @include rwd-max('tablet') {
-    width: 100%;
+  @include rwd-min('tablet') {
+    width: 480px;
   }
 }
 
@@ -175,13 +176,13 @@ onBeforeUnmount(() => {
 }
 
 .photo-panels__caption {
-  margin-top: 16px; // 對稿定值（此區 16，非全站 --sp-img-caption 的 12）
+  margin-top: 12px;
   font-size: var(--text-caption);
   line-height: var(--text-caption--line-height);
   color: var(--color-gray);
 
-  @include rwd-max('tablet') {
-    margin-top: 12px;
+  @include rwd-min('tablet') {
+    margin-top: 16px; // 此區為 16，非全站 --sp-img-caption
   }
 }
 

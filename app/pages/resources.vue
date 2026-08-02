@@ -367,7 +367,7 @@ useHead({ title: '素材總覽 · udn 75' });
     padding: 0;
     list-style: none;
 
-    @media (min-width: 768px) {
+    @include rwd-min('tablet') {
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     }
   }

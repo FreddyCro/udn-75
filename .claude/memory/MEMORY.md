@@ -5,6 +5,7 @@
 - [Four animation issues](four-animation-issues.md) — 2026-06-10 確認的四個動態需求摘要，issue 在 temp/issue-01~04
 - [Section component naming](section-component-naming.md) — agenda 議程時間軸在 02.forum（非 section 3）；section 3 已 rename 為 03.blessing/Blessing.vue
 - [RWD breakpoint mapping](rwd-breakpoint-mapping.md) — mob 稿 ≤767、pad 稿 768–1279、pc ≥1280；用 rwd-max('tablet')/rwd-max('pc')
+- [Subpage hero 100vh](subpage-hero-100vh.md) — 子頁首屏滿版 100svh＋進場 fade-up（不做 sticky）；文案距頂固定、bg 距底比例
 - [News subpage RWD](news-subpage-rwd.md) — /news 三斷點完成紀錄：FormulaBlocks 三舞台、GlitchImage 1280 觸發、待確認問題
 - [Visual subpage RWD](visual-subpage-rwd.md) — /visual 三斷點完成紀錄：mob 測驗邊框盒按鈕、works 作用中列、桂冠圖原寸與 titleCenter
 - [Service subpage RWD](service-subpage-rwd.md) — /service 三斷點完成紀錄：沿用 visual 版型、chart svg 留白規範、figures pad 32
