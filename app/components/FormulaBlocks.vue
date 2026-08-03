@@ -4,9 +4,11 @@
  * 三段式版面：pc 中央放射 2×2、pad 上下兩排、mob 直排＋左側 rail；
  * 連接線三版皆由像素元件生成（PixelBranch／PixelRail）而非 SVG 素材，才能逐格畫。
  *
- * 分鏡稿 6043:77372（五格）：中央塊 → 四格同時往四角滑出 → 四線同時往外畫 → 議題框轉灰。
- * 五格的頁面位置不動 → pin 住舞台、以捲動 scrub 整段（往回捲自動倒退）；
- * mob 直排稿不跑分鏡，直接定版（見 build()）。
+ * 兩份分鏡稿、兩套時序（皆以捲動 scrub，往回捲自動倒退）：
+ *   pc/pad 6043:77372（五格）：中央塊 → 四格同時往四角滑出 → 四線同時往外畫 → 議題框轉灰。
+ *     五格的頁面位置不動 → pin 住舞台跑固定捲動距離。
+ *   mob 6100:64117（四格）：中央塊 → 由上而下逐組「rail 往下畫 → 議題框現身」→ 四框轉灰。
+ *     舞台 882 高塞不進一屏 → 不 pin，改以整段自身的捲動行程當進度（見 build()）。
  * 進度以 `--p`（0..1）交給 CSS，形變算在 CSS 端。
  */
 import { gsap } from 'gsap';
@@ -50,13 +52,25 @@ const BRANCH: Record<
 };
 
 // 分鏡時序（捲動進度 0..1）：at＝該段起點、span＝長度。
-// 四格與四線皆不逐格錯開（分鏡稿是齊步的）；settle 之後留白維持定版。
+// pc/pad：四格與四線皆不逐格錯開（分鏡稿是齊步的）；settle 之後留白維持定版。
 const STOPS = {
   center: { at: 0, span: 0.16 },
   box: { at: 0.16, span: 0.34 },
   conn: { at: 0.54, span: 0.26 },
   settle: 0.86,
 } as const;
+
+// mob：改為由上而下依序跑四組，每組先畫 rail、rail 接到框後該框才進場；
+// 四框最後才一起轉灰（分鏡稿第三格仍是橘、第四格才全灰）。
+const MOB_STOPS = {
+  center: { at: 0, span: 0.12 },
+  step: { at: 0.12, span: 0.19 }, // 每組（rail + 議題框）佔的進度長度
+  rail: 0.12, // 組內 rail 畫線長度，其餘為議題框進場
+  settle: 0.94,
+} as const;
+
+// mob 直排由上而下的視覺順序 → POS 索引（tl → bl → tr → br，見 .formula__box 定位）
+const MOB_ORDER = [0, 2, 1, 3];
 
 // 三段式舞台（Figma 座標系）：斷點切換版面、<舞台寬時整體 scale
 const STAGES = {
@@ -88,23 +102,44 @@ const scale = ref(1);
 const mode = ref<keyof typeof STAGES>('pc');
 const reduced = ref(false);
 
-// mob 舞台 882 高塞不進一屏 → 不 pin；reduced-motion 亦一律不 pin（直接定版）
-const isPinned = computed(() => !reduced.value && mode.value !== 'mob');
+const isMob = computed(() => mode.value === 'mob');
+// mob 舞台 882 高塞不進一屏 → 不 pin（改跑自身捲動行程）；reduced-motion 亦一律不 pin（直接定版）
+const isPinned = computed(() => !reduced.value && !isMob.value);
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
 /** 某段內的 local 進度（0..1，未套 ease） */
 const local = (at: number, span: number) => clamp01((progress.value - at) / span);
 
-const centerP = computed(() => easeOut(local(STOPS.center.at, STOPS.center.span)));
-// 四格共用一份進度（同時往外）：p＝滑出、o＝不透明度（前 12% 就轉滿，見 CSS）
+const centerP = computed(() => {
+  const s = isMob.value ? MOB_STOPS.center : STOPS.center;
+  return easeOut(local(s.at, s.span));
+});
+// pc/pad — 四格共用一份進度（同時往外）：p＝滑出、o＝不透明度（前 12% 就轉滿，見 CSS）
 const boxP = computed(() => {
   const t = local(STOPS.box.at, STOPS.box.span);
   return { p: easeOut(t), o: clamp01(t / 0.12) };
 });
-// 四線共用一份進度；不套 ease，與捲動等速才像逐格描出來
+// pc/pad — 四線共用一份進度；不套 ease，與捲動等速才像逐格描出來
 const connP = computed(() => local(STOPS.conn.at, STOPS.conn.span));
-const settled = computed(() => progress.value >= STOPS.settle);
+
+/** mob 第 i 組（由上而下）的起點 */
+const mobAt = (i: number) => MOB_STOPS.step.at + i * MOB_STOPS.step.span;
+// mob 四條 rail 的畫線進度（陣列序＝ RAILS 序，由上而下）；同樣不套 ease
+const railP = computed(() => RAILS.map((_, i) => local(mobAt(i), MOB_STOPS.rail)));
+// mob 四格議題框的進場進度（陣列序＝ POS 序），rail 畫到底才接著跑
+const mobBoxP = computed(() => {
+  const out = [0, 0, 0, 0];
+  const span = MOB_STOPS.step.span - MOB_STOPS.rail;
+  MOB_ORDER.forEach((pos, i) => {
+    out[pos] = easeOut(local(mobAt(i) + MOB_STOPS.rail, span));
+  });
+  return out;
+});
+
+const settled = computed(
+  () => progress.value >= (isMob.value ? MOB_STOPS.settle : STOPS.settle),
+);
 
 let st: ScrollTrigger | null = null;
 let resizeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -123,23 +158,26 @@ function onResize() {
 function build() {
   const root = rootRef.value;
   if (!root) return;
-  // mob 直排稿不跑分鏡（不能 pin，逐格畫線在窄版反而干擾）→ 直接定版
-  if (mode.value === 'mob') {
-    progress.value = 1;
-    return;
-  }
   st = ScrollTrigger.create({
     trigger: root,
-    start: 'top top',
-    end: `+=${props.pinDistance}`,
-    pin: true,
-    anticipatePin: 1,
+    // pc/pad：pin 住舞台跑固定捲動距離（五格的頁面位置不動）。
+    // mob：不 pin，直接把整段自身的捲動行程當進度 —— 線性對應之下，
+    // 四格議題框都會在畫面同一高度附近現身（框間距與每組行程幾乎等長）。
+    ...(isPinned.value
+      ? {
+          start: 'top top',
+          end: `+=${props.pinDistance}`,
+          pin: true,
+          anticipatePin: 1,
+        }
+      : { start: 'top 40%', end: 'bottom bottom' }),
     scrub: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => (progress.value = self.progress),
     onLeave: () => (progress.value = 1), // 捲過整段 → 停在定版（onUpdate 不再進來）
     onLeaveBack: () => (progress.value = 0),
   });
+  progress.value = st.progress; // 中途載入（已捲過部分區段）時先對齊實際位置
 }
 
 function teardown() {
@@ -160,7 +198,7 @@ watch(isPinned, () => {
   onResize();
   build();
   ScrollTrigger.refresh();
-  // 自 mob 定版切回 pin 版時 progress 仍停在 1 → 以重建後的實際捲動位置校正
+  // 兩套時序的 start/end 不同 → 以 refresh 後的實際捲動位置重新校正進度
   if (st) progress.value = st.progress;
 });
 
@@ -228,13 +266,13 @@ onBeforeUnmount(() => {
           :cut="BRANCH_GEO[mode].cut"
         />
 
-        <!-- mob：左側垂直棋盤格 rail，自上往下逐列畫到各格子 -->
+        <!-- mob：左側垂直棋盤格 rail，自上往下逐列畫到各格子（四條依序、不齊步） -->
         <PixelRail
           v-for="(r, i) in RAILS"
           :key="`rail-${i}`"
           class="formula__rail"
           :style="{ top: `${r.y}px` }"
-          :progress="connP"
+          :progress="railP[i]"
           :rows="r.rows"
           :short-start="r.shortStart"
         />
@@ -244,7 +282,11 @@ onBeforeUnmount(() => {
           :key="i"
           class="formula__box"
           :class="`formula__box--${POS[i]}`"
-          :style="{ '--p': boxP.p, '--o': boxP.o }"
+          :style="
+            isMob
+              ? { '--p': mobBoxP[i], '--o': mobBoxP[i] }
+              : { '--p': boxP.p, '--o': boxP.o }
+          "
         >
           <p class="formula__box-head">
             <img
@@ -472,8 +514,9 @@ onBeforeUnmount(() => {
   width: 301px;
   height: 154px;
   padding-top: 68px; // 列點區距格子頂，三斷點一致
-  // 分鏡 2–3：自中央塊後方（--from-*）滑到定位（位移歸零）。
-  // --o 於滑出前 12% 就轉滿 → 現身瞬間仍被中央塊遮住，看不到淡入（像素風不淡入）
+  // pc/pad 分鏡 2–3：自中央塊後方（--from-*）滑到定位（位移歸零）。
+  // --o 於滑出前 12% 就轉滿 → 現身瞬間仍被中央塊遮住，看不到淡入（像素風不淡入）；
+  // mob 則無遮蔽物，改順著 rail 水平臂的方向自左滑入 16px（4 格）＋淡入。
   opacity: var(--o, 0);
   transform: translate(
     calc(var(--from-x) * (1 - var(--p, 0))),
@@ -495,11 +538,11 @@ onBeforeUnmount(() => {
     --box-c: var(--color-gray-light);
   }
 
-  // --from-*：滑出起點（中央塊正後方）到定位點的位移量；mob 直排故為 0（原地淡入）
+  // --from-*：進場起點到定位點的位移量（pc/pad 為中央塊正後方；mob 為左方 16px）
   &--tl {
     top: 197px;
     left: 44px;
-    --from-x: 0px;
+    --from-x: -16px;
     --from-y: 0px;
 
     @include rwd-min('tablet') {
@@ -516,7 +559,7 @@ onBeforeUnmount(() => {
   &--tr {
     top: 545px;
     left: 44px;
-    --from-x: 0px;
+    --from-x: -16px;
     --from-y: 0px;
 
     @include rwd-min('tablet') {
@@ -534,7 +577,7 @@ onBeforeUnmount(() => {
   &--bl {
     top: 371px;
     left: 44px;
-    --from-x: 0px;
+    --from-x: -16px;
     --from-y: 0px;
 
     @include rwd-min('tablet') {
@@ -552,7 +595,7 @@ onBeforeUnmount(() => {
   &--br {
     top: 728px;
     left: 44px;
-    --from-x: 0px;
+    --from-x: -16px;
     --from-y: 0px;
 
     @include rwd-min('tablet') {
