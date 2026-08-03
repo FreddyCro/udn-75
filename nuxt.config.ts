@@ -51,7 +51,11 @@ export default defineNuxtConfig({
     })(),
   },
 
-  css: ['~/assets/styles/tailwind.css', '~/assets/styles/base.scss'],
+  css: [
+    '~/assets/styles/tailwind.css',
+    '~/assets/styles/base.scss',
+    '~/assets/styles/subpage.scss',
+  ],
 
   // Pre-bundle CJS-only dependency in dev to avoid ESM default export issues.
   // @udn-digital-center/common-components 內部 import 的 vue-scrollto 為 CJS，

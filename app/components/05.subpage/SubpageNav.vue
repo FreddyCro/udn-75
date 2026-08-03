@@ -43,6 +43,10 @@ withDefaults(
 <style lang="scss" scoped>
 .subpage-nav {
   background: #fff;
+  display: none;
+  @include rwd-min('tablet') {
+    display: block;
+  }
 }
 
 .subpage-nav__inner {
@@ -54,7 +58,7 @@ withDefaults(
   width: 100%;
   max-width: var(--subpage-wide-w); // 與內文寬欄對齊
   margin: 0 auto;
-  padding: 40px 26px 16px;
+  padding: 32px;
 
   @include rwd-min('tablet') {
     flex-direction: row;
@@ -62,6 +66,7 @@ withDefaults(
     gap: 0;
     padding: 60px 32px 16px;
   }
+
   @include rwd-min('pc') {
     padding: 60px 20px 16px;
   }

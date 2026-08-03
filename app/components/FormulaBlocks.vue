@@ -287,7 +287,7 @@ onBeforeUnmount(() => {
 
 .formula {
   width: 100%;
-  padding: 24px 20px;
+  padding: 32px 20px;
   background: #fff;
 }
 

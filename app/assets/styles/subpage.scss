@@ -1,0 +1,97 @@
+// 子頁內文排版基元（news / visual / data / service 共用）。
+//
+// 這裡只定義「長什麼樣」——欄寬、字級、顏色；
+// 不寫距離，由頁面上的 Tailwind mt-* 逐塊標註。
+@layer components {
+  // 內文窄欄：mob 滿寬留邊 26／pad 570／pc 630
+  .sp-col {
+    color: var(--color-gray);
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 26px;
+
+    @include rwd-min('tablet') {
+      max-width: 570px;
+      padding: 0 20px;
+    }
+    @include rwd-min('pc') {
+      max-width: var(--subpage-content-w);
+    }
+  }
+
+  // hero／引言／得獎作品寬欄
+  .sp-col--wide {
+    @include rwd-min('tablet') {
+      max-width: var(--subpage-wide-w);
+      padding: 0 57px;
+    }
+    @include rwd-min('pc') {
+      max-width: var(--subpage-wide-w);
+      padding: 0 20px;
+    }
+  }
+
+  // 滿版嵌入元件（分鏡、時間軸…）：須 relative + z-index 2 + 不透明底才蓋得過
+  // 右側 anchor rail（z1），見 SubpageAnchor
+  .sp-full {
+    position: relative;
+    z-index: 2;
+    background: #fff;
+  }
+
+  // H3 小標（mob 走 H4 字級）
+  .sp-h3 {
+    margin: 0;
+    font-size: var(--text-h4);
+    line-height: 40px;
+    font-weight: 400;
+
+    @include rwd-min('tablet') {
+      font-size: var(--text-h3);
+      line-height: var(--text-h3--line-height);
+    }
+  }
+
+  // 置中導言的 H4 標題
+  .sp-h4 {
+    margin: 0;
+    font-size: var(--text-h4);
+    line-height: 40px;
+    font-weight: 400;
+    text-align: center;
+
+    @include rwd-min('pc') {
+      line-height: var(--text-h4--line-height);
+    }
+  }
+
+  // 置中引導句（跟在 .sp-h4 之後）
+  .sp-lead {
+    margin: 0;
+    font-size: 18px;
+    line-height: 30px;
+    font-weight: 400;
+    text-align: center;
+
+    @include rwd-min('tablet') {
+      font-size: var(--text-h5);
+      line-height: var(--text-h5--line-height);
+    }
+  }
+
+  // 內文段落
+  .sp-p {
+    margin: 0;
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    font-weight: 300;
+  }
+
+  // 圖說
+  .sp-caption {
+    margin: 0;
+    font-size: var(--text-caption);
+    line-height: var(--text-caption--line-height);
+    color: var(--color-gray);
+  }
+}

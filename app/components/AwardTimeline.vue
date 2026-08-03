@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 /**
  * AwardTimeline — 獲獎歷程橫向時間軸（pin + scrub，news 頁）。
+ * pin 的是本元件的 root，故小標要一起釘住就得放進來：用 #title slot，
+ * 會渲染在 __stage 內（100vh flex column），與軌道同框垂直置中。
  * reduced-motion 改原生橫向捲動。
  */
 import { gsap } from 'gsap';
@@ -121,6 +123,9 @@ onBeforeUnmount(() => {
 <template>
   <section ref="rootRef" class="award-timeline">
     <div ref="stageRef" class="award-timeline__stage">
+      <!-- 小標：放在 stage 內才會一起被 pin 住；間距由頁面在 slot 內容上標 -->
+      <slot name="title" />
+
       <div ref="trackRef" class="award-timeline__track">
         <!-- 歷程線（藍，scaleX 延伸）+ 橘色像素箭頭（定於左端） -->
         <div class="award-timeline__head" aria-hidden="true">

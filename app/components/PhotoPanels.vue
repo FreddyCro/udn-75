@@ -176,7 +176,7 @@ onBeforeUnmount(() => {
 }
 
 .photo-panels__caption {
-  margin-top: 12px;
+  margin-top: 16px;
   font-size: var(--text-caption);
   line-height: var(--text-caption--line-height);
   color: var(--color-gray);

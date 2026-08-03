@@ -1,7 +1,9 @@
 <script lang="ts" setup>
 /**
- * Subpage — 四個「類分頁」共用版型骨架，內容由 JSON 驅動：
- * <Subpage :content="content" />（content = ~/locales/xxx.json）。
+ * Subpage — 四個「類分頁」共用版型骨架：hero／引言／錨點／進場動畫／下一篇導覽。
+ * 內文兩種寫法：
+ *   1. 預設 slot（news）：內文直接寫在頁面上，區塊間距逐塊標 Tailwind mt-*。
+ *   2. content.sections（visual / data / service）：JSON 驅動 SubpageSection。
  * header / footer 由 subpage layout 提供。
  */
 import { gsap } from 'gsap';
@@ -57,23 +59,24 @@ export interface SubpageContent {
     /** 首屏背景圖（單檔 jpg，不含副檔名），如 /img/news/udn75_bg_news */
     bg: string;
   };
-  /** 引言：單段字串或多段陣列（每段獨立 <p>，末行不被 justify 拉開） */
-  intro: string | string[];
-  sections: SubpageSectionData[];
+  /**
+   * 引言：單一字串，段落之間用 <br/> 斷行、以 v-html 輸出（文案為本地靜態檔）。
+   * 引言為 justify，但強制斷行前的那一行算「末行」（text-align-last: auto），
+   * 不會被拉開，與早期拆成多個 <p> 的排版等價。
+   */
+  intro: string;
+  /** JSON 驅動的內文區塊；改用預設 slot 在頁面直接寫內文時可省略 */
+  sections?: SubpageSectionData[];
   nav: SubpageNavData;
 }
 
-const props = defineProps<{ content: SubpageContent }>();
-
-const introParagraphs = computed(() =>
-  Array.isArray(props.content.intro) ? props.content.intro : [props.content.intro],
-);
+defineProps<{ content: SubpageContent }>();
 
 const heroInnerRef = ref<HTMLElement | null>(null);
 const introInnerRef = ref<HTMLElement | null>(null);
 
-// 對稿標註：內容由下往上、透明度 0→100%，translate 0.4s
-const REVEAL = { autoAlpha: 0, y: 32, duration: 0.4, ease: 'power2.out' };
+// header, intro內容由下往上、透明度 0→100%，translate 0.4s
+const REVEAL = { autoAlpha: 0, y: 200, duration: 0.4, ease: 'power2.out' };
 
 let tweens: gsap.core.Tween[] = [];
 
@@ -142,16 +145,20 @@ onBeforeUnmount(() => {
 
       <div class="subpage__intro">
         <div ref="introInnerRef" class="subpage__col subpage__col--wide">
-          <p v-for="(p, i) in introParagraphs" :key="i" class="subpage__intro-text">{{ p }}</p>
+          <p class="subpage__intro-text" v-html="content.intro" />
         </div>
       </div>
 
+      <!-- 內文：頁面給了預設 slot 就直接用（間距在頁面上逐塊標 Tailwind mt-*），
+           沒給才回退到 content.sections 的 JSON 驅動版型 -->
       <div class="subpage__body">
-        <SubpageSection
-          v-for="(s, i) in content.sections"
-          :key="i"
-          v-bind="s"
-        />
+        <slot>
+          <SubpageSection
+            v-for="(s, i) in content.sections"
+            :key="i"
+            v-bind="s"
+          />
+        </slot>
       </div>
 
       <SubpageNav :back-url="content.nav.backUrl" :next="content.nav.next" />
