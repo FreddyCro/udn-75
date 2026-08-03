@@ -4,8 +4,7 @@
   正式環境整個元件不 render，故不需外部傳 prop、也不涉入任何行為驅動。
 -->
 <script setup lang="ts">
-const { stage, stageProgress, pathProgress, pinProgress } =
-  useOrangeCoreProgress();
+const { stage, stageProgress, pathProgress } = useOrangeCoreProgress();
 
 const pct = (v: number) => Math.round(v * 100);
 </script>
@@ -16,9 +15,7 @@ const pct = (v: number) => Math.round(v * 100);
     aria-hidden="true"
   >
     stage {{ stage }} · {{ pct(stageProgress) }}%
-    <span class="orange-core-progress__raw">
-      (path {{ pct(pathProgress) }} / pin {{ pct(pinProgress) }})
-    </span>
+    <span class="orange-core-progress__raw">(path {{ pct(pathProgress) }})</span>
   </div>
 </template>
 

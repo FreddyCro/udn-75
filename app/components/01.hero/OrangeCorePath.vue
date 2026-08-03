@@ -1,15 +1,22 @@
 <!--
-  桌機 core 的移動路徑 + 驅動（section 級 overlay，1:1 px，無 viewBox）。
+  core 的移動路徑 + 驅動（section 級 overlay，1:1 px，無 viewBox）。
 
-  兩條線畫在同一個座標系（.sec1 的像素空間）：
-  - 可見灰線（lineEl）：設計中心線形狀（stub 垂直 + 曲線），錨定在 date group
-    （以大標左上角為原點，沿用已驗證的設計定位）。
-  - 驅動線（motionEl，stroke:none）：core 第一屏中央起點 →「動態直線引段」→ 曲線。
-    引段長度隨視窗高度變動（吸收 core 與 date 之間的 vh 動態距離），
-    曲線段形狀固定、只被平移，故尾端一律精準落在 date 的橘色「/」。
+  驅動線（不可見，stroke:none）：core 起點（第一屏正中央）→ 垂直下降穿透引言文字 →
+  終點停在「視窗正中央」（＝ .sec1 底緣貼齊視窗底的那一刻），交棒給 HeroSymbolTransition。
+  單一 scrub ScrollTrigger 驅動整條 path（getPointAtLength 取樣 → 定位 core），
+  一條連續 path、一個 tween → 接縫零頓挫。
 
-  單一 scrub ScrollTrigger 驅動整條 motionEl（getPointAtLength 取樣 → 定位 core），
-  因為只有一條連續 path、一個 tween，接縫零頓挫。
+  幾何全由量測推導、無寫死座標：x = section 水平中心（引言文字也置中，故一路穿過文字），
+  終點 y = endEl 底緣 − 半個視窗高（endEl 底緣貼齊視窗底時，該點正好是視窗正中央）。
+  ⚠️ endEl 尾端必須留 ≥ 50vh 的 runway（見 Hero.scss 的 .sec1__intro padding-bottom），
+     否則終點會落在文字之內、core 還沒穿出文字就停住。
+  ⚠️ 起訖與 endEl 都刻意避開 .sec1 的 bottom：Hero 的 transition pin 會在 .sec1 內插入
+     pin-spacer 把 section 撐高，用 .sec1 的 bottom 當基準會變成循環依賴（量到的高度含 spacer）。
+     endEl 位於被 pin 的 .sec1__inner 之內，其幾何不受 spacer 影響。
+
+  🚧 舊稿的可見灰線（設計中心線：stub 垂直段 + C/L 曲線，錨定 date 大標左上角、尾端落在日期
+     的「/」）已隨 date 段移除。新稿 hero 段沒有可見設計線（影片結尾那條階梯線在影片裡）。
+     論壇段那條長曲線（Figma path1 / path2）之後可匯出 d 字串，沿用本檔的引擎重建。
 -->
 <script setup lang="ts">
 import { gsap } from 'gsap';
@@ -20,8 +27,8 @@ const props = defineProps<{
   sectionEl: HTMLElement | null;
   /** orange core：被驅動沿線移動的元素 */
   orangeCoreEl: HTMLElement | null;
-  /** date 大標：設計原點，用來錨定曲線（尾端對齊「/」） */
-  anchorEl: HTMLElement | null;
+  /** 路徑終點的參照元素（引言整段）：其底緣貼齊視窗底時，core 抵達視窗正中央 */
+  endEl: HTMLElement | null;
 }>();
 
 // core 沿線移動進度（0..1）→ 寫入全域共享 path 軌（stage 1–3 來源），供顯示與效果讀取。
@@ -30,55 +37,31 @@ const { setPathProgress } = useOrangeCoreProgress();
 // 移動速度曲線：把 raw 捲動進度重新映射成 path 進度（見 ~/utils/orange-core-config 的 MOVE_EASE）。
 const easeMove = gsap.parseEase(MOVE_EASE) ?? ((v: number) => v);
 
-// 設計中心線幾何（stub 垂直段 / 曲線段 / 錨定位移）集中在 ~/utils/orange-core-config 的 PATH。
-// 沿用原本的 STUB / CURVE / ANCHOR_OFFSET 命名，故下方 build() 內文不動。
-const { stub: STUB, curve: CURVE, anchorOffset: ANCHOR_OFFSET } = PATH;
-
-const lineEl = ref<SVGPathElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
 let st: ScrollTrigger | null = null;
 let ready = false;
 // 驅動線總長：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用（避免 getTotalLength 熱路徑）。
 let motionLen = 0;
 
-// 平移「只含 C / L」的座標片段：座標 x,y 交替、以 x 起始。
-function shift(frag: string, tx: number, ty: number) {
-  let i = 0;
-  return frag.replace(/-?\d*\.?\d+/g, (n) =>
-    (parseFloat(n) + (i++ % 2 ? ty : tx)).toFixed(3),
-  );
-}
-
-// 依當前版面量測，重建兩條 path 的 d（imperative，避免 Vue patch 造成幾何延遲）。
+// 依當前版面量測，重建驅動線的 d（imperative，避免 Vue patch 造成幾何延遲）。
 function build() {
   const sec = props.sectionEl;
-  const anchor = props.anchorEl;
-  const line = lineEl.value;
+  const end = props.endEl;
   const motion = motionEl.value;
-  if (!sec || !anchor || !line || !motion) return;
+  if (!sec || !end || !motion) return;
 
   const secRect = sec.getBoundingClientRect();
-  const aRect = anchor.getBoundingClientRect();
-  const tx = aRect.left - secRect.left + ANCHOR_OFFSET.x;
-  const ty = aRect.top - secRect.top + ANCHOR_OFFSET.y;
-  const curve = shift(CURVE, tx, ty);
+  const endRect = end.getBoundingClientRect();
+  const x = secRect.width / 2; // 垂直線：一路沿 section 水平中心（引言文字亦置中）
 
-  // 曲線起點（stub 底 = 曲線第一個控制點）。
-  const scx = STUB.x + tx;
-  const scy = STUB.bottom + ty;
+  // 起點：第一屏正中央（＝影片退場後 core 淡入的位置）。
+  const sy = window.innerHeight / 2;
+  // 終點：endEl 底緣往上半個視窗高 → 該底緣貼齊視窗底時，core 正好在視窗正中央。
+  const ey = endRect.bottom - secRect.top - window.innerHeight / 2;
 
-  // 可見灰線：stub + 曲線（錨定 date）。
-  line.setAttribute(
-    'd',
-    `M${scx.toFixed(3)} ${ty.toFixed(3)}V${scy.toFixed(3)}${curve}`,
-  );
-
-  // 驅動線：core 起點（第一屏中央）→ 直線引段 → 曲線。
-  const cx = secRect.width / 2;
-  const cy = window.innerHeight / 2;
   motion.setAttribute(
     'd',
-    `M${cx.toFixed(3)} ${cy.toFixed(3)}L${scx.toFixed(3)} ${scy.toFixed(3)}${curve}`,
+    `M${x.toFixed(3)} ${sy.toFixed(3)}L${x.toFixed(3)} ${ey.toFixed(3)}`,
   );
 
   // 幾何已定，量一次總長供 place() 每幀複用。
@@ -90,6 +73,7 @@ function build() {
 // 依 raw 捲動進度把 core 定位到驅動線上的點，並轉到該處的路徑切線方向（雲霄飛車感）。
 // 先過 easeMove（MOVE_EASE 速度曲線）→ 得 path 進度 p，再定位；切線由前後各取 1px 的鄰近點
 // 連線求得，兩端皆穩定（不會因 eps=0 歸零）。p 同時寫回 path 軌，故 stage 判定與定位一致。
+// 切線 rotation 對正方形 dot 無視覺差異，保留是為了之後論壇段的曲線路徑。
 function place(rawP: number) {
   const core = props.orangeCoreEl;
   const motion = motionEl.value;
@@ -107,7 +91,7 @@ function place(rawP: number) {
 }
 
 function init() {
-  if (ready || !props.sectionEl || !props.orangeCoreEl || !props.anchorEl) return;
+  if (ready || !props.sectionEl || !props.orangeCoreEl || !props.endEl) return;
   ready = true;
 
   gsap.registerPlugin(ScrollTrigger);
@@ -117,9 +101,10 @@ function init() {
   st = ScrollTrigger.create({
     trigger: props.sectionEl,
     start: 'top top',
-    // 尾端扣掉 Hero pin 的釘住距離（PIN_VH）：core 於「進入 pin 的那一刻」剛好到達斜槓
-    // （progress=1），pin 期間不再前進 → core 穩定停在斜槓。與 Hero pinST 共用同一個 PIN_VH。
-    end: () => `bottom bottom-=${window.innerHeight * PIN_VH}`,
+    // 終點與 Hero 的 transition pin 共用同一時機（同一個 endEl 的 'bottom bottom'）：
+    // core 抵達視窗中央的同一刻 pin 接手 hold 住畫面，pin 期間 path 不再前進 → core 穩定停在中央。
+    endTrigger: props.endEl,
+    end: 'bottom bottom',
     scrub: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => place(self.progress),
@@ -127,7 +112,7 @@ function init() {
   ScrollTrigger.addEventListener('refreshInit', build);
   ScrollTrigger.refresh();
 
-  // 字體載入會位移 date 大標 → 重新量測。
+  // 字體載入會改變引言文字高度 → section 高度變動 → 重新量測。
   if (typeof document !== 'undefined' && document.fonts?.ready) {
     document.fonts.ready.then(() => ScrollTrigger.refresh());
   }
@@ -138,7 +123,7 @@ onMounted(() => {
   // props 來自父層 template ref，可能於下一 tick 才就緒。
   if (!ready) {
     const stop = watch(
-      () => [props.sectionEl, props.orangeCoreEl, props.anchorEl],
+      () => [props.sectionEl, props.orangeCoreEl, props.endEl],
       () => {
         init();
         if (ready) stop();
@@ -160,7 +145,6 @@ onBeforeUnmount(() => {
     aria-hidden="true"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <path ref="lineEl" class="sec1__orange-core-path-line" />
     <path ref="motionEl" fill="none" stroke="none" />
   </svg>
 </template>
@@ -168,18 +152,11 @@ onBeforeUnmount(() => {
 <style lang="scss" scoped>
 .sec1__orange-core-path {
   position: absolute;
-  // inset: 0;
   top: 0;
   width: 100%;
   height: 100%;
-  overflow: visible; // path 座標超出 svg box（引段往上到 hero）仍需可見
+  overflow: visible; // path 座標超出 svg box（起點在第一屏影片區）仍需可見
   pointer-events: none;
   z-index: 1;
-}
-
-.sec1__orange-core-path-line {
-  fill: none;
-  stroke: #898989;
-  stroke-width: 1;
 }
 </style>

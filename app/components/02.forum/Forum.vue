@@ -1,69 +1,15 @@
 <script setup lang="ts">
-// Section 2：face / agenda / recap（智慧論壇）
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
+// Section 2：agenda / recap（智慧論壇）
 import str from '@/locales/section2.json';
 
 const { agenda } = str;
 
-// hero 星空蓋滿後，本區用第二段 pin（forum pin）scrub 驅動 SymbolFace 序列：
-//   預設 disperse → face（集合）→ converge（匯聚成點）→ enter（越過門檻 → transitionDone、星空退場揭開議程）。
-// 門檻與捲動距離見 ~/utils/orange-core-config 的 SYMBOL_STOPS / SYMBOL_VH。因為 scrub，往回捲會自動倒退。
-const {
-  transitionDone,
-  symbolMode,
-  symbolTarget,
-  setSymbolProgress,
-  forumCoreActive,
-  agendaRevealed,
-} = useOrangeCoreProgress();
-
-// forum pin：sec2 頂端貼齊視窗頂時釘住，吃掉 SYMBOL_VH 捲動距離 → 進度寫入 symbolProgress。
-// enter 後 pin 於尾端解除 → 議程從頂端接著捲入。
-// pin 作用在內層 pinRef（agenda + recap）而非 section 本身：GSAP pin 會對被釘元素套
-// transform，形成 fixed 子孫的 containing block。把 pin 收在內層 div，section 內、pin 外
-// 的 fixed 子孫（如 DevFaceProgress）就不會落入該 containing block 而跑位。
-const sec2Ref = ref<HTMLElement | null>(null);
-const pinRef = ref<HTMLElement | null>(null);
-let symbolST: ScrollTrigger | null = null;
-
-onMounted(() => {
-  if (!sec2Ref.value || !pinRef.value) return;
-  gsap.registerPlugin(ScrollTrigger);
-  symbolST = ScrollTrigger.create({
-    trigger: sec2Ref.value, // 起訖仍以 section 頂端計，維持原本 pin 時機
-    start: 'top top',
-    end: () => `+=${window.innerHeight * SYMBOL_VH}`,
-    pin: pinRef.value, // 只釘內層，避免波及 section 內的 fixed 子孫
-    pinSpacing: true,
-    invalidateOnRefresh: true,
-    onUpdate: (self) => setSymbolProgress(self.progress),
-    onLeaveBack: () => setSymbolProgress(0), // 捲回 pin 之前 → 回到 disperse、星空重新覆蓋
-    onLeave: () => setSymbolProgress(1), //     捲過 pin 之後 → 維持 enter（已進入論壇）
-  });
-});
-
-onBeforeUnmount(() => {
-  symbolST?.kill();
-  symbolST = null;
-});
-
-// scroll 主導：symbolProgress 解出的目標 → 指派 SymbolFace mode 與 transitionDone。
-// 分兩個 watch 只在「值真的改變」時觸發（mode 改變才會讓 SymbolFace 跑補間）。
-watch(
-  () => symbolTarget.value.mode,
-  (m) => (symbolMode.value = m),
-  {
-    immediate: true,
-  },
-);
-watch(
-  () => symbolTarget.value.enter,
-  (e) => (transitionDone.value = e),
-  {
-    immediate: true,
-  },
-);
+// SymbolFace 序列（disperse→face→converge→enter）已搬到獨立的 <SymbolScene>（02.symbol）：
+// pin、symbolProgress 寫入與 mode 指派都由該元件擁有，本區只「讀」它解出的結果：
+//   forumCoreActive — symbolProgress ∈ [coreIn, coreOut) → ForumCore 橘核心現身（接棒）。
+//   agendaRevealed  — 越過 coreOut → 議程揭露。
+// 門檻見 ~/utils/orange-core-config 的 SYMBOL_STOPS / FORUM_HANDOFF。
+const { forumCoreActive, agendaRevealed } = useOrangeCoreProgress();
 
 // 依場次順序建立時間軸。標記每個時段（上午／下午）的第一場，
 // 以便在時間軸中插入時段封面標題（對應 Figma 的上午場／下午場封面）。
@@ -80,17 +26,10 @@ const timeline = agenda.sessions.map((session, i) => ({
 </script>
 
 <template>
-  <section id="forum" ref="sec2Ref" class="sec2">
-    <!-- SymbolFace 序列（disperse→face→converge→enter）已改由 forum pin scrub 驅動（見 script）；
-         原本的手動 switch 已移除。 -->
-
-    <!-- pin 範圍：agenda + recap 才是被 forum pin 釘住的內容；
-         DevFaceProgress 刻意留在此 div 外面（見下），才不會被 pin 的 containing block 影響。 -->
-    <div
-      ref="pinRef"
-      class="sec2__pin"
-      :class="{ 'sec2__pin--revealed': agendaRevealed }"
-    >
+  <section id="forum" class="sec2">
+    <!-- 議程整組：agendaRevealed（越過 coreOut）才淡入，見下方 .sec2__pin 註解。
+         （原本這層同時是 forum pin 的釘住目標，pin 已隨 SymbolFace 序列搬到 <SymbolScene>。） -->
+    <div class="sec2__pin" :class="{ 'sec2__pin--revealed': agendaRevealed }">
       <!-- agenda：議程時間軸 -->
       <div class="sec2__agenda">
         <ol class="sec2__timeline">
@@ -169,22 +108,16 @@ const timeline = agenda.sessions.map((session, i) => ({
       </div>
     </div>
 
-    <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊，停在黑畫面）。放在 pinRef 外、section 內：
-         同 DevFaceProgress 之理，sec2 本身無 transform，此 fixed 元素相對視窗定位、不受 forum pin 影響。 -->
+    <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊，停在黑畫面）。
+         fixed 滿版、由 SymbolScene 寫入的 symbolProgress 隔空驅動，故放在議程整組之外。
+         （DevFaceProgress 已隨序列搬到 <SymbolScene>，避免同頁出現兩個進度顯示。） -->
     <ForumCore :active="forumCoreActive" />
-
-    <!-- forum SymbolFace 序列進度（僅 dev）。放在 pinRef 外、section 內：
-         section 本身沒有 transform，故此 fixed 元素仍相對視窗定位、不受 pin 影響。 -->
-    <DevOnly>
-      <DevFaceProgress />
-    </DevOnly>
   </section>
 </template>
 
 <style lang="scss" scoped>
-// placeholder：先給 section 2 一個與 HeroForumTransition 星空同底色的深藍綠背景，
-// 讓 hero pin 轉場層淡出交棒時不會閃白。正式版由 SymbolFace（three.js 星空）取代。
-// padding-top：SymbolFace 序列改由 forum pin（見 script）hold 住，不再需要 100vh 墊高；
+// 黑底：與前一段 <SymbolScene>（黑底星空）同色，交棒時不閃白。
+// padding-top：SymbolFace 序列已由 SymbolScene 自己的 pin hold 住，本區不需墊高；
 // 只保留讓議程 enter 後不被固定 header 壓到的上緣間距。
 .sec2 {
   --accent: #ff7f00;
@@ -195,7 +128,7 @@ const timeline = agenda.sessions.map((session, i) => ({
   background-color: #000;
 }
 
-// pinRef（議程＋recap 整組）：coreOut 前一律藏著，避免 SymbolFace↔橘核心 crossfade 期間
+// 議程＋recap 整組：coreOut 前一律藏著，避免 SymbolFace↔橘核心 crossfade 期間
 // （淡出的星空層與淡入的橘核心黑底皆未達全滿）從縫隙短暫露餡；
 // --revealed（agendaRevealed）時隨橘核心淡出而淡入，剛好接上。捲回自動反向。
 .sec2__pin {

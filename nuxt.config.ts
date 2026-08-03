@@ -18,6 +18,9 @@ export default defineNuxtConfig({
   // pathPrefix: false 讓元件名只取檔名、忽略資料夾前綴（如 04.media），
   components: [
     { path: '~/components/01.hero', pathPrefix: false },
+    // 02.symbol：符號星空 / 人臉序列（Hero 與 Forum 之間的獨立黑底段落）。
+    // 與 02.forum 同為第二段的兩個子場景，故共用 02 前綴。
+    { path: '~/components/02.symbol', pathPrefix: false },
     { path: '~/components/02.forum', pathPrefix: false },
     { path: '~/components/03.blessing', pathPrefix: false },
     { path: '~/components/04.media', pathPrefix: false },

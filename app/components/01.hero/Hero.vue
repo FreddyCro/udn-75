@@ -1,33 +1,41 @@
 <script setup lang="ts">
-// Section 1：hero / intro / date
+// Section 1：hero 影片 → 引言 → 轉場到 SymbolScene
+//   影片播畢 → core 於第一屏中央淡入 → 沿垂直線下降、穿透引言文字 → 停在視窗正中央
+//   → transition pin hold 住畫面：橘方塊上下拉長 → 左右展開成滿版（見 HeroSymbolTransition）。
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section1.json';
 
-// core path overlay 需要的元素 ref：
-//   sec1Ref      — 座標範圍 / ScrollTrigger trigger
+// ref：
+//   sec1Ref       — 座標範圍 / ScrollTrigger trigger
 //   orangeCoreRef — orange core 元件（曝露 root el 供 GSAP 驅動）
-//   dateTitleRef — date 大標（曲線錨定原點）
-//   dateRef      — date 整組（pin 的 trigger：決定「何時」釘住）
-//   innerRef     — 含 core / path / date 的整組（pin 目標：讓三者一起 fixed、不脫節）
+//   innerRef      — 含 core / path / 內容的整組（絕對定位原點，也是 transition pin 的目標）
+//   introRef      — 引言整段（含 60vh runway）：path 終點與 pin 起點共用的參照
 const sec1Ref = ref<HTMLElement | null>(null);
 const orangeCoreRef = ref<{ root: HTMLElement | null } | null>(null);
-const dateTitleRef = ref<HTMLElement | null>(null);
-const dateRef = ref<HTMLElement | null>(null);
 const innerRef = ref<HTMLElement | null>(null);
+const introRef = ref<HTMLElement | null>(null);
 
 // OrangeCore 元件曝露的 root el，交給 OrangeCorePath 以 GSAP 驅動。
 const orangeCoreEl = computed(() => orangeCoreRef.value?.root ?? null);
 
-// core 階段模型（stage 1..6）＋ 各段 local progress：全域共享（單一來源）。
-//   - OrangeCorePath 寫 path 軌（stage 1–3）；本元件的 pinST 寫 pin 軌（stage 4–6，見下 setPinProgress）。
-//   - stage / stageProgress 驅動 OrangeCore（變長 / 變色）與 HeroForumTransition（星空放大）。門檻見 ~/utils/orange-core-config。
-//   - transitionDone：轉場是否已離場（跨元件共享）。本元件的 pinST 寫入；index.vue / Forum 亦可控制。
-const { stage, stageProgress, setPinProgress, transitionDone, symbolMode } =
-  useOrangeCoreProgress();
+// core 移動進度（path 軌）＋ 轉場進度：全域共享（單一來源，見 useOrangeCoreProgress）。
+// symbolMode / symbolLayerDone 是給轉場層內那顆 <SymbolFace> 用的：
+// 本元件只負責「讓它在場」，序列與撤場時機都由 02.symbol/SymbolScene 依捲動寫入。
+const {
+  pathProgress,
+  transitionProgress,
+  setTransitionProgress,
+  symbolMode,
+  symbolLayerDone,
+} = useOrangeCoreProgress();
 
-// core 移動速度旋鈕：在 date 之前墊出 MOVE_VH 的捲動距離（見 ~/utils/orange-core-config 的 MOVE_VH）。
-const moveSpacerHeight = `${MOVE_VH * 100}vh`;
+// 引言淡出：core 接近視窗中央（path 進度過 INTRO_FADE_FROM）時整段淡出，讓位給轉場。
+const introOpacity = computed(() => {
+  const p =
+    (pathProgress.value - INTRO_FADE_FROM) / (1 - INTRO_FADE_FROM || 1);
+  return String(1 - Math.min(1, Math.max(0, p)));
+});
 
 // hero 影片四階段（main/loop/outro/gone）全域共享，定義見 composables/useHeroVideo。
 // 此處只讀狀態驅動畫面與捲動鎖：main / loop 鎖捲動、outro 起解鎖。
@@ -45,17 +53,20 @@ const {
 
 watch(heroState, applyScrollLock);
 
-// inner 滑到底後把整組釘住（pin ＝ position:fixed）並延展 PIN_VH 捲動深度的 ScrollTrigger。
-let pinST: ScrollTrigger | null = null;
+// core 於轉場開始後隱去：其後畫面上那個方塊由 HeroSymbolTransition 接手畫
+// （避免兩層各畫一次而 drift）。以 opacity 隱藏而非 display:none —— 轉場層仍要讀它的螢幕矩形。
+const coreVisible = computed(
+  () => isGone.value && transitionProgress.value <= 0,
+);
 
-// 視窗尺寸變動（拖拉視窗、開關 DevTools、行動裝置轉向）後要重新量測 pin：
-// pinSpacing 會把「當下量到的 px 寬高」寫死在 pin-spacer 上，不重量的話會沿用舊寬 ——
-// 視窗變窄時撐出水平捲軸、變寬時右側留白。debounce 避免拖拉期間狂重算。
-let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-function onWindowResize() {
-  clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(() => ScrollTrigger.refresh(), 200);
-}
+// transition pin：core 抵達視窗正中央時釘住整組，吃掉 TRANSITION_VH 捲動距離 scrub 兩段軸向放大。
+// ⚠️ trigger 用 introRef 而非 .sec1 —— pin 會在 .sec1 內插入 pin-spacer 把 section 撐高，
+//    拿 .sec1 的 'bottom bottom' 當 start 會變成循環依賴（量到的高度含 spacer）。
+//    introRef 在被 pin 的 .sec1__inner 之內，幾何不受 spacer 影響；OrangeCorePath 的
+//    endTrigger 用同一個元素，故「core 抵達中央」與「pin 開始」必然同一刻。
+// ⚠️ pin 會在 .sec1__inner 寫入 transform，使其成為 fixed 子孫的 containing block →
+//    HeroLoader 與 HeroSymbolTransition 都必須掛在 inner「外面」，否則改以 inner 為基準而跑位。
+let transitionST: ScrollTrigger | null = null;
 
 onMounted(() => {
   // hero 影片體驗一律從頂端開始：停用瀏覽器捲動位置還原，
@@ -66,39 +77,25 @@ onMounted(() => {
   // 先解鎖、本元件下一 tick 才重新上鎖，中間會出現「瞬間可捲動」的破口。
   applyScrollLock();
 
-  // date 整組底緣（含 padding-bottom）抵達視窗底時，把 inner（core / path / date）整組
-  // 一起 pin 住並吃掉 PIN_VH 捲動距離。trigger 用 date 決定「何時」；pin 用 inner 讓三者一起 fixed
-  // → core / path 不會脫離斜槓（解決先前的脫節問題）。
-  if (dateRef.value && innerRef.value) {
-    gsap.registerPlugin(ScrollTrigger);
-    pinST = ScrollTrigger.create({
-      trigger: dateRef.value,
-      start: 'bottom bottom', // date 底緣（含 padding-bottom）抵達視窗底 → 釘住
-      end: () => `+=${window.innerHeight * PIN_VH}`, // 釘住 PIN_VH（見 ~/utils/orange-core-config）
-      pin: innerRef.value,
-      pinSpacing: true,
-      invalidateOnRefresh: true, // 視窗高變動時重算釘住距離
-      // pin 期間的捲動進度 → pin 軌（stage 4–6）：變色 → 星空放大 → fixed。
-      // 注意：不在此自動關閉轉場層 —— HeroForumTransition 出現後會一直停留，
-      //       只有 section 2（Forum）的按鈕把 transitionDone 設 true 才會消失。
-      onUpdate: (self) => {
-        setPinProgress(self.progress);
-      },
-      onLeaveBack: () => {
-        setPinProgress(0); // 回到 pin 之前 → 退回 stage 1–3（path 軌）
-      },
-    });
-  }
-
-  window.addEventListener('resize', onWindowResize);
+  if (!introRef.value || !innerRef.value) return;
+  gsap.registerPlugin(ScrollTrigger);
+  transitionST = ScrollTrigger.create({
+    trigger: introRef.value,
+    start: 'bottom bottom', // 引言整段（含 runway）底緣抵達視窗底 ＝ core 剛好停在視窗正中央
+    end: () => `+=${window.innerHeight * TRANSITION_VH}`,
+    pin: innerRef.value,
+    pinSpacing: true,
+    invalidateOnRefresh: true,
+    onUpdate: (self) => setTransitionProgress(self.progress),
+    onLeaveBack: () => setTransitionProgress(0), // 捲回 pin 之前 → 收回轉場
+    onLeave: () => setTransitionProgress(1), //     捲過 pin 之後 → 維持滿版，等 SymbolScene 接手
+  });
 });
 
 onBeforeUnmount(() => {
   document.body.classList.remove('is-scroll-locked');
-  window.removeEventListener('resize', onWindowResize);
-  clearTimeout(refreshTimer);
-  pinST?.kill();
-  pinST = null;
+  transitionST?.kill();
+  transitionST = null;
 });
 
 // main / loop 期間鎖住 body 捲動；其餘（outro / gone）解鎖。
@@ -126,7 +123,7 @@ function applyScrollLock() {
     </DevOnly>
 
     <!-- 載入層：必須掛在 .sec1__inner「外面」——pinST 會在 inner 寫入 transform，使其成為
-         fixed 子孫的 containing block，loader 放進去會改以 inner 為基準而跑位（同 HeroForumTransition）。
+         fixed 子孫的 containing block，loader 放進去會改以 inner 為基準而跑位。
          @after-leave 再確認捲動鎖；HeroLoader 不碰 body.overflow，故無需等它卸載。 -->
     <Transition name="loader-fade" @after-leave="applyScrollLock">
       <HeroLoader
@@ -137,89 +134,54 @@ function applyScrollLock() {
       />
     </Transition>
 
-    <!-- 視覺內容整組包一層 inner：core / path / date 的絕對定位原點，也是 pin 目標。
-         pin 時整組一起 fixed → core / path 不脫離斜槓（見 script 的 pinST）。 -->
+    <!-- 視覺內容整組包一層 inner：core / path 的絕對定位原點，也是 transition pin 的目標。 -->
     <div ref="innerRef" class="sec1__inner">
       <!-- hero：第一屏影片區塊（已抽為子元件 01.hero/HeroVideo.vue） -->
       <HeroVideo />
 
       <!--
-        orange core：影片結束後於第一屏（影片區塊）正中央淡入 —— 這是 core 的起點。
-        位置由 OrangeCorePath 以 GSAP 驅動（沿驅動線移動）；此處只保留外觀與淡入。
+        orange core：影片結束後於第一屏正中央淡入 —— 這是 core 在 DOM 端的起點。
+        位置由 OrangeCorePath 以 GSAP 驅動；此處只保留外觀與淡入。
+        🚧 淡入點目前為「第一屏正中央」＝沿用舊稿的 placeholder。新稿的核心是從影片
+           最後一幀的階梯線缺口掉出（設計稿約在 x 515/1280），待正式影片到位後對齊。
       -->
-      <OrangeCore
-        ref="orangeCoreRef"
-        :stage="stage"
-        :stage-progress="stageProgress"
-        :visible="isGone"
-      />
+      <OrangeCore ref="orangeCoreRef" :visible="coreVisible" />
 
       <!--
-        core 移動路徑 overlay（section 級、1:1 px）：可見灰線 + 不可見驅動線。
-        需要 .sec1（座標範圍 / trigger）、core（被驅動）、date 大標（錨定原點）三個元素。
+        core 移動路徑 overlay（section 級、1:1 px）：只有不可見的驅動線
+        （新稿 hero 段沒有可見的設計線 —— 影片結尾那條階梯線在影片裡）。
+        需要 .sec1（座標範圍 / trigger）與 core（被驅動）兩個元素。
       -->
       <OrangeCorePath
         :section-el="sec1Ref"
         :orange-core-el="orangeCoreEl"
-        :anchor-el="dateTitleRef"
+        :end-el="introRef"
       />
 
-      <!-- intro → date：orange core 貫穿的內容場景 -->
       <div class="sec1__scene">
-        <!-- intro 引言：置中窄欄，往下滑才進入視窗 -->
-        <div class="sec1__intro">
+        <!-- intro 引言：置中窄欄；core 垂直穿透這段文字，接近視窗中央時整段淡出讓位給轉場。
+             本元素（含 60vh runway）的底緣＝path 終點與 transition pin 起點的共用參照。 -->
+        <div ref="introRef" class="sec1__intro" :style="{ opacity: introOpacity }">
           <p class="sec1__intro-body">{{ str.intro.body }}</p>
-        </div>
-
-        <!-- 移動速度 spacer：在 date 之前墊出 MOVE_VH 的捲動距離 → 拉長 core 旅程 = 相對視窗變慢。 -->
-        <div
-          class="sec1__move-spacer"
-          :style="{ height: moveSpacerHeight }"
-          aria-hidden="true"
-        />
-
-        <!-- date 論壇資訊：整組以絕對定位對齊設計稿 501:21162 相對位置（RWD 之後再處理）。
-           core 路徑已抽到 section 級 overlay，尾端仍以此區大標為錨點對齊。 -->
-        <div ref="dateRef" class="sec1__date">
-          <h2 ref="dateTitleRef" class="sec1__date-title">
-            {{ str.date.title }}
-          </h2>
-          <p class="sec1__date-desc">{{ str.date.desc }}</p>
-
-          <!-- 大型日期：階梯狀排列 2026 / 09 / 16 -->
-          <p class="sec1__date-when">
-            <span class="visually-hidden">{{ str.date.dateLabel }}：</span>
-            <span class="sec1__date-num">{{ str.date.year }}</span>
-            <span class="sec1__date-num sec1__date-num--m">{{
-              str.date.month
-            }}</span>
-            <span class="sec1__date-num sec1__date-num--d">
-              {{ str.date.day }}
-              <!-- 星期（三）：置於圓框內，緊接「16」右下（對應設計 683:51624） -->
-              <span class="sec1__date-mark">{{ str.date.weekDay }}</span>
-            </span>
-          </p>
-
-          <!-- 地點與時間 -->
-          <p class="sec1__date-where">
-            <span class="visually-hidden">{{ str.date.locationLabel }}：</span>
-            <span class="sec1__date-venue">{{ str.date.venue }}</span>
-            <span class="sec1__date-time">{{ str.date.time }}</span>
-          </p>
         </div>
       </div>
     </div>
 
     <!--
-      hero → section 2 轉場遮罩（fixed 滿版）：stage 5 起由 stageProgress 撐大，
-      從斜槓處 core 線沿斜角長成對角遮罩、透出 section 2 星空，stage 6 蓋滿視窗。
+      hero → SymbolScene 轉場層（fixed 滿版）：橘方塊上下拉長 → 左右展開成滿版。
+      必須掛在 .sec1__inner「外面」—— pin 會在 inner 寫入 transform，成為 fixed 子孫的
+      containing block，掛進去會改以 inner 為定位基準而跑位。
     -->
-    <HeroForumTransition
-      :stage="stage"
-      :stage-progress="stageProgress"
-      :orange-core-el="orangeCoreEl"
-      :done="transitionDone"
+    <HeroSymbolTransition
+      :progress="transitionProgress"
+      :core-el="orangeCoreEl"
+      :done="symbolLayerDone"
     >
+      <!--
+        真正的符號粒子場：住在轉場層的 slot 內，故「左右展開時窗內已見粒子」是真的粒子。
+        序列（disperse→face→converge）由 02.symbol/SymbolScene 依捲動指派 symbolMode，
+        本處只負責「在場」與外觀參數；兩邊透過 useOrangeCoreProgress 的 symbolMode 對接。
+      -->
       <SymbolFace
         v-model:mode="symbolMode"
         :dev="false"
@@ -244,7 +206,7 @@ function applyScrollLock() {
         :float-amp="18"
         :float-micro="0.5"
       />
-    </HeroForumTransition>
+    </HeroSymbolTransition>
   </section>
 </template>
 

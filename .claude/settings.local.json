@@ -25,7 +25,8 @@
       "Bash(node \"C:\\\\Users\\\\yiting\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-yiting-Desktop-udn\\\\2d2dee25-f7fc-49fc-9358-6ebe67421e48\\\\scratchpad\\\\gen-subpage-json.mjs\")",
       "Bash(node -e \"for\\(const p of ['digital','visual','news','data']\\){const j=require\\('./app/locales/'+p+'.json'\\);console.log\\(p+': '+j.hero.title+' / '+j.hero.subtitle\\)}\")",
       "Bash(npx nuxt *)",
-      "Bash(echo \"exit=$?\")"
+      "Bash(echo \"exit=$?\")",
+      "Bash(taskkill //F //IM node.exe //FI \"WINDOWTITLE ne *\")"
     ]
   }
 }

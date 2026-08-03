@@ -1,4 +1,17 @@
 <!--
+  ⚠️ LEGACY（2026-08 新設計稿已移除此轉場，本檔僅保留參考、未被任何元件使用）。
+  ⚠️ 已無法直接編譯：它依賴的 TRANSITION / CROSSFADE 常數與 CoreStage 的 4–6 已從
+     orange-core-config / useOrangeCoreProgress 移除。要復用請一併從 git 取回那些常數。
+  legacy/ 落在 nuxt.config components 最後那筆 '~/components' 的掃描範圍（保留資料夾前綴），
+  故元件名為 <LegacyHeroForumTransition> ——「不會」與 01.hero 的元件撞名；沒人引用即不進 bundle。
+  值得回收的三段邏輯：
+    ① readCore()：以 getBoundingClientRect() ＋ DOMMatrixReadOnly(transform) 取得核心的
+       螢幕中心與旋轉角 —— 新稿仍有「用核心位置驅動另一層」的需求。
+    ② watch(revealP) → 直接寫 el.style（不觸發 Vue re-render）：逐幀 scrub 的標準寫法。
+    ③ fixed 滿版層必須掛在 pin 目標（.sec1__inner）之外 —— 被 pin 的元素會被寫入 transform
+       而成為 fixed 子孫的 containing block，掛進去就會跑位。
+
+  ── 以下為原始說明 ──
   hero → section 2 轉場遮罩。
   pin 期間由 scroll progress（0..1）scrub 驅動：從斜槓處那條 core 線的位置/角度出發，
   沿斜角長成一條對角平行四邊形，透出後方 section 2 星空 —— 放大到蓋滿視窗即完成，Hero 隨後解除 pin。

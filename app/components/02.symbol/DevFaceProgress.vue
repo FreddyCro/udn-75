@@ -1,8 +1,7 @@
 <!--
-  forum SymbolFace 序列進度的除錯顯示（fixed 右側，僅 dev 環境）。對應 hero 的 DevOrangeCoreProgress。
-  讀取全域共享的 useOrangeCoreProgress：symbolProgress（forum pin scrub 寫入）與解出的目標 mode / enter。
-  放在 Forum sec2 內、但在 forum pin 的 pinRef 之外：forum pin 只釘內層 pinRef，
-  sec2 本身無 transform，故此 fixed 元素仍相對視窗定位、不受 pin 的 containing block 影響。
+  SymbolFace 序列進度的除錯顯示（fixed 右側，僅 dev 環境）。對應 hero 的 DevOrangeCoreProgress。
+  讀取全域共享的 useOrangeCoreProgress：symbolProgress（由 SymbolScene 的捲動尺寫入）
+  與解出的目標 mode / enter。
 -->
 <script setup lang="ts">
 const { symbolProgress, symbolTarget } = useOrangeCoreProgress();

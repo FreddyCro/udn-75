@@ -8,23 +8,15 @@
 // 再於 useOrangeCoreProgress 加一條對應的 progress 軌 + resolver（照 path/pin/symbol 模式）。
 
 // ── stage 門檻：要調時間點，改這裡 ──────────────────────────────────
-// 兩條 progress 軌（各 0..1）合成「目前 stage」＋該 stage 內 local progress（stageProgress）：
-//   path：core 沿驅動線移動（OrangeCorePath scrub）→ stage 1–3。
-//   pin ：inner 釘住後（長度＝PIN_VH）→ stage 4–6。
-export const STAGE_STOPS = {
-  // stage 1–3：沿 core 移動路徑（path scrub，progress 0..1）
-  path: [
-    { until: 0.41, stage: 1 }, // 1 引段（單純往下）
-    { until: 0.71, stage: 2 }, // 2 曲線
-    { until: 1.0, stage: 3 }, // 3 直線尾段 ＋ 變長
-  ],
-  // stage 4–6：pin 內（pin scrub，progress 0..1）
-  pin: [
-    { until: 0.25, stage: 4 }, // 4 變色（橘→黑）
-    { until: 0.9, stage: 5 }, // 5 星空放大（HeroForumTransition 接手）
-    { until: 1.0, stage: 6 }, // 6 end：fixed 成 section 2 底
-  ],
-} as const;
+// 單一 progress 軌（path，0..1；OrangeCorePath scrub 寫入）解出「目前 stage」
+// ＋該 stage 內 local progress（stageProgress）。
+// 🚧 舊的 stage 4–6（pin 軌：橘→黑變色 → 星空斜角撐大 → 蓋滿）已隨 date 段與 pinST 一併移除
+//    （新稿無此動作）。新稿的後續 checkpoint（引言 → 人臉 → 論壇 path）待定案後在此新增。
+export const STAGE_STOPS = [
+  { until: 0.41, stage: 1 },
+  { until: 0.71, stage: 2 },
+  { until: 1.0, stage: 3 },
+] as const;
 
 // ── core 移動「速度曲線」（stage 1–3 沿 path 移動時套用）──────────────
 // scrub 本身等速綁定捲動；此 ease 重新分配「捲動 → path 進度」的節奏（不改整體距離）。
@@ -32,28 +24,33 @@ export const STAGE_STOPS = {
 // 註：ease 同時作用於「定位」與「stage 判定」，故 stage 門檻仍對齊路徑幾何位置（不會錯位）。
 export const MOVE_EASE = 'none';
 
-// ── pin 釘住距離（× 視窗高）：stage 4–6 ─────────────────────────────
-// core 停在斜槓後，變色 → 星空放大 → fixed 都在這段內完成。
-//   - Hero.vue 的 pinST：end = `+=${innerHeight * PIN_VH}`（釘住多久）。
-//   - OrangeCorePath 的 path scrub：end = `bottom bottom-=${innerHeight * PIN_VH}`（尾端扣掉同量，core 剛好在 pin 起點到斜槓）。
-// 兩處共用此值 → 必須一致，否則 core 會在 pin 期間繼續移動、脫離斜槓。
-export const PIN_VH = 0.3;
+// ── 引言文字淡出：core 接近視窗中央時，引言整段淡出讓位給轉場 ─────────────
+// path 進度到此門檻開始淡出，p=1（core 抵達視窗中央）時完全消失。
+export const INTRO_FADE_FROM = 0.7;
 
-// ── core 移動「捲動距離」（× 視窗高）＝ 相對視窗的速度旋鈕 ───────────────
-// 在 date 之前由 Hero.vue 墊出這麼多額外捲動距離：core 走同一條路徑要捲越多 → 移動越慢。
-//   0 = 目前速度（不額外墊）；1 = 多墊 100vh（明顯變慢）；越大越慢。與 PIN_VH / MOVE_EASE 互相獨立。
-export const MOVE_VH = 0;
+// ── hero → SymbolScene 轉場（設計稿標註「綁滾動」＝ 全程 scrub，非定時動畫）──
+// core 停在視窗正中央後，由 Hero 的 transition pin scrub 驅動「兩段軸向放大」：
+//   0 → growY ：上下拉長到滿高（同時 橘 → 深色），左右維持原寬
+//   growY → 1 ：左右展開到滿寬 → 蓋滿視窗，交棒給 <SymbolScene>
+// 對應設計分鏡 2065:143082（引言轉場論壇）。
+export const TRANSITION_VH = 1.2; // pin 吃掉的捲動距離（× 視窗高）＝ 轉場快慢旋鈕
+export const SYMBOL_TRANSITION = {
+  growY: 0.55, // 上下拉長段的終點（其後為左右展開段）
+  colorSpan: 0.35, // 橘→深色在「拉長段」的前這個比例內完成
+  faceIn: 0.5, // <SymbolFace> 粒子場在「展開段」的前這個比例內淡入（分鏡 ⑤ 展開中已見粒子）
+  // 深色目標：必須等於 SymbolFace 的 bgColor，否則粒子場淡入時會有色階跳動。
+  dark: [0, 0, 0] as [number, number, number],
+};
 
-// ── stage 5：星空淡入的「時間長度」（占 stage 5 的比例，0..1）────────────
-// 星空 clip 一開始就長得很快。若同時慢慢淡入 opacity，大片半透明星空會透出 hero 白底 → 灰灰 washy。
-//   0   = 立即實色：從 core 線尺寸直接以不透明星空揭開再長大 → 完全無 washy（最乾淨，預設）。
-//   0.x = 在 stage 5 前 x 比例內淡入完成；越大越 washy、core 溶入感越強。1 = 整段都在淡入。
-// Core.vue 的 dot 淡出與此同步。
-export const CROSSFADE = 0.01;
+// 註：以下常數已於 2026-08-03 隨 date 段 / pinST / 星空斜角轉場一併移除，需要時從 git 取回：
+//   MOVE_VH   — 在 date 之前墊 vh spacer 拉長 scrub 距離＝相對速度旋鈕（見 .claude/memory/scroll-speed-knob.md）
+//   PIN_VH    — pin 釘住距離（Hero pinST 與 OrangeCorePath 的 end 共用同一值）
+//   CROSSFADE — stage 5 星空淡入所占比例（避免大片半透明星空透出白底而 washy）
+//   TRANSITION— 星空遮罩起點尺寸（由 CORE.dotSize × lineScaleX 推導，永遠對齊那條 core 線）
 
 // ── forum 接棒門檻：converge 之後「白點 → 橘核心」的 crossfade（symbolProgress 0..1）──
 // coreIn ：SymbolFace 收斂點淡出、同時 ForumCore 橘方塊淡入（crossfade）。＝ converge 段終點，
-//          也是 enter（transitionDone）起點 → HeroForumTransition 星空層同步淡出，改由 ForumCore 黑底補上。
+//          也是 enter 段的起點。
 // coreOut：橘核心淡出 → 露出下方議程。coreIn~coreOut 之間橘核心停在黑畫面（原地停住）。
 // 淡出入為「固定時間」（見 ForumCore 的 CSS transition）；停留長度＝(coreOut−coreIn) 這段 scrub 捲動距離。
 // 往回捲會自動倒退（boolean 觸發的 CSS 轉場可逆）。此處只做 handoff；橘核心接手後的「移動」動態待後續。
@@ -62,8 +59,8 @@ export const FORUM_HANDOFF = {
   coreOut: 0.9,
 } as const;
 
-// ── 星空 SymbolFace 序列（hero 星空蓋滿後的第二段 pin，見 Forum.vue）────────
-// forum pin 的捲動進度（symbolProgress, 0..1）依門檻切換 SymbolFace 的 mode，越過 enter → transitionDone。
+// ── 星空 SymbolFace 序列（獨立黑底段落自己的 symbol pin，見 SymbolScene.vue）────────
+// symbol pin 的捲動進度（symbolProgress, 0..1）依門檻切換 SymbolFace 的 mode。
 // 因為 scrub，往回捲會自動倒退。狀態：disperse → face（集合）→ converge（匯聚成點）
 // → enter（收斂點淡出，交棒給 ForumCore 橘核心，見 FORUM_HANDOFF）。
 // 只改 until 即可調每個狀態起點；converge 終點對齊 FORUM_HANDOFF.coreIn（＝交棒時機）。
@@ -80,33 +77,15 @@ export const SYMBOL_STOPS: readonly {
 // 這段序列吃掉的捲動距離（× 視窗高）＝ 速度旋鈕（越大每個狀態停留越久）。
 export const SYMBOL_VH = 1.6;
 
-// ── core dot 形變（stage 3 變長 / stage 5 放大）＋ 顏色 ──────────────────
-// dotSize：dot 原始邊長（px），變長/放大/遮罩起點尺寸皆以此為基準。
+// ── core dot 外觀 ────────────────────────────────────────────────────
+// dotSize：dot 邊長（px），亦為 HeroSymbolTransition 讀不到 core 時的退回尺寸。
+// 🚧 設計稿為 26px、此處仍為 24px（OrangeCore / ForumCore 的 SCSS 亦寫死 24）—— 尺寸對稿待辦。
 export const CORE = {
   dotSize: 24,
-  lineScaleX: 10, // stage 3：point(24) → line(240)
-  revealGrow: 15, // stage 5：接續線後再放大的量（邊放大邊淡出，與星空遮罩交融）
   orange: [255, 127, 0] as [number, number, number],
-  dark: [10, 28, 43] as [number, number, number], // 橘→黑目標（＝ section 2 星空底色）
 };
 
-// ── hero → section 2 星空遮罩「起點尺寸」：一律從 CORE 推導，永遠對齊那條「線」──
-// （先前 OrangeCore.vue LINE_SCALE_X 與 HeroForumTransition LINE_HALF_* 靠註解人工同步＝會 drift 的地雷；
-//   改為單一推導後，改 CORE.lineScaleX 遮罩起點就跟著變，不會再脫鉤。）
-export const TRANSITION = {
-  lineHalfLen: (CORE.dotSize * CORE.lineScaleX) / 2, // = 120（半長）
-  lineHalfThick: (CORE.dotSize * 1) / 2, // = 12（半寬，scaleY 1）
-};
-
-// ── 桌機 core 路徑幾何（設計中心線 viewBox 0 0 481 1073）────────────────
-// curve：只含 C / L 的座標片段，x,y 交替、以 x 起始（供 OrangeCorePath 整體平移 shift）。
-// anchorOffset：svg(0,0) 相對「date 大標左上角」的位移（沿用驗證過的設計定位）。
-export const PATH = {
-  stub: { x: 59.3574, bottom: 176.115 },
-  curve:
-    'C59.3574 176.115 151.779 50.008 276.663 126.658' +
-    'C401.548 203.309 458.899 505.284 478.018 665.86' +
-    'C478.018 665.86 282.352 448.5 156.411 749.963' +
-    'L108.852 848.738L1.35156 1072',
-  anchorOffset: { x: 525, y: -112 },
-};
+// 註：原有 PATH（桌機設計中心線幾何：stub 垂直段 + C/L 曲線片段 + 相對 date 大標左上角的
+// anchorOffset）已隨 date 段移除。新稿 hero 段的路徑是「第一屏中央 → 視窗正中央」的垂直線，
+// 幾何直接由 section 量測推導、不需常數（見 OrangeCorePath.vue 的 build()）；
+// 論壇段那條長曲線（Figma path1 / path2）之後可匯出 d 字串，照同一個引擎重建。

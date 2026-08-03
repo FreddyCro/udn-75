@@ -1,23 +1,23 @@
 // orange core 連動序列的「狀態機」＋全域共享進度（單一來源）。
 //
-// 純狀態 / 行為；所有可調數值（門檻、距離、形變、幾何）集中在 ~/utils/orange-core-config。
-// 兩條 progress 軌（各 0..1，互不干擾；交界＝斜槓＝pin 起點，屬結構性）：
-//   - path：core 沿驅動線移動（OrangeCorePath scrub 寫入）→ stage 1–3。
-//   - pin ：inner 釘住後（長度＝PIN_VH）的進度（Hero 的 pinST scrub 寫入）→ stage 4–6。
-// 依 STAGE_STOPS 合成「目前 stage」與該 stage 內 local progress（stageProgress）。
+// 純狀態 / 行為；所有可調數值（門檻、距離、幾何）集中在 ~/utils/orange-core-config。
+// progress 軌（0..1）：
+//   - path  ：core 沿驅動線移動（OrangeCorePath scrub 寫入）→ 依 STAGE_STOPS 解出 stage 1–3。
+//   - symbol：符號人臉序列（SymbolScene 的 pin scrub 寫入）→ 依 SYMBOL_STOPS 解出 mode。
 //
+// 🚧 舊的 pin 軌（stage 4–6：橘→黑 → 星空撐大）已隨 date 段與 pinST 移除。
 // 延伸：orange core 走到後續 section 時，於 orange-core-config 新增該段門檻/距離，
-// 再在此加一條 useState progress 軌 + resolver + expose（照 path/pin/symbol 模式）。
+// 再在此加一條 useState progress 軌 + resolver + expose（照 path / symbol 模式）。
 import {
   STAGE_STOPS,
   SYMBOL_STOPS,
   FORUM_HANDOFF,
 } from '~/utils/orange-core-config';
 
-export type CoreStage = 1 | 2 | 3 | 4 | 5 | 6;
+export type CoreStage = 1 | 2 | 3;
 
 // SymbolFace 的三態（互斥）：集合成人像 / 分散漂浮 / 匯聚成點。
-// 與 transitionDone 一樣提升為全域共享，Hero 綁 v-model、Forum 的 forum pin scrub 指派。
+// 提升為全域共享：SymbolScene 綁 v-model 給 <SymbolFace>，並由自己的 pin scrub 指派。
 export type SymbolMode = 'face' | 'disperse' | 'converge';
 
 // 依 symbolProgress 解出「目標 mode」與「是否已越過 enter」（門檻見 SYMBOL_STOPS）。
@@ -59,20 +59,25 @@ const clamp01 = (p: number) => (p < 0 ? 0 : p > 1 ? 1 : p);
 export function useOrangeCoreProgress() {
   // useState → SSR 安全的跨元件共享（同 key 全站一份）
   const pathProgress = useState<number>('core-path-progress', () => 0);
-  const pinProgress = useState<number>('core-pin-progress', () => 0);
-  // hero → section 2 轉場是否已離場（捲過 pin → 轉場層淡出）。跨元件共享：
-  // Hero 的 pinST 會寫入，但 index.vue / Forum 也能覆寫控制（例如回到 hero 時強制 false）。
-  const transitionDone = useState<boolean>('hero-transition-done', () => false);
-  // SymbolFace 三態：Hero 的 <SymbolFace> 綁 v-model:mode，由 Forum 的 forum pin scrub 指派切換。
+  // hero → SymbolScene 轉場進度（0..1）：Hero 的 transition pin scrub 寫入，
+  // 驅動 HeroSymbolTransition 的兩段軸向放大（見 SYMBOL_TRANSITION）。
+  const transitionProgress = useState<number>('core-transition-progress', () => 0);
+
+  // 符號星空層是否已離場（符號序列越過 enter 門檻 → 交棒給論壇的 ForumCore）。
+  // SymbolScene 依 symbolTarget.enter 寫入；讀取者是 Hero 的 HeroSymbolTransition ——
+  // 因為 <SymbolFace> 就住在那層的 slot 裡，該層必須撐到整段序列跑完才能撤。
+  const symbolLayerDone = useState<boolean>('symbol-layer-done', () => false);
+  // SymbolFace 三態：SymbolScene 的 <SymbolFace> 綁 v-model:mode，由同元件的 symbol pin scrub 指派切換。
   const symbolMode = useState<SymbolMode>('symbol-mode', () => 'disperse');
-  // 第二段 pin（forum pin）的捲動進度（0..1）：Forum 寫入，driving SymbolFace 序列（見 SYMBOL_STOPS）。
+  // symbol pin 的捲動進度（0..1）：SymbolScene 寫入，driving SymbolFace 序列（見 SYMBOL_STOPS）。
   const symbolProgress = useState<number>('symbol-progress', () => 0);
 
   const setPathProgress = (p: number) => (pathProgress.value = clamp01(p));
-  const setPinProgress = (p: number) => (pinProgress.value = clamp01(p));
+  const setTransitionProgress = (p: number) =>
+    (transitionProgress.value = clamp01(p));
   const setSymbolProgress = (p: number) => (symbolProgress.value = clamp01(p));
 
-  // symbolProgress → 目標 mode / enter（供 Forum watch 後指派 symbolMode / transitionDone）。
+  // symbolProgress → 目標 mode / enter（供 SymbolScene watch 後指派 symbolMode；enter 目前僅 dev 顯示）。
   const symbolTarget = computed(() => resolveSymbol(symbolProgress.value));
 
   // forum 接棒視窗：symbolProgress ∈ [coreIn, coreOut) → 橘核心（ForumCore）現身。
@@ -92,27 +97,25 @@ export function useOrangeCoreProgress() {
     () => symbolProgress.value >= FORUM_HANDOFF.coreOut,
   );
 
-  // pin 一啟動（>0）即進入 stage 4–6；否則依 path 落在 stage 1–3。
-  const resolved = computed(() =>
-    pinProgress.value > 0
-      ? resolveStage(STAGE_STOPS.pin, pinProgress.value)
-      : resolveStage(STAGE_STOPS.path, pathProgress.value),
-  );
+  // path 軌 → stage 1–3 ＋ 該 stage 內的 local progress。
+  // 🚧 目前無 production 消費者（stage 4–6 的變色／放大已隨 date 段移除，core 在 1–3 全程都是等速移動的橘點）；
+  //    保留此模型作為新稿後續 checkpoint 的接點，dev 端由 DevOrangeCoreProgress 顯示。
+  const resolved = computed(() => resolveStage(STAGE_STOPS, pathProgress.value));
 
   const stage = computed(() => resolved.value.stage);
   const stageProgress = computed(() => resolved.value.stageProgress);
 
   return {
     pathProgress,
-    pinProgress,
-    transitionDone,
+    transitionProgress,
+    setTransitionProgress,
+    symbolLayerDone,
     symbolMode,
     symbolProgress,
     symbolTarget,
     forumCoreActive,
     agendaRevealed,
     setPathProgress,
-    setPinProgress,
     setSymbolProgress,
     stage,
     stageProgress,

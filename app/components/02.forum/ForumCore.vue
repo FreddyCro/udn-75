@@ -5,12 +5,13 @@
 
   - 對位：SymbolFace 收斂到 world 原點＝視窗正中央；本層滿版置中，故白點與橘核心天然對齊、
     不需讀粒子座標（也符合「不用 SymbolFace 直接轉變」）。
-  - crossfade：coreIn 時 SymbolFace 層（HeroForumTransition, z-index 10）由 transitionDone 同步淡出，
-    本層黑底補上 → 露出時仍是純黑（橘核心停在黑畫面），下方議程維持被蓋住。淡出入為固定時間
+  - crossfade：coreIn 時 SymbolFace（上游的 <SymbolScene> 段落）收斂成點，本層黑底 ＋ 橘核心淡入
+    → 露出時仍是純黑（橘核心停在黑畫面），下方議程維持被蓋住。淡出入為固定時間
     （CSS transition，非 scrub）＝ 決策「crossfade 用時間、移動綁 scrub」。
-  - active 由 forum pin 的 scrub 進度（useOrangeCoreProgress 的 forumCoreActive）以 boolean 切換，
-    往回捲自動反向。
-  - z-index 20：高於轉場層（10）、低於 AppHeader（1000），故 header 全程可見。
+  - active 由 symbol pin 的 scrub 進度（useOrangeCoreProgress 的 forumCoreActive）以 boolean 切換，
+    往回捲自動反向。因 SymbolScene 在本 section 之上，交棒發生時畫面仍停在星空段落 —— 本層為
+    fixed 滿版，故能隔空蓋住視窗。
+  - z-index 20：低於 AppHeader（1000），故 header 全程可見。
 -->
 <script setup lang="ts">
 defineProps<{
