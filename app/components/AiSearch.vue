@@ -189,12 +189,7 @@ onBeforeUnmount(() => {
         :aria-expanded="expanded"
         @click="toggle"
       >
-        <img
-          class="ai-search__spark"
-          src="/img/data/udn75_data_ai_spark.svg"
-          alt=""
-          aria-hidden="true"
-        />
+        <span class="ai-search__spark" aria-hidden="true" />
         <span>AI摘要</span>
       </button>
 
@@ -233,10 +228,8 @@ onBeforeUnmount(() => {
             </p>
             <hr class="ai-search__divider" />
             <p class="ai-search__note">
-              <img
-                class="ai-search__spark"
-                src="/img/data/udn75_data_ai_spark.svg"
-                alt=""
+              <span
+                class="ai-search__spark ai-search__spark--note"
                 aria-hidden="true"
               />
               以上摘要由 AI
@@ -359,10 +352,23 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+// 星芒（mask 上色）：<img> 載入的 svg 無法用 CSS fill，故走 mask + background-color
 .ai-search__spark {
   flex-shrink: 0;
+  display: block;
   width: 14px;
   height: 15px;
+  background: #ce252c; // 同素材原色
+  mask: url('/img/data/udn75_data_ai_spark.svg') no-repeat center / contain;
+  -webkit-mask: url('/img/data/udn75_data_ai_spark.svg') no-repeat center / contain;
+}
+
+// 注意事項的星芒：貼在第一行行首，改灰
+.ai-search__spark--note {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  background: #646464;
 }
 
 // 內文摺疊：grid-rows 0fr ↔ 1fr 平滑展開
@@ -448,12 +454,6 @@ onBeforeUnmount(() => {
   font-size: 13px;
   line-height: 22px;
   color: var(--color-gray-light);
-
-  .ai-search__spark {
-    position: absolute;
-    top: 4px;
-    left: 0;
-  }
 }
 
 .ai-search__cta-row {

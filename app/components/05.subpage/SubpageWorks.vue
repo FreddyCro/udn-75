@@ -102,7 +102,7 @@ function setupMobile() {
   if (!wrap) return;
   const items = Array.from(wrap.querySelectorAll<HTMLElement>('.award-work'));
   onScroll = () => {
-    const cy = window.innerHeight / 2;
+    const cy = window.innerHeight * 0.3;
     let best = -1;
     let bestD = Infinity;
     items.forEach((el, i) => {

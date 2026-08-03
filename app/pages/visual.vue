@@ -42,9 +42,9 @@ const c = raw as VisualContent;
 
     <!-- 哪一張是AI生成圖?：小標 + 滿版二選一測驗 -->
     <div class="sp-col mt-8">
-      <h2 class="sp-h3">{{ c.quiz.title }}</h2>
+      <h2 class="ai-title">{{ c.quiz.title }}</h2>
     </div>
-    <div class="sp-full mt-10">
+    <div class="mt-4">
       <AiImageQuiz :options="c.quiz.options" />
     </div>
 
@@ -87,3 +87,17 @@ const c = raw as VisualContent;
     </div>
   </Subpage>
 </template>
+
+<style lang="scss" scoped>
+.ai-title {
+  font-size: 22px;
+  line-height: 36px;
+  color: var(--color-gray);
+  font-weight: 400;
+
+  @include rwd-min('tablet') {
+    font-size: var(--text-h4);
+    line-height: var(--text-h4--line-height);
+  }
+}
+</style>

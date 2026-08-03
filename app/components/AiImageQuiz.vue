@@ -193,11 +193,10 @@ function pick(i: number) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 16px;
 
   @include rwd-min('tablet') {
     gap: 0;
-    margin-top: 16px;
   }
 }
 

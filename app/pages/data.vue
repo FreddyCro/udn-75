@@ -31,12 +31,12 @@ const c = raw as DataContent;
 
 <template>
   <Subpage :content="c">
-    <!-- AI搜尋：小標 + 引導句 + 滿版體驗區 -->
+    <!-- AI搜尋 -->
     <div class="sp-col mt-16">
-      <h2 class="sp-h3 mb-4">{{ c.aiSearch.title }}</h2>
+      <h2 class="sp-h3 mb-1">{{ c.aiSearch.title }}</h2>
       <p class="sp-p" v-html="c.aiSearch.lead" />
     </div>
-    <div class="sp-full mt-10">
+    <div class="mt-4">
       <AiSearch :cta-url="c.aiSearch.ctaUrl" :keywords="c.aiSearch.keywords" />
     </div>
 
