@@ -1,47 +1,12 @@
 <script lang="ts" setup>
 /**
  * Subpage — 四個「類分頁」共用版型骨架：hero／引言／錨點／進場動畫／下一篇導覽。
- * 內文兩種寫法：
- *   1. 預設 slot（news）：內文直接寫在頁面上，區塊間距逐塊標 Tailwind mt-*。
- *   2. content.sections（visual / data / service）：JSON 驅動 SubpageSection。
+ * 內文由各頁以預設 slot 直接撰寫（.sp-* 排版基元 + 逐塊 Tailwind mt-* 與 mb-*）。
  * header / footer 由 subpage layout 提供。
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
-export interface SubpageAward {
-  name?: string;
-  year?: string;
-  category?: string;
-  variant?: 'gold' | 'dark';
-}
-export interface SubpageWork {
-  title?: string;
-  desc?: string;
-  url?: string;
-  /** 懸浮縮圖（單張；與 thumbs 擇一，thumbs 優先） */
-  thumb?: string;
-  /** 懸浮縮圖多重疊圖（最多 3 張：主卡 → 左上小卡 → 右下小卡） */
-  thumbs?: string[];
-}
-export interface SubpageSectionData {
-  title?: string;
-  /** 版面變體：center = 置中導言（H4 標題＋置中引導句，如 Publish X 議題智囊包） */
-  variant?: 'center';
-  /** H3 小標置中（pc / pad；mob 稿仍靠左），如「近年得獎獎項」 */
-  titleCenter?: boolean;
-  desc?: string[];
-  img?: string;
-  imgAlt?: string;
-  caption?: string;
-  awards?: SubpageAward[];
-  works?: SubpageWork[];
-  placeholder?: string;
-  /** 嵌入的互動元件名（SubpageSection EMBEDS 白名單 key） */
-  component?: string;
-  /** 嵌入元件的 props（原樣 v-bind 傳入） */
-  componentProps?: Record<string, unknown>;
-}
 export interface SubpageNavData {
   backUrl: string;
   next?: { title: string; url: string };
@@ -65,8 +30,6 @@ export interface SubpageContent {
    * 不會被拉開，與早期拆成多個 <p> 的排版等價。
    */
   intro: string;
-  /** JSON 驅動的內文區塊；改用預設 slot 在頁面直接寫內文時可省略 */
-  sections?: SubpageSectionData[];
   nav: SubpageNavData;
 }
 
@@ -149,16 +112,9 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- 內文：頁面給了預設 slot 就直接用（間距在頁面上逐塊標 Tailwind mt-*），
-           沒給才回退到 content.sections 的 JSON 驅動版型 -->
+      <!-- 內文：各頁以預設 slot 撰寫，間距在頁面上逐塊標 Tailwind mt-*/mb-* -->
       <div class="subpage__body">
-        <slot>
-          <SubpageSection
-            v-for="(s, i) in content.sections"
-            :key="i"
-            v-bind="s"
-          />
-        </slot>
+        <slot />
       </div>
 
       <SubpageNav :back-url="content.nav.backUrl" :next="content.nav.next" />

@@ -256,7 +256,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
-// 欄寬與 SubpageSection__inner 對齊（此元件為滿版 embed，不吃 section 的內距）
+// 欄寬與 .sp-col 內文窄欄對齊（此元件為滿版 embed，不吃外層欄的內距）
 .ai-search {
   width: 100%;
   margin: 0 auto;
