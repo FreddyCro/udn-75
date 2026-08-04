@@ -50,6 +50,14 @@
       font-size: var(--text-h3);
       line-height: var(--text-h3--line-height);
     }
+
+    // 標題內的 <br/>＝「mob 才斷行」：JSON 內寫「前段 <br/>後段」
+    // mob 行尾空白會被 trim，pad 以上藏掉 br 剩空格
+    br {
+      @include rwd-min('tablet') {
+        display: none;
+      }
+    }
   }
 
   // 置中導言的 H4 標題

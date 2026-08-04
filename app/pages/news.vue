@@ -55,7 +55,7 @@ const c = raw as NewsContent;
 
     <!-- 衝流量到拚訂閱 -->
     <div class="sp-col mt-8 mb-8">
-      <h2 class="sp-h3 mb-4">{{ c.growth.title }}</h2>
+      <h2 class="sp-h3 mb-4" v-html="c.growth.title" />
       <p class="sp-p" v-html="c.growth.body" />
     </div>
 
@@ -80,7 +80,7 @@ const c = raw as NewsContent;
 
     <!-- AI革命全面進化 -->
     <div class="sp-col mt-8">
-      <h2 class="sp-h3 mb-4">{{ c.aiRevolution.title }}</h2>
+      <h2 class="sp-h3 mb-4" v-html="c.aiRevolution.title" />
       <p class="sp-p" v-html="c.aiRevolution.body" />
     </div>
 
