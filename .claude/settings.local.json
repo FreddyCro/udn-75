@@ -26,7 +26,18 @@
       "Bash(node -e \"for\\(const p of ['digital','visual','news','data']\\){const j=require\\('./app/locales/'+p+'.json'\\);console.log\\(p+': '+j.hero.title+' / '+j.hero.subtitle\\)}\")",
       "Bash(npx nuxt *)",
       "Bash(echo \"exit=$?\")",
-      "Bash(taskkill //F //IM node.exe //FI \"WINDOWTITLE ne *\")"
+      "Bash(taskkill //F //IM node.exe //FI \"WINDOWTITLE ne *\")",
+      "Bash(git add *)",
+      "mcp__claude_ai_Figma__download_assets",
+      "mcp__claude_ai_Figma__read_skill_uri",
+      "Bash(git status *)",
+      "Bash(curl -s http://localhost:3001/ -o \"C:\\\\Users\\\\fredd\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-fredd-Documents-works-projects-udn-75\\\\591ab112-0ad6-486c-8e7b-7d57af04aabf\\\\scratchpad\\\\homepage.html\" -w \"HTTP_STATUS:%{http_code}\\\\n\")",
+      "Bash(powershell -NoProfile -Command \"Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 13108 -Force; Start-Sleep -Milliseconds 500; Get-Process -Id 13108 -ErrorAction SilentlyContinue\")",
+      "Read(//c/Users/fredd/Documents/works/projects/udn75-recheck/**)",
+      "Read(//tmp/**)",
+      "Bash(npm run *)",
+      "Bash(git worktree *)"
     ]
   }
 }

@@ -18,9 +18,11 @@ export default defineNuxtConfig({
   // pathPrefix: false 讓元件名只取檔名、忽略資料夾前綴（如 04.media），
   components: [
     { path: '~/components/01.hero', pathPrefix: false },
-    // 02.symbol：符號星空 / 人臉序列（Hero 與 Forum 之間的獨立黑底段落）。
-    // 與 02.forum 同為第二段的兩個子場景，故共用 02 前綴。
-    { path: '~/components/02.symbol', pathPrefix: false },
+    // 01a.symbol：符號星空 / 人臉序列（Hero 與 Forum 之間的獨立黑底段落）。
+    // 用字母後綴而非新數字（如 01.5）：'.'(0x2E) < 'a'(0x61) 故排在 01.hero 之後，
+    // 開頭數字 01 < 02 故排在 02.forum 之前 → 檔案總管順序 ＝ 頁面順序。
+    // （01.5.symbol 會因 '5' > '.' 而排到 01.hero 前面，故不用。）
+    { path: '~/components/01a.symbol', pathPrefix: false },
     { path: '~/components/02.forum', pathPrefix: false },
     { path: '~/components/03.blessing', pathPrefix: false },
     { path: '~/components/04.media', pathPrefix: false },
@@ -43,6 +45,20 @@ export default defineNuxtConfig({
   },
 
   app: {
+    // 換頁轉場「fade through」：out-in 讓舊頁先完全淡出、再淡入新頁，
+    // 兩段不重疊 → 不會有兩份頁面同時在 DOM 裡造成高度跳動與 GSAP 重複量測。
+    // 對應 CSS 在 ~/assets/styles/base.scss（.page-enter-* / .page-leave-*）。
+    pageTransition: { name: 'page', mode: 'out-in' },
+
+    // layout 轉場必須開著：首頁（default）↔ 子頁（subpage）換的是 layout，整棵 layout
+    // 子樹會被銷毀重建，連包住 NuxtPage 的 <Transition> 也是新實例 → 新頁屬於它的
+    // 「初次渲染」，Vue 預設不動畫初次渲染，pageTransition 完全不會跑。這層關掉的話
+    // 首頁↔子頁就是硬切。（兩層不會疊加：layout 換掉時內層 page transition 本來就不跑。）
+    //
+    // 這層只用 page-fade（純 opacity）：layout root 底下有 position: fixed 的 AppHeader
+    // 與 SubpageAnchor，帶 scale 會讓它們改以變形層為定位基準而跳位。
+    layoutTransition: { name: 'page-fade', mode: 'out-in' },
+
     baseURL: (() => {
       const nuxtUrl = process.env.NUXT_URL;
       if (!nuxtUrl) return '/';

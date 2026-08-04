@@ -27,8 +27,13 @@ export function useHeroVideo() {
   const videoReady = useState('hero-video-ready', () => false);
 
   // 載入層是否已收尾：Hero.vue 於 HeroLoader @done 時設 true。
-  // HeroVideo 等它為 true 才開始播 main —— 否則 main 前幾秒會被載入層蓋住而白播。
   const loaderDone = useState('hero-loader-done', () => false);
+
+  // 使用者是否已按下 start（見 01.hero/HeroStart.vue）。
+  // 載入層收掉後先停在 start 閘門，按下才開始播 main：
+  //   ① 避免 main 前幾秒被載入層蓋住而白播
+  //   ② 有聲播放必須綁在使用者手勢上（見 useAppSound）
+  const heroStarted = useState('hero-started', () => false);
 
   // 影片目前秒數（HeroVideo 於 timeupdate 寫入）：dev 控制列顯示，方便對照 / 調整 config 秒數。
   const currentTime = useState('hero-video-time', () => 0);
@@ -38,13 +43,16 @@ export function useHeroVideo() {
   };
 
   /**
-   * SKIP：在 main / loop 時「跳過」— 直接跳到退場段（outro），
-   * 退場段播到 config 的 outro.end（或影片結束）後由 HeroVideo 進 gone。
-   * 非 main / loop 時無作用。
+   * SKIP：在 main / loop 時「跳過整支影片」— 直接進 gone，效果等同 dev 控制列的「4.消失」
+   * （影片淡出、orange core 於第一屏正中央淡入）。非 main / loop 時無作用。
+   *
+   * 刻意「不」先播退場段：outro 有 7 秒（見 hero-video-config 的 HERO_VIDEO_SEGMENTS），
+   * 按了 SKIP 還要等 7 秒才看到結果，對開發與試看都是浪費。
+   * 要單獨預覽退場段請按 dev 控制列的「3.退場」。
    */
   const skip = () => {
     if (state.value !== 'main' && state.value !== 'loop') return;
-    setState('outro');
+    setState('gone');
   };
 
   const isGone = computed(() => state.value === 'gone');
@@ -61,6 +69,7 @@ export function useHeroVideo() {
     shouldLockScroll,
     videoReady,
     loaderDone,
+    heroStarted,
     currentTime,
   };
 }

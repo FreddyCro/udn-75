@@ -63,7 +63,7 @@
 - ③–⑥ 需要 **hold 住畫面**才跑得完 → 一段 pin（scrub 寫入 transition 進度），與舊稿 `pinST` 同構但語意不同：舊的是「釘住 date 做斜角 wipe」，新的是「釘住做軸向兩段放大」。
 - 放大是**兩段軸向**（先 `scaleY` 後 `scaleX`），非等比、非斜角 —— 舊 `HeroForumTransition` 的平行四邊形 `clip-path` 數學不適用，但「讀 core 螢幕矩形當起點」「逐幀寫 `el.style`」兩段邏輯可沿用（見 `components/legacy/`）。
 - ⑤ 的「展開範圍內已有粒子」是**真的粒子**：轉場發生在 hero 還被 pin 住的時候，所以 `<SymbolFace>` 必須在此刻就在場、滿版渲染 → 它住在**轉場層的 slot 內**。三張轉場稿的 frame 名稱都是 `智慧論壇5`，設計本來就把「展開完成」與「智慧論壇05」當同一個畫面。
-- 因此 `02.symbol/SymbolScene` **不畫任何東西**，只是一把捲動尺（見下）。
+- 因此 `01a.symbol/SymbolScene` **不畫任何東西**，只是一把捲動尺（見下）。
 
 ---
 
@@ -128,7 +128,7 @@
 | 大型日期 09/16 ＋ 橘「/」     | Hero 內，core 的終點                          | **移除**。日期散到四場論壇，核心經過時才化為該日期的「/」            |
 | stage 4–6（pin、橘→黑變色）   | 有                                            | 新稿已無此動作（**程式先保留**，見下表）                            |
 | 星空斜角遮罩 wipe             | HeroForumTransition                           | **移除** → `components/legacy/`                                     |
-| SymbolFace 位置               | 掛在 Hero 轉場遮罩的 slot 裡、mode 由 Forum 指派 | **獨立黑底 section**（`02.symbol/SymbolScene.vue`），序列由自己擁有 |
+| SymbolFace 位置               | 掛在 Hero 轉場遮罩的 slot 裡、mode 由 Forum 指派 | **獨立黑底 section**（`01a.symbol/SymbolScene.vue`），序列由自己擁有 |
 | face 序列                     | disperse→face→converge 三態、無文案           | **四拍各帶文案**，且有**兩種臉**：半調點陣臉（06）與符號字元臉（07） |
 | 交棒方式                      | converge → ForumCore crossfade → 議程淡入     | converge 成白方塊 → 轉橘 → 沿 `path1`/`path2` 往下串起四場論壇       |
 | 議程結構                      | 單日、上午場／下午場                          | **四場獨立論壇**，只有論壇三有 timetable                            |
@@ -144,11 +144,11 @@
 | 現有                                    | 處置                                                                                             |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | ✅ `HeroForumTransition.vue`            | 移至 `components/legacy/`（元件名變 `<LegacyHeroForumTransition>`，無人引用故不進 bundle）。檔頭標注三段值得回收的邏輯：`readCore()` 取螢幕位置/角度、`watch → el.style` 逐幀寫入、fixed 層不可掛在 pin 目標內 |
-| ✅ `SymbolFace.vue` ＋ `DevFaceProgress.vue` | 從 `02.forum/` 移至 `02.symbol/`。SymbolFace 本來就零耦合（自帶 local `SymbolMode`、只有 props ＋ `v-model:mode`） |
-| ✅ 新增 `02.symbol/SymbolScene.vue`     | 序列的**唯一擁有者**（原本散在 Hero ＋ Forum 兩處）。⚠️ 但它**不渲染 SymbolFace**：轉場發生在 hero pin 期間，粒子場必須那時就在場 → canvas 住在 Hero 的轉場層 slot 內。本元件退化為一把「捲動尺」：`height: SYMBOL_VH × 100vh` 的空 section，把捲動換算成 `symbolProgress` → 指派 `symbolMode` / `symbolLayerDone`。**不需要 pin**（視覺已是 fixed）→ 少一層 transform / containing block 的雷 |
+| ✅ `SymbolFace.vue` ＋ `DevFaceProgress.vue` | 從 `02.forum/` 移至 `01a.symbol/`。SymbolFace 本來就零耦合（自帶 local `SymbolMode`、只有 props ＋ `v-model:mode`） |
+| ✅ 新增 `01a.symbol/SymbolScene.vue`     | 序列的**唯一擁有者**（原本散在 Hero ＋ Forum 兩處）。⚠️ 但它**不渲染 SymbolFace**：轉場發生在 hero pin 期間，粒子場必須那時就在場 → canvas 住在 Hero 的轉場層 slot 內。本元件退化為一把「捲動尺」：`height: SYMBOL_VH × 100vh` 的空 section，把捲動換算成 `symbolProgress` → 指派 `symbolMode` / `symbolLayerDone`。**不需要 pin**（視覺已是 fixed）→ 少一層 transform / containing block 的雷 |
 | ✅ `Hero.vue`                           | 移除 `<HeroForumTransition>` ＋ 其內的 `<SymbolFace>`；destructure 減去 `transitionDone` / `symbolMode` |
 | ✅ `Forum.vue`                          | 移除 symbol pin ＋ 兩個 watch；只讀 `forumCoreActive` / `agendaRevealed`。`.sec2__pin` 保留為議程淡入的容器（已不是 pin 目標） |
-| ✅ `nuxt.config.ts`                     | 新增 `{ path: '~/components/02.symbol', pathPrefix: false }`（排在 `02.forum` 之前）              |
+| ✅ `nuxt.config.ts`                     | 新增 `{ path: '~/components/01a.symbol', pathPrefix: false }`（排在 `01.hero` 之後、`02.forum` 之前）|
 | ✅ `.sec1__move-spacer` ／ `MOVE_VH`    | 移除（spacer 原本墊在 intro 與 date 之間，該位置的內容已不存在）。這是「scrub 相對速度旋鈕」的做法，已登錄 [scroll-speed-knob](../.claude/memory/scroll-speed-knob.md)，原始碼在 `7ff9f19`。`MOVE_EASE`（節奏曲線，與距離正交）**保留** |
 | ✅ `Hero.vue` 的 `.sec1__date` 整組     | 移除（template ＋ `dateRef`/`dateTitleRef` ＋ Hero.scss 的 `.sec1__date*` 全套絕對定位）。內容將散到四場論壇。`section1.json` 的 `date` 資料**暫留**，待論壇資料改寫時搬家 |
 | ✅ `Hero.vue` 的 `pinST`（stage 4–6）   | 移除——它的 trigger 就是 date group，date 一走 pin 無所依附。連同 debounce resize refresh 一併移除（那是為 `pinSpacing` 寫死 px 而加的；ScrollTrigger 預設就會在 resize 時 refresh） |
@@ -167,22 +167,25 @@
 | 🚧 `ForumCore.vue`                      | 改為沿 path 移動的核心 → 建議直接復用 `OrangeCore` ＋ path 引擎，不維護兩套                        |
 | 🚧 `SYMBOL_STOPS`                       | 三態擴為四拍，各拍配文案                                                                         |
 | 🚧 `section2.json`                      | 資料結構改寫：`morning`/`afternoon` → 四場論壇                                                   |
-| 🚧 `Blessing.vue` / `Media.vue`         | 新增核心進出場動態（橘底撐滿／收回成「心」）                                                     |
+| ✅ `Blessing.vue`                        | 逐格像素臉（17 格，資料在 `~/utils/blessing-face-frames`）＋ 階梯線 ＋ 夥伴清單，三斷點已對稿。夥伴內容為 placeholder |
+| 🚧 `Blessing.vue` / `Media.vue`         | 核心進出場動態（橘底撐滿／收回成「心」）仍未做                                                     |
 
 ### 元件目錄現況
 
 ```
 app/components/
-  01.hero/      Hero, HeroVideo, HeroLoader, OrangeCore, OrangeCorePath, Dev*
-  02.symbol/    SymbolScene, SymbolFace, DevFaceProgress      ← 新增
-  02.forum/     Forum, ForumCore
+  01.hero/      Hero, HeroVideo, HeroLoader, HeroStart, HeroSymbolTransition, OrangeCore, OrangeCorePath, Dev*
+  01a.symbol/   SymbolScene, SymbolFace, DevFaceProgress      ← 新增
+  02.forum/     Forum, ForumCore, ForumCorePath, Agenda
   03.blessing/  Blessing
   04.media/     Media, HeartMetaball
   05.subpage/   Subpage*
   legacy/       HeroForumTransition, SymbolFace, ParticleScene  ← 僅參考
 ```
 
-`02.symbol` 與 `02.forum` 共用 `02` 前綴（同為第二段的兩個子場景），避免牽動 `03`/`04`/`05` 的 `.sec3`/`.sec4` BEM block 改名。新 section 的 BEM block 為 `.sec-symbol`（非數字，因無編號可用）。
+星空段落用 `01a` 字母後綴而非新數字（如 `01.5`），理由是排序：`'.'(0x2E) < 'a'(0x61)` 故 `01a.symbol` 排在 `01.hero` 之後，開頭 `01 < 02` 故排在 `02.forum` 之前 → 檔案總管順序 ＝ 頁面順序 ＝ `nuxt.config.ts` 的註冊順序。（`01.5.symbol` 會因 `'5' > '.'` 而排到 `01.hero` **前面**，故不採用。）字母後綴同時避免牽動 `03`/`04`/`05` 的 `.sec3`/`.sec4` BEM block 改名。新 section 的 BEM block 為 `.sec-symbol`（非數字，因無編號可用）。
+
+> 早期版本曾命名為 `02.symbol`（與 `02.forum` 共用 `02` 前綴），但該寫法在檔案總管會因 `f < s` 讓 `02.forum` 排到 `02.symbol` 前面、與頁面順序相反，故改為 `01a`。
 
 ---
 
@@ -191,3 +194,6 @@ app/components/
 1. **06 → 07 是同一套粒子嗎**：06 是半調點陣臉、07 是符號字元臉。現有 SymbolFace 的粒子由 `src` 圖的 alpha 取樣建出，換 `src` 會重建整個系統、無法無縫過渡。需確認是「同一套粒子換 render（點→字元）」還是「06 為獨立圖層與 07 做 crossfade」。
 2. **永續祝福的橘底怎麼來**：設計稿只給靜態幀，推測是核心撐滿全屏，缺中間張佐證。
 3. **mob / pad 分鏡**：本檔僅依 `主頁_pc`。
+4. **永續祝福的內文文案**：pc 稿 `2065:140462` 用「聯合報系攜手企業盟友，…」，pad 稿 `2065:125534` 用「世代更迭，初心不變。…」。目前程式取後者（`section3.json` 的 `partner.body`），待設計確認。
+5. **永續祝福標題字級**：Figma 把「永續祝福」做成外框向量，程式以文字實作（pc 72/104、pad 52/70、mob 56/74 為回推值），待視覺確認；若差異過大改匯出 SVG 字標。
+6. **夥伴 logo 與祝福文案**：尚未提供，清單目前全為 placeholder（灰底空框 ＋「待補」字串），列數依 pc 稿為 4/5/2/3。

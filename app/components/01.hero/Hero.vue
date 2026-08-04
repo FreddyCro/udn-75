@@ -21,7 +21,7 @@ const orangeCoreEl = computed(() => orangeCoreRef.value?.root ?? null);
 
 // core 移動進度（path 軌）＋ 轉場進度：全域共享（單一來源，見 useOrangeCoreProgress）。
 // symbolMode / symbolLayerDone 是給轉場層內那顆 <SymbolFace> 用的：
-// 本元件只負責「讓它在場」，序列與撤場時機都由 02.symbol/SymbolScene 依捲動寫入。
+// 本元件只負責「讓它在場」，序列與撤場時機都由 01a.symbol/SymbolScene 依捲動寫入。
 const {
   pathProgress,
   transitionProgress,
@@ -49,6 +49,7 @@ const {
   shouldLockScroll,
   videoReady,
   loaderDone,
+  heroStarted,
 } = useHeroVideo();
 
 watch(heroState, applyScrollLock);
@@ -134,6 +135,19 @@ function applyScrollLock() {
       />
     </Transition>
 
+    <!--
+      start 閘門：載入層收掉後不直接播影片，先停在這一屏等使用者按 start
+      （有聲播放必須綁在使用者手勢上，見 composables/useAppSound）。
+      同樣掛在 .sec1__inner「外面」——它是 fixed 層，不能落進 pin 的 containing block。
+      期間 heroState 仍為 main → body 保持捲動鎖，使用者不會先捲走。
+    -->
+    <Transition name="loader-fade">
+      <HeroStart
+        v-if="loaderDone && !heroStarted"
+        @start="heroStarted = true"
+      />
+    </Transition>
+
     <!-- 視覺內容整組包一層 inner：core / path 的絕對定位原點，也是 transition pin 的目標。 -->
     <div ref="innerRef" class="sec1__inner">
       <!-- hero：第一屏影片區塊（已抽為子元件 01.hero/HeroVideo.vue） -->
@@ -179,7 +193,7 @@ function applyScrollLock() {
     >
       <!--
         真正的符號粒子場：住在轉場層的 slot 內，故「左右展開時窗內已見粒子」是真的粒子。
-        序列（disperse→face→converge）由 02.symbol/SymbolScene 依捲動指派 symbolMode，
+        序列（disperse→face→converge）由 01a.symbol/SymbolScene 依捲動指派 symbolMode，
         本處只負責「在場」與外觀參數；兩邊透過 useOrangeCoreProgress 的 symbolMode 對接。
       -->
       <SymbolFace

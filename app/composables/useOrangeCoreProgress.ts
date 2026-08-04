@@ -3,7 +3,7 @@
 // 純狀態 / 行為；所有可調數值（門檻、距離、幾何）集中在 ~/utils/orange-core-config。
 // progress 軌（0..1）：
 //   - path  ：core 沿驅動線移動（OrangeCorePath scrub 寫入）→ 依 STAGE_STOPS 解出 stage 1–3。
-//   - symbol：符號人臉序列（SymbolScene 的 pin scrub 寫入）→ 依 SYMBOL_STOPS 解出 mode。
+//   - symbol：符號人臉序列（SymbolScene 的捲動尺 scrub 寫入）→ 依 SYMBOL_STOPS 解出 mode。
 //
 // 🚧 舊的 pin 軌（stage 4–6：橘→黑 → 星空撐大）已隨 date 段與 pinST 移除。
 // 延伸：orange core 走到後續 section 時，於 orange-core-config 新增該段門檻/距離，
@@ -12,12 +12,15 @@ import {
   STAGE_STOPS,
   SYMBOL_STOPS,
   FORUM_HANDOFF,
+  BLESSING_HOLD,
 } from '~/utils/orange-core-config';
+import { FACE_FRAME_COUNT } from '~/utils/blessing-face-frames';
 
 export type CoreStage = 1 | 2 | 3;
 
 // SymbolFace 的三態（互斥）：集合成人像 / 分散漂浮 / 匯聚成點。
-// 提升為全域共享：SymbolScene 綁 v-model 給 <SymbolFace>，並由自己的 pin scrub 指派。
+// 提升為全域共享：<SymbolFace> 由 Hero 綁 v-model:mode（它住在 HeroSymbolTransition 的 slot），
+// 值則由 SymbolScene 依自己的捲動尺指派 —— 渲染在 01.hero、驅動在 01a.symbol，靠本狀態對接。
 export type SymbolMode = 'face' | 'disperse' | 'converge';
 
 // 依 symbolProgress 解出「目標 mode」與「是否已越過 enter」（門檻見 SYMBOL_STOPS）。
@@ -67,15 +70,21 @@ export function useOrangeCoreProgress() {
   // SymbolScene 依 symbolTarget.enter 寫入；讀取者是 Hero 的 HeroSymbolTransition ——
   // 因為 <SymbolFace> 就住在那層的 slot 裡，該層必須撐到整段序列跑完才能撤。
   const symbolLayerDone = useState<boolean>('symbol-layer-done', () => false);
-  // SymbolFace 三態：SymbolScene 的 <SymbolFace> 綁 v-model:mode，由同元件的 symbol pin scrub 指派切換。
+  // SymbolFace 三態：Hero 的 <SymbolFace> 綁 v-model:mode，由 SymbolScene 的捲動尺指派切換。
   const symbolMode = useState<SymbolMode>('symbol-mode', () => 'disperse');
-  // symbol pin 的捲動進度（0..1）：SymbolScene 寫入，driving SymbolFace 序列（見 SYMBOL_STOPS）。
+  // symbol 段落的捲動進度（0..1）：SymbolScene 寫入，driving SymbolFace 序列（見 SYMBOL_STOPS）。
   const symbolProgress = useState<number>('symbol-progress', () => 0);
 
   const setPathProgress = (p: number) => (pathProgress.value = clamp01(p));
   const setTransitionProgress = (p: number) =>
     (transitionProgress.value = clamp01(p));
   const setSymbolProgress = (p: number) => (symbolProgress.value = clamp01(p));
+
+  // 永續祝福逐格臉的捲動進度（0..1）：由 Blessing.vue 的 ScrollTrigger 於每次
+  // update 讀 self.progress 寫入（無 scrub），故往回捲會自動倒帶。
+  const blessingProgress = useState<number>('blessing-progress', () => 0);
+  const setBlessingProgress = (p: number) =>
+    (blessingProgress.value = clamp01(p));
 
   // symbolProgress → 目標 mode / enter（供 SymbolScene watch 後指派 symbolMode；enter 目前僅 dev 顯示）。
   const symbolTarget = computed(() => resolveSymbol(symbolProgress.value));
@@ -97,6 +106,26 @@ export function useOrangeCoreProgress() {
     () => symbolProgress.value >= FORUM_HANDOFF.coreOut,
   );
 
+  // 使用者要求減少動態時，逐格臉不隨捲動變化，直接停在完成的笑臉。
+  // 用 useState 讓 SSR 與 client 一致（初值 false，client 掛載後才量測）。
+  const reduceMotion = useState<boolean>('blessing-reduce-motion', () => false);
+  onMounted(() => {
+    reduceMotion.value = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+  });
+
+  // blessingProgress → 逐格臉的格號（0-based，整數；逐格＝不做補間）。
+  // 尾端 BLESSING_HOLD 這段停在最後一格；因 blessingProgress 每次 update 都重讀
+  // self.progress 寫入，往回捲會自動倒帶。
+  const blessingFrame = computed(() => {
+    if (reduceMotion.value) return FACE_FRAME_COUNT - 1;
+    const span = 1 - BLESSING_HOLD;
+    const local = span > 0 ? blessingProgress.value / span : 1;
+    const i = Math.floor(clamp01(local) * FACE_FRAME_COUNT);
+    return Math.min(FACE_FRAME_COUNT - 1, i);
+  });
+
   // path 軌 → stage 1–3 ＋ 該 stage 內的 local progress。
   // 🚧 目前無 production 消費者（stage 4–6 的變色／放大已隨 date 段移除，core 在 1–3 全程都是等速移動的橘點）；
   //    保留此模型作為新稿後續 checkpoint 的接點，dev 端由 DevOrangeCoreProgress 顯示。
@@ -117,6 +146,9 @@ export function useOrangeCoreProgress() {
     agendaRevealed,
     setPathProgress,
     setSymbolProgress,
+    blessingProgress,
+    setBlessingProgress,
+    blessingFrame,
     stage,
     stageProgress,
   };

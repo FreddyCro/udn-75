@@ -16,7 +16,7 @@
   ・逐幀直接寫 el.style，不觸發 Vue re-render。
 
   ⚠️ 生命週期：<SymbolFace> 住在本層 slot 內 → 本層必須撐到**整段符號序列跑完**
-     （disperse→face→converge，由 02.symbol/SymbolScene 的捲動驅動）才能撤場，
+     （disperse→face→converge，由 01a.symbol/SymbolScene 的捲動驅動）才能撤場，
      故 done 讀的是 symbolLayerDone（序列越過 enter、交棒給 ForumCore），不是「轉場放大完成」。
   ⚠️ 以 opacity 而非 display 隱藏：本層一開始就要有真實尺寸，three.js 才量得到 canvas 大小。
 -->
@@ -42,19 +42,31 @@ const active = computed(() => !props.done && props.progress > 0);
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
 
-// core 的螢幕矩形（中心 ＋ 尺寸）＝ 開窗起點；讀不到時退回視窗中央的一個 dot。
-function readCore() {
+// 開窗起點（core 的螢幕矩形）在轉場開始時量一次就鎖住，之後整段沿用。
+// ⚠️ 不能每幀重量：轉場 pin 一釋放，core 就跟著 section 捲離視窗，
+//    此時再讀它的 rect 會讓已經滿版的開窗跟著跑掉（symbol 序列期間畫面破掉）。
+//    pin 期間 core 本來就固定在視窗正中央，所以「量一次」與逐幀量的結果相同。
+// resize 時清掉重量（見 onResize）。
+let anchor: { cx: number; cy: number; w: number; h: number } | null = null;
+
+function readAnchor() {
+  if (anchor) return anchor;
   const el = props.coreEl;
-  const cx = window.innerWidth / 2;
-  const cy = window.innerHeight / 2;
-  if (!el) return { cx, cy, w: CORE.dotSize, h: CORE.dotSize };
-  const r = el.getBoundingClientRect();
-  return {
-    cx: r.left + r.width / 2,
-    cy: r.top + r.height / 2,
-    w: r.width || CORE.dotSize,
-    h: r.height || CORE.dotSize,
-  };
+  const r = el?.getBoundingClientRect();
+  anchor = r
+    ? {
+        cx: r.left + r.width / 2,
+        cy: r.top + r.height / 2,
+        w: r.width || CORE.dotSize,
+        h: r.height || CORE.dotSize,
+      }
+    : {
+        cx: window.innerWidth / 2,
+        cy: window.innerHeight / 2,
+        w: CORE.dotSize,
+        h: CORE.dotSize,
+      };
+  return anchor;
 }
 
 // 兩段軸向放大：先 h → 視窗高（左右不動），再 w → 視窗寬（高維持滿）。
@@ -62,7 +74,10 @@ function apply(p: number) {
   const field = fieldRef.value;
   if (!field) return;
 
-  const { cx, cy, w: w0, h: h0 } = readCore();
+  // 回到轉場之前（p=0）→ 放掉錨點，下次進來重新量（避免沿用上一輪的位置）。
+  if (p <= 0) anchor = null;
+
+  const { cx, cy, w: w0, h: h0 } = readAnchor();
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
@@ -91,8 +106,9 @@ function apply(p: number) {
 
 watch(() => props.progress, apply, { immediate: true });
 
-// 視窗尺寸變動時以當前進度重算（pin 期間轉向 / 拖拉視窗）。
+// 視窗尺寸變動時重新量錨點並以當前進度重算（pin 期間轉向 / 拖拉視窗）。
 function onResize() {
+  anchor = null;
   apply(props.progress);
 }
 onMounted(() => window.addEventListener('resize', onResize));
@@ -122,11 +138,20 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize));
   pointer-events: none;
   opacity: 1;
   // 撤場（交棒給 ForumCore）走固定時間的 crossfade ＝ 決策「crossfade 用時間、放大綁 scrub」。
-  transition: opacity 0.35s ease;
+  // visibility 一起 transition：淡出時會撐到動畫結束才真正隱藏，淡入時立刻可見。
+  transition:
+    opacity 0.35s ease,
+    visibility 0.35s ease;
 
-  // display:none 會讓 three.js 量到 0 寬高 → 一律用 opacity 隱藏，保持真實尺寸。
+  // ⚠️ display:none 會讓 three.js 量到 0 寬高 → 不能用。但**只設 opacity:0 也不行**：
+  //    opacity 為 0 的元素仍會參與 hit-test，而本層是 fixed 滿版、內部 canvas 還特意打開了
+  //    pointer-events（SymbolFace 的互動監聽掛在 canvas 上）→ 結果是一片看不見的 canvas
+  //    蓋住整個畫面，把 hero 影片階段的所有點擊都吞掉。
+  //    visibility:hidden 會連子孫一起排除在 hit-test 之外，且（不同於 display:none）保留
+  //    版面尺寸，canvas 仍量得到大小。
   &.is-hidden {
     opacity: 0;
+    visibility: hidden;
   }
 }
 
@@ -150,7 +175,13 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize));
     background-color: transparent;
   }
 
-  // SymbolFace 有滑鼠斥力互動 → 這層要能收事件（外層 .hero-symbol-transition 是 none）。
+}
+
+// SymbolFace 有滑鼠斥力互動，且監聽掛在 canvas 上 → 這顆 canvas 要能收事件
+// （外層 .hero-symbol-transition 是 pointer-events:none）。
+// ⚠️ 必須限定「本層在場時」：子層的 pointer-events:auto 會蓋掉父層的 none，
+//    不加 :not(.is-hidden) 就等於整頁被一片透明 canvas 蓋住（見上方 .is-hidden 註解）。
+.hero-symbol-transition:not(.is-hidden) .hero-symbol-transition__stage {
   :deep(canvas) {
     pointer-events: auto;
   }

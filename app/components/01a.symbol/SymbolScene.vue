@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Section 02.symbol：符號星空 / 人臉序列的**捲動驅動段落**（對應 Figma「智慧論壇05–08」四拍）。
+// Section 01a.symbol：符號星空 / 人臉序列的**捲動驅動段落**（對應 Figma「智慧論壇05–08」四拍）。
 //
 // ⚠️ 本元件不畫任何東西 —— <SymbolFace> 住在 Hero 的 <HeroSymbolTransition> slot 裡。
 //    原因見設計分鏡 2065:143082：轉場（橘方塊上下拉長 → 左右展開）發生在 **hero 還被 pin 住**
