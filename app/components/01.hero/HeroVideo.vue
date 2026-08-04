@@ -12,10 +12,16 @@ import {
   type HeroVideoDevice,
   type HeroVideoSegment,
 } from '@/utils/hero-video-config';
+import {
+  createHeroGestureAccum,
+  heroGestureStep,
+  HERO_GESTURE,
+} from '@/utils/hero-scroll-intent';
 
 const {
   state: heroState,
   setState,
+  rewindToLoop,
   isGone,
   videoReady,
   heroStarted,
@@ -169,6 +175,55 @@ watch(soundOn, (on) => {
   if (v) v.muted = !on;
 });
 
+// ── 方向手勢：loop 往下 → outro；gone 且在頂端往上 → 倒帶回 loop ──────────
+// loop 期間 body 鎖住（沒有 scroll 事件），故一律從 wheel / touchmove 的位移自行累積；
+// 判定邏輯在 ~/utils/hero-scroll-intent（純函式，有單元測試）。
+// 累積器用普通變數而非 ref：每次事件只讀寫數字，不需要驅動畫面（<script setup> 內
+// 的變數本身就是每個元件實例各一份）。
+let gesture = createHeroGestureAccum();
+
+function feedGesture(delta: number) {
+  const { intent, accum } = heroGestureStep(
+    gesture,
+    {
+      delta,
+      now: performance.now(),
+      inLoop: heroState.value === 'loop',
+      isGone: heroState.value === 'gone',
+      atTop: window.scrollY <= 0,
+    },
+    HERO_GESTURE,
+  );
+  gesture = accum;
+  if (intent === 'to-outro') setState('outro');
+  else if (intent === 'to-loop') rewindToLoop();
+}
+
+// passive：本監聽不 preventDefault（loop 期間 body 已鎖、gone 在頂端也無處可捲），
+// 宣告 passive 讓瀏覽器不必等我們就能處理捲動。
+function onWheel(e: WheelEvent) {
+  feedGesture(e.deltaY);
+}
+
+let touchY = 0;
+function onTouchStart(e: TouchEvent) {
+  touchY = e.touches[0]?.clientY ?? 0;
+}
+function onTouchMove(e: TouchEvent) {
+  const y = e.touches[0]?.clientY ?? touchY;
+  feedGesture(touchY - y); // 手指往上移 ＝ 內容往下捲 ＝ delta 為正
+  touchY = y;
+}
+
+// 鍵盤：一次按鍵直接給滿門檻（鍵盤沒有「累積位移」的概念）
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+    feedGesture(HERO_GESTURE.toOutroPx);
+  } else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'Home') {
+    feedGesture(-HERO_GESTURE.toLoopPx);
+  }
+}
+
 function onResize() {
   const next = getDeviceTypeByResolution();
   if (next === device.value) return;
@@ -179,6 +234,10 @@ function onResize() {
 onMounted(() => {
   onResize();
   window.addEventListener('resize', onResize);
+  window.addEventListener('wheel', onWheel, { passive: true });
+  window.addEventListener('touchstart', onTouchStart, { passive: true });
+  window.addEventListener('touchmove', onTouchMove, { passive: true });
+  window.addEventListener('keydown', onKeydown);
 
   // ⚠️ <video> 是 SSR 就吐出來的（帶 src + preload="auto"），瀏覽器在 HTML 解析階段就開始載入，
   // canplay 很可能在 hydration 掛上 @canplay 之前就已經觸發 → 事件永遠等不到，
@@ -193,6 +252,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize);
+  window.removeEventListener('wheel', onWheel);
+  window.removeEventListener('touchstart', onTouchStart);
+  window.removeEventListener('touchmove', onTouchMove);
+  window.removeEventListener('keydown', onKeydown);
   if (readyTimer) clearTimeout(readyTimer);
 });
 </script>
