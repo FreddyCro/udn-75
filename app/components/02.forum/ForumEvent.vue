@@ -42,7 +42,10 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
         <span v-for="(line, i) in event.quoteEn" :key="i">{{ line }}</span>
       </p>
 
-      <div class="forum-event__date">
+      <div
+        class="forum-event__date"
+        :class="{ 'forum-event__date--offset': event.quoteEn }"
+      >
         <span class="forum-event__date-year">{{ event.year }}</span>
         <span class="forum-event__date-md">
           <span>{{ dateParts[0] }}</span>
@@ -202,17 +205,22 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 }
 
 // 日期大字：ForumCorePath 的錨點元素（見檔頭）。
-// 104px／line-height 0.93 由設計稿字框反推（數字高 73.6、兩行基線距 97.6）；
-// margin-top 105 ＝ 設計稿裡日期組頂端低於引言頂端的距離。
+// 104px／line-height 0.93 由設計稿字框反推（數字高 73.6、兩行基線距 97.6）。
 .forum-event__date {
   grid-row: 1;
   grid-column: 1;
   display: flex;
   flex-direction: column;
-  margin: 105px 0 24px;
+  margin: 0 0 24px;
   font-size: 104px;
   font-weight: 300;
   line-height: 0.93;
+
+  // 只有帶英文引言的場次（論壇一）要下推：設計稿裡日期組頂端比引言頂端低 105。
+  // 沒有引言的場次右欄是空的，日期直接貼齊該列頂端。
+  &--offset {
+    margin-top: 105px;
+  }
 }
 
 .forum-event__date-md {

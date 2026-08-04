@@ -59,8 +59,8 @@ export const FORUM_HANDOFF = {
   coreOut: 0.9,
 } as const;
 
-// ── 星空 SymbolFace 序列（獨立黑底段落自己的 symbol pin，見 SymbolScene.vue）────────
-// symbol pin 的捲動進度（symbolProgress, 0..1）依門檻切換 SymbolFace 的 mode。
+// ── 星空 SymbolFace 序列（獨立黑底段落自己的捲動尺，見 01a.symbol/SymbolScene.vue）──
+// 該段落的捲動進度（symbolProgress, 0..1）依門檻切換 SymbolFace 的 mode。
 // 因為 scrub，往回捲會自動倒退。狀態：disperse → face（集合）→ converge（匯聚成點）
 // → enter（收斂點淡出，交棒給 ForumCore 橘核心，見 FORUM_HANDOFF）。
 // 只改 until 即可調每個狀態起點；converge 終點對齊 FORUM_HANDOFF.coreIn（＝交棒時機）。
@@ -87,5 +87,30 @@ export const CORE = {
 
 // 註：原有 PATH（桌機設計中心線幾何：stub 垂直段 + C/L 曲線片段 + 相對 date 大標左上角的
 // anchorOffset）已隨 date 段移除。新稿 hero 段的路徑是「第一屏中央 → 視窗正中央」的垂直線，
-// 幾何直接由 section 量測推導、不需常數（見 OrangeCorePath.vue 的 build()）；
-// 論壇段那條長曲線（Figma path1 / path2）之後可匯出 d 字串，照同一個引擎重建。
+// 幾何直接由 section 量測推導、不需常數（見 OrangeCorePath.vue 的 build()）。
+
+// ── 論壇段的可見設計線（核心層 path1 / path2）────────────────────────
+// 貼上流程：Figma 選該 vector → 匯出 SVG 存 temp/forum-path{1,2}.svg →
+//   d = <path d="…"> 整串；w/h = 匯出 svg 的 viewBox 尺寸；x/y = 該 vector 在核心層外框內的左上角。
+// d 留空 = 尚未貼上，<ForumCorePath> 不渲染該段（不會報錯）。
+// 🚧 x 待從 Figma 補；designW 依 pc 稿 canvas 1280，若外框另有自己的寬度需一併改。
+export type ForumPathSeg = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  d: string;
+};
+
+export const FORUM_PATH: {
+  designW: number;
+  designH: number;
+  segs: Record<'path1' | 'path2', ForumPathSeg>;
+} = {
+  designW: 1280,
+  designH: 8743, // 核心層外框總高
+  segs: {
+    path1: { x: 0, y: 58, w: 857, h: 3694, d: '' }, // 論壇一全段 ＋ 論壇二前半
+    path2: { x: 0, y: 4082, w: 814, h: 1435, d: '' }, // 論壇二尾 → timetable 起點
+  },
+};
