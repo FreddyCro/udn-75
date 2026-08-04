@@ -34,8 +34,12 @@ const sceneHeight = `${SYMBOL_VH * 100}vh`;
 //   ③     converge 匯聚成點                         58% → 75%   185.6→ 240vh   (2004→2592px)  54.4vh
 //   ④     coreIn 交棒：本層淡出＋ForumCore 淡入      75%         240vh          (2592px)        —
 //   ⑤     enter 橘核心停在黑畫面（原地停住）          75% → 90%   240  → 288vh   (2592→3110px)  48vh
-//   ⑥     coreOut 橘核心淡出＋議程 reveal            90%         288vh          (3110px)        —
-//   ⑦     段落捲完（onLeave → 鎖 1）                 100%        320vh          (3456px)        32vh
+//   ⑥     agendaIn 議程 reveal（仍在畫面外）         90%         288vh          (3110px)        —
+//   ⑦     coreOut 黑底淡出、段落捲完（onLeave→鎖 1） 100%        320vh          (3456px)        32vh
+//
+// ⑦ 之後還有一段「懸停期」不在本尺內：黑白接縫要再升 50vh 才抵達視窗中央，橘點在那段期間
+// 停在中央不動，然後由論壇段路徑接手（見 ForumCorePath 的 start: 'top center'）。
+// 那 50vh 是零跳點幾何的下限，見 FORUM_HANDOFF 的註解。
 //
 // 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本段合計 440vh。
 //

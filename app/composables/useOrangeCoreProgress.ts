@@ -109,11 +109,13 @@ export function useOrangeCoreProgress() {
       symbolProgress.value < FORUM_HANDOFF.coreOut,
   );
 
-  // forum 議程揭露：越過 coreOut（橘核心開始淡出）才顯示議程。coreOut 之前一律藏著，
-  // 確保 SymbolFace↔橘核心 crossfade 期間（兩層黑底皆未達全滿）下方議程不會短暫露餡；
-  // coreOut 時議程隨橘核心淡出而淡入，剛好接上。捲回會自動反向。
+  // forum 議程揭露：越過 agendaIn 才顯示議程。之前一律藏著，確保 SymbolFace↔橘核心
+  // crossfade 期間（兩層黑底皆未達全滿）下方議程不會短暫露餡。
+  // agendaIn 刻意早於 coreOut，讓這 0.4s 的淡入發生在畫面外（此時符號段底緣還在視窗底
+  // 下方 32vh）；若跟著 coreOut（＝符號段捲完那一刻）才淡入，會在畫面底緣看得到。
+  // 捲回會自動反向。
   const agendaRevealed = computed(
-    () => symbolProgress.value >= FORUM_HANDOFF.coreOut,
+    () => symbolProgress.value >= FORUM_HANDOFF.agendaIn,
   );
 
   // 論壇段路徑是否已接手（核心正沿線移動）。boolean 而非直接讀 forumPathProgress：

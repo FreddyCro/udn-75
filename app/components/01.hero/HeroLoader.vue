@@ -12,10 +12,10 @@
 const props = defineProps({
   /** 自動播放總秒數（0 → 100%）；越小越快 */
   duration: { type: Number, default: 3.2 },
-  /** 方塊邊長（px）；固定尺寸，欄列數由視窗推算 */
-  tileSize: { type: Number, default: 92 },
-  /** 橘色「處理中」前緣占總格數的比例（控制同時有多少橘塊） */
-  orangeRatio: { type: Number, default: 0.04 },
+  /** 方塊邊長（px）；固定尺寸，欄列數由視窗推算。設計稿 loading-1~7：1280×720 稿上 83.333px */
+  tileSize: { type: Number, default: 83.333 },
+  /** 橘色「處理中」前緣的方塊數（同時有幾顆橘）。設計稿 loading-6（96%）為 1 顆橘＋2 顆藍 */
+  orangeTiles: { type: Number, default: 1 },
   /** 底色（未載入） */
   blue: { type: String, default: '#9FD6FF' },
   /** 前緣「處理中」色 / 收尾中央色 */
@@ -24,8 +24,8 @@ const props = defineProps({
   white: { type: String, default: '#ffffff' },
   /** 計數文字色 */
   textColor: { type: String, default: '#686868' },
-  /** 計數文字大小（CSS 長度，可含 clamp()）；微調數字大小用 */
-  counterFontSize: { type: String, default: 'clamp(28px, 6vmin, 56px)' },
+  /** 計數文字大小（CSS 長度，可含 clamp()）；微調數字大小用。設計稿 32px */
+  counterFontSize: { type: String, default: '32px' },
   /** 進站後延遲幾秒才開始 */
   startDelay: { type: Number, default: 0.2 },
   /** 進度到達此比例（0~1，對應數字百分比）時，中央格就提早翻橘，與後續「100%」數字重疊一段時間 */
@@ -54,7 +54,7 @@ let centerIndex = 0; // 正中央那格的 index（最先翻白、最後翻橘�
 let order: number[] = [];
 // 上一幀每格狀態，避免重複寫入 DOM
 let prevState: number[] = [];
-// 橘色前緣寬度（格數）；僅隨網格大小 / orangeRatio 變動，故於 buildOrder 算一次。
+// 橘色前緣寬度（格數）；僅隨 orangeTiles 變動，故於 buildOrder 算一次。
 let band = 1;
 
 let raf = 0;
@@ -102,7 +102,7 @@ const buildOrder = (n: number) => {
   order = new Array(n);
   for (let rank = 0; rank < n; rank++) order[arr[rank]!] = rank;
   prevState = new Array(n).fill(-1);
-  band = Math.max(1, Math.round(n * props.orangeRatio)); // 橘色前緣寬度
+  band = Math.max(1, Math.round(props.orangeTiles)); // 橘色前緣寬度
 };
 
 // 0=藍 1=橘 2=白
@@ -234,9 +234,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(28px, 6vmin, 56px);
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  /* 設計稿 loading-1~6：32px / weight 300 / 無字距（字體用專案主字體 Noto Sans TC） */
+  font-size: 32px;
+  font-weight: 300;
   color: #686868;
   pointer-events: none;
   transition: opacity 0.4s ease;

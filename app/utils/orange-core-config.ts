@@ -56,15 +56,22 @@ export const FORUM_MOVE_EASE = 'none';
 // ── forum 接棒門檻：converge 之後「白點 → 橘核心」的 crossfade（symbolProgress 0..1）──
 // coreIn ：SymbolFace 收斂點淡出、同時 ForumCore 橘方塊淡入（crossfade）。＝ converge 段終點，
 //          也是 enter 段的起點。
-// coreOut：橘核心的**黑底**淡出 → 露出下方議程。coreIn~coreOut 之間橘核心停在黑畫面。
-// 淡出入為「固定時間」（見 ForumCore 的 CSS transition）；停留長度＝(coreOut−coreIn) 這段 scrub 捲動距離。
-// 往回捲會自動倒退（boolean 觸發的 CSS 轉場可逆）。
+// coreOut：橘核心的**黑底**淡出。coreIn~coreOut 之間橘核心停在黑畫面。
+// agendaIn：`.sec2__path` 與議程整組淡入。刻意**早於** coreOut，讓那 0.4s 發生在畫面外
+//          （此時符號段底緣還在視窗底下方，見 SymbolScene 的時序表），否則會在畫面底緣看到淡入。
+// 淡出入為「固定時間」（見 ForumCore 的 CSS transition）；往回捲自動倒退（CSS 轉場可逆）。
+//
 // ⚠ coreOut 只負責黑底，不負責橘點消失 —— 橘點要撐到論壇段路徑接手（見 useOrangeCoreProgress
-//   的 forumCoreDotVisible）。coreOut 與交棒點之間約有 82vh，橘點在那段期間停在視窗中央不動；
-//   覺得太久就把 coreOut 往後挪。
+//   的 forumCoreDotVisible）。coreOut 與交棒點之間橘點停在視窗中央不動，這段「懸停期」
+//   ＝ 50vh（見下）。
+// ⚠ 懸停期有 **50vh 的幾何下限**，coreOut 已推到 1.0（＝符號段捲完的同一刻），無法再縮：
+//   交棒點是「黑白接縫升到視窗中央」＝ 符號段捲完再 +50vh，而那個位置被「路徑起點必須落在
+//   視窗正中央」的零跳點幾何鎖死（見 ForumCorePath 的 start: 'top center'）。要更短就得動
+//   交棒幾何、犧牲零跳點保證，或改成「懸停期間橘點跟著接縫往下漂」的另一種設計。
 export const FORUM_HANDOFF = {
   coreIn: 0.75,
-  coreOut: 0.9,
+  coreOut: 1.0,
+  agendaIn: 0.9,
 } as const;
 
 // ── 星空 SymbolFace 序列（獨立黑底段落自己的捲動尺，見 01a.symbol/SymbolScene.vue）──
