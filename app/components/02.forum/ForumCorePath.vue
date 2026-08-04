@@ -7,28 +7,36 @@
 -->
 <script setup lang="ts">
 const rootEl = ref<HTMLElement | null>(null);
-const [path1, path2] = FORUM_PATH.pc;
 
-// 目前只有 pc 斷點有設計線；segs() 目前寫死回傳 .pc，pad/mob 尚未有對應線稿。
+// 目前只有 pc 斷點有設計線；segs() 是唯一寫死讀 .pc 的地方，pad/mob 尚未有對應線稿。
 // 之後補 mob/pad 的線時，在這裡依斷點回傳對應陣列（FORUM_PATH.pad / .mob）即可。
+// path1/path2 直接從 segs() 解構取值（供 template 的兩個具名 svg 使用），不再各自寫死
+// FORUM_PATH.pc，避免兩處來源分岔、breakpoint 擴充時漏改其中一邊。
+// ⚠ 索引固定對應 template 由上到下的兩段 <svg>：segs()[0] ↔ 第一段、segs()[1] ↔ 第二段，
+// 改動任一邊（多加一段線、調整順序）都要同步改另一邊。
 const segs = () => FORUM_PATH.pc;
+const [path1, path2] = segs();
 
 // 依錨點量測，算出每段 svg 的平移量（只平移、不縮放），並回傳給呼叫端（Task 6 的驅動線複用）。
 // ⚠ 只在 mount／字體就緒／resize 時量一次並鎖住：錨點捲離視窗後逐幀讀 rect 會讓圖層跟著跑掉。
 // 兩段 svg 是手貼在 template 裡（非 v-for）：Vue 的同名 ref 只有在 v-for 底下才會收集成陣列，
 // 這裡各自賦值只會被後者覆蓋，故改用 querySelectorAll 從根元素直接取兩個 .forum-path__raw。
-function layout(): { tx: number; ty: number }[] {
+// 回傳定長陣列（長度恆等於 segs().length）：量不到錨點的段落填 null，而不是整段略過不 push——
+// 否則消費端會看到索引被壓縮，把「別段的平移量」誤當成這段的，造成靜默錯位。
+function layout(): ({ tx: number; ty: number } | null)[] {
+  const segments = segs();
   const root = rootEl.value;
-  if (!root) return [];
+  if (!root) return segments.map(() => null);
   const rootRect = root.getBoundingClientRect();
-  const dates = root.parentElement?.querySelectorAll('.forum-event__date');
-  if (!dates?.length) return [];
+  // 用 closest 往上找 .sec2__path，而非假設 root.parentElement 剛好就是它——
+  // <ForumCorePath /> 若被多包一層 div，parentElement 會找錯目標而靜默失敗。
+  const dates = root.closest('.sec2__path')?.querySelectorAll('.forum-event__date');
   const els = root.querySelectorAll<SVGSVGElement>('.forum-path__raw');
 
-  // 先把兩段錨點的 rect 讀完，再統一寫入 style：避免 read → write → read 交錯，觸發強制同步 reflow。
-  const placements = segs().map((seg, i) => {
+  // 先把每段錨點的 rect 讀完，再統一寫入 style：避免 read → write → read 交錯，觸發強制同步 reflow。
+  const placements = segments.map((seg, i) => {
     const el = els[i];
-    const anchor = dates[seg.anchor] as HTMLElement | undefined;
+    const anchor = dates?.[seg.anchor] as HTMLElement | undefined;
     if (!el || !anchor) return null;
     const a = anchor.getBoundingClientRect();
     return {
@@ -38,14 +46,12 @@ function layout(): { tx: number; ty: number }[] {
     };
   });
 
-  const result: { tx: number; ty: number }[] = [];
   placements.forEach((p) => {
     if (!p) return;
     p.el.style.left = `${p.tx}px`;
     p.el.style.top = `${p.ty}px`;
-    result.push({ tx: p.tx, ty: p.ty });
   });
-  return result;
+  return placements.map((p) => (p ? { tx: p.tx, ty: p.ty } : null));
 }
 
 defineExpose({ layout });
