@@ -82,20 +82,12 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
 
 .media__row {
   display: flex;
-  gap: 8px;
+  gap: 16px;
   align-items: center;
   padding: 20px 0;
   color: var(--color-gray);
   text-decoration: none;
   pointer-events: auto;
-
-  @include rwd-min('tablet') {
-    gap: 20px;
-  }
-
-  @include rwd-min('pc') {
-    gap: 32px;
-  }
 }
 
 // 文字塊：mob 稿直排
@@ -116,7 +108,8 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
   background: currentColor;
   mask: var(--mask) no-repeat left center / contain;
   -webkit-mask: var(--mask) no-repeat left center / contain;
-  vertical-align: bottom; // mob 稿與標題同行（01數位革命：）
+  vertical-align: -2px;
+  margin-right: 8px;
   transition: height 0.25s ease;
 
   .media__row:hover & {
@@ -125,6 +118,7 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
 
   @include rwd-min('tablet') {
     height: 24px;
+    margin-right: 0;
   }
 }
 
