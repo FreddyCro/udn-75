@@ -85,6 +85,8 @@ const groups: AssetGroup[] = [
       logo('/img/data/udn75_data_ai_spark'),
       logo('/img/data/udn75_data_icon_udnvip'),
       logo('/img/data/udn75_data_icon_udnnews'),
+      // 專題作品輪播（ShowcaseGallery）
+      ...seq('/img/data/udn75_pic30_', 15),
     ],
   },
   {

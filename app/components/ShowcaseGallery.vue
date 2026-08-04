@@ -13,12 +13,13 @@
         class="showcase-gallery__card"
         :style="{ width: `${(c.w / designW) * 100}%`, aspectRatio: `${c.w} / ${c.h}` }"
       >
-        <img
+        <UPic
           v-if="c.src"
-          class="showcase-gallery__img"
           :src="c.src"
+          :use-prefix="false"
+          :srcset="['mob']"
+          classname="showcase-gallery__img"
           :alt="c.alt ?? ''"
-          draggable="false"
         />
       </div>
     </div>
@@ -34,16 +35,25 @@ export interface ShowcaseSlide {
   alt?: string;
 }
 
-// 「綁滾動多圖輪播」7 種素材尺寸，正式截圖到位前先以灰色 placeholder 呈現
+// 「綁滾動多圖輪播」正式素材 udn75_pic30_01~15：寬度沿用設計稿的大小分佈（94~273 @1280 stage），
+// 高度依各圖實際比例（3:2 / 4:5 / 1:1）換算，避免 cover 裁切
 // （module scope：defineProps 的 default 會被 hoist，不能引用 setup 區域變數）
 const DESIGN_SLIDES: ShowcaseSlide[] = [
-  { w: 241, h: 301 },
-  { w: 273, h: 149 },
-  { w: 237, h: 275 },
-  { w: 141, h: 56 },
-  { w: 173, h: 204 },
-  { w: 208, h: 112 },
-  { w: 94, h: 94 },
+  { w: 273, h: 182, src: '/img/data/udn75_pic30_01' },
+  { w: 208, h: 139, src: '/img/data/udn75_pic30_02' },
+  { w: 241, h: 161, src: '/img/data/udn75_pic30_03' },
+  { w: 173, h: 216, src: '/img/data/udn75_pic30_04' },
+  { w: 237, h: 158, src: '/img/data/udn75_pic30_05' },
+  { w: 141, h: 141, src: '/img/data/udn75_pic30_06' },
+  { w: 214, h: 143, src: '/img/data/udn75_pic30_07' },
+  { w: 94, h: 94, src: '/img/data/udn75_pic30_08' },
+  { w: 241, h: 161, src: '/img/data/udn75_pic30_09' },
+  { w: 190, h: 127, src: '/img/data/udn75_pic30_10' },
+  { w: 273, h: 182, src: '/img/data/udn75_pic30_11' },
+  { w: 161, h: 201, src: '/img/data/udn75_pic30_12' },
+  { w: 225, h: 150, src: '/img/data/udn75_pic30_13' },
+  { w: 120, h: 120, src: '/img/data/udn75_pic30_14' },
+  { w: 173, h: 173, src: '/img/data/udn75_pic30_15' },
 ];
 </script>
 
@@ -58,7 +68,7 @@ const props = defineProps({
     default: () => DESIGN_SLIDES,
   },
   /** 同時鋪在路徑上的卡片數（越多越像連續 stream） */
-  count: { type: Number, default: 14 },
+  count: { type: Number, default: 15 },
   /** pin 期間可捲動距離（px）；越大動得越慢 */
   pinDistance: { type: Number, default: 2000 },
   /** 端點最小縮放（路徑兩端） */
@@ -233,20 +243,26 @@ onMounted(() => {
   inset: 0;
 }
 
-// 正式素材到位前以灰色 placeholder 呈現（尺寸依設計稿）
+// 灰底為圖片載入前的 backdrop（尺寸依設計稿）
 .showcase-gallery__card {
   position: absolute;
   overflow: hidden;
   background: #d9d9d9;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  filter: drop-shadow(4px 4px 4px rgba(0, 0, 0, 0.2));
   will-change: transform, opacity;
   user-select: none;
-}
 
-.showcase-gallery__img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  // UPic 輸出 picture > img，兩層都撐滿卡片（覆蓋 .u-pic-img 的 height: auto）
+  :deep(.u-pic) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  :deep(.showcase-gallery__img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
 }
 </style>
