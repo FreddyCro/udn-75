@@ -84,153 +84,71 @@
     ]
   },
   "agenda": {
-    "morning": {
-      "label": "上午場",
-      "title": "跨世代共問 AI時代共答",
-      "desc": "我們邀請各界專家人士，從數據洞察出發，串聯生活、社會、地方創生、環境永續、教育等五大核心面向，深入探討 AI 如何建構影響下一個世代。"
-    },
-    "afternoon": {
-      "label": "下午場",
-      "title": "AI時代 永續未來共識",
-      "desc": "從數據洞察出發，串聯五大核心面向。我們不僅探討 AI 的科技算力，更關心科技如何賦能在地，建構跨世代的永續未來。"
-    },
-    "speakerInfoLabel": "講者資訊",
-    "sessions": [
+    "groups": [
       {
-        "period": "morning",
-        "time": "09：00",
-        "label": "開場",
-        "title": "聯合75 智慧未來願景",
-        "speakers": [
-          { "role": "聯合報 董事長", "name": "王文杉" },
-          { "role": "聯合報 執行董事長", "name": "項國寧" }
+        "category": "開幕",
+        "rows": [
+          { "time": "13:30", "title": "聯合報開幕致詞", "notes": ["聯合報社長 游美月"] },
+          { "time": "13:40", "title": "AI驅動永續轉型 共創安全韌性治理新典範", "notes": ["數發部部長 林宜敬"] },
+          { "time": "14:00", "title": "發布《AI時代 跨世代永續與未來生活大調查》", "notes": ["主講人：聯合線上總經理、Kantar凱度洞察"] }
         ]
       },
       {
-        "period": "morning",
-        "time": "09：30",
-        "label": "專題講座｜AI與經濟",
-        "title": "共榮與成長 發揮永續影響力",
-        "speakers": [
-          { "role": "聯合報 董事長", "name": "王文杉" },
-          { "role": "台積電CEO", "name": "魏哲家" }
+        "category": "AI與韌性",
+        "rows": [
+          { "time": "14:20", "title": "AI黃金十年 跨世代共學的新未來", "notes": ["行政院經濟發展委員會創新經濟顧問 簡立峰"] },
+          { "time": "14:35", "title": "用AI制衡AI 建立可信任的數位防禦網", "notes": ["客戶A (金融)"] }
         ]
       },
       {
-        "period": "morning",
-        "time": "11：00",
-        "label": "專題講座｜AI與媒體",
-        "title": "媒體識讀 AI 和機器學習的倫理安全",
-        "speakers": [
-          { "role": "Google台灣總經理", "name": "林雅芳" },
-          { "role": "數位發展部 部長", "name": "林宜敬" }
+        "category": "AI與共好",
+        "rows": [
+          { "time": "14:50", "title": "從算力到地力 讀懂土地讓AI走進地方", "notes": ["台灣地方創生基金會董事長 陳美伶"] },
+          { "time": "15:05", "title": "科技向善 用AI串聯地方創新與社會共好", "notes": ["客戶B (科技業)"] }
         ]
       },
       {
-        "period": "afternoon",
-        "time": "13：30",
-        "label": "開場｜白皮書發布",
-        "title": "AI時代 跨世代永續與 未來生活大調查",
-        "speakers": [
-          { "role": "聯合報 總編輯", "name": "王茂臻" },
-          { "role": "Kantar凱度洞察 台灣董事總經理", "name": "王曉娟" }
-        ]
-      },
-      {
-        "period": "afternoon",
-        "time": "14：00",
-        "label": "專題講座｜AI與韌性",
-        "title": "用AI抗衡AI 建構跨世代社會韌性",
-        "speakers": [
-          { "role": "人工智慧學校 執行長", "name": "陳伶志" },
-          { "role": "數位發展部 部長", "name": "林宜敬" },
-          { "role": "台大資訊工程學系教授", "name": "陳縕儂" }
-        ]
-      },
-      {
-        "period": "afternoon",
-        "time": "14：45",
-        "label": "專題講座｜AI與共好",
-        "title": "從AI算力到地力 科技回應環境與社會需求",
-        "speakers": [
-          { "role": "小鎮文創 執行長", "name": "何培鈞" },
-          { "role": "台灣地方創生基金會 董事長", "name": "陳美伶" }
-        ]
-      },
-      {
-        "period": "afternoon",
-        "time": "15：15",
-        "label": "跨界對談",
-        "title": "AI 時代下的 社會韌性與地方共好新藍圖",
-        "moderator": { "role": "聯合報 總編輯", "name": "王茂臻" },
-        "topics": [
+        "category": "跨界對談",
+        "rows": [
           {
-            "question": "AI如何幫助解決地方問題？",
-            "speakers": [
-              { "role": "小鎮文創 執行長", "name": "何培鈞" },
-              { "role": "台灣地方創生基金會 董事長", "name": "陳美伶" }
-            ]
-          },
-          {
-            "question": "AI創生共好遇到資訊信任危機怎麼解？",
-            "speakers": [
-              { "role": "人工智慧學校 執行長", "name": "陳伶志" },
-              { "role": "數位發展部 部長", "name": "林宜敬" },
-              { "role": "台大資訊工程學系教授", "name": "陳縕儂" }
-            ]
+            "time": "15:20",
+            "title": "AI 時代 社會韌性與地方共好",
+            "notes": ["主持人：聯合報總編輯 王茂臻", "與談人：簡立峰 × 陳美伶 × 客戶A × 客戶B"]
           }
         ]
       },
       {
-        "period": "afternoon",
-        "time": "15：50",
-        "label": "專題講座｜AI與教育",
-        "title": "當AI無所不在 下一代關鍵教育力",
-        "speakers": [
-          { "role": "台大電機工程學系 教授", "name": "李宏毅" },
-          { "role": "台灣放伴教育協會 理事長", "name": "謝忠瑋" },
-          { "role": "國教署 署長", "name": "彭富源" }
+        "category": "AI與教育",
+        "rows": [
+          { "time": "15:55", "title": "天賦與賦能 AI時代重新定義學習與人才", "notes": ["均一教育基金會董事 何麗梅"] }
         ]
       },
       {
-        "period": "afternoon",
-        "time": "16：35",
-        "label": "專題講座｜AI與生活",
-        "title": "AI與超高齡台灣 好好變老的美好未來",
-        "speakers": [
-          { "role": "臺北市立關渡醫院 院長", "name": "陳亮恭" },
-          { "role": "弘道老人福利基金會 董事長", "name": "王乃弘" }
+        "category": "AI與生活",
+        "rows": [
+          { "time": "16:10", "title": "專題演講：AI打造跨世代共好 全齡友善生活", "notes": ["客戶C"] },
+          { "time": "16:25", "title": "AI與健康韌性 迎向超高齡社會的新解方", "notes": ["關渡醫院院長 陳亮恭"] }
         ]
       },
       {
-        "period": "afternoon",
-        "time": "17：05",
-        "label": "跨界對談",
-        "title": "終身賦能：AI 浪潮下的跨世代教育力與高齡好生活",
-        "moderator": { "role": "聯合報 總編輯", "name": "王茂臻" },
-        "topics": [
+        "category": "跨界對談",
+        "rows": [
           {
-            "question": "如何善用AI工具終身學習？",
-            "speakers": [
-              { "role": "台大電機工程學系 教授", "name": "李宏毅" },
-              { "role": "台灣放伴教育協會 理事長", "name": "謝忠瑋" },
-              { "role": "國教署 署長", "name": "彭富源" }
-            ]
-          },
-          {
-            "question": "如何在AI時代搭起高齡社會的溫暖防護網？",
-            "speakers": [
-              { "role": "臺北市立關渡醫院 院長", "name": "陳亮恭" },
-              { "role": "弘道老人福利基金會 董事長", "name": "王乃弘" }
-            ]
+            "time": "16:40",
+            "title": "AI時代 跨世代教育與高齡好生活",
+            "notes": ["主持人：聯合報王茂臻總編輯", "與談人：何麗梅 × 客戶C × 陳亮恭"]
           }
         ]
       }
+    ],
+    "actions": [
+      { "label": "下載完整議程", "href": "#", "variant": "outline" },
+      { "label": "立即報名", "href": "#", "variant": "primary" }
     ]
   },
-  "recap": {
-    "heading": "精彩活動回顧",
-    "body": "聯合報75週年系列論壇盛大登場，主題「跨世代共問，AI時代共答」論壇，匯集各界專家，現場討論極其熱烈...",
-    "readMore": "閱讀完整報導"
+  "report": {
+    "heading": ["乘載AI的鋒芒", "刻下永續的年輪"],
+    "body": "由倡議家與凱度洞察合作發起《AI時代 跨世代永續與未來生活大調查》，剖析當代台灣不同世代對科技變革與永續福祉的真實看法。",
+    "cta": { "label": "融媒體世代訪談報告網站", "href": "#" }
   }
 }
