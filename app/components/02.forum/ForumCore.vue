@@ -8,6 +8,7 @@
   - crossfade：coreIn 時 SymbolFace（上游的 <SymbolScene> 段落）收斂成點，本層黑底 ＋ 橘核心淡入
     → 露出時仍是純黑（橘核心停在黑畫面），下方議程維持被蓋住。淡出入為固定時間
     （CSS transition，非 scrub）＝ 決策「crossfade 用時間、移動綁 scrub」。
+  - 黑底層必須撐到 coreOut 才淡出：其下方的 .sec2 是白底，若提早淡出會露出白階跳動。
   - active 由 symbol pin 的 scrub 進度（useOrangeCoreProgress 的 forumCoreActive）以 boolean 切換，
     往回捲自動反向。因 SymbolScene 在本 section 之上，交棒發生時畫面仍停在星空段落 —— 本層為
     fixed 滿版，故能隔空蓋住視窗。
