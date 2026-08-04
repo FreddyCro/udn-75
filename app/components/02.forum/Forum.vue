@@ -60,11 +60,13 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
   background-color: #fff;
 }
 
-// 路徑段：設計線以百分比定位，故容器需 position；高度已改由三場內容自然撐開
-// （原本的 aspect-ratio 假高度不再需要）。
+// 路徑段：pc 稿 1280 基準，線與內容共用同一像素座標系（線不縮放，故尾端永遠咬住錨點）；
+// 超寬視窗只是左右留白，不會讓線與內容產生相對位移。高度已改由三場內容自然撐開。
 // 露出時機同議程（coreOut 後），避免 crossfade 期間從縫隙露餡。
 .sec2__path {
   position: relative;
+  max-width: 1280px;
+  margin: 0 auto;
   opacity: 0;
   transition: opacity 0.4s ease;
 

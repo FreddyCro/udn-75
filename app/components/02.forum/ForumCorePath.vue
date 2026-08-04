@@ -6,11 +6,54 @@
      （曲線版見 `git show 7ff9f19:app/components/01.hero/OrangeCorePath.vue`）。
 -->
 <script setup lang="ts">
+const rootEl = ref<HTMLElement | null>(null);
 const [path1, path2] = FORUM_PATH.pc;
+
+// 目前斷點的設計線設定。pad / mob 尚未提供 → 空陣列，layout() 直接不動作。
+// 之後補 mob/pad 的線時，只要在 FORUM_PATH 填該 key，並在這裡加斷點判斷。
+const segs = () => FORUM_PATH.pc;
+
+// 依錨點量測，算出每段 svg 的平移量（只平移、不縮放）。
+// ⚠ 只在 mount／字體就緒／resize 時量一次並鎖住：錨點捲離視窗後逐幀讀 rect 會讓圖層跟著跑掉。
+// 兩段 svg 是手貼在 template 裡（非 v-for）：Vue 的同名 ref 只有在 v-for 底下才會收集成陣列，
+// 這裡各自賦值只會被後者覆蓋，故改用 querySelectorAll 從根元素直接取兩個 .forum-path__raw。
+function layout() {
+  const root = rootEl.value;
+  if (!root) return;
+  const rootRect = root.getBoundingClientRect();
+  const dates = root.parentElement?.querySelectorAll('.forum-event__date');
+  if (!dates?.length) return;
+  const els = root.querySelectorAll<SVGSVGElement>('.forum-path__raw');
+
+  segs().forEach((seg, i) => {
+    const el = els[i];
+    const anchor = dates[seg.anchor] as HTMLElement | undefined;
+    if (!el || !anchor) return;
+    const a = anchor.getBoundingClientRect();
+    el.style.left = `${a.left - rootRect.left + seg.offset.x}px`;
+    el.style.top = `${a.top - rootRect.top + seg.offset.y}px`;
+  });
+}
+
+defineExpose({ layout });
+
+// layout() 讀 DOM rect，只能在客戶端跑；onMounted 本身在 SSR 不會執行，這裡再加一層防呆。
+onMounted(() => {
+  if (typeof window === 'undefined') return;
+  layout();
+  // 字體載入會改變文字高度 → 錨點位移 → 重新量測。
+  document.fonts?.ready.then(layout);
+  window.addEventListener('resize', layout);
+});
+
+onBeforeUnmount(() => {
+  if (typeof window === 'undefined') return;
+  window.removeEventListener('resize', layout);
+});
 </script>
 
 <template>
-  <div class="forum-path" aria-hidden="true">
+  <div ref="rootEl" class="forum-path" aria-hidden="true">
     <svg
       class="forum-path__raw"
       :width="path1.w"
@@ -48,9 +91,9 @@ const [path1, path2] = FORUM_PATH.pc;
   pointer-events: none;
 }
 
-// 直接貼上的 Figma 匯出：svg 預設 inline，兩段會並排／換行，改 block 讓它們垂直堆疊。
-// 🚧 定位（Figma 左上角 x/y）尚未套用。
+// 直接貼上的 Figma 匯出：位置由 <script> 的 layout() 依錨點量測寫入 left/top（只平移、不縮放）。
 .forum-path__raw {
+  position: absolute;
   display: block;
 }
 
