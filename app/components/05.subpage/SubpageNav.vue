@@ -13,7 +13,9 @@ withDefaults(
 <template>
   <nav class="subpage-nav">
     <div class="subpage-nav__inner">
-      <a class="subpage-nav__link subpage-nav__link--back" :href="backUrl">
+      <!-- 用 NuxtLink 而非原生 <a>：原生 href 是整頁重載，不走 vue-router，
+           換頁轉場（app.pageTransition）不會觸發。to 收乾淨的 route path，baseURL 由 NuxtLink 處理。 -->
+      <NuxtLink class="subpage-nav__link subpage-nav__link--back" :to="backUrl">
         <img
           class="subpage-nav__icon subpage-nav__icon--prev"
           src="/img/udn75_nav_prev.svg"
@@ -21,12 +23,12 @@ withDefaults(
           aria-hidden="true"
         />
         <span class="subpage-nav__label">{{ backLabel }}</span>
-      </a>
+      </NuxtLink>
 
-      <a
+      <NuxtLink
         v-if="next?.url"
         class="subpage-nav__link subpage-nav__link--next"
-        :href="next.url"
+        :to="next.url"
       >
         <span class="subpage-nav__label">{{ next.title }}</span>
         <img
@@ -35,7 +37,7 @@ withDefaults(
           alt=""
           aria-hidden="true"
         />
-      </a>
+      </NuxtLink>
     </div>
   </nav>
 </template>

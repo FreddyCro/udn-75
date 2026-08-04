@@ -17,9 +17,12 @@ const {
   setState,
   isGone,
   videoReady,
-  loaderDone,
+  heroStarted,
   currentTime,
 } = useHeroVideo();
+
+// 全站音效開關：開啟時本影片不 muted（見 composables/useAppSound）。
+const { soundOn } = useAppSound();
 
 // 資源路徑前綴同 UVid / UPic（dev/prod 為空字串）
 const runtime = useRuntimeConfig();
@@ -51,12 +54,14 @@ const markReady = () => {
   }
 };
 
-// muted 由 JS 再確保一次：SSR / hydration 下 template 的 muted 不一定落到 DOM property，
-// 沒 muted 的自動播放會被瀏覽器封鎖。
+// muted 的最終值由 JS 決定：template 上的 muted 屬性只是「JS 跑起來之前」的保險
+// （SSR / hydration 下 template 的 muted 不一定落到 DOM property，且絕不能先漏音）。
+// soundOn 為 true 時不 muted —— 播放一律由 start 按鈕那次點擊觸發（有使用者手勢），
+// 故有聲播放不會被瀏覽器封鎖；仍保留下方 catch 的 fallback 以防萬一。
 async function play() {
   const v = videoEl.value;
   if (!v || heroState.value === 'gone') return;
-  v.muted = true;
+  v.muted = !soundOn.value;
   try {
     await v.play();
   } catch {
@@ -79,8 +84,8 @@ function onLoadedMetadata() {
     v.currentTime = resumeAt;
     resumeAt = 0;
   }
-  // 載入層已收掉才播（首次載入時通常還沒收，由下方 watch(loaderDone) 接手）
-  if (loaderDone.value) void play();
+  // 使用者已按下 start 才播（首次載入時通常還沒按，由下方 watch(heroStarted) 接手）
+  if (heroStarted.value) void play();
 }
 
 // 階段推進的單一真相＝影片時間軸：依 config 的段落秒數判斷何時換狀態 / 循環。
@@ -141,9 +146,15 @@ watch(heroState, (s) => {
   void play();
 });
 
-// 載入層收掉後才開始播 main（避免前幾秒被載入層蓋住而白播）
-watch(loaderDone, (done) => {
-  if (done) void play();
+// 按下 start 後才開始播 main（見 useHeroVideo 的 heroStarted）
+watch(heroStarted, (started) => {
+  if (started) void play();
+});
+
+// 音效開關可在播放中被切換（例如未來在 Header 加上按鈕）→ 即時套用到 <video>。
+watch(soundOn, (on) => {
+  const v = videoEl.value;
+  if (v) v.muted = !on;
 });
 
 function onResize() {
@@ -165,7 +176,7 @@ onMounted(() => {
   if (v && v.readyState >= 3) markReady();
   else readyTimer = setTimeout(markReady, HERO_VIDEO_READY_TIMEOUT); // 遲遲無法播放時的保險
 
-  if (loaderDone.value) void play(); // HMR / 重新掛載時載入層可能已收掉
+  if (heroStarted.value) void play(); // HMR / 重新掛載時可能已按過 start
 });
 
 onBeforeUnmount(() => {

@@ -3,15 +3,12 @@ $gray: #686868;
 .sec1 {
   position: relative;
 
-  // 視覺內容整組容器：core / path / date 都在此，並作為它們 absolute 定位的原點。
-  // 滑到底時由 ScrollTrigger pin（＝ position:fixed）整組釘住並延展 100vh 捲動深度
-  // （見 Hero.vue 的 pinST）；pin 期間三者相對位置一致。
-  // 注意：core 進度仍隨整個 section 捲動繼續前進，故 pin 期間 core 會漂移 —— 待後續處理。
+  // 視覺內容整組容器：core / path 都在此，並作為它們 absolute 定位的原點。
   &__inner {
     position: relative;
   }
 
-  // ===== intro → date 內容場景 =====
+  // ===== 內容場景 =====
   // 對齊 Figma 1280 設計稿：內容置中、左右留白 56px
   &__scene {
     position: relative;
@@ -20,12 +17,18 @@ $gray: #686868;
     padding: 0 56px;
   }
 
-  // orange core：外觀 / 淡入 / 各階段視覺已抽到 Core.vue（scoped）。
+  // orange core：外觀 / 淡入已抽到 OrangeCore.vue（scoped）。
 
   // ---- intro 引言 ----
   &__intro {
-    // 預留上方 core「舞台」空間：往下滑，引言文字才進入視窗
+    // 上方：預留 core「舞台」空間，往下滑引言文字才進入視窗。
     padding-top: 100px;
+    // 下方：core 穿透文字後繼續下行到「視窗正中央」所需的 runway。
+    // OrangeCorePath 的終點 = sectionHeight − 50vh，故此值必須 > 50vh，
+    // 否則終點會落在文字之內、core 還沒穿出文字就停住。
+    padding-bottom: 60vh;
+    // 透明度由 Hero.vue 依 path 進度寫 inline style（接近視窗中央時淡出讓位給轉場）。
+    will-change: opacity;
   }
 
   &__intro-body {
@@ -37,110 +40,9 @@ $gray: #686868;
     line-height: 36px;
     text-align: justify;
   }
-
-  // ---- date 論壇資訊（＋ core 路徑）整組 ----
-  // 依設計稿 501:21162：以大標左上角為原點，各元素絕對定位（固定 px，RWD 之後再處理）。
-  &__date {
-    position: relative;
-    // content-box：讓 padding-bottom 在 963px 之外「額外」加高（border-box 會把 padding 吃進內容）。
-    box-sizing: content-box;
-    height: 963px; // 大標頂 → path／日期底（path 下緣約 963）
-    // date 內容下方預留的空白：決定 pin 起點時（start: 'bottom bottom'）日期停在畫面的高度
-    // ——padding 越大，日期停得越高、下方留白越多。與 pin 釘住距離（PIN_VH）無關，是獨立的「取景」值。
-    padding-bottom: 30vh;
-    margin-top: clamp(120px, 22vh, 200px);
-  }
-
-  // 大標「智慧未來 AI永續論壇」— 原點 (0, 0)
-  &__date-title {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 688px;
-    margin: 0;
-    color: $gray;
-    font-weight: 400;
-    font-size: clamp(56px, 10.5vw, 134px);
-    line-height: 1;
-    letter-spacing: 0.02em;
-  }
-
-  // desc — (0, 306)
-  &__date-desc {
-    position: absolute;
-    top: 306px;
-    left: 0;
-    width: 686px;
-    margin: 0;
-    color: $gray;
-    font-weight: 300;
-    font-size: 22px;
-    line-height: 40px;
-    text-align: justify;
-  }
-
-  // 大型日期 2026 / 09 / 16（階梯狀往右下錯開）— (245, 587)，對齊設計稿 501:21163。
-  &__date-when {
-    position: absolute;
-    top: 587px;
-    left: 245px;
-    margin: 0;
-    color: $gray;
-    font-weight: 300;
-    font-size: clamp(64px, 13vw, 132px);
-    line-height: 0.95;
-  }
-
-  &__date-num {
-    display: block;
-
-    &--m {
-      margin-left: 1.3em;
-    }
-
-    &--d {
-      position: relative; // ⊜ 標記的定位原點
-      margin-left: 2.7em;
-    }
-  }
-
-  // 星期圓框標記「三」：位於「16」右下、緊接其後（對應設計 683:51624，直徑約 60.7）
-  // 尺寸／字級皆以 em 綁定大型日期字級，隨 RWD 一起縮放。
-  &__date-mark {
-    position: absolute;
-    left: calc(100% + 0.3em);
-    bottom: 0.1em;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.62em; // ≈ 60px（相對本身 font-size 0.28em）
-    height: 1.62em;
-    border: 1.5px solid currentColor;
-    border-radius: 50%;
-    color: $gray;
-    font-size: 0.28em; // ≈ 37px；「三」置中於圓內
-    font-weight: 300;
-    line-height: 1;
-  }
-
-  // 地點與時間 — (863, 582)
-  &__date-where {
-    position: absolute;
-    top: 582px;
-    left: 863px;
-    margin: 0;
-    color: $gray;
-    font-weight: 400;
-    font-size: clamp(24px, 3.6vw, 46px);
-    line-height: 1.25;
-
-    span {
-      display: block;
-    }
-  }
 }
 
-// ---- 手機（<768px）：僅保留 scene / intro 基本調整；date group 的 RWD 待後續處理 ----
+// ---- 手機（<768px）：scene / intro 的基本調整 ----
 @media screen and (max-width: 767.98px) {
   .sec1__scene {
     padding: 0 20px;

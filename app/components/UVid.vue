@@ -4,7 +4,8 @@
  *
  * 依目前裝置解析度（mob / pad / pc）從 src 物件挑對應來源，輸出單一 <video>。
  * 路徑會被 runtimeConfig 的 APP_ASSETS_PATH 前綴（dev/prod 為空字串），
- * 並自動補上副檔名：影片 .mp4、poster .jpg。預設 autoplay + loop + muted。
+ * 並自動補上副檔名：影片 .mp4、poster .jpg。預設 autoplay + loop，
+ * 靜音預設跟隨全站音效開關（見 muted prop）。
  *
  * 使用範例（對應本專案 public/img，完整清單見 pages/resources.vue）：
  *
@@ -41,19 +42,26 @@ interface Props {
   };
   autoplay?: boolean;
   loop?: boolean;
+  /**
+   * 未指定時跟隨全站音效開關（useAppSound）：使用者在 hero 的 start 閘門開啟音效後，
+   * 後續所有影片一併不 muted。明確傳入 :muted 的呼叫端優先（例如純裝飾的背景影片）。
+   */
   muted?: boolean;
   preload?: string;
   classname?: string;
   ariaLabel?: string;
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   autoplay: true,
   loop: true,
-  muted: true,
+  muted: undefined,
   preload: 'auto',
   ariaLabel: 'Udn newmeida center',
 });
+
+const { soundOn } = useAppSound();
+const isMuted = computed(() => props.muted ?? !soundOn.value);
 
 // 與 UPic 一致：改用 Nuxt runtimeConfig（本專案是 NUXT_PUBLIC_APP_ASSETS_PATH，
 // 而非 Vite 的 VITE_ASSETS_PATH）。
@@ -88,7 +96,7 @@ onUnmounted(() => {
     playsinline
     :autoplay="autoplay"
     :loop="loop"
-    :muted="muted"
+    :muted="isMuted"
     :preload="preload"
     :aria-label="ariaLabel"
   />
