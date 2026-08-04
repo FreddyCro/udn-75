@@ -34,13 +34,95 @@ top  = 錨點.top  − 容器.top  + offset.y
 
 **線只平移、不縮放**。所以視窗寬於 1280 只是左右留白，線與內容不會產生相對位移。
 
-重新量測的時機只有三個：`onMounted`、`document.fonts.ready`、`resize`（debounce 150ms）。
+重新量測的時機：`onMounted`、`document.fonts.ready`、ScrollTrigger 的 `refreshInit`
+（涵蓋 resize —— `autoRefreshEvents` 預設含它，故不另外掛 resize 監聽）、斷點改變
+（`await nextTick()` 等 `v-for` 換完 DOM 後再 `refresh()`）。
 **刻意不逐幀量測** —— 錨點捲離視窗後逐幀讀 rect 會讓圖層跟著跑掉。
+
+---
+
+## 驅動線與核心
+
+可見線只負責「被看到」，核心實際跑的是**驅動線**（`.forum-path__motion` 內的
+`<path stroke="none">`）：各段 `motion` 先過 `normalizeD`，再用 `layout()` 回傳的平移量搬到
+`.forum-path` 座標系（`translateD`），段間補一條從前段末端到後段起點的直線連接段，
+串成**單一連續 path**（`joinSegments`）。全部在 `~/utils/forum-path-geometry`，有 vitest 覆蓋。
+
+⚠️ **`normalizeD` 不能省。** 下游一律假設「座標 x,y 交替」，而 Figma 匯出的 stroke path
+很常帶 `V` / `H`（例：`temp/vector276-asset.svg` 是 `M383.554 2V209.5C…`）——
+那兩個指令只帶單一座標，會讓奇偶判斷整條錯位，**而且不會報錯**。
+
+必須只留一個 `M` —— 多個 `M` 會讓 `getPointAtLength` 在段落之間跳點，接縫就頓一下。
+連接段長度每次 `build()` 重算，吸收錨點之間隨字體／版面變動的距離。
+
+起訖兩端都由路徑幾何推導，**不掛任何 DOM `endTrigger`**：
+
+| | 設定 | 意義 |
+| --- | --- | --- |
+| start | `'top center'` | `.sec2__path` 頂端抵達視窗中央 → 路徑起點 (640, 0) 正好在視窗正中央 |
+| end | `() => \`top+=${lineEndY} center\`` | 路徑末端（實測容器 y = 5400.5）抵達視窗中央 |
+
+刻意避開兩個陷阱：`.forum-event__date` 是 `position: absolute`，當 `endTrigger` 量不到有效
+高度；而 `.sec2` 的 bottom 會被上游 `SymbolScene` 的 pin-spacer 撐高，用它當基準是循環依賴。
+
+實測精度（1440×900）：核心到可見線的距離中位數 **0.59px**、連接段以外最大 **2.05px**
+（outline 帶寬約 2px，完美居中的點到邊界就是 ~1px）；往回捲 drift **0px**；
+核心精準停在線末端 (327.16, 5400.49)。連接段那 3.5% 的路徑刻意沒有可見線（穿過 09/15 空隙）。
+
+### 兩個容易漏掉的顯隱規則
+
+**路徑核心在 `p = 0` 時必須藏著**（`.forum-path__core` 的 `is-riding`）。它是隨頁面捲動的
+absolute 元素，若一直可見，段落進場到交棒點之間（50vh）畫面上會同時有它與中央那顆固定橘點
+—— 實測相距 200px。顯隱刻意不加 transition：交棒點兩顆重合，瞬切看不出來，淡入反而會閃。
+
+**`reset()` 要把 `forumPathProgress` 一併歸零**，不能只清 `forumPathActive`。從 pc 切到
+pad/mob 時它會留著殘值，`forumPathRiding` 卡在 true，而 `place()` 已因 `motionLen = 0` 提早
+return，方塊就停在最後一次的 transform 上 —— 變成論壇段裡一顆不會動的橘方塊。
+
+---
+
+## 從符號段交棒
+
+`ForumCore` 的黑底與橘點吃兩個不同條件：黑底在 `[coreIn, coreOut)`，橘點則從 `coreIn`
+一路撐到路徑接手（`forumPathProgress > 0`）。交棒那一刻兩顆在同一點（實測相差 1.6px）、
+同尺寸、同色，故一幀重疊也看不出來；往回捲時 `p` 回到 0，橘點在視窗中央原地出現。
+
+橘點在交棒時的消失是**瞬間**的（`is-instant-hide`）：兩顆重合但路徑核心隨即沿線離開，
+若還淡出 0.4s，中央會留一顆停著的殘影。只在「已交棒且該消失」時關掉 transition，
+所以 `coreIn` 的淡入（與 SymbolFace 的 crossfade）仍是 0.4s，pad/mob 的 `coreOut` 淡出也照舊。
+
+⚠️ `coreOut`（288vh）與交棒點（≈370vh）之間約有 **82vh**，橘點在那段期間停在視窗中央不動
+（背景從 `.sec-symbol` 的黑換成 `.sec2` 的白）。覺得太久就把 `FORUM_HANDOFF.coreOut` 往後挪。
 
 ### 錨點是具名的，不是索引
 
 錨點用 `[data-forum-anchor="論壇二"]` 選取（值 ＝ `section2.json` 的 `event.no`），
 不是 `querySelectorAll('.forum-event__date')[1]`。增刪場次、重排順序都不會讓線靜默錨到別場身上。
+
+⚠️ **`offset` 是相對錨點的，不要拿註解裡的絕對座標去比對實測值。**
+`FORUM_PATH.pc[1]` 的註解寫「起點要落在容器 (569, 3854)」，那是論壇二錨點還在 y=3526.6
+時推導的；錨點後來隨 140px 留白搬家而下移 140，線一起跟上了，所以現在實測起點是
+(568.8, 3994.3) —— **相對關係仍正確**（`15` 字框 x 625–766.3 / y 3908.4–4032.4，起點在其
+左側下半部）。2026-08-04 曾因此誤判為「seg2 偏移 140px」，差點改壞一個手工校準過的值。
+要驗對位就驗相對關係（起點是否落在該落的字旁邊），不要驗絕對數字。
+
+### 線稿是資料，不是 template
+
+每個斷點的線都放在 `FORUM_PATH[bp]`，一段一個 `ForumPathSeg`：`line` 是可見線的 `d`、
+`motion` 是驅動用中心線、`kind` 決定 `line` 吃 `fill`（outline 匯出）還是 `stroke`（真描邊）。
+template 是 `v-for`，所以**段數不固定** —— pc 是兩段，單一連續線稿也跑得動。
+
+`kind: 'stroke'` 時 `motion` 直接等於 `line`（描邊 path 的 `d` 本身就是中心線），
+不需要跑 `scripts/extract-centerline.mjs`。
+
+斷點由 `ForumCorePath.vue` 的 `bp` ref 決定（`PC_BREAKPOINTS` / `TABLET_BREAKPOINTS`，
+**不是** `~/utils/get-device` —— 它的 pad/pc 界線是 1023，與設計稿的 1280 不合）。
+`bp` 初值是 `null`：SSR 與 client 首次渲染都不出線，掛載後才量測並渲染。
+這是刻意的 —— 這層純裝飾且位置全靠 JS 量測，而各斷點段數不同，SSR 猜錯就 hydration mismatch。
+
+空陣列（目前的 `pad` / `mob`）＝ 不渲染、不建驅動線、`forumPathActive` 為 false。
+**填資料就生效，不需要改程式碼。** 但論壇段的文字版位目前全是 pc 1280 座標的絕對定位，
+所以錨點在 pad / mob 仍停在 pc 位置 —— 線會忠實地錨到一個錯的地方，要看起來對得先做那個斷點的版位。
 
 ---
 
@@ -125,24 +207,29 @@ at: { x: 268, y: 327 },
 加上 `end: { anchor, at }` 後，用兩點距離算縮放，文字變動時線自己伸縮，**永遠不用手改**。
 代價是曲線會被非等比拉伸（小幅度看不出來）。
 
-> **若之後換成 Figma 現行稿的 Vector 276**（一條跨越三場的連續 stroke path，必須同時咬住多個位置），
+> **若之後補 pad 線稿**（Vector 276 是一條跨越三場的連續 stroke path，必須同時咬住多個位置），
 > (c) 就從加分變成必要。
 
 ---
 
 ## 其他已知事項
 
-- **目前貼在 `ForumCorePath.vue` 的兩段 svg 來自舊版 Figma 檔**（尺寸 857×3694 / 814×1435）。
-  現行 pc 稿改成單一連續 stroke path「Vector 276」（viewBox 664.554 × 4591.36），尚未換過來。
-  換線之後，「兩段之間補直線連接段」的規劃就不需要了。
+- **「Vector 276」是 pad 斷點的線，不是 pc 的。** `temp/vector276.svg` 的外層是
+  `<g id="pad">` → `<g id="主頁_pad">`，`<rect width="768">`；`temp/vector276-asset.svg`
+  是同一條線的 1× 匯出（664.554 × 4591.36），兩者座標比恰為 0.892109。
+  pc 用的仍是 `FORUM_PATH.pc` 那兩段（已實測校正，svg2 起點誤差 0.2 / 0.3px）。
+  Vector 276 是單一連續 stroke path，`kind: 'stroke'` ＋ `motion` 直接等於 `line` 即可貼上，
+  不需跑 `extract-centerline.mjs`；`joinSegments` 對單段不加連接段。
 - **可見線是 outline 填色、不是 stroke**（Figma 匯出的通病），所以 SCSS 用 `fill` 不是 `stroke`；
   匯出自帶的 `opacity` 與 `#898989`/`black` 已移除，統一吃 `var(--accent)`。
 - **`motion` 不可手改**。它是 `extract-centerline.mjs` 從可見線的 outline 抽出來的中心線，
   手改會讓可見線與驅動線分家。可見線換了就重跑腳本，再用 `verify-centerline.mjs` 驗一次。
-- **pad / mob 尚未有線稿**。`FORUM_PATH.pad` / `.mob` 是空陣列，而且 `ForumCorePath.vue` 的
-  `segs()` 寫死只回傳 `.pc`——之後補線稿時，**填了陣列還要同步改 `segs()`**，否則不會生效。
+- **pad / mob 尚未有線稿**。`FORUM_PATH.pad` / `.mob` 是空陣列 → 那兩個斷點不渲染任何線、
+  不建驅動線。`segs` 已改成依斷點回傳的 computed，所以**填了陣列就生效，不需要改程式碼**
+  （2026-08-04；先前的「還要同步改 `segs()`」已不適用）。
 
-  ⚠️ 副作用：因為 `segs()` 不分斷點，**pc 的線在 pad / mob 也照樣渲染**。實測 768 寬時
-  svg 右緣落在 1028（容器只有 753），整頁出現橫向捲動（文件寬 1172）。論壇段的文字版位本來就是
-  pc-only（全部絕對定位在 1280 座標系），所以這只是「pad/mob 尚未實作」的其中一個症狀；
-  真正處理 pad/mob 時要一併解掉，臨時止血可在 `rwd-max('pc')` 內把 `.forum-path` 收掉。
+  ⚠️ **768 寬的整頁橫向捲動與設計線無關。** 實測（2026-08-04）收掉線之後文件寬仍是 1172 ——
+  元凶是論壇段的文字版位：`.forum-event__quote`（left 718 ＋ width 454）與
+  `.forum-event__speakers`（margin-left 463 ＋ width 709）右緣都落在 1172，而設計線的右緣是
+  1028，從來不是最寬的東西。本文件先前把它歸因於設計線是**錯的**。
+  這屬於「pad/mob 版位未實作」，要連同 `ForumEvent.vue` 那一整套 pc 絕對定位一起處理。
