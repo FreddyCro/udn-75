@@ -9,52 +9,71 @@
 const rootEl = ref<HTMLElement | null>(null);
 const [path1, path2] = FORUM_PATH.pc;
 
-// 目前斷點的設計線設定。pad / mob 尚未提供 → 空陣列，layout() 直接不動作。
-// 之後補 mob/pad 的線時，只要在 FORUM_PATH 填該 key，並在這裡加斷點判斷。
+// 目前只有 pc 斷點有設計線；segs() 目前寫死回傳 .pc，pad/mob 尚未有對應線稿。
+// 之後補 mob/pad 的線時，在這裡依斷點回傳對應陣列（FORUM_PATH.pad / .mob）即可。
 const segs = () => FORUM_PATH.pc;
 
-// 依錨點量測，算出每段 svg 的平移量（只平移、不縮放）。
+// 依錨點量測，算出每段 svg 的平移量（只平移、不縮放），並回傳給呼叫端（Task 6 的驅動線複用）。
 // ⚠ 只在 mount／字體就緒／resize 時量一次並鎖住：錨點捲離視窗後逐幀讀 rect 會讓圖層跟著跑掉。
 // 兩段 svg 是手貼在 template 裡（非 v-for）：Vue 的同名 ref 只有在 v-for 底下才會收集成陣列，
 // 這裡各自賦值只會被後者覆蓋，故改用 querySelectorAll 從根元素直接取兩個 .forum-path__raw。
-function layout() {
+function layout(): { tx: number; ty: number }[] {
   const root = rootEl.value;
-  if (!root) return;
+  if (!root) return [];
   const rootRect = root.getBoundingClientRect();
   const dates = root.parentElement?.querySelectorAll('.forum-event__date');
-  if (!dates?.length) return;
+  if (!dates?.length) return [];
   const els = root.querySelectorAll<SVGSVGElement>('.forum-path__raw');
 
-  segs().forEach((seg, i) => {
+  // 先把兩段錨點的 rect 讀完，再統一寫入 style：避免 read → write → read 交錯，觸發強制同步 reflow。
+  const placements = segs().map((seg, i) => {
     const el = els[i];
     const anchor = dates[seg.anchor] as HTMLElement | undefined;
-    if (!el || !anchor) return;
+    if (!el || !anchor) return null;
     const a = anchor.getBoundingClientRect();
-    el.style.left = `${a.left - rootRect.left + seg.offset.x}px`;
-    el.style.top = `${a.top - rootRect.top + seg.offset.y}px`;
+    return {
+      el,
+      tx: a.left - rootRect.left + seg.offset.x,
+      ty: a.top - rootRect.top + seg.offset.y,
+    };
   });
+
+  const result: { tx: number; ty: number }[] = [];
+  placements.forEach((p) => {
+    if (!p) return;
+    p.el.style.left = `${p.tx}px`;
+    p.el.style.top = `${p.ty}px`;
+    result.push({ tx: p.tx, ty: p.ty });
+  });
+  return result;
 }
 
 defineExpose({ layout });
 
-// layout() 讀 DOM rect，只能在客戶端跑；onMounted 本身在 SSR 不會執行，這裡再加一層防呆。
+// resize 拖曳視窗時會連續觸發；debounce 到停止 150ms 後才重新量測，避免頻繁強制 reflow。
+let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleLayout() {
+  if (resizeTimer !== undefined) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(layout, 150);
+}
+
 onMounted(() => {
-  if (typeof window === 'undefined') return;
   layout();
   // 字體載入會改變文字高度 → 錨點位移 → 重新量測。
   document.fonts?.ready.then(layout);
-  window.addEventListener('resize', layout);
+  window.addEventListener('resize', scheduleLayout);
 });
 
 onBeforeUnmount(() => {
-  if (typeof window === 'undefined') return;
-  window.removeEventListener('resize', layout);
+  window.removeEventListener('resize', scheduleLayout);
+  if (resizeTimer !== undefined) clearTimeout(resizeTimer);
 });
 </script>
 
 <template>
   <div ref="rootEl" class="forum-path" aria-hidden="true">
     <svg
+      v-if="path1"
       class="forum-path__raw"
       :width="path1.w"
       :height="path1.h"
@@ -69,6 +88,7 @@ onBeforeUnmount(() => {
     </svg>
 
     <svg
+      v-if="path2"
       class="forum-path__raw"
       :width="path2.w"
       :height="path2.h"
