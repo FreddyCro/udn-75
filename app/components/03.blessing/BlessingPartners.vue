@@ -139,7 +139,7 @@ const { partner } = str;
   flex-shrink: 0;
   width: 232px;
   height: 64px;
-  background: var(--color-bg-muted); // placeholder 灰底空框
+  background: #f1f1f1; // placeholder 灰底空框（logo 尚未提供時）
 
   @include rwd-max('pc') {
     width: 160px;
@@ -195,7 +195,7 @@ const { partner } = str;
   font-size: var(--text-body); // 18 / 36
   font-weight: 300;
   line-height: var(--text-body--line-height);
-  color: var(--color-gray-mid);
+  color: #808080; // 設計稿 Figma 的 black/B4 色，專案 token 表已無對應變數故寫字面值
 
   @include rwd-max('tablet') {
     font-size: var(--text-caption); // 15 / 24
