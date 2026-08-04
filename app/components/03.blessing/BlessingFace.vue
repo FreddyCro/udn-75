@@ -15,7 +15,11 @@ const props = withDefaults(
 );
 
 const rects = computed(() => {
-  const i = Math.min(FACE_FRAME_COUNT - 1, Math.max(0, Math.round(props.frame)));
+  // frame 未來會由捲動進度換算而來，換算過程若除以零或取值失敗可能產生 NaN；
+  // 非有限數時直接退回第 0 格，避免 FACE_FRAMES[NaN] 取到 undefined 傳進 template。
+  const raw = props.frame;
+  const safe = Number.isFinite(raw) ? raw : 0;
+  const i = Math.min(FACE_FRAME_COUNT - 1, Math.max(0, Math.round(safe)));
   return FACE_FRAMES[i]!;
 });
 </script>
