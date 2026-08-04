@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 /**
  * AiImageQuiz — 「哪一張是AI生成圖?」二選一測驗（visual 頁）。
- * 作答後鎖定：展開解說、非 AI 的照片蓋上遮罩。
+ * 作答後展開解說、非 AI 的照片蓋上遮罩；可重複改選另一個選項，解說隨之切換。
  */
 export interface QuizOption {
   /** UPic 圖片路徑（不含副檔名與裝置後綴） */
@@ -34,7 +34,6 @@ const isCorrect = computed(() => props.options[picked.value]?.isAi === true);
 const explain = computed(() => props.options[picked.value]?.explain ?? '');
 
 function pick(i: number) {
-  if (answered.value) return;
   picked.value = i;
 }
 </script>
@@ -67,7 +66,6 @@ function pick(i: number) {
         :key="i"
         class="ai-quiz__btn"
         type="button"
-        :disabled="answered"
         :aria-pressed="picked === i"
         @click="pick(i)"
       >
@@ -213,10 +211,6 @@ function pick(i: number) {
   background: none;
   color: var(--color-gray);
   cursor: pointer;
-
-  &:disabled {
-    cursor: default;
-  }
 
   &:last-child {
     justify-content: flex-end;
