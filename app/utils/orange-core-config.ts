@@ -48,12 +48,20 @@ export const SYMBOL_TRANSITION = {
 //   CROSSFADE — stage 5 星空淡入所占比例（避免大片半透明星空透出白底而 washy）
 //   TRANSITION— 星空遮罩起點尺寸（由 CORE.dotSize × lineScaleX 推導，永遠對齊那條 core 線）
 
+// ── 論壇段核心的移動速度曲線 ──────────────────────────────────────────
+// 同 hero 的 MOVE_EASE 語意：scrub 本身等速綁定捲動，此 ease 只重新分配「捲動 → 路徑進度」
+// 的節奏，不改總距離。'none' 等速 / 'power2.inOut' 兩端慢中間快。
+export const FORUM_MOVE_EASE = 'none';
+
 // ── forum 接棒門檻：converge 之後「白點 → 橘核心」的 crossfade（symbolProgress 0..1）──
 // coreIn ：SymbolFace 收斂點淡出、同時 ForumCore 橘方塊淡入（crossfade）。＝ converge 段終點，
 //          也是 enter 段的起點。
-// coreOut：橘核心淡出 → 露出下方議程。coreIn~coreOut 之間橘核心停在黑畫面（原地停住）。
+// coreOut：橘核心的**黑底**淡出 → 露出下方議程。coreIn~coreOut 之間橘核心停在黑畫面。
 // 淡出入為「固定時間」（見 ForumCore 的 CSS transition）；停留長度＝(coreOut−coreIn) 這段 scrub 捲動距離。
-// 往回捲會自動倒退（boolean 觸發的 CSS 轉場可逆）。此處只做 handoff；橘核心接手後的「移動」動態待後續。
+// 往回捲會自動倒退（boolean 觸發的 CSS 轉場可逆）。
+// ⚠ coreOut 只負責黑底，不負責橘點消失 —— 橘點要撐到論壇段路徑接手（見 useOrangeCoreProgress
+//   的 forumCoreDotVisible）。coreOut 與交棒點之間約有 82vh，橘點在那段期間停在視窗中央不動；
+//   覺得太久就把 coreOut 往後挪。
 export const FORUM_HANDOFF = {
   coreIn: 0.75,
   coreOut: 0.9,

@@ -4,6 +4,7 @@
 // progress 軌（0..1）：
 //   - path  ：core 沿驅動線移動（OrangeCorePath scrub 寫入）→ 依 STAGE_STOPS 解出 stage 1–3。
 //   - symbol：符號人臉序列（SymbolScene 的捲動尺 scrub 寫入）→ 依 SYMBOL_STOPS 解出 mode。
+//   - forumPath：core 沿論壇段設計線移動（ForumCorePath scrub 寫入）。
 //
 // 🚧 舊的 pin 軌（stage 4–6：橘→黑 → 星空撐大）已隨 date 段與 pinST 移除。
 // 延伸：orange core 走到後續 section 時，於 orange-core-config 新增該段門檻/距離，
@@ -75,10 +76,19 @@ export function useOrangeCoreProgress() {
   // symbol 段落的捲動進度（0..1）：SymbolScene 寫入，driving SymbolFace 序列（見 SYMBOL_STOPS）。
   const symbolProgress = useState<number>('symbol-progress', () => 0);
 
+  // 論壇段路徑進度（0..1）：ForumCorePath 的 scrub 寫入，驅動核心沿設計線移動。
+  const forumPathProgress = useState<number>('forum-path-progress', () => 0);
+  // 該斷點是否真的有驅動線可跑（pc 有線稿、pad/mob 目前沒有）。由 ForumCorePath 的 build()
+  // 寫入，決定橘點是「撐到路徑接手」還是「照舊在 coreOut 淡出」—— 見下方 forumCoreDotVisible。
+  const forumPathActive = useState<boolean>('forum-path-active', () => false);
+
   const setPathProgress = (p: number) => (pathProgress.value = clamp01(p));
   const setTransitionProgress = (p: number) =>
     (transitionProgress.value = clamp01(p));
   const setSymbolProgress = (p: number) => (symbolProgress.value = clamp01(p));
+  const setForumPathProgress = (p: number) =>
+    (forumPathProgress.value = clamp01(p));
+  const setForumPathActive = (v: boolean) => (forumPathActive.value = v);
 
   // 永續祝福逐格臉的捲動進度（0..1）：由 Blessing.vue 的 ScrollTrigger 於每次
   // update 讀 self.progress 寫入（無 scrub），故往回捲會自動倒帶。
@@ -105,6 +115,18 @@ export function useOrangeCoreProgress() {
   const agendaRevealed = computed(
     () => symbolProgress.value >= FORUM_HANDOFF.coreOut,
   );
+
+  // 橘核心那顆方塊的顯隱（與 ForumCore 的黑底分開）。
+  // 黑底只在 [coreIn, coreOut) 現身，但橘點必須從 coreIn 一路撐到論壇段路徑接手為止 ——
+  // coreOut 到交棒點之間還有約 82vh，若跟著黑底淡出，畫面上會有一段沒有核心、
+  // 然後又在設計線頂端冒出一顆（就是這次要修掉的斷點）。
+  // forumPathActive 為 false（該斷點無線稿）時退化成原本的 [coreIn, coreOut)。
+  const forumCoreDotVisible = computed(() => {
+    if (symbolProgress.value < FORUM_HANDOFF.coreIn) return false;
+    return forumPathActive.value
+      ? forumPathProgress.value === 0
+      : symbolProgress.value < FORUM_HANDOFF.coreOut;
+  });
 
   // 使用者要求減少動態時，逐格臉不隨捲動變化，直接停在完成的笑臉。
   // 用 useState 讓 SSR 與 client 一致（初值 false，client 掛載後才量測）。
@@ -143,7 +165,12 @@ export function useOrangeCoreProgress() {
     symbolProgress,
     symbolTarget,
     forumCoreActive,
+    forumCoreDotVisible,
     agendaRevealed,
+    forumPathProgress,
+    setForumPathProgress,
+    forumPathActive,
+    setForumPathActive,
     setPathProgress,
     setSymbolProgress,
     blessingProgress,
