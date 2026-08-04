@@ -53,25 +53,12 @@ withDefaults(
 
 .subpage-nav__inner {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 24px;
   width: 100%;
   max-width: var(--subpage-wide-w); // 與內文寬欄對齊
   margin: 0 auto;
   padding: 32px;
-
-  @include rwd-min('tablet') {
-    flex-direction: row;
-    align-items: center;
-    gap: 0;
-    padding: 60px 32px 16px;
-  }
-
-  @include rwd-min('pc') {
-    padding: 60px 20px 16px;
-  }
 }
 
 .subpage-nav__link {
