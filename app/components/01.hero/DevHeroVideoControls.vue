@@ -16,11 +16,12 @@ const label: Record<HeroState, string> = {
 };
 
 // 按鈕 tooltip 顯示該階段在影片時間軸上的秒數（共用值；pad / mob 若有覆寫見 config）。
-// gone 已無影片，不占時間軸。
+// gone 已無影片，不占時間軸；end 為 HERO_VIDEO_END（Infinity）時顯示「影片結束」。
 const range = (s: HeroState) => {
   if (s === 'gone') return '影片已結束（淡出）';
   const seg = HERO_VIDEO_SEGMENTS[s];
-  return `${seg.start}s – ${seg.end}s`;
+  const end = Number.isFinite(seg.end) ? `${seg.end}s` : '影片結束';
+  return `${seg.start}s – ${end}`;
 };
 
 const canSkip = computed(() => state.value === 'main' || state.value === 'loop');

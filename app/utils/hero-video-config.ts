@@ -6,7 +6,7 @@
 //   2. 四階段（main / loop / outro / gone）在影片時間軸上的秒數
 // 要換片或調時間點只改這裡，元件不必動。
 //
-// 目前為 demo：只有 pc 版一支剪輯（約 37.05s，main / loop / outro 都在同一支裡），
+// 目前只有 pc 版一支剪輯（實測 40.02s，main / loop / outro 都在同一支裡），
 // pad / mob 尚未提供 → 先指向同一支、段落秒數共用。
 
 export type HeroVideoDevice = 'mob' | 'pad' | 'pc';
@@ -38,17 +38,27 @@ export const HERO_VIDEO_POSTER: Record<HeroVideoDevice, string> = {
   mob: '',
 };
 
+/**
+ * 段落的 `end` 填此值 ＝「一路播到影片結束」。
+ * 實際收尾時間不寫死在設定裡，改由 `<video>.duration` / `@ended` 決定
+ * （見 HeroVideo 的 onTimeUpdate / onEnded）—— 換剪輯時 outro 不必跟著改秒數。
+ */
+export const HERO_VIDEO_END = Number.POSITIVE_INFINITY;
+
 // ── 四階段秒數：要調時間點，改這裡 ──────────────────────────────────
 //   main  main.start → main.end   主要內容，播一次 → 自動進 loop
 //   loop  loop.start → loop.end   等待使用者下滑；到 end 自動跳回 start 循環
 //   outro outro.start → outro.end 退場段；到 end（或影片播完）→ gone（影片淡出、露出白底）
 //
 // 段落請「相接」（前段 end ＝ 後段 start）：自動推進時 currentTime 已落在新段內，
-// 不會多做一次 seek（跳動）。demo 影片全長約 37.05s。
+// 不會多做一次 seek（跳動）。影片全長實測 40.02s。
+//
+// ⚠️ main / loop 的 24 / 30 仍是舊 demo 剪輯的值，新剪輯（40.02s）的主段與 loop 區間
+//    尚未確認 → 目前 loop 會在 24–30 一直循環，按「退場」才跳到 37。
 export const HERO_VIDEO_SEGMENTS: HeroVideoSegments = {
   main: { start: 0, end: 24 },
   loop: { start: 24, end: 30 },
-  outro: { start: 30, end: 37 },
+  outro: { start: 37, end: HERO_VIDEO_END }, // 37s → 影片結束（40.02s）→ gone
 };
 
 // pad / mob 剪輯段落不同時在此覆寫（未列的裝置沿用上方共用值）—— RWD 預留。

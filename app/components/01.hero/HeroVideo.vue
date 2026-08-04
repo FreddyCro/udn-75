@@ -10,6 +10,7 @@ import {
   HERO_VIDEO_SRC,
   heroVideoSegments,
   type HeroVideoDevice,
+  type HeroVideoSegment,
 } from '@/utils/hero-video-config';
 
 const {
@@ -88,6 +89,14 @@ function onLoadedMetadata() {
   if (heroStarted.value) void play();
 }
 
+// 段落的實際結束秒數。config 的 end 為 HERO_VIDEO_END（＝播到影片結束）時改以 duration 推，
+// 留 0.1s 餘裕當收尾點：與 @ended 互為保險 —— seek 過的影片偶有不觸發 ended 的情形，
+// 那時 gone 永遠不來、orange core 就接不上。duration 還沒讀到就回 Infinity（等 @ended）。
+function segEnd(v: HTMLVideoElement, seg: HeroVideoSegment) {
+  if (Number.isFinite(seg.end)) return seg.end;
+  return v.duration ? v.duration - 0.1 : Infinity;
+}
+
 // 階段推進的單一真相＝影片時間軸：依 config 的段落秒數判斷何時換狀態 / 循環。
 function onTimeUpdate() {
   const v = videoEl.value;
@@ -103,7 +112,8 @@ function onTimeUpdate() {
       if (v.currentTime >= seg.loop.end) v.currentTime = seg.loop.start; // loop 段循環
       break;
     case 'outro':
-      if (v.currentTime >= seg.outro.end) setState('gone'); // 退場結束 → 影片淡出
+      // 退場段一路播到影片結束 → gone（影片淡出、orange core 淡入）
+      if (v.currentTime >= segEnd(v, seg.outro)) setState('gone');
       break;
   }
 }
@@ -139,8 +149,10 @@ watch(heroState, (s) => {
     v.pause();
     return;
   }
+  // 不在目標段內才 seek。用 segEnd 而非 seg.end：outro 的 end 是 HERO_VIDEO_END(Infinity)，
+  // 直接比會把「影片已播完」也算在段內 → play() 對已 ended 的影片會從 0 重播整支。
   const seg = segments.value[s];
-  if (v.currentTime < seg.start || v.currentTime >= seg.end) {
+  if (v.currentTime < seg.start || v.currentTime >= segEnd(v, seg)) {
     v.currentTime = seg.start;
   }
   void play();
