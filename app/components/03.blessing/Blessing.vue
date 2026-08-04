@@ -15,6 +15,11 @@ import str from '@/locales/section3.json';
 const { partner } = str;
 const { blessingFrame, setBlessingProgress } = useOrangeCoreProgress();
 
+// 階梯線的逐格進場是否已播完 —— 播完才讓夥伴清單面板淡入。
+// 由 <BlessingStairs> 以 v-model:done 雙向控制：使用者捲回階梯線上方時它會轉回 false，
+// 下次由上往下進入就重播（重置時面板在畫面外，淡出看不到）。詳見該元件檔頭。
+const stairsDone = ref(false);
+
 // 捲動尺高度。尺內的 sticky 畫面自己佔掉 100vh，sticky 只黏住「尺高 − 100vh」，
 // 所以要 +1，實際動畫距離才等於 BLESSING_VH × 100vh（見 ~/utils/orange-core-config）。
 // 寫成 BLESSING_VH × 100vh 是錯的 —— 動畫只會剩 (BLESSING_VH − 1) 個視窗高可跑。
@@ -65,10 +70,16 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- ② 夥伴清單：階梯線 ＋ 面板 -->
+    <!-- ② 夥伴清單：階梯線逐格畫完後，面板才淡入 -->
     <div class="section3__partners">
-      <BlessingStairs />
-      <BlessingPartners />
+      <BlessingStairs v-model:done="stairsDone" />
+
+      <div
+        class="section3__partners-panel"
+        :class="{ 'is-in': stairsDone }"
+      >
+        <BlessingPartners />
+      </div>
     </div>
   </section>
 </template>
@@ -99,6 +110,24 @@ onBeforeUnmount(() => {
   @include rwd-max('tablet') {
     gap: 24px;
     padding: 32px 48px 60px;
+  }
+}
+
+// 夥伴清單面板：等階梯線逐格畫完（BlessingStairs 的 done）才淡入。
+// 用 opacity 而非 v-if／display，讓面板一直佔位、版面不會在淡入時跳動；
+// 未現身前擋掉指標事件，避免使用者捲到看不見的清單。
+.section3__partners-panel {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+
+  &.is-in {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
   }
 }
 

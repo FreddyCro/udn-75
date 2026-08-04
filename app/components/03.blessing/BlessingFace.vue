@@ -3,7 +3,10 @@
 //
 // 不含任何捲動邏輯（格號由父層算好傳進來），也不決定自身尺寸
 // （由外部 CSS 給寬高；viewBox 是 16×16 網格，等比撐滿）。
-// 顏色走 currentColor：橘底上的白臉由父層 `color: #fff` 指定。
+//
+// 兩種顏色：一般方塊走 currentColor（橘底上的白臉由父層 `color: #fff` 指定）；
+// 帶 accent 旗標的方塊是「該格新增的那幾塊」，用淺藍 --color-blue 畫（見畫格資料檔）。
+// rect 依陣列順序輸出＝設計稿的繪製順序，藍白重疊時後畫的蓋前面的，不可排序。
 import { FACE_FRAMES, FACE_FRAME_COUNT, FACE_GRID } from '~/utils/blessing-face-frames';
 
 const props = withDefaults(
@@ -39,7 +42,7 @@ const rects = computed(() => {
       :y="r[1]"
       :width="r[2]"
       :height="r[3]"
-      fill="currentColor"
+      :fill="r[4] ? 'var(--color-blue)' : 'currentColor'"
     />
   </svg>
 </template>

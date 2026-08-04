@@ -12,4 +12,5 @@
 - [Data subpage RWD](data-subpage-rwd.md) — /data 三斷點完成紀錄：AiSearch 欄寬、ShowcaseGallery designW/spread/vScale 斷點參數
 - [Education/Health subpages](education-health-subpages.md) — /education、/health 完成紀錄：CTA 佔位連結待補、SVG 匯出陷阱、錨點列橫向滑動
 - [Scroll speed knob](scroll-speed-knob.md) — scrub 相對速度＝在 trigger 區間內墊 vh spacer（非調 ease）；已移除，可從 7ff9f19 取回
+- [Hero body lock rules](hero-body-lock-rules.md) — hero 開場捲動鎖逐拍規則：①–⑦ 鎖、⑧ 起解；例外是離開 loop 後永不重鎖
 - [Redesign branch state](redesign-branch-state.md) — redesign branch 改版進度、PRD-v2、下一步工作單 temp/issue-05；0.6.0(7ff9f19) 是改版前參考

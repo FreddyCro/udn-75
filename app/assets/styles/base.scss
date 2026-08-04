@@ -36,10 +36,20 @@ html {
   overflow-x: clip;
 }
 
-// 捲動鎖（hero 影片 main / loop 期間，見 01.hero/Hero.vue 的 applyScrollLock）：
-// overflow:hidden 會讓垂直捲軸消失、可用寬多出一個捲軸寬 → 此時量到的寬度（GSAP
+// 捲動鎖（hero 影片 main / loop 期間，見 01.hero/Hero.vue 的 applyScrollLock）。
+//
+// ⚠️ 鎖必須下在 <html>，只下在 <body> 是無效的：上面那條 html { overflow-x: clip } 讓根元素
+//    不再是 overflow: visible，依 CSS 的 viewport propagation 規則，body 的 overflow 就不會
+//    再傳播到視窗 → 垂直捲軸仍在、頁面照樣捲得動（2026-08-04 實測：locked 期間
+//    innerWidth - clientWidth 還是 15，真實滑鼠捲動照樣有效）。
+html.is-scroll-locked {
+  overflow: hidden;
+}
+
+// overflow:hidden 讓垂直捲軸消失、可用寬多出一個捲軸寬 → 此時量到的寬度（GSAP
 // pin-spacer、各 100% 寬元素）會比解鎖後多 15px，解鎖捲軸回來就撐出水平捲軸。
 // 補回等寬的 padding-right → 鎖／解鎖的內容寬完全一致，不會有水平捲軸也不會橫向抖動。
+// overflow 這條是保險：html 若哪天恢復 overflow: visible，才由它接手傳播。
 body.is-scroll-locked {
   overflow: hidden;
   padding-right: var(--scrollbar-width);

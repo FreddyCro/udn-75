@@ -18,7 +18,29 @@ const { symbolMode, symbolTarget, setSymbolProgress, symbolLayerDone } =
 const sceneHeight = `${SYMBOL_VH * 100}vh`;
 
 // 捲動尺：本段頂端進入視窗底（＝ hero 轉場 pin 剛釋放的那一刻）起算，到本段捲完為止。
-// scrub 特性 → 往回捲自動倒退（converge→…→disperse）。
+//   ・start 'top bottom' 只看「sec1 底緣抵達視窗底」→ 與本段高度無關，故不論 SYMBOL_VH 調多少，
+//     都精準接在 hero 轉場 pin 釋放的同一刻（兩軌首尾相接、不重疊）。
+//   ・end 'bottom bottom' → 捲動距離＝本段高度＝ SYMBOL_VH × 100vh。
+//   ・scrub 特性 → 往回捲自動倒退（converge→…→disperse）。
+//
+// ── symbolProgress 時序表 ────────────────────────────────────────────────
+// ⚠️ 這是換算結果、不是資料來源：門檻在 SYMBOL_STOPS / FORUM_HANDOFF，距離＝門檻 × SYMBOL_VH。
+//    改動那三個常數後要回來手動同步這張表。下表為 SYMBOL_VH = 3.2（總長 320vh），
+//    括號內 px 是視窗高 1080 的換算。
+//
+//   step  mode / 事件                              progress    累計距離（起→迄）        該段距離
+//   ①     disperse 分散（預設）                     0 → 15%     0    → 48vh    (0→518px)      48vh
+//   ②     face 集合（人像）＝最長的一拍              15% → 58%   48   → 185.6vh (518→2004px)   137.6vh
+//   ③     converge 匯聚成點                         58% → 75%   185.6→ 240vh   (2004→2592px)  54.4vh
+//   ④     coreIn 交棒：本層淡出＋ForumCore 淡入      75%         240vh          (2592px)        —
+//   ⑤     enter 橘核心停在黑畫面（原地停住）          75% → 90%   240  → 288vh   (2592→3110px)  48vh
+//   ⑥     coreOut 橘核心淡出＋議程 reveal            90%         288vh          (3110px)        —
+//   ⑦     段落捲完（onLeave → 鎖 1）                 100%        320vh          (3456px)        32vh
+//
+// 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本段合計 440vh。
+//
+// ⚠️ SymbolFace 內部並不吃 scroll：上表的 mode 切換只是「觸發」它 2.2s 的 gsap 補間
+//    （disperseDuration），reveal 則由 IntersectionObserver 一次性啟動。本表只管門檻位置。
 const sceneRef = ref<HTMLElement | null>(null);
 let symbolST: ScrollTrigger | null = null;
 

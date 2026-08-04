@@ -94,22 +94,30 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  document.documentElement.classList.remove('is-scroll-locked');
   document.body.classList.remove('is-scroll-locked');
   transitionST?.kill();
   transitionST = null;
 });
 
-// main / loop 期間鎖住 body 捲動；其餘（outro / gone）解鎖。
-// 樣式集中在 base.scss 的 body.is-scroll-locked：overflow:hidden ＋ padding-right
+// main / loop 期間鎖住頁面捲動；其餘（outro / gone）解鎖。
+// 樣式集中在 base.scss 的 .is-scroll-locked：overflow:hidden ＋ padding-right
 // 補回捲軸寬（--scrollbar-width，由 plugins/scrollbar-width.client.ts 量測）——
 // 否則上鎖期間沒有捲軸、可用寬多 15px，解鎖後捲軸回來就會撐出水平捲軸。
+//
+// ⚠️ class 必須同時掛在 <html> 與 <body>：html 有 overflow-x: clip，根元素不再是
+//    overflow: visible → body 的 overflow 不會傳播到視窗，只掛 body 完全鎖不住
+//    （見 base.scss 的說明）。
 function applyScrollLock() {
+  const root = document.documentElement;
   if (shouldLockScroll.value) {
     // 上鎖前先回頂端：否則重整後瀏覽器把位置還原到內容區、又處於 main/loop，
     // 會被 overflow:hidden 永久鎖死在中途。
     window.scrollTo(0, 0);
+    root.classList.add('is-scroll-locked');
     document.body.classList.add('is-scroll-locked');
   } else {
+    root.classList.remove('is-scroll-locked');
     document.body.classList.remove('is-scroll-locked');
   }
 }

@@ -49,23 +49,22 @@ const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
 // resize 時清掉重量（見 onResize）。
 let anchor: { cx: number; cy: number; w: number; h: number } | null = null;
 
-function readAnchor() {
+// vw / vh 由呼叫端傳入（＝ field 自己的框，見 apply 的說明），fallback 才會與開窗同一座標系。
+function readAnchor(vw: number, vh: number) {
   if (anchor) return anchor;
-  const el = props.coreEl;
-  const r = el?.getBoundingClientRect();
-  anchor = r
-    ? {
-        cx: r.left + r.width / 2,
-        cy: r.top + r.height / 2,
-        w: r.width || CORE.dotSize,
-        h: r.height || CORE.dotSize,
-      }
-    : {
-        cx: window.innerWidth / 2,
-        cy: window.innerHeight / 2,
-        w: CORE.dotSize,
-        h: CORE.dotSize,
-      };
+  const r = props.coreEl?.getBoundingClientRect();
+  // 量不到 core（父層 template ref 尚未就緒）→ 這次先用中心頂著，但**不快取**。
+  // ⚠️ watch 是 immediate，第一次 apply(0) 常常早於 coreEl 就緒；若連 fallback 一起鎖住，
+  //    整段轉場都會用錯的錨點（core 之後就緒也不會重量），長條位置與 core 對不上。
+  if (!r?.width) {
+    return { cx: vw / 2, cy: vh / 2, w: CORE.dotSize, h: CORE.dotSize };
+  }
+  anchor = {
+    cx: r.left + r.width / 2,
+    cy: r.top + r.height / 2,
+    w: r.width,
+    h: r.height,
+  };
   return anchor;
 }
 
@@ -77,22 +76,38 @@ function apply(p: number) {
   // 回到轉場之前（p=0）→ 放掉錨點，下次進來重新量（避免沿用上一輪的位置）。
   if (p <= 0) anchor = null;
 
-  const { cx, cy, w: w0, h: h0 } = readAnchor();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  // ⚠️ 量 field 自己的框，**不能用 window.innerWidth / innerHeight**。
+  //    clip-path 的 inset 以本元素的框為基準，而本層是 fixed inset:0 → 寬度＝視窗**扣掉捲軸**；
+  //    innerWidth 卻**含**捲軸。混用兩套座標的話：
+  //      可見範圍 = [cx − w/2, cx + w/2 − sb] → 開窗永遠少一個捲軸寬 sb、整體左偏 sb/2
+  //      且 p=1 時 left 被夾成 0、right 仍是 sb/2 → **右緣殘留 sb/2 沒蓋到**，
+  //      在交棒給 SymbolScene 的那一刻透出 hero 白底（進到 symbol 段後底下換黑底才隱形，
+  //      所以只有接縫那一瞬看得見）。
+  //    field 的原點與 core rect 都是視窗左上（捲軸在右邊），故 cx / cy 可直接混用不必換算。
+  const vw = field.clientWidth;
+  const vh = field.clientHeight;
+
+  const { cx, cy, w: w0, h: h0 } = readAnchor(vw, vh);
 
   const pY = clamp01(p / growY); // 拉長段進度
   const pX = clamp01((p - growY) / (1 - growY)); // 展開段進度
 
-  const h = h0 + (vh - h0) * pY;
-  const w = w0 + (vw - w0) * pX;
+  if (pX >= 1) {
+    // 展開完成 → 直接寫死滿版，不靠 cx/cy 剛好等於中心。
+    // core 只要稍微偏心（或 toFixed 進位），下面的算式就會在某一邊留下一條縫，
+    // 而那條縫剛好落在交棒點上＝最顯眼的位置。
+    field.style.clipPath = 'inset(0px)';
+  } else {
+    const h = h0 + (vh - h0) * pY;
+    const w = w0 + (vw - w0) * pX;
 
-  // clip-path inset：以 core 中心為錨、上下左右對稱長大（負值會被視為無效，故夾 0）。
-  const top = Math.max(0, cy - h / 2);
-  const bottom = Math.max(0, vh - (cy + h / 2));
-  const left = Math.max(0, cx - w / 2);
-  const right = Math.max(0, vw - (cx + w / 2));
-  field.style.clipPath = `inset(${top.toFixed(1)}px ${right.toFixed(1)}px ${bottom.toFixed(1)}px ${left.toFixed(1)}px)`;
+    // clip-path inset：以 core 中心為錨、上下左右對稱長大（負值會被視為無效，故夾 0）。
+    const top = Math.max(0, cy - h / 2);
+    const bottom = Math.max(0, vh - (cy + h / 2));
+    const left = Math.max(0, cx - w / 2);
+    const right = Math.max(0, vw - (cx + w / 2));
+    field.style.clipPath = `inset(${top.toFixed(1)}px ${right.toFixed(1)}px ${bottom.toFixed(1)}px ${left.toFixed(1)}px)`;
+  }
 
   // 橘 → 深色：在拉長段的前 colorSpan 內完成（t2 的長條已是深色）。
   const t = clamp01(pY / colorSpan);

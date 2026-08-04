@@ -12,9 +12,17 @@ export type ForumSpeaker = {
   bio?: string[];
 };
 
+/**
+ * 日期／地點／引言那一落的設計稿版式：
+ * quote＝日期靠左＋右側英文引言（論壇一）；stair＝三行階梯式日期、地點在右上（論壇二）；
+ * right＝日期與地點整組切齊右緣（論壇三）。
+ */
+export type ForumLayout = 'quote' | 'stair' | 'right';
+
 export type ForumEvent = {
   /** 「論壇一」 */
   no: string;
+  layout: ForumLayout;
   /** 「大師談媒體」 */
   tag: string;
   /** 主標上方的品牌行（僅論壇二的「台積電」有） */
@@ -30,9 +38,9 @@ export type ForumEvent = {
   /** CTA 按鈕文字（僅論壇二有） */
   cta?: string;
   year: string;
-  /** 「09/09」 —— 中間的「/」是核心停靠點 */
+  /** 「09/09」 —— 中間的「/」是核心停靠點（stair 版式不畫斜線） */
   date: string;
-  /** 「（三）」 */
+  /** 星期單字（「三」），渲染時外面套設計稿的圓框 */
   weekday: string;
   /** 地點，可多行 */
   venue: string[];

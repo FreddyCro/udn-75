@@ -38,10 +38,13 @@ export function useHeroVideo() {
   // 影片目前秒數（HeroVideo 於 timeupdate 寫入）：dev 控制列顯示，方便對照 / 調整 config 秒數。
   const currentTime = useState('hero-video-time', () => 0);
 
-  // 是否已經離開過 loop（進過 outro / gone）。一旦為 true 就「永不重新上鎖」：
-  // 回滑回到 loop 時若重新 overflow:hidden，會付 padding-right 補償的版面位移
-  // （還會觸發 ScrollTrigger refresh），且在慣性滑動中途硬停（iOS 最明顯）。
-  // 那時 scrollY 已經是 0，不鎖也上不去，所以不需要鎖。
+  // 是否已經離開過 loop（進過 outro / gone）。一旦為 true 就「永不重新上鎖」。
+  //
+  // 這是決策而非疏漏（2026-08-04 確認）：倒帶回 loop（rewindToLoop）發生在 scrollY 已是 0
+  // 的時候，不鎖也上不去，所以省下重新上鎖的風險 —— iOS 在「往上橡皮筋回彈還在飛」的當下
+  // 切 overflow:hidden，畫面可能卡在彈起的位置。
+  // 已接受的代價：倒帶回 loop 後頁面可自由捲動，往下滑會同時進 outro 又捲走 hero，
+  // 與第一次（鎖住時只觸發 outro、頁面不動）的手感略有不同。
   const hasLeftLoop = useState('hero-has-left-loop', () => false);
 
   const setState = (s: HeroState) => {

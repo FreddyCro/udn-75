@@ -64,18 +64,22 @@ export const FORUM_HANDOFF = {
 // 因為 scrub，往回捲會自動倒退。狀態：disperse → face（集合）→ converge（匯聚成點）
 // → enter（收斂點淡出，交棒給 ForumCore 橘核心，見 FORUM_HANDOFF）。
 // 只改 until 即可調每個狀態起點；converge 終點對齊 FORUM_HANDOFF.coreIn（＝交棒時機）。
+// ⚠️ 改這裡（或 FORUM_HANDOFF / SYMBOL_VH）之後，要同步 SymbolScene.vue 內的「symbolProgress
+//    時序表」註解 —— 那張表是本檔門檻 × SYMBOL_VH 的 vh 換算結果，不會自己更新。
 export const SYMBOL_STOPS: readonly {
   until: number;
   mode: 'disperse' | 'face' | 'converge' | 'enter';
 }[] = [
-  { until: 0.3, mode: 'disperse' }, //                 0.00–0.30 分散（預設）
-  { until: 0.58, mode: 'face' }, //                    0.30–0.58 集合（人像）
+  { until: 0.15, mode: 'disperse' }, //                0.00–0.15 分散（預設）
+  { until: 0.58, mode: 'face' }, //                    0.15–0.58 集合（人像）＝最長的一拍
   { until: FORUM_HANDOFF.coreIn, mode: 'converge' }, // 0.58–coreIn 匯聚成點
   { until: 1.0, mode: 'enter' }, //                    coreIn–1.00 enter → 收斂點淡出、橘核心接棒
 ];
 
 // 這段序列吃掉的捲動距離（× 視窗高）＝ 速度旋鈕（越大每個狀態停留越久）。
-export const SYMBOL_VH = 1.6;
+// 2026-08-04：1.6 → 3.2（整段距離拉長一倍），讓 disperse / face / converge 各拍都有更長的停留。
+// 門檻（SYMBOL_STOPS / FORUM_HANDOFF）是比例值，故各拍的相對節奏不變、只是全部等比變慢。
+export const SYMBOL_VH = 3.2;
 
 // ── core dot 外觀 ────────────────────────────────────────────────────
 // dotSize：dot 邊長（px），亦為 HeroSymbolTransition 讀不到 core 時的退回尺寸。

@@ -37,7 +37,17 @@
       "Read(//c/Users/fredd/Documents/works/projects/udn75-recheck/**)",
       "Read(//tmp/**)",
       "Bash(npm run *)",
-      "Bash(git worktree *)"
+      "Bash(git worktree *)",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_evaluate",
+      "Bash(git commit -m ' *)",
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(mkdir -p temp/compare)",
+      "Bash(mv forum2-actual-top.png forum2-actual-date.png temp/compare/)",
+      "Bash(cp \"C:/Users/fredd/AppData/Local/Temp/claude/c--Users-fredd-Documents-works-projects-udn-75/09300457-39cf-488a-9ad2-a9e3931aa1ef/scratchpad/forum2.png\" \"C:/Users/fredd/AppData/Local/Temp/claude/c--Users-fredd-Documents-works-projects-udn-75/09300457-39cf-488a-9ad2-a9e3931aa1ef/scratchpad/forum3.png\" temp/compare/)",
+      "mcp__playwright__browser_resize",
+      "mcp__claude_ai_Figma__get_figma_skill"
     ]
   }
 }
