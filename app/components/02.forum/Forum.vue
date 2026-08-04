@@ -8,10 +8,12 @@ import type { ForumEvent } from '~/types/forum';
 
 // SymbolFace 序列（disperse→face→converge→enter）已搬到獨立的 <SymbolScene>（01a.symbol）：
 // symbolProgress 寫入與 mode 指派都由該元件擁有，本區只「讀」它解出的結果：
-//   forumCoreActive — symbolProgress ∈ [coreIn, coreOut) → ForumCore 橘核心現身（接棒）。
-//   agendaRevealed  — 越過 coreOut → 議程揭露。
+//   forumCoreActive     — symbolProgress ∈ [coreIn, coreOut) → ForumCore 的黑底現身（接棒）。
+//   forumCoreDotVisible — 橘點的顯隱：coreIn 起撐到論壇段路徑接手為止（比黑底晚很多）。
+//   agendaRevealed      — 越過 coreOut → 議程揭露。
 // 門檻見 ~/utils/orange-core-config 的 SYMBOL_STOPS / FORUM_HANDOFF。
-const { forumCoreActive, agendaRevealed } = useOrangeCoreProgress();
+const { forumCoreActive, forumCoreDotVisible, agendaRevealed } =
+  useOrangeCoreProgress();
 
 const forum = str.forum as { heading: string[]; events: ForumEvent[] };
 </script>
@@ -20,7 +22,7 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
   <section id="forum" class="sec2">
     <!-- 上半段（路徑段）：論壇一~三的內容 ＋ 核心沿設計線蛇行下行（見 temp/issue-05）。
          段落主標只在論壇一之前出現一次，故由本層渲染、不進 <ForumEvent>。
-         🚧 設計線已依錨點定位，但核心沿線移動的 scrub 引擎未實作。 -->
+         設計線依錨點定位、核心沿驅動線移動（見 ForumCorePath）。 -->
     <div
       class="sec2__path"
       :class="{ 'sec2__path--revealed': agendaRevealed }"
@@ -41,10 +43,11 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
       <Agenda />
     </div>
 
-    <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊，停在黑畫面）。
-         fixed 滿版、由 SymbolScene 寫入的 symbolProgress 隔空驅動，故放在議程整組之外。
+    <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊）。fixed 滿版、由 SymbolScene 寫入的
+         symbolProgress 隔空驅動，故放在議程整組之外。黑底在 coreOut 淡出，橘點則撐到論壇段
+         路徑接手（見 ForumCore 與 useOrangeCoreProgress 的 forumCoreDotVisible）。
          （DevFaceProgress 已隨序列搬到 <SymbolScene>，避免同頁出現兩個進度顯示。） -->
-    <ForumCore :active="forumCoreActive" />
+    <ForumCore :active="forumCoreActive" :dot-visible="forumCoreDotVisible" />
   </section>
 </template>
 
