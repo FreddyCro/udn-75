@@ -18,6 +18,7 @@ import type { ForumPathSeg } from '~/utils/orange-core-config';
 const rootEl = ref<HTMLElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
 const coreEl = ref<HTMLElement | null>(null);
+const slashEl = ref<SVGLineElement | null>(null);
 
 const { setForumPathProgress, setForumPathActive, forumPathRiding } =
   useOrangeCoreProgress();
@@ -52,6 +53,9 @@ let st: ScrollTrigger | null = null;
 let motionLen = 0;
 // 驅動線末端的容器 y：ScrollTrigger 的 end 讀它（見 onMounted）。
 let lineEndY = 0;
+// 那一撇（＝直線連接段）在驅動線上的弧長區間，place() 用它算 dashoffset。len 為 0 表示沒有
+// 連接段（單段線稿，如 pad 的 Vector 276）→ 不畫斜線。
+let slash = { startLen: 0, len: 0 };
 
 // 依錨點量測，算出每段 svg 的平移量（只平移、不縮放），並回傳給 build() 建驅動線。
 // ⚠ 只在 mount／字體就緒／refresh／斷點改變時量一次並鎖住：錨點捲離視窗後逐幀讀 rect
@@ -103,8 +107,19 @@ function reset() {
   motionEl.value?.removeAttribute('d');
   motionLen = 0;
   lineEndY = 0;
+  slash = { startLen: 0, len: 0 };
+  drawSlash(0);
   setForumPathActive(false);
   setForumPathProgress(0);
+}
+
+// 那一撇的「畫出多少」：0 完全沒出現、1 整條畫完。用 dashoffset 而非改 x2/y2，
+// 幾何才只在 build() 算一次。
+function drawSlash(t: number) {
+  const el = slashEl.value;
+  if (!el) return;
+  el.style.strokeDasharray = `${slash.len}`;
+  el.style.strokeDashoffset = `${slash.len * (1 - t)}`;
 }
 
 // 依當前版面重建驅動線：各段中心線平移到本層座標系 → 段間補直線連接段 → 串成單一連續 path。
@@ -126,12 +141,33 @@ function build() {
   });
   if (ds.some((d) => d === null)) return reset();
 
-  const d = joinSegments(ds as string[]);
+  const list2 = ds as string[];
+  // 先只放第一段量弧長，再換成完整路徑 —— 為了知道「連接段從驅動線的哪個弧長開始」。
+  // 借用同一個 <path> 而不另開元素：build() 只在幾何重建時跑，兩次 setAttribute 不在熱路徑上。
+  motion.setAttribute('d', list2[0]!);
+  const firstLen = motion.getTotalLength();
+
+  const d = joinSegments(list2);
   motion.setAttribute('d', d);
   motionLen = motion.getTotalLength();
   lineEndY = lastPoint(d)[1];
-  setForumPathActive(true);
 
+  // 那一撇 ＝ seg1 末端 → seg2 起點 的直線連接段（不寫死幾何，故核心永遠沿著它走）。
+  // 只有恰好兩段時才有單一連接段；單段線稿（pad 的 Vector 276）沒有 → 不畫。
+  const line = slashEl.value;
+  if (line && list2.length === 2) {
+    const [ax, ay] = lastPoint(list2[0]!);
+    const [bx, by] = firstPoint(list2[1]!);
+    line.setAttribute('x1', `${ax}`);
+    line.setAttribute('y1', `${ay}`);
+    line.setAttribute('x2', `${bx}`);
+    line.setAttribute('y2', `${by}`);
+    slash = { startLen: firstLen, len: Math.hypot(bx - ax, by - ay) };
+  } else {
+    slash = { startLen: 0, len: 0 };
+  }
+
+  setForumPathActive(true);
   place(st ? st.progress : 0);
 }
 
@@ -151,6 +187,13 @@ function place(rawP: number) {
   const angle =
     (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
   gsap.set(core, { x: pt.x, y: pt.y, rotation: angle });
+
+  // 那一撇隨核心推進逐段畫出：核心還沒走到連接段起點 → 0（完全沒出現）；
+  // 走完連接段 → 1（整條畫完），之後核心從尾端接上 seg2。往回捲自然收回。
+  if (slash.len) {
+    drawSlash(Math.min(1, Math.max(0, (len - slash.startLen) / slash.len)));
+  }
+
   setForumPathProgress(p);
 }
 
@@ -248,6 +291,12 @@ onBeforeUnmount(() => {
       :class="{ 'is-riding': forumPathRiding }"
       :style="coreStyle"
     />
+
+    <!-- 論壇二 09/15 的那一撇：幾何就是驅動線的連接段（由 build() 寫入 x1/y1/x2/y2），
+         隨核心推進以 dashoffset 逐段畫出。放在核心之後 → 畫在核心之上。 -->
+    <svg class="forum-path__slash" xmlns="http://www.w3.org/2000/svg">
+      <line ref="slashEl" :stroke="FORUM_SLASH.color" :stroke-width="FORUM_SLASH.width" />
+    </svg>
   </div>
 </template>
 
@@ -268,7 +317,7 @@ onBeforeUnmount(() => {
 // 匯出自帶的 opacity 與 #898989 / black 一律不採用，統一吃這裡的顏色。
 .forum-path__line {
   &--outline {
-    fill: var(--accent);
+    fill: rgba(#000, 0.03);
   }
 
   &--stroke {
@@ -279,6 +328,15 @@ onBeforeUnmount(() => {
 
 // 驅動線的座標可能超出 svg box（連接段與後段偏移量較大）→ overflow: visible 才不被裁掉。
 .forum-path__motion {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+// 那一撇：與驅動線同一個座標系（都是 .forum-path 的 inset: 0 子元素），故 build() 算出的
+// 連接段端點可以直接當 x1/y1/x2/y2 用。linecap 用預設的 butt —— 設計稿的端點切口正是
+// 垂直於脊線（見 FORUM_SLASH 註解的解析）。
+.forum-path__slash {
   position: absolute;
   inset: 0;
   overflow: visible;
