@@ -38,7 +38,14 @@ export function useHeroVideo() {
   // 影片目前秒數（HeroVideo 於 timeupdate 寫入）：dev 控制列顯示，方便對照 / 調整 config 秒數。
   const currentTime = useState('hero-video-time', () => 0);
 
+  // 是否已經離開過 loop（進過 outro / gone）。一旦為 true 就「永不重新上鎖」：
+  // 回滑回到 loop 時若重新 overflow:hidden，會付 padding-right 補償的版面位移
+  // （還會觸發 ScrollTrigger refresh），且在慣性滑動中途硬停（iOS 最明顯）。
+  // 那時 scrollY 已經是 0，不鎖也上不去，所以不需要鎖。
+  const hasLeftLoop = useState('hero-has-left-loop', () => false);
+
   const setState = (s: HeroState) => {
+    if (s === 'outro' || s === 'gone') hasLeftLoop.value = true;
     state.value = s;
   };
 
@@ -55,18 +62,36 @@ export function useHeroVideo() {
     setState('gone');
   };
 
+  /**
+   * 由下往上回滑到頂端 → 影片倒帶回 loop 段（觸發條件見 HeroVideo 的手勢監聽）。
+   * 只在 gone 時有作用，其餘狀態忽略。
+   *
+   * 這裡只切狀態，其餘都是既有機制自動接手：
+   *   影片 seek 回 loop 段起點並續播 → HeroVideo 的 watch(state)
+   *   影片層淡回（0.8s）／orange core 淡出（0.6s）→ 綁 isGone 的 class
+   * 不重新上鎖（此時 hasLeftLoop 必為 true）。
+   */
+  const rewindToLoop = () => {
+    if (state.value !== 'gone') return;
+    setState('loop');
+  };
+
   const isGone = computed(() => state.value === 'gone');
-  // main / loop 期間應鎖住頁面捲動
+  // main / loop 期間應鎖住頁面捲動；但「離開過 loop」之後不再上鎖（見 hasLeftLoop）。
   const shouldLockScroll = computed(
-    () => state.value === 'main' || state.value === 'loop',
+    () =>
+      !hasLeftLoop.value &&
+      (state.value === 'main' || state.value === 'loop'),
   );
 
   return {
     state,
     setState,
     skip,
+    rewindToLoop,
     isGone,
     shouldLockScroll,
+    hasLeftLoop,
     videoReady,
     loaderDone,
     heroStarted,
