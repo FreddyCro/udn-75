@@ -10,10 +10,15 @@ import type { ForumEvent } from '~/types/forum';
 // symbolProgress 寫入與 mode 指派都由該元件擁有，本區只「讀」它解出的結果：
 //   forumCoreActive     — symbolProgress ∈ [coreIn, coreOut) → ForumCore 的黑底現身（接棒）。
 //   forumCoreDotVisible — 橘點的顯隱：coreIn 起撐到論壇段路徑接手為止（比黑底晚很多）。
+//   forumPathRiding     — 路徑已接手 → 橘點的消失改為瞬間（見 ForumCore 的 SCSS）。
 //   agendaRevealed      — 越過 coreOut → 議程揭露。
 // 門檻見 ~/utils/orange-core-config 的 SYMBOL_STOPS / FORUM_HANDOFF。
-const { forumCoreActive, forumCoreDotVisible, agendaRevealed } =
-  useOrangeCoreProgress();
+const {
+  forumCoreActive,
+  forumCoreDotVisible,
+  forumPathRiding,
+  agendaRevealed,
+} = useOrangeCoreProgress();
 
 const forum = str.forum as { heading: string[]; events: ForumEvent[] };
 </script>
@@ -47,7 +52,11 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
          symbolProgress 隔空驅動，故放在議程整組之外。黑底在 coreOut 淡出，橘點則撐到論壇段
          路徑接手（見 ForumCore 與 useOrangeCoreProgress 的 forumCoreDotVisible）。
          （DevFaceProgress 已隨序列搬到 <SymbolScene>，避免同頁出現兩個進度顯示。） -->
-    <ForumCore :active="forumCoreActive" :dot-visible="forumCoreDotVisible" />
+    <ForumCore
+      :active="forumCoreActive"
+      :dot-visible="forumCoreDotVisible"
+      :instant-hide="forumPathRiding"
+    />
   </section>
 </template>
 

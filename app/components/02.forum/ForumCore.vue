@@ -18,6 +18,8 @@ defineProps<{
   active?: boolean;
   /** 橘點是否可見：coreIn 起一路撐到論壇段路徑接手 */
   dotVisible?: boolean;
+  /** 橘點的消失要瞬間完成（＝路徑核心已接手，見下方 SCSS 的理由） */
+  instantHide?: boolean;
 }>();
 
 // 只借用外觀（尺寸 / 橘色），不含 hero 的 stage 形變邏輯。
@@ -31,7 +33,11 @@ const dotStyle = {
 <template>
   <div
     class="forum-core"
-    :class="{ 'is-active': active, 'is-dot-visible': dotVisible }"
+    :class="{
+      'is-active': active,
+      'is-dot-visible': dotVisible,
+      'is-instant-hide': instantHide,
+    }"
     aria-hidden="true"
   >
     <span class="forum-core__bg" />
@@ -72,6 +78,14 @@ const dotStyle = {
 
   .forum-core.is-dot-visible & {
     opacity: 1;
+  }
+
+  // 交棒（路徑核心接手）時的消失必須是瞬間的：兩顆在交棒點重合，但路徑核心隨即沿線離開，
+  // 若還淡出 0.4s，中央會留一顆停著的殘影 —— 那正是「全程只看到一顆」要避免的。
+  // 只在「已交棒且橘點該消失」時關掉 transition，故 coreIn 的淡入（與 SymbolFace 的
+  // crossfade）仍是 0.4s；pad/mob 無線稿時 instantHide 恆為 false，coreOut 照舊淡出。
+  .forum-core.is-instant-hide:not(.is-dot-visible) & {
+    transition: none;
   }
 }
 

@@ -116,6 +116,12 @@ export function useOrangeCoreProgress() {
     () => symbolProgress.value >= FORUM_HANDOFF.coreOut,
   );
 
+  // 論壇段路徑是否已接手（核心正沿線移動）。boolean 而非直接讀 forumPathProgress：
+  // 後者每幀都變，當成 class 條件會讓消費端逐幀 re-render；這個只在交棒點翻一次。
+  // 兩個消費端：ForumCorePath 用它決定路徑核心的顯隱（p=0 時必須藏著，否則段落進場到
+  // 交棒點之間畫面上會同時有兩顆方塊）；ForumCore 用它讓固定橘點的消失變成瞬間的。
+  const forumPathRiding = computed(() => forumPathProgress.value > 0);
+
   // 橘核心那顆方塊的顯隱（與 ForumCore 的黑底分開）。
   // 黑底只在 [coreIn, coreOut) 現身，但橘點必須從 coreIn 一路撐到論壇段路徑接手為止 ——
   // coreOut 到交棒點之間還有約 82vh，若跟著黑底淡出，畫面上會有一段沒有核心、
@@ -124,7 +130,7 @@ export function useOrangeCoreProgress() {
   const forumCoreDotVisible = computed(() => {
     if (symbolProgress.value < FORUM_HANDOFF.coreIn) return false;
     return forumPathActive.value
-      ? forumPathProgress.value === 0
+      ? !forumPathRiding.value
       : symbolProgress.value < FORUM_HANDOFF.coreOut;
   });
 
@@ -171,6 +177,7 @@ export function useOrangeCoreProgress() {
     setForumPathProgress,
     forumPathActive,
     setForumPathActive,
+    forumPathRiding,
     setPathProgress,
     setSymbolProgress,
     blessingProgress,
