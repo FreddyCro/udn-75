@@ -44,6 +44,24 @@
       "url": "/data",
       "titleImg": "/img/udn75_anchor_title_data.svg",
       "numImg": "/img/udn75_anchor_num_04.svg"
+    },
+    {
+      "title": "青春印記",
+      "subtitle": "書寫二十年淬鍊新篇章",
+      "unit": "教育事業部",
+      "author": "潘素滿撰",
+      "url": "/education",
+      "titleImg": "/img/udn75_anchor_title_education.svg",
+      "numImg": "/img/udn75_anchor_num_05.svg"
+    },
+    {
+      "title": "行動倡議",
+      "subtitle": "媒體力量驅動社會改變",
+      "unit": "健康事業部",
+      "author": "吳貞瑩撰",
+      "url": "/health",
+      "titleImg": "/img/udn75_anchor_title_health.svg",
+      "numImg": "/img/udn75_anchor_num_06.svg"
     }
   ]
 }

@@ -10,5 +10,6 @@
 - [Visual subpage RWD](visual-subpage-rwd.md) — /visual 三斷點完成紀錄：mob 測驗邊框盒按鈕、works 作用中列、桂冠圖原寸與 titleCenter
 - [Service subpage RWD](service-subpage-rwd.md) — /service 三斷點完成紀錄：沿用 visual 版型、chart svg 留白規範、figures pad 32
 - [Data subpage RWD](data-subpage-rwd.md) — /data 三斷點完成紀錄：AiSearch 欄寬、ShowcaseGallery designW/spread/vScale 斷點參數
+- [Education/Health subpages](education-health-subpages.md) — /education、/health 完成紀錄：CTA 佔位連結待補、SVG 匯出陷阱、錨點列橫向滑動
 - [Scroll speed knob](scroll-speed-knob.md) — scrub 相對速度＝在 trigger 區間內墊 vh spacer（非調 ease）；已移除，可從 7ff9f19 取回
 - [Redesign branch state](redesign-branch-state.md) — redesign branch 改版進度、PRD-v2、下一步工作單 temp/issue-05；0.6.0(7ff9f19) 是改版前參考

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * Subpage — 四個「類分頁」共用版型骨架：hero／引言／錨點／進場動畫／下一篇導覽。
+ * Subpage — 六個「類分頁」共用版型骨架：hero／引言／錨點／進場動畫／下一篇導覽。
  * 內文由各頁以預設 slot 直接撰寫（.sp-* 排版基元 + 逐塊 Tailwind mt-* 與 mb-*）。
  * header / footer 由 subpage layout 提供。
  */

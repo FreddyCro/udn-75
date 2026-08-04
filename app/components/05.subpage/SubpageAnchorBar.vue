@@ -1,17 +1,30 @@
 <script lang="ts" setup>
 /**
- * SubpageAnchorBar — <1280 的子頁錨點列（貼在 hero 下方、隨內容捲動）；
+ * SubpageAnchorBar — <1280 的子頁錨點列（sticky 貼在常駐 header 的 bar 下方）；
  * pc 改用右側 rail（SubpageAnchor）。
  */
 import str from '~/locales/common.json';
 
 const { subpageAnchors } = str;
 const route = useRoute();
+
+const listRef = ref<HTMLElement | null>(null);
+
+// 六項總寬（6×70 + 5×22 = 530）超出 mob 視窗 → 列可左右滑動；
+// 載入時把當前頁的項目捲到列中央（clamp 交給瀏覽器）
+onMounted(() => {
+  const list = listRef.value;
+  const active = list?.querySelector<HTMLElement>('.subpage-anchor-bar__link--active');
+  if (!list || !active) return;
+  const item = active.parentElement ?? active;
+  const delta = item.getBoundingClientRect().left - list.getBoundingClientRect().left;
+  list.scrollLeft += delta - (list.clientWidth - item.clientWidth) / 2;
+});
 </script>
 
 <template>
   <nav class="subpage-anchor-bar" aria-label="子頁導覽">
-    <ul class="subpage-anchor-bar__list">
+    <ul ref="listRef" class="subpage-anchor-bar__list">
       <li v-for="a in subpageAnchors" :key="a.url" class="subpage-anchor-bar__item">
         <NuxtLink
           class="subpage-anchor-bar__link"
@@ -31,34 +44,46 @@ const route = useRoute();
 
 <style lang="scss" scoped>
 .subpage-anchor-bar {
+  // sticky 貼在常駐 header（fixed、高 = --header-height）下方，隨內容捲動到頂後吸附。
+  // z-index 3：高於滿版區塊(z2)／rail(z1) 的疊層約定（見 SubpageAnchor），低於 header(1000)。
+  position: sticky;
+  top: var(--header-height);
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
   height: 60px;
-  padding: 0 26px; // 對稿只有置中不留邊；此處補窄機（<398）的安全邊距
-  background: #fff;
+  // 與 app-header__bar-wrap 同款背景：半透明白＋毛玻璃
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(2px);
 
   @include rwd-min('pc') {
     display: none;
   }
 }
 
-// 對稿為固定寬（4 欄各 70 + 欄距 22 = 346）；此處改成「等分欄 + max-width」，
-// 窄機時四欄一起等比收窄，藝術字以 contain 跟著縮，不擠壓也不換行。
+// 六欄固定寬（6 欄各 70 + 欄距 22 = 530）超出 mob 視窗 → 列本身為橫向捲動容器
+// （左右排列可滑動、藏捲軸）；pad 以上容得下時由外層 flex 置中。
+// 邊距留在捲動容器內，滑到端點時項目不被裁切。
 .subpage-anchor-bar__list {
   display: flex;
   align-items: center;
   gap: 22px;
-  width: 100%;
-  max-width: 346px;
+  max-width: 100%;
   margin: 0;
-  padding: 0;
+  padding: 0 26px;
+  overflow-x: auto;
   list-style: none;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 .subpage-anchor-bar__item {
-  flex: 1 1 70px;
-  min-width: 0;
+  flex: 0 0 70px;
 }
 
 .subpage-anchor-bar__link {
