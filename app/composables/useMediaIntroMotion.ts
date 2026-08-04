@@ -32,15 +32,17 @@ interface MediaIntroMotionTargets {
 
 /**
  * 智慧媒體開場 motion：morph 色塊分鏡組字 → settle 交棒完成態標題。
- * ScrollTrigger 進場觸發一次；prefers-reduced-motion 直接顯示完成態。
+ * section 頂到視窗頂即 pin 定住，整段分鏡以捲動 scrub 驅動（捲多少播多少、
+ * 回捲倒帶，同 FormulaBlocks pc）；prefers-reduced-motion 直接顯示完成態。
  * 分鏡稿：pc / pad＝951-40360（橫向、有 bar）、mob＝6070-56570（直向、無 bar）；
  * 分件位置全在 D／BAR／LINE_X／HOME 常數表（分鏡稿 px、777 基準），改稿改表。
  */
 export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
+  // pin 期間可捲動距離（px）＝整段分鏡的捲動長度（timeline 約 5s ≈ 400px/s）
+  const PIN_DISTANCE = 2000;
   let tl: gsap.core.Timeline | null = null;
-  let trigger: ScrollTrigger | null = null;
 
-  const playMotion = () => {
+  const buildMotion = () => {
     const section = targets.section.value;
     const els = targets.titleEls();
     const bg = targets.bg.value;
@@ -141,7 +143,19 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const MORPH_W = 12;
     const MORPH_H = 82;
 
-    tl = gsap.timeline();
+    // pin＋scrub：section 頂到視窗頂定住、分鏡由捲動進度驅動（可逆）。
+    // 不設 invalidateOnRefresh——各 tween 的目標值是建置時量好的常數，
+    // refresh 重抓起始值反而會在捲動中途污染狀態。
+    tl = gsap.timeline({
+      scrollTrigger: {
+        trigger: section,
+        start: 'top top',
+        end: `+=${PIN_DISTANCE}`,
+        pin: true,
+        anticipatePin: 1,
+        scrub: true,
+      },
+    });
     tl
       // 1. 色塊（BLOCK_VW×100vh）左右縮成直條
       .fromTo(
@@ -239,31 +253,17 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const els = targets.titleEls();
     if (!section || !els || !targets.morph.value || !targets.barL.value || !targets.barR.value)
       return;
-    // 降級：直接顯示完成態（初始隱藏全靠 JS set，不寫在 CSS）
+    // 降級：不建 timeline 也不 pin，直接顯示完成態（初始隱藏全靠 JS set，不寫在 CSS）
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     gsap.registerPlugin(ScrollTrigger);
-
-    // 觸發前先隱藏，避免內容閃現
-    const all = [...els.sides, ...els.quotes, els.heart];
-    const revealEls = [
-      targets.bg.value,
-      targets.body.value,
-      ...targets.rows(),
-    ].filter(Boolean);
-    gsap.set([els.final, ...all], { autoAlpha: 0 });
-    gsap.set(revealEls, { autoAlpha: 0 });
-
-    trigger = ScrollTrigger.create({
-      trigger: section,
-      start: 'top 60%',
-      once: true,
-      onEnter: playMotion,
-    });
+    // 掛載即建置（scrub 的 timeline 必須先於捲動存在）；量測只需 layout 完成，
+    // 不需 section 進到視窗。進到 pin 起點前 timeline 停在 0＝分鏡 1 色塊蓋版。
+    buildMotion();
   });
 
   onBeforeUnmount(() => {
+    tl?.scrollTrigger?.kill();
     tl?.kill();
-    trigger?.kill();
   });
 }

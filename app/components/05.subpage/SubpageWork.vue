@@ -111,6 +111,7 @@ withDefaults(
 }
 
 // 描述收合／展開：grid-template-rows 0fr ↔ 1fr，內容高度未知也能平滑過渡
+// 展開後的 margin-top 若改值，SubpageWorks activate() 內的展開高度推算需同步
 .award-work__desc-wrap {
   display: grid;
   grid-template-rows: 0fr;

@@ -14,7 +14,7 @@
       }"
     >
       <!-- lazy：started 之前不綁 src → 不會在網站初始 loading 時就下載。
-           影片卡：img 綁定同名靜態 poster（.mp4 → .png），glitch 跑在 poster 上 -->
+           影片卡：img 綁定靜態 poster（poster/<名稱>_preview.jpg），glitch 跑在 poster 上 -->
       <img
         :ref="(el) => setImgRef(el, i)"
         class="glitch-card__img"
@@ -132,7 +132,7 @@ const setOverlayRef = (el: any, i: number) => {
 };
 
 // 取前 N 張圖，各自配上對應 slot（slot 不足則退回最後一個）；.mp4 = 影片卡。
-// 影片卡的 glitch 跑在同名靜態 poster 上（同路徑、副檔名換成 .png）。
+// 影片卡的 glitch 跑在靜態 poster 上（同目錄 poster/ 子夾的 <名稱>_preview.jpg）。
 const cards = computed(() =>
   props.images.slice(0, props.layout.length || 3).map((src, i) => {
     const slot = props.layout[i] ?? props.layout[props.layout.length - 1]!;
@@ -140,7 +140,7 @@ const cards = computed(() =>
     return {
       src,
       video,
-      poster: video ? src.replace(/\.mp4$/i, '.png') : '',
+      poster: video ? src.replace(/([^/]+)\.mp4$/i, 'poster/$1_preview.jpg') : '',
       alt: props.alt[i] ?? '',
       x: slot.x,
       y: slot.y,

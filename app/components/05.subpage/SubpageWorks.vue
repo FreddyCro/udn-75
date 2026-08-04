@@ -73,11 +73,24 @@ async function activate(i: number, rowEl: HTMLElement) {
   if (!box) return;
   const wrapRect = wrap.getBoundingClientRect();
   const rowRect = rowEl.getBoundingClientRect();
-  const rowCenterY = rowRect.top + rowRect.height / 2;
-  // 列在視窗上半 → 縮圖貼列下方；列在下半 → 貼列上方
+  // 說明是 0fr→1fr 過渡展開，此刻 rect 尚未含展開高度 →
+  // 以說明內容高推得展開後的底線位置，縮圖貼線外側才不會蓋到說明
+  const descEl = rowEl.querySelector<HTMLElement>('.award-work__desc');
+  const descWrap = rowEl.querySelector<HTMLElement>('.award-work__desc-wrap');
+  let grow = 0;
+  if (descEl && descWrap) {
+    const currentH =
+      descWrap.getBoundingClientRect().height +
+      (parseFloat(getComputedStyle(descWrap).marginTop) || 0);
+    // 8 = 展開後 desc-wrap 的 margin-top（見 SubpageWork.vue）
+    grow = Math.max(0, descEl.scrollHeight + 8 - currentH);
+  }
+  const rowBottom = rowRect.bottom + grow;
+  const rowCenterY = rowRect.top + (rowRect.height + grow) / 2;
+  // 列在視窗上半 → 縮圖貼列下方；列在下半 → 貼列上方（展開向下長，上緣不動）
   const showBelow = rowCenterY < window.innerHeight / 2;
   thumb.top = showBelow
-    ? rowRect.bottom - wrapRect.top + THUMB_GAP
+    ? rowBottom - wrapRect.top + THUMB_GAP
     : rowRect.top - wrapRect.top - THUMB_GAP - box.offsetHeight;
 }
 
