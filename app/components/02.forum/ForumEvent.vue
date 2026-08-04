@@ -1,6 +1,6 @@
 <!--
   單一論壇場次區塊（論壇一~三），純 props 驅動、無動態。
-  .forum-event__date 是 ForumCorePath 可見線的錨點元素，改動其版位需同步 FORUM_PATH 的 anchorOffset。
+  .forum-event__date 是 ForumCorePath 可見線的錨點元素，改動其版位需同步 ForumPathSeg 的 anchor / offset。
   設計稿的大標／日期／地點是 outline 過的 vector，字級由字框反推後改用專案字體 live text（見各處註解）。
 -->
 <script setup lang="ts">
@@ -8,7 +8,7 @@ import type { ForumEvent } from '~/types/forum';
 
 const props = defineProps<{ event: ForumEvent }>();
 
-// 日期大字中的「/」要獨立成一個元素：核心經過時會化為它（見 FORUM_PATH.slash）。
+// 日期大字中的「/」要獨立成一個元素：核心經過時會化為它（見獨立常數 FORUM_SLASH）。
 const dateParts = computed(() => props.event.date.split('/'));
 
 // 設計稿的講者版式分兩種：單人是「照片左／文字右」，多人（論壇二）是並排卡片。

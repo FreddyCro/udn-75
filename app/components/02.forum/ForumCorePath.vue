@@ -5,13 +5,17 @@
   🚧 驅動線（stroke:none）＋ scrub 逐幀定位核心的引擎尚未接上，做法照 01.hero/OrangeCorePath.vue
      （曲線版見 `git show 7ff9f19:app/components/01.hero/OrangeCorePath.vue`）。
 -->
+<script setup lang="ts">
+const [path1, path2] = FORUM_PATH.pc;
+</script>
+
 <template>
   <div class="forum-path" aria-hidden="true">
     <svg
       class="forum-path__raw"
-      width="861"
-      height="3696"
-      viewBox="0 0 861 3696"
+      :width="path1.w"
+      :height="path1.h"
+      :viewBox="`0 0 ${path1.w} ${path1.h}`"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
@@ -23,9 +27,9 @@
 
     <svg
       class="forum-path__raw"
-      width="818"
-      height="1444"
-      viewBox="0 0 818 1444"
+      :width="path2.w"
+      :height="path2.h"
+      :viewBox="`0 0 ${path2.w} ${path2.h}`"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
