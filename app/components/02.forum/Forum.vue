@@ -46,6 +46,15 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
            改用「不 pin 的捲動尺」，見該元件註解。） -->
     <div class="sec2__pin" :class="{ 'sec2__pin--revealed': agendaRevealed }">
       <Agenda />
+      <AgendaReport />
+
+      <!-- TODO 論壇四（青年永續築夢論壇，青年對話（二）／台積電文教基金會）：
+           設計稿版式未定，先以虛線框佔位。定案後把這一塊換成正式版式或抽成元件即可，
+           不必動 <Agenda>／<AgendaReport>／<ForumHighlights>。
+           注意它位在 agenda 之後，不屬於 .sec2__path，故拿不到 <ForumCorePath> 的錨點。 -->
+      <div class="sec2__forum4">論壇四・青年永續築夢論壇（版式待補）</div>
+
+      <ForumHighlights />
     </div>
 
     <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊）。fixed 滿版、由 SymbolScene 寫入的
@@ -112,5 +121,19 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
   &--revealed {
     opacity: 1;
   }
+}
+
+// 論壇四佔位框：虛線語彙沿用 <ForumEvent> 的講者照片 placeholder，一眼可辨為待補。
+// 寬度取設計稿內容邊界（1280 − 左右各 108 ＝ 1064），高度為目測佔位值。
+.sec2__forum4 {
+  display: grid;
+  place-items: center;
+  max-width: 1064px;
+  min-height: 1000px;
+  margin: 80px auto;
+  border: 1px dashed var(--accent);
+  color: var(--accent);
+  font-size: 32px;
+  letter-spacing: 0.1em;
 }
 </style>

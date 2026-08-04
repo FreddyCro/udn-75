@@ -1,5 +1,5 @@
 <!--
-  議程表：分類 × 時間列，資料來自 locales/section2.json 的 agenda。
+  議程表＋段末 CTA 按鈕：分類 × 時間列與兩顆 CTA，資料來自 locales/section2.json 的 agenda。
   顯隱時機（agendaRevealed 淡入）由外層 .sec2__pin 控制。
   mob 版型（分類轉滿版橫幅、時間列平列）純由 CSS 切換，DOM 三斷點共用。
 -->
@@ -25,6 +25,18 @@ const { groups, actions } = str.agenda;
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- 議程 CTA：設計稿兩顆並排置中。variant 決定橘框（outline）或橘底（primary）。 -->
+    <div class="agenda__actions">
+      <a
+        v-for="(action, i) in actions"
+        :key="i"
+        class="agenda__action"
+        :class="`agenda__action--${action.variant}`"
+        :href="action.href"
+        >{{ action.label }}</a
+      >
     </div>
   </div>
 </template>
@@ -186,5 +198,37 @@ const { groups, actions } = str.agenda;
   font-size: 18px;
   font-weight: 300;
   line-height: 30px;
+}
+
+// 議程 CTA：設計稿兩顆 414×76 並排置中；下方 32 即灰底報告區塊的起始間距。
+.agenda__actions {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin: 48px 0 32px;
+}
+
+// 字級比照 <ForumEvent> 的 .forum-event__cta；
+// letter-spacing 會在末字後多留一格，text-indent 補回一半才視覺置中。
+.agenda__action {
+  display: grid;
+  place-items: center;
+  width: 414px;
+  height: 76px;
+  font-size: 22px;
+  line-height: 36px;
+  letter-spacing: 0.1em;
+  text-decoration: none;
+  text-indent: 0.05em;
+
+  &--outline {
+    border: 1px solid var(--accent);
+    color: var(--accent);
+  }
+
+  &--primary {
+    background: var(--accent);
+    color: #fff;
+  }
 }
 </style>
