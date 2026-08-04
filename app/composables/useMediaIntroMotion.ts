@@ -35,7 +35,7 @@ interface MediaIntroMotionTargets {
  * section 頂到視窗頂即 pin 定住，整段分鏡以捲動 scrub 驅動（捲多少播多少、
  * 回捲倒帶，同 FormulaBlocks pc）；prefers-reduced-motion 直接顯示完成態。
  * 分鏡稿：pc / pad＝951-40360（橫向、有 bar）、mob＝6070-56570（直向、無 bar）；
- * 分件位置全在 D／BAR／LINE_X／HOME 常數表（分鏡稿 px、777 基準），改稿改表。
+ * 分件位置全在 D／BAR／QUOTE／HOME 常數表（分鏡稿 px、777 基準），改稿改表。
  */
 export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   // pin 期間可捲動距離（px）＝整段分鏡的捲動長度（timeline 約 5s ≈ 400px/s）
@@ -92,10 +92,12 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       : { butt: 118, inner: 152, inner2: 162, stack: 0 }; // 橫向走 x
     const BAR_IN = 281; // bar 中停（貼文字外緣）
     const BAR_OUT = 315; // bar 甩出
-    const LINE_X = 100; // 分鏡 6 直線騎引號外緣
     const lineH = 96 * f; // 直線 8×96
     const HOME = [-254, 259]; // settle 回家：字形中心在 media_title.svg 內的位置
-    const QUOTE = 85; // 引號聚合距（心外框中心 ↔ 引號角落中心）
+    // 引號中心相對心外框（210×98）中心的位置：上引號在左上、下引號在右下
+    const QUOTE = 85; // 水平（±）
+    const QUOTE_Y = 7; // 垂直（∓）
+    const QUOTE_H = 84; // 引號素材高（分鏡 6 直線收成此高再交棒）
 
     // 分件在放大 SCALE 倍的標題座標系內 → 分鏡距離除回 SCALE
     const dist = (d: number) => (d * f) / SCALE;
@@ -116,15 +118,19 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       y: 0,
     });
 
-    // 起始定位：文字貼齊中線、引號聚到心外框中心（素材為橘色，先還原灰階 filter）
+    // 起始定位：文字貼齊中線；引號留在字形原位待分鏡 6 由直線交棒現身
+    //（素材為橘色，先還原灰階 filter）
     sides.forEach((el, i) => gsap.set(el, partAt(i, D.butt)));
-    quotes.forEach((el, i) =>
-      gsap.set(el, {
-        x: -sgn[i]! * dist(QUOTE),
-        filter: 'grayscale(0) brightness(1)',
-      }),
-    );
-    gsap.set([barL, barR, lineL, lineR], { x: 0, autoAlpha: 0 });
+    gsap.set(quotes, { x: 0, filter: 'grayscale(0) brightness(1)' });
+    // bar／直線同樣把 CSS 的 translate(-50%, -50%) 置中交給 xPercent/yPercent，
+    // 之後的 x/y 才是「與舞台中心的距離」（gsap 設 x/y 會整段取代 CSS 位移）
+    gsap.set([barL, barR, lineL, lineR], {
+      xPercent: -50,
+      yPercent: -50,
+      x: 0,
+      y: 0,
+      autoAlpha: 0,
+    });
 
     // 標題放大並組裝在舞台中心（以 morph 實際位置為準＝section 第一屏中心，
     // 與 bar／直線必然同點）；settle 再縮回定位
@@ -189,21 +195,47 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
         { scaleY: lineH / MORPH_H, duration: 0.35, ease: 'power3.inOut' },
         'text+=0.85',
       )
-      // 6. 直線分裂騎引號外緣飛出；引號滑入、文字撐開到定位
+      // 6. 直線分裂成兩個引號：兩線飛到上／下引號的中心並收成引號高，
+      //    抵達時原地交棒（線淡出、引號自窄條展開）；文字同拍撐開到定位
       .addLabel('quotes')
       .set(
         [lineL, lineR],
-        { x: 0, scaleX: 8 / MORPH_W, scaleY: lineH / MORPH_H, autoAlpha: 1 },
+        { x: 0, y: 0, scaleX: 8 / MORPH_W, scaleY: lineH / MORPH_H, autoAlpha: 1 },
         'quotes',
       )
       .set(morph, { autoAlpha: 0 }, 'quotes')
-      .to(quotes, { autoAlpha: 1, duration: 0.25 }, 'quotes')
-      .to(quotes, { x: 0, duration: 0.55, ease: 'power2.inOut' }, 'quotes')
       .to(sides[0]!, { ...spreadAt(0), duration: 0.55, ease: 'power2.inOut' }, 'quotes')
       .to(sides[1]!, { ...spreadAt(1), duration: 0.55, ease: 'power2.inOut' }, 'quotes')
-      .to(lineL, { x: -LINE_X * f, duration: 0.55, ease: 'power2.inOut' }, 'quotes')
-      .to(lineR, { x: LINE_X * f, duration: 0.55, ease: 'power2.inOut' }, 'quotes')
-      .to([lineL, lineR], { autoAlpha: 0, duration: 0.2 }, 'quotes+=0.55')
+      .to(
+        lineL,
+        {
+          x: -QUOTE * f,
+          y: -QUOTE_Y * f,
+          scaleY: (QUOTE_H * f) / MORPH_H,
+          duration: 0.5,
+          ease: 'power2.inOut',
+        },
+        'quotes',
+      )
+      .to(
+        lineR,
+        {
+          x: QUOTE * f,
+          y: QUOTE_Y * f,
+          scaleY: (QUOTE_H * f) / MORPH_H,
+          duration: 0.5,
+          ease: 'power2.inOut',
+        },
+        'quotes',
+      )
+      // 交棒：線在引號位置淡出，引號同時自窄條展開補上字形（等寬同心 → 無重疊）
+      .to([lineL, lineR], { autoAlpha: 0, duration: 0.2 }, 'quotes+=0.5')
+      .fromTo(
+        quotes,
+        { scaleX: 0.2, autoAlpha: 0 },
+        { scaleX: 1, autoAlpha: 1, duration: 0.3, ease: 'power2.out' },
+        'quotes+=0.5',
+      )
       // 7. 「心」淡入
       .to(heart, { autoAlpha: 1, duration: 0.4 }, 'quotes+=0.6')
       // 8. settle：標題縮回定位、內容依序淡入
