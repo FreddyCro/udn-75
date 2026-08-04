@@ -1,7 +1,9 @@
 <!--
   論壇段的可見設計線（核心層 path1 / path2）：Figma 匯出的 outline 填色 svg，直接貼在 template 裡。
   驅動核心移動用的中心線另存於 ~/utils/orange-core-config 的 FORUM_PATH（pc[].motion），
-  由 temp/extract-centerline.mjs 從這兩段可見線抽出，座標系與各自的 viewBox 相同。
+  由 scripts/extract-centerline.mjs 從這兩段可見線抽出，座標系與各自的 viewBox 相同。
+  可見線一旦重貼，中心線必須重跑該腳本，不可手改。
+  ⚠ 對位／改版的完整規則見 architecture/forum-core-path.md（改動前先讀）。
   🚧 驅動線（stroke:none）＋ scrub 逐幀定位核心的引擎尚未接上，做法照 01.hero/OrangeCorePath.vue
      （曲線版見 `git show 7ff9f19:app/components/01.hero/OrangeCorePath.vue`）。
 -->
@@ -30,13 +32,16 @@ function layout(): ({ tx: number; ty: number } | null)[] {
   const rootRect = root.getBoundingClientRect();
   // 用 closest 往上找 .sec2__path，而非假設 root.parentElement 剛好就是它——
   // <ForumCorePath /> 若被多包一層 div，parentElement 會找錯目標而靜默失敗。
-  const dates = root.closest('.sec2__path')?.querySelectorAll('.forum-event__date');
+  // 錨點在這個範圍內用 data-forum-anchor 具名選取（見下方 querySelector）。
+  const scope = root.closest('.sec2__path');
   const els = root.querySelectorAll<SVGSVGElement>('.forum-path__raw');
 
   // 先把每段錨點的 rect 讀完，再統一寫入 style：避免 read → write → read 交錯，觸發強制同步 reflow。
   const placements = segments.map((seg, i) => {
     const el = els[i];
-    const anchor = dates?.[seg.anchor] as HTMLElement | undefined;
+    const anchor = scope?.querySelector<HTMLElement>(
+      `[data-forum-anchor="${seg.anchor}"]`
+    );
     if (!el || !anchor) return null;
     const a = anchor.getBoundingClientRect();
     return {

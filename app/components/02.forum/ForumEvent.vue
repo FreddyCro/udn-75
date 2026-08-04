@@ -37,6 +37,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
       <p v-if="event.body" class="forum-event__body">{{ event.body }}</p>
 
+      <!-- TODO 報名連結未定，暫用 # 佔位（同 AppHeader 的待補外連）。 -->
       <a v-if="event.cta" class="forum-event__cta" href="#">{{ event.cta }}</a>
     </div>
 
@@ -46,7 +47,9 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
         <span v-for="(line, i) in event.quoteEn" :key="i">{{ line }}</span>
       </p>
 
-      <div class="forum-event__date">
+      <!-- data-forum-anchor：ForumCorePath 依這個值（＝場次名）選錨點，不靠文件順序索引，
+           故增刪／重排場次不會讓設計線靜默錨到別場身上。 -->
+      <div class="forum-event__date" :data-forum-anchor="event.no">
         <span class="forum-event__date-year">{{ event.year }}</span>
         <span class="forum-event__date-mm">{{ dateParts[0] }}</span>
         <span v-if="hasSlash" class="forum-event__date-slash">/</span>
@@ -78,7 +81,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
           :alt="sp.name"
           classname="forum-event__photo"
         />
-        <span v-else class="forum-event__photo-slot">{{ sp.photoNo }}</span>
+        <span v-else class="forum-event__photo-slot" aria-hidden="true">{{ sp.photoNo }}</span>
 
         <p class="forum-event__speaker-name">
           <span>{{ sp.name }}</span>
@@ -101,7 +104,12 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
 // 講者組頂端（padding-top）與段落結尾留白（padding-bottom）皆為設計稿值；
 // 講者組走一般流排版，論壇一的長 bio 變長只會往下撐開，不會壓到上面的群組。
+// --date-size / --date-lh 在此給預設值：三個版式 modifier 都會蓋掉它，
+// 但資料漏填 layout 時（型別擋不到 runtime JSON）至少日期不會失去字級。
 .forum-event {
+  --date-size: 105px;
+  --date-lh: 98px;
+
   position: relative;
 
   &--quote {
@@ -122,7 +130,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     --date-size: 122px;
     --date-lh: 114px;
 
-    padding: 779px 0 280px;
+    padding: 779px 0 40px;
   }
 }
 
@@ -425,6 +433,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 }
 
 // UPic 把 classname 掛在內層 <img>，scoped 選不到，故用 :deep。
+// 外層還多一個 <picture>：img 脫離文件流後它會塌成零高，所以卡片版式一定要改回 static，
+// 否則補上真圖的當下照片會疊到頭銜／姓名上（placeholder 看不出問題，見下方 __photo-slot）。
 :deep(.forum-event__photo) {
   position: absolute;
   top: 0;
@@ -433,6 +443,12 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   width: 268px;
   aspect-ratio: 1 / 1;
   object-fit: cover;
+}
+
+// :deep() 內不能再接 &，故卡片版式的覆寫獨立寫一條。
+.forum-event__speaker--card :deep(.forum-event__photo) {
+  position: static;
+  width: 250px;
 }
 
 // 照片 placeholder：尺寸與實圖一致（設計稿講者圖為正方形），中央印編號方便日後對照補圖。
@@ -481,10 +497,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   letter-spacing: 0.05em;
 }
 
-// 長 bio 橫跨照片欄與文字欄（設計稿寬 709、字面 y 為講者組頂端下方 316）。
 .forum-event__bio {
-  width: 709px;
-  margin: 102px 0 0 -312px;
+  margin: 0;
   font-size: 18px;
   font-weight: 300;
   line-height: 36px;
@@ -493,5 +507,17 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   & + & {
     margin-top: 36px;
   }
+}
+
+// 論壇一：長 bio 橫跨照片欄與文字欄（設計稿寬 709、字面 y 為講者組頂端下方 316）。
+// 負 margin 回推是「照片左、文字右」版式專用，卡片版式若吃到會左右各溢出數百 px，故限定 --quote。
+.forum-event--quote .forum-event__bio {
+  width: 709px;
+  margin: 102px 0 0 -312px;
+}
+
+// 選擇器比上一條多一層才蓋得掉那個 102px：第二段之後只留段距。
+.forum-event--quote .forum-event__bio + .forum-event__bio {
+  margin-top: 36px;
 }
 </style>

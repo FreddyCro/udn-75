@@ -20,7 +20,7 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
   <section id="forum" class="sec2">
     <!-- 上半段（路徑段）：論壇一~三的內容 ＋ 核心沿設計線蛇行下行（見 temp/issue-05）。
          段落主標只在論壇一之前出現一次，故由本層渲染、不進 <ForumEvent>。
-         🚧 設計線仍是 placeholder，核心驅動未實作。 -->
+         🚧 設計線已依錨點定位，但核心沿線移動的 scrub 引擎未實作。 -->
     <div
       class="sec2__path"
       :class="{ 'sec2__path--revealed': agendaRevealed }"
@@ -51,11 +51,13 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
 <style lang="scss" scoped>
 // 交棒期間由 ForumCore（fixed 黑底滿版）遮住，故本區白底不影響 crossfade。
 // 白底：新版議程段為淺色稿；水平 padding 收掉，讓 <AgendaReport> 的灰底能滿版。
+// 段落頂端的 140 留白掛在 .sec2__path 而非這裡：核心的設計線要從「黑白接縫」進場，
+// 而它的座標原點是 .sec2__path 的 padding box —— 留白掛在 .sec2 會讓原點下沉 140，
+// 線就少了那一段。見 architecture/forum-core-path.md。
 .sec2 {
   --accent: #ff7f00;
 
   min-height: 100vh;
-  padding: 140px 0 0;
   color: #686868;
   background-color: #fff;
 }
@@ -67,6 +69,7 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
   position: relative;
   max-width: 1280px;
   margin: 0 auto;
+  padding-top: 140px;
   opacity: 0;
   transition: opacity 0.4s ease;
 
