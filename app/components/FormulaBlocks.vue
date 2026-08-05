@@ -39,6 +39,9 @@ const props = withDefaults(
   },
 );
 
+// 藝術字路徑由呼叫端從 locales/*.json 傳入（純字串）→ 須自行補資產前綴
+const assetUrl = useAssetUrl();
+
 const POS = ['tl', 'tr', 'bl', 'br'] as const;
 // 分支線方向：tl/br 為「\」、tr/bl 鏡射為「/」；from = 靠中央塊的那端（往外畫）
 const BRANCH: Record<
@@ -244,7 +247,7 @@ onBeforeUnmount(() => {
           <img
             v-if="center.img"
             class="formula__center-logo"
-            :src="center.img"
+            :src="assetUrl(center.img)"
             :alt="center.eyebrow ?? ''"
           />
           <p v-else-if="center.eyebrow" class="formula__center-eyebrow">
@@ -292,7 +295,7 @@ onBeforeUnmount(() => {
             <img
               v-if="b.titleImg"
               class="formula__box-logo"
-              :src="b.titleImg"
+              :src="assetUrl(b.titleImg)"
               :alt="b.title ?? ''"
             />
             <span v-else>{{ b.title }}</span>
