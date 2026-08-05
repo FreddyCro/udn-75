@@ -37,7 +37,8 @@ app/components/
   01a.symbol/   SymbolScene, SymbolFace, DevFaceProgress
   02.forum/     Forum, ForumEvent, ForumCore, ForumCorePath, Agenda
   03.blessing/  Blessing, BlessingFace, BlessingStairs, BlessingPartners
-  04.media/     Media, MediaTitle, MediaList, HeartMetaball
+  04.media/     Media, MediaTitle, MediaList, HeartMetaballPatch（現役底紋）,
+                HeartMetaball（前一版底紋，僅 demo 對照）
   05.subpage/   Subpage, SubpageNav, SubpageAnchor, SubpageAnchorBar, SubpageCta, SubpageWork(s)
   legacy/       HeroForumTransition, SymbolFace, ParticleScene   ← 僅供參考，無人引用
 ```
@@ -318,8 +319,25 @@ app/components/
 | -------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [MediaTitle.vue](../app/components/04.media/MediaTitle.vue)          | 標題分件                 | 「智慧 ● 媒體 → 智慧『心』媒體」的字組拆件，供 motion 時間軸個別驅動（`getEls()` 對外曝露）                                                                                                                 |
 | [MediaList.vue](../app/components/04.media/MediaList.vue)            | 子頁錨點清單             | 01–06 子頁錨點列（`getRows()` 對外曝露供逐列進場）                                                                                                                                                          |
-| [HeartMetaball.vue](../app/components/04.media/HeartMetaball.vue)    | 互動底紋團塊             | pc 追蹤游標；pad / mob 改在「內文與清單之間的留白帶」（`.media__roam` 量成相對 section 的正規化矩形）內漂移，團塊含半徑都不會壓到上下文字                                                                    |
+| [HeartMetaballPatch.vue](../app/components/04.media/HeartMetaballPatch.vue) | 互動底紋（現役）   | 4 塊紋理 patch 漂移重疊 ＋ metaball 場遮罩收邊。pc 追蹤游標；pad / mob 改在「內文與清單之間的留白帶」（`.media__roam` 量成相對 section 的正規化矩形）內漂移，patch 叢集含羽化外緣都不會壓到上下文字（帶塞不下時整體等比縮小） |
 | motion 舞台                                                          | 開場分鏡                 | morph 色塊、兩側 bar、分裂直線（分鏡 6），由 `useMediaIntroMotion` 統一驅動                                                                                                                                 |
+
+### 底紋版本：HeartMetaballPatch（現役）vs HeartMetaball（前一版）
+
+兩版都以「蓋章式 metaball 場 ＋ 逐格隨機閾值」做外緣收邊與彗星尾，互動模式（pc 追游標／pad·mob 自走）也一致；差別在**場內畫什麼**。[HeartMetaball.vue](../app/components/04.media/HeartMetaball.vue) 已退出正式版面，僅留在 [demo.vue](../app/pages/demo.vue) 供對照，**調整正式底紋請改 Patch 版**。
+
+| 面向     | HeartMetaball（前一版）          | HeartMetaballPatch（現役）              |
+| -------- | -------------------------------- | --------------------------------------- |
+| 版面結構 | 中心圓角方形 ＋ 外圍，共兩區     | 4 個矩形紋理 patch 拼貼                 |
+| 紋理     | 變寬棋盤（1,2,3,6 帶）／線段紋   | 1 格棋盤／2 格棋盤／線段紋（設計稿三紋路） |
+| 紋理分佈 | `accentBlock` 區塊逐塊換 variant | 每 patch 固定一種紋理，不換             |
+| 構圖變化 | 區塊 variant 慢速換抽            | patch 在定點附近些微漂移（不生滅）      |
+| 重疊交織 | 無（同一格只屬一區）             | 有（紋理透空格讓位下層 → 雙紋交織）     |
+| 顆粒     | `cellSize` 14px                  | `cellSize` 4px（貼合設計稿）            |
+| 橘色     | 中心 base 色、外圍藍             | 圓形核心內慢速換抽變橘                  |
+| 外緣羽化 | 中心區超橢圓羽化                 | 每個 patch 各自超橢圓羽化（圓角、去方形感） |
+
+改用 Patch 版的原因：設計稿要的是「三種紋路隨機重疊、邊緣造型隨機」，前一版的兩區結構無法產生紋理交織。細節（ROSTER 陣容、羽化參數、變橘機率場）見該檔檔頭。
 
 🚧 核心「橘底收回成『心』的引號」的接續動態未做。
 
