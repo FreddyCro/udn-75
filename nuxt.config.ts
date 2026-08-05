@@ -82,6 +82,12 @@ export default defineNuxtConfig({
   // "does not provide an export named 'default'"。
   vite: {
     plugins: [tailwindcss()],
+    build: {
+      // 關掉小資源 inline（預設 4096 bytes 以下會被轉成 data URI 內嵌進 JS/CSS）。
+      // 本專案圖片多半靠 runtimeConfig 的 APP_ASSETS_PATH 在 runtime 組路徑（見 UPic/UVid），
+      // 需要實體檔案存在；設 0 可確保 assets 內的小圖（如 SVG）一律輸出成獨立靜態檔。
+      assetsInlineLimit: 0,
+    },
     optimizeDeps: {
       // 預先 pre-bundle，避免 dev 期間「runtime 才發現依賴」觸發整頁 reload。
       // vue-scrollto 為 CJS-only，預先 bundle 成 ESM 以提供 default export
