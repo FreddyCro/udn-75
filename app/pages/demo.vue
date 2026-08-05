@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import story from '~/locales/story.json';
+import section1 from '~/locales/section1.json';
 import glitch1 from '~/assets/img/glitch-01.jpg';
 import glitch2 from '~/assets/img/glitch-02.jpg';
 import glitch3 from '~/assets/img/glitch-03.jpg';
@@ -14,15 +15,8 @@ const symbolMode = ref<'face' | 'disperse' | 'converge'>('face');
 const glitchRef = ref<{ start: () => void; reset: () => void } | null>(null);
 const startGlitch = () => glitchRef.value?.start();
 
-// 彩蛋句子（row-major 對應宮格）
-const symbolPhrases = [
-  '逼真 AI 詐騙究竟如何分辨？',
-  'AI 算力是否耗盡電力資源？',
-  'AI 可以協助翻轉人口老化外流嗎？',
-  '無法被 AI 取代的核心能力是什麼？',
-  'AI 讓老後生活更便利還是更孤單？',
-  '不學 AI 就會被時代淘汰嗎？',
-];
+// 彩蛋句子（row-major 對應宮格）：與正式站共用同一份文案，見 locales/section1.json
+const symbolPhrases = section1.symbol.phrases;
 </script>
 
 <template>
@@ -64,7 +58,7 @@ const symbolPhrases = [
       />
       <!-- 現役底紋（Section 4 使用）：4 patch 漂移重疊（線段紋×2、1格棋盤×1、2格棋盤×1） -->
       <HeartMetaballPatch :idleRoamSpeed="2" />
-      <section class="glitch-demo">
+      <!-- <section class="glitch-demo">
         <GlitchImage
           ref="glitchRef"
           class="glitch-demo__item"
@@ -78,7 +72,7 @@ const symbolPhrases = [
           start
         </button>
       </section>
-      <ShowcaseGallery />
+      <ShowcaseGallery /> -->
     </main>
     <!-- 暫用：手動觸發 GlitchImage（之後改由列表 hover/scroll 觸發 start()） -->
     <!-- <AppFooter /> -->

@@ -203,10 +203,12 @@ function applyScrollLock() {
         真正的符號粒子場：住在轉場層的 slot 內，故「左右展開時窗內已見粒子」是真的粒子。
         序列（disperse→face→converge）由 01a.symbol/SymbolScene 依捲動指派 symbolMode，
         本處只負責「在場」與外觀參數；兩邊透過 useOrangeCoreProgress 的 symbolMode 對接。
+        phrases 為 face 狀態下的宮格彩蛋句（row-major，對應 gridCols × gridRows）。
       -->
       <SymbolFace
         v-model:mode="symbolMode"
         :dev="false"
+        :phrases="str.symbol.phrases"
         :hole-radius="25"
         :hole-spread="50"
         :return-ease="1.5"
