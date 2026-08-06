@@ -4,6 +4,14 @@ import * as THREE from 'three';
 import { gsap } from 'gsap';
 import portraitUrl from '~/assets/img/face.png';
 // import portraitUrl from '~/assets/img/einstein.png';
+import {
+  buildColorRamp,
+  buildGlyphAtlas,
+  buildWeightLadder,
+  sortCharsByInk,
+  type GlyphAtlas,
+} from '~/utils/symbol-atlas';
+import { sampleImageToGridWithLimit } from '~/utils/symbol-sampler';
 
 const props = defineProps({
   /** 人像圖片（需含透明背景，alpha 即輪廓遮罩） */
@@ -20,24 +28,43 @@ const props = defineProps({
   },
   /** 漸層取色方式：'tone' 依明暗對應（暗→左端、亮→右端）/ 'random' 每顆隨機取色 */
   colorMode: { type: String, default: 'tone' },
-  /** 採樣間距 → 目標 world 間距（與原圖解析度脫鉤）：符號畫面間距 ≈ 此值，越小越密、越大越攤開不重疊 */
-  sampleStep: { type: Number, default: 6 },
   /** 目標框寬（world 單位）：圖以 contain 方式塞入，正規化 render 大小 */
   fitWidth: { type: Number, default: 500 },
   /** 目標框高（world 單位）：圖以 contain 方式塞入，正規化 render 大小 */
   fitHeight: { type: Number, default: 500 },
   /** 貼合後的額外縮放倍率（手動微調用；1 = 純貼合目標框） */
   worldScale: { type: Number, default: 1.0 },
-  /** 亮部最低採樣機率（0 會讓亮部完全消失） */
-  minDensity: { type: Number, default: 0.8 },
-  /** 暗度 → 機率的 gamma，越大暗部對比越強 */
-  densityGamma: { type: Number, default: 2.0 },
-  /** 暗度增益，放大中間調的明暗差（對比強度） */
-  darkBoost: { type: Number, default: 1.8 },
-  sizeMin: { type: Number, default: 18 },
-  sizeMax: { type: Number, default: 36 },
-  /** 粒子數上限（行動裝置可降）；慣性物理在 CPU 端積分，原型先降到 6000 確認效能/手感 */
-  maxParticles: { type: Number, default: 6000 },
+  /** 橫向格數＝疏密主控，clamp 到 20..400。
+   *  85 而非 gemini 的 130：滿版一屏放不下 130 欄的可辨識字級（見 spec § 2 的對照表） */
+  cols: { type: Number, default: 85 },
+  /** monospace 寬高比：cellH = cellW / charAspect。0.65 取自 gemini 的 baseFontSize × 0.65 */
+  charAspect: { type: Number, default: 0.65 },
+  /** 對比：繞中灰 0.5 放大明暗差（取代舊的 darkBoost 乘法增益） */
+  contrast: { type: Number, default: 1.2 },
+  /** 負片：反轉明暗，決定人臉是「光雕」還是「陰影雕」 */
+  invert: { type: Boolean, default: false },
+  /** 字重階數；1 ＝ 單一字重 */
+  weightSteps: { type: Number, default: 5 },
+  /** 暗部字重 */
+  weightMin: { type: Number, default: 100 },
+  /** 亮部字重 */
+  weightMax: { type: Number, default: 900 },
+  /** 漸層色標位置（0..1），長度需與 color 相同；空陣列＝等距 */
+  colorStops: { type: Array as () => number[], default: () => [] },
+  /** glitch 跳色：依 fps 隨機把少量粒子染色（取代舊的隨機換字），最多 4 組 */
+  glitchItems: {
+    type: Array as () => { color: string; density: number; fps: number }[],
+    default: () => [],
+  },
+  /** 格點隨機位移比例；0 ＝ 全規則格點 */
+  jitter: { type: Number, default: 0 },
+  /** 暗部字級佔格高的比例（0..1） */
+  sizeMin: { type: Number, default: 0.43 },
+  /** 亮部字級佔格高的比例；1.0 ＝ 字級等於格高（墨水寬 ≈ 0.92 × cellW，同 gemini），
+   *  超過約 1.08 開始橫向重疊成塊 */
+  sizeMax: { type: Number, default: 1.0 },
+  /** 粒子數上限；超過時自動遞減 cols 重新取樣（不隨機淘汰，那會打壞矩陣） */
+  maxParticles: { type: Number, default: 24000 },
 
   // ---------- 場景 / 動畫節奏 ----------
   /** 背景色 */
@@ -59,6 +86,10 @@ const props = defineProps({
   floatMicro: { type: Number, default: 4 },
   /** 漂浮速度倍率 */
   floatSpeed: { type: Number, default: 1.0 },
+  /** 透明度明滅幅度（原本寫死 0.18） */
+  twinkleAmp: { type: Number, default: 0.06 },
+  /** 字級呼吸幅度（原本寫死 0.12） */
+  breathAmp: { type: Number, default: 0.06 },
 
   // ---------- 滑鼠真空（斥力） ----------
   /** 真空半徑：游標圈內完全清空 */
@@ -191,10 +222,30 @@ const CONFIG_SCHEMA = [
     group: '圖像 / 採樣',
   },
   {
-    key: 'sampleStep',
-    label: '採樣間距',
+    key: 'colorStops',
+    label: '色標位置(逗號)',
+    kind: 'csvNum',
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'weightSteps',
+    label: '字重階數',
     kind: 'num',
     step: 1,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'weightMin',
+    label: '字重 min',
+    kind: 'num',
+    step: 100,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'weightMax',
+    label: '字重 max',
+    kind: 'num',
+    step: 100,
     group: '圖像 / 採樣',
   },
   {
@@ -219,38 +270,46 @@ const CONFIG_SCHEMA = [
     group: '圖像 / 採樣',
   },
   {
-    key: 'minDensity',
-    label: '亮部最低密度',
+    key: 'cols',
+    label: '格數(疏密)',
+    kind: 'num',
+    step: 5,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'charAspect',
+    label: '字寬高比',
+    kind: 'num',
+    step: 0.05,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'contrast',
+    label: '對比',
+    kind: 'num',
+    step: 0.1,
+    group: '圖像 / 採樣',
+  },
+  { key: 'invert', label: '負片', kind: 'bool', group: '圖像 / 採樣' },
+  {
+    key: 'jitter',
+    label: '格點抖動',
+    kind: 'num',
+    step: 0.05,
+    group: '圖像 / 採樣',
+  },
+  {
+    key: 'sizeMin',
+    label: '字級 min(格高比)',
     kind: 'num',
     step: 0.01,
     group: '圖像 / 採樣',
   },
   {
-    key: 'densityGamma',
-    label: '密度 gamma',
-    kind: 'num',
-    step: 0.1,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'darkBoost',
-    label: '暗度增益',
-    kind: 'num',
-    step: 0.1,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'sizeMin',
-    label: '字級 min',
-    kind: 'num',
-    step: 1,
-    group: '圖像 / 採樣',
-  },
-  {
     key: 'sizeMax',
-    label: '字級 max',
+    label: '字級 max(格高比)',
     kind: 'num',
-    step: 1,
+    step: 0.01,
     group: '圖像 / 採樣',
   },
   {
@@ -280,6 +339,26 @@ const CONFIG_SCHEMA = [
     key: 'disperseSpread',
     label: '散場範圍 xyz',
     kind: 'csvNum',
+    group: '場景 / 節奏',
+  },
+  {
+    key: 'twinkleAmp',
+    label: '明滅幅度',
+    kind: 'num',
+    step: 0.01,
+    group: '場景 / 節奏',
+  },
+  {
+    key: 'breathAmp',
+    label: '呼吸幅度',
+    kind: 'num',
+    step: 0.01,
+    group: '場景 / 節奏',
+  },
+  {
+    key: 'glitchItems',
+    label: 'glitch(JSON)',
+    kind: 'json',
     group: '場景 / 節奏',
   },
   // 漂浮
@@ -407,8 +486,13 @@ const CONFIG_SCHEMA = [
 ];
 
 const panelOpen = ref(true);
+// dev 面板的唯讀資訊：實際採用的格數與粒子數（cols 可能因 maxParticles 被降過）
+const gridStats = ref({ cols: 0, rows: 0, count: 0 });
+// 面板欄位轉型失敗的訊息（目前只有 glitch JSON 會發生），顯示在 footer
+const cfgError = ref('');
 // props 值 → 面板可編輯字串（陣列類轉成逗號字串）
 const toDraft = (val: any, kind: string) => {
+  if (kind === 'json') return JSON.stringify(val ?? [], null, 0);
   if (kind === 'csvNum' || kind === 'csvStr') return (val ?? []).join(', ');
   if (kind === 'colorList')
     return Array.isArray(val) ? val.join(', ') : (val ?? '');
@@ -416,6 +500,8 @@ const toDraft = (val: any, kind: string) => {
 };
 // 面板值 → cfg 正確型別
 const fromDraft = (val: any, kind: string) => {
+  // parse 失敗直接 throw，由 applyRefresh 攔下並保留舊值
+  if (kind === 'json') return JSON.parse(String(val));
   if (kind === 'num') return Number(val);
   if (kind === 'bool') return !!val;
   if (kind === 'csvNum')
@@ -449,7 +535,18 @@ for (const f of CONFIG_SCHEMA) {
 // onMounted 內指派：把 cfg 套進 three.js 並重建粒子系統
 let rebuildParticles: (() => void) | null = null;
 const applyRefresh = () => {
-  for (const f of CONFIG_SCHEMA) cfg[f.key] = fromDraft(draft[f.key], f.kind);
+  cfgError.value = '';
+  const next: Record<string, any> = {};
+  for (const f of CONFIG_SCHEMA) {
+    try {
+      next[f.key] = fromDraft(draft[f.key], f.kind);
+    } catch {
+      // 該欄位保留舊值，其餘照常套用
+      cfgError.value = `${f.label} 格式錯誤，已保留原值`;
+      next[f.key] = cfg[f.key];
+    }
+  }
+  Object.assign(cfg, next);
   rebuildParticles?.();
 };
 
@@ -459,8 +556,13 @@ const exportLabel = ref('⬇ Export JSON');
 let exportResetTimer: ReturnType<typeof setTimeout> | null = null;
 const exportConfig = () => {
   const snapshot: Record<string, any> = {};
-  for (const f of CONFIG_SCHEMA)
-    snapshot[f.key] = fromDraft(draft[f.key], f.kind);
+  for (const f of CONFIG_SCHEMA) {
+    try {
+      snapshot[f.key] = fromDraft(draft[f.key], f.kind);
+    } catch {
+      snapshot[f.key] = cfg[f.key];
+    }
+  }
   snapshot.mode = mode.value;
   const json = JSON.stringify(snapshot, null, 2);
 
@@ -481,55 +583,6 @@ const exportConfig = () => {
   }, 1600);
 };
 
-// 把字元集畫成 sprite sheet，fragment shader 以 gl_PointCoord + cell offset 取樣
-const makeGlyphAtlas = (chars: string[]) => {
-  const cell = 64;
-  const cols = Math.ceil(Math.sqrt(chars.length));
-  const rows = Math.ceil(chars.length / cols);
-  const c = document.createElement('canvas');
-  c.width = cols * cell;
-  c.height = rows * cell;
-  const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#fff';
-  ctx.font = `bold ${cell * 0.78}px "Courier New", monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  chars.forEach((ch, i) => {
-    const cx = (i % cols) * cell + cell / 2;
-    const cy = Math.floor(i / cols) * cell + cell / 2;
-    ctx.fillText(ch, cx, cy);
-  });
-  const texture = new THREE.CanvasTexture(c);
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  return { texture, cols, rows };
-};
-
-// 把單色/多色標漸層畫成 1D 漸層貼圖，shader 以 vT 取色
-const makeColorRamp = (color: string | string[]) => {
-  const stops = Array.isArray(color) ? color : [color];
-  const w = 256;
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = 1;
-  const ctx = c.getContext('2d')!;
-  if (stops.length === 1) {
-    ctx.fillStyle = stops[0]!;
-    ctx.fillRect(0, 0, w, 1);
-  } else {
-    const g = ctx.createLinearGradient(0, 0, w, 0);
-    stops.forEach((s, i) => g.addColorStop(i / (stops.length - 1), s));
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, 1);
-  }
-  const texture = new THREE.CanvasTexture(c);
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.wrapS = THREE.ClampToEdgeWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping;
-  return texture;
-};
-
 onMounted(() => {
   const wrap = wrapRef.value;
   if (!wrap) return;
@@ -541,6 +594,14 @@ onMounted(() => {
 
   const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 2000);
   camera.position.z = 600;
+
+  // world → 螢幕 px 的換算：gl_PointSize 原本用寫死的 300/-mv.z，導致「字級是螢幕 px、
+  // 格距是 world」兩套單位 —— 墨水/格距的填充率會隨視窗高度在 58%(1440px) 到
+  // 105%(800px) 之間漂移，調不出一組能定案的值。改成 aSize 直接是 world 單位，
+  // 這裡算轉換係數，resize 時一併更新 uWorldToPx。
+  const worldToPx = () =>
+    wrap.clientHeight /
+    (2 * camera.position.z * Math.tan((camera.fov * Math.PI) / 360));
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -575,7 +636,7 @@ onMounted(() => {
   renderer.domElement.addEventListener('pointerleave', onLeave);
 
   // atlas / colorRamp / points 改為 let，可在 refresh 時 dispose 重建
-  let atlas: ReturnType<typeof makeGlyphAtlas> | null = null;
+  let atlas: GlyphAtlas | null = null;
   let colorRamp: THREE.CanvasTexture | null = null;
   let points: THREE.Points | null = null;
 
@@ -595,94 +656,63 @@ onMounted(() => {
   let roamX = 150;
   let roamY = 150;
 
-  // ---------- 圖片亮度採樣：暗密亮疏、暗大亮小 ----------
+  // sortedChars 由 buildParticles 算好（atlas 與取樣要用同一份）
+  let sortedChars: string[] = [];
+
+  // ---------- 圖片亮度採樣：網格化，亮部大/粗/淺色 ----------
   const buildFromImage = (img: HTMLImageElement) => {
     const W = img.naturalWidth;
     const H = img.naturalHeight;
     const c = document.createElement('canvas');
     c.width = W;
     c.height = H;
-    const ctx = c.getContext('2d')!;
-    ctx.drawImage(img, 0, 0);
-    const data = ctx.getImageData(0, 0, W, H).data;
+    const ctx2d = c.getContext('2d')!;
+    ctx2d.drawImage(img, 0, 0);
+    const imageData = ctx2d.getImageData(0, 0, W, H);
 
-    // contain-fit：把圖（W×H）等比例塞進目標框（fitWidth×fitHeight），正規化 render 大小，
-    // 與圖片解析度、視窗 aspect 脫鉤（換圖不爆框）
-    const scale =
-      Math.min(cfg.fitWidth / W, cfg.fitHeight / H) * cfg.worldScale;
-    // 人像置中於原點，半寬高 = W*scale/2、H*scale/2；自動游標在 ~70% 內遊走
-    halfW = (W * scale) / 2;
-    halfH = (H * scale) / 2;
+    const sample = sampleImageToGridWithLimit(
+      { data: imageData.data, width: W, height: H },
+      {
+        cols: cfg.cols,
+        charAspect: cfg.charAspect,
+        fitWidth: cfg.fitWidth,
+        fitHeight: cfg.fitHeight,
+        worldScale: cfg.worldScale,
+        contrast: cfg.contrast,
+        invert: cfg.invert,
+        charCount: sortedChars.length,
+        weightSteps: cfg.weightSteps,
+        sizeMin: cfg.sizeMin,
+        sizeMax: cfg.sizeMax,
+        jitter: cfg.jitter,
+      },
+      cfg.maxParticles,
+    );
+
+    const count = sample.count;
+    if (count === 0) {
+      console.warn(
+        '[SymbolFace] 取樣結果為 0 顆粒子，請檢查 contrast / invert / 圖片 alpha',
+      );
+      return;
+    }
+    if (count > cfg.maxParticles) {
+      console.warn(
+        `[SymbolFace] 粒子數 ${count} 已達 cols 下限仍超過上限 ${cfg.maxParticles}`,
+      );
+    }
+    gridStats.value = { cols: sample.cols, rows: sample.rows, count };
+
+    // 人像置中於原點；自動游標在 ~70% 內遊走
+    halfW = sample.halfW;
+    halfH = sample.halfH;
     roamX = halfW * 0.7;
     roamY = halfH * 0.7;
-    const positions: number[] = [];
-    const sizes: number[] = [];
-    const darks: number[] = [];
-    // 分布疏密與原圖解析度脫鉤：sampleStep 視為「目標 world 間距」，換算回影像 px 步長
-    // （world 間距 = step × scale ≈ sampleStep）。高解析原圖不再被 contain-fit 壓成密網格而重疊，
-    // 疏密固定 → 貼近舊版 einstein 的攤開感（LIU_FEEDBACK_2 #2-3 分布方式）。
-    const step = Math.max(1, Math.round(cfg.sampleStep / scale));
-    for (let y = 0; y < H; y += step) {
-      for (let x = 0; x < W; x += step) {
-        // 整格平均，比單點採樣穩定（鉛筆稿紋理噪點大）
-        let lumSum = 0;
-        let aSum = 0;
-        let n = 0;
-        for (let dy = 0; dy < step && y + dy < H; dy++) {
-          for (let dx = 0; dx < step && x + dx < W; dx++) {
-            const i = ((y + dy) * W + (x + dx)) * 4;
-            lumSum +=
-              (0.299 * (data[i] ?? 0) +
-                0.587 * (data[i + 1] ?? 0) +
-                0.114 * (data[i + 2] ?? 0)) /
-              255;
-            aSum += (data[i + 3] ?? 0) / 255;
-            n++;
-          }
-        }
-        const a = aSum / n;
-        if (a < 0.5) continue; // 透明背景 = 輪廓外
-        const dark = Math.min(1, (1 - lumSum / n) * cfg.darkBoost);
-        const prob =
-          (cfg.minDensity +
-            (1 - cfg.minDensity) * Math.pow(dark, cfg.densityGamma)) *
-          a;
-        if (Math.random() > prob) continue;
-        positions.push(
-          (x - W / 2) * scale,
-          -(y - H / 2) * scale,
-          (Math.random() - 0.5) * 8,
-        );
-        sizes.push(cfg.sizeMin + (cfg.sizeMax - cfg.sizeMin) * dark);
-        darks.push(dark);
-      }
-    }
 
-    let count = positions.length / 3;
-    if (count > cfg.maxParticles) {
-      const keep = cfg.maxParticles / count;
-      let w = 0;
-      for (let i = 0; i < count; i++) {
-        if (Math.random() > keep) continue;
-        positions[w * 3] = positions[i * 3]!;
-        positions[w * 3 + 1] = positions[i * 3 + 1]!;
-        positions[w * 3 + 2] = positions[i * 3 + 2]!;
-        sizes[w] = sizes[i]!;
-        darks[w] = darks[i]!;
-        w++;
-      }
-      positions.length = w * 3;
-      sizes.length = w;
-      darks.length = w;
-      count = w;
-    }
-
-    const target = new Float32Array(positions);
+    const target = sample.positions;
     const start = new Float32Array(count * 3);
     const floatPos = new Float32Array(count * 3);
     const order = new Float32Array(count);
-    const size = new Float32Array(sizes);
-    const glyph = new Float32Array(count);
     const seed = new Float32Array(count);
 
     const FLOAT_X = cfg.disperseSpread[0] ?? 900;
@@ -699,7 +729,6 @@ onMounted(() => {
       floatPos[i3 + 1] = (Math.random() - 0.5) * FLOAT_Y;
       floatPos[i3 + 2] = (Math.random() - 0.5) * FLOAT_Z;
       order[i] = Math.random() * 0.85;
-      glyph[i] = Math.floor(Math.random() * cfg.chars.length);
       seed[i] = Math.random();
     }
 
@@ -709,12 +738,9 @@ onMounted(() => {
     geom.setAttribute('aTarget', new THREE.BufferAttribute(target, 3));
     geom.setAttribute('aFloat', new THREE.BufferAttribute(floatPos, 3));
     geom.setAttribute('aOrder', new THREE.BufferAttribute(order, 1));
-    geom.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
-    geom.setAttribute(
-      'aDark',
-      new THREE.BufferAttribute(new Float32Array(darks), 1),
-    );
-    geom.setAttribute('aGlyph', new THREE.BufferAttribute(glyph, 1));
+    geom.setAttribute('aSize', new THREE.BufferAttribute(sample.sizes, 1));
+    geom.setAttribute('aBright', new THREE.BufferAttribute(sample.brights, 1));
+    geom.setAttribute('aGlyph', new THREE.BufferAttribute(sample.glyphs, 1));
     geom.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
 
     // 慣性物理：附加位移 aDisp（初始 0），CPU 每幀積分後上傳
@@ -727,6 +753,24 @@ onMounted(() => {
     dispAttr.setUsage(THREE.DynamicDrawUsage);
     geom.setAttribute('aDisp', dispAttr);
 
+    // glitch 跳色：GLSL ES 1.0 的陣列 uniform 必須是固定長度，故一律備 4 組，
+    // 未使用的以 uGlitchCount 擋掉（density 0 也不會命中）。
+    const items = (cfg.glitchItems ?? []).slice(0, 4);
+    if ((cfg.glitchItems ?? []).length > 4) {
+      console.warn('[SymbolFace] glitchItems 最多 4 組，其餘已忽略');
+    }
+    const glitchCount = items.length;
+    const glitchColors = Array.from(
+      { length: 4 },
+      (_, i) => new THREE.Color(items[i]?.color ?? '#000000'),
+    );
+    // density 除以 100：gemini 的 density 單位是百分比（1–30）
+    const glitchDensity = Array.from(
+      { length: 4 },
+      (_, i) => (items[i]?.density ?? 0) / 100,
+    );
+    const glitchFps = Array.from({ length: 4 }, (_, i) => items[i]?.fps ?? 0);
+
     mat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
@@ -738,9 +782,13 @@ onMounted(() => {
         uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
         uMouseInfluence: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
+        uWorldToPx: { value: worldToPx() },
+        uCamZ: { value: camera.position.z },
         uFloatAmp: { value: cfg.floatAmp },
         uFloatMicro: { value: cfg.floatMicro },
         uFloatSpeed: { value: cfg.floatSpeed },
+        uTwinkleAmp: { value: cfg.twinkleAmp },
+        uBreathAmp: { value: cfg.breathAmp },
         uHoleRadius: { value: cfg.holeRadius },
         uHoleSpread: { value: cfg.holeSpread },
         uGroupShift: { value: cfg.groupShift },
@@ -748,9 +796,12 @@ onMounted(() => {
         uGroupFar: { value: cfg.groupShiftFar },
         uAtlas: { value: atlas.texture },
         uAtlasGrid: { value: new THREE.Vector2(atlas.cols, atlas.rows) },
-        uGlyphCount: { value: cfg.chars.length },
         uColorRamp: { value: colorRamp },
         uColorRandom: { value: cfg.colorMode === 'random' ? 1 : 0 },
+        uGlitchCount: { value: glitchCount },
+        uGlitchColor: { value: glitchColors },
+        uGlitchDensity: { value: glitchDensity },
+        uGlitchFps: { value: glitchFps },
       },
       vertexShader: /* glsl */ `
         attribute vec3 aStart;
@@ -761,7 +812,7 @@ onMounted(() => {
         attribute float aSize;
         attribute float aGlyph;
         attribute float aSeed;
-        attribute float aDark;
+        attribute float aBright;
         uniform float uProgress;
         uniform float uTime;
         uniform float uDisperse;
@@ -769,20 +820,28 @@ onMounted(() => {
         uniform vec3 uMouse;
         uniform float uMouseInfluence;
         uniform float uPixelRatio;
-        uniform float uGlyphCount;
+        uniform float uWorldToPx;
+        uniform float uCamZ;
         uniform float uFloatAmp;
         uniform float uFloatMicro;
         uniform float uFloatSpeed;
+        uniform float uTwinkleAmp;
+        uniform float uBreathAmp;
         uniform float uHoleRadius;
         uniform float uHoleSpread;
         uniform float uGroupShift;
         uniform float uGroupNear;
         uniform float uGroupFar;
         uniform float uColorRandom;
+        uniform int uGlitchCount;
+        uniform vec3 uGlitchColor[4];
+        uniform float uGlitchDensity[4];
+        uniform float uGlitchFps[4];
         varying float vAlpha;
         varying float vGlyph;
-        varying float vShade;
         varying float vT;
+        varying vec3 vGlitchColor;
+        varying float vGlitchOn;
 
         float hash(float n) { return fract(sin(n) * 43758.5453123); }
 
@@ -831,24 +890,39 @@ onMounted(() => {
           // 離開集合態（分散/匯聚）時讓位移淡出，交棒給 drift / 匯聚點。
           pos += aDisp * formed;
 
-          // 隨機換字閃爍：每 1/3 秒抽一次，少數粒子暫時換成別的字元
-          float tick = floor(uTime * 3.0);
-          float h = hash(aSeed * 127.1 + tick * 311.7);
-          vGlyph = h > 0.92 ? mod(aGlyph + floor(h * 91.0), uGlyphCount) : aGlyph;
+          // 字元固定不變：glyph 由亮度決定（ink ramp），換字會直接打壞圖像。
+          // 動態感改由下方 glitch 跳色提供（同 gemini-code 的做法）。
+          vGlyph = aGlyph;
 
-          float twinkle = 0.82 + 0.18 * sin(uTime * 2.2 + aSeed * 40.0);
-          // 亮部稍透明、暗部不透明，再疊一層深淺：對比靠 alpha + 色深 + 大小 + 密度
-          vAlpha = local * twinkle * mix(0.55, 1.0, aDark) * mix(1.0, 0.5, uDisperse);
-          // 取色位置：tone=依明暗(暗→漸層左端) / random=每顆隨機；色調由漸層主導，
-          // vShade 再疊明暗對比(暗→濃、亮→淡)+抖動，讓深淺更明顯（貼近舊版靠亮度表現深淺）
-          vT = mix(1.0 - aDark, hash(aSeed * 53.7), uColorRandom);
-          vShade = mix(1.15, 0.6, aDark) * (0.92 + 0.16 * hash(aSeed * 17.7));
+          // glitch 跳色：每組各自的 fps 決定換幀速率，density 決定命中比例。
+          // GLSL ES 1.0 迴圈上界必須是常數，故固定 4 次搭配 break。
+          vGlitchColor = vec3(0.0);
+          vGlitchOn = 0.0;
+          for (int i = 0; i < 4; i++) {
+            if (i >= uGlitchCount) break;
+            if (uGlitchFps[i] > 0.0 && uGlitchDensity[i] > 0.0) {
+              float frame = floor(uTime * uGlitchFps[i]);
+              float r = hash(aSeed * 127.1 + frame * 311.7 + float(i) * 57.3);
+              if (r < uGlitchDensity[i]) {
+                vGlitchColor = uGlitchColor[i];
+                vGlitchOn = 1.0;
+                break;
+              }
+            }
+          }
+
+          float twinkle = (1.0 - uTwinkleAmp) + uTwinkleAmp * sin(uTime * 2.2 + aSeed * 40.0);
+          // 不透明（gemini 邊緣銳利）；只保留 reveal(local) 與散場的淡入淡出
+          vAlpha = local * twinkle * mix(1.0, 0.5, uDisperse);
+          // 取色位置：tone=依亮度（亮→漸層右端＝高光色）/ random=每顆隨機
+          vT = mix(aBright, hash(aSeed * 53.7), uColorRandom);
 
           vec4 mv = modelViewMatrix * vec4(pos, 1.0);
           gl_Position = projectionMatrix * mv;
-          float breath = 1.0 + 0.12 * sin(uTime * 2.0 + aSeed * 9.0);
+          float breath = 1.0 + uBreathAmp * sin(uTime * 2.0 + aSeed * 9.0);
           float size = aSize * mix(1.0, 0.65, uDisperse) * mix(1.0, 0.6, uConverge);
-          gl_PointSize = size * breath * local * uPixelRatio * (300.0 / -mv.z);
+          // aSize 是 world 單位 → 乘 uWorldToPx 換成螢幕 px；(uCamZ/-mv.z) 保留透視深度差
+          gl_PointSize = size * uWorldToPx * (uCamZ / -mv.z) * breath * local * uPixelRatio;
         }
       `,
       fragmentShader: /* glsl */ `
@@ -857,8 +931,9 @@ onMounted(() => {
         uniform sampler2D uColorRamp;
         varying float vAlpha;
         varying float vGlyph;
-        varying float vShade;
         varying float vT;
+        varying vec3 vGlitchColor;
+        varying float vGlitchOn;
         void main() {
           vec2 cell = vec2(mod(vGlyph, uAtlasGrid.x), floor(vGlyph / uAtlasGrid.x));
           vec2 uv = vec2(
@@ -867,8 +942,9 @@ onMounted(() => {
           );
           float a = texture2D(uAtlas, uv).a * vAlpha;
           if (a < 0.02) discard;
-          vec3 col = texture2D(uColorRamp, vec2(clamp(vT, 0.0, 1.0), 0.5)).rgb;
-          gl_FragColor = vec4(col * vShade, a);
+          vec3 ramp = texture2D(uColorRamp, vec2(clamp(vT, 0.0, 1.0), 0.5)).rgb;
+          vec3 col = mix(ramp, vGlitchColor, vGlitchOn);
+          gl_FragColor = vec4(col, a);
         }
       `,
     });
@@ -933,8 +1009,24 @@ onMounted(() => {
     mat?.dispose();
     atlas?.texture.dispose();
     colorRamp?.dispose();
-    atlas = makeGlyphAtlas(cfg.chars);
-    colorRamp = makeColorRamp(cfg.color);
+
+    sortedChars = sortCharsByInk(cfg.chars);
+    if (sortedChars.length === 0) {
+      console.warn('[SymbolFace] chars 去重濾空白後為空，不建立粒子系統');
+      points = null;
+      return;
+    }
+    const weights = buildWeightLadder(
+      cfg.weightSteps,
+      cfg.weightMin,
+      cfg.weightMax,
+    );
+    atlas = buildGlyphAtlas(sortedChars.slice(1), weights);
+    const stops =
+      Array.isArray(cfg.colorStops) && cfg.colorStops.length
+        ? cfg.colorStops
+        : undefined;
+    colorRamp = buildColorRamp(cfg.color, stops);
     revealStarted = false; // 讓 reveal 重跑（新材質 uProgress 從 0 起）
     buildFromImage(loadedImg);
   };
@@ -1141,6 +1233,8 @@ onMounted(() => {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+    // world 單位的字級要跟著視窗高度重算，否則縮放視窗時字與格距的比例會跑掉
+    if (mat) mat.uniforms.uWorldToPx!.value = worldToPx();
   };
   window.addEventListener('resize', onResize);
 
@@ -1223,6 +1317,11 @@ onMounted(() => {
           </label>
         </template>
         <div class="cfg__footer">
+          <div class="cfg__stats">
+            {{ gridStats.cols }} × {{ gridStats.rows }} 格 ／
+            {{ gridStats.count.toLocaleString() }} 顆
+          </div>
+          <div v-if="cfgError" class="cfg__error">{{ cfgError }}</div>
           <div class="cfg__modes">
             <button
               v-for="m in MODES"
@@ -1373,6 +1472,17 @@ onMounted(() => {
   margin-top: 10px;
   padding-top: 8px;
   background: rgba(20, 22, 28, 0.9);
+}
+
+.cfg__stats {
+  font-size: 12px;
+  color: #7fd0ff;
+  letter-spacing: 0.04em;
+}
+
+.cfg__error {
+  font-size: 12px;
+  color: #ff9a9a;
 }
 
 .cfg__modes {

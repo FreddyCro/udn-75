@@ -49,20 +49,8 @@ const symbolPhrases = section1.symbol.phrases;
       </div>
 
       <!-- :auto-mouse="true" -->
-      <!--
-        ⚠️ Step 0：純 props 的「方向驗證」，元件程式碼一行沒改。
-        目的是先讓設計師確認色盤 / 密度 / 字級三項的方向對不對，再決定要不要投入
-        architecture/2026-08-06-symbol-face-static-plan.md 的 Task 5–9（真正的移植）。
-        數值依 face.png 1013×1478、fit 500×500（scale 0.3383）、視窗高 1080 推算。
-
-        這一版做得到：格子填滿、字不再糊成塊、亮=大、gemini 色盤（暗端收黑）。
-        這一版做不到（要 Task 7 改 shader / 取樣才行）：
-          ・字元仍是隨機指定（glyph = random），與亮度無關 → 圖像辨識度上不去
-          ・字重只有單一 bold，沒有 100→900 九階
-          ・沒有 glitch 跳色（#ff0055 / #00ffcc）
-          ・亮部被 vAlpha 壓到 0.55（shader 寫死，方向與 gemini 相反）→ 高光偏灰
-          ・字級以寫死的 300/600 換算，與格距的 worldToPx 不同單位 → 換視窗高度會失準
-      -->
+      <!-- 新版：網格矩陣（gemini-code 質感移植）。字元依墨水量對應亮度、逐格字重、
+           四色標可調位置的漸層、glitch 跳色；字級是 world 單位，縮放視窗比例不變。 -->
       <SymbolFace
         v-if="symbolVersion === 'matrix'"
         v-model:mode="symbolMode"
@@ -77,7 +65,7 @@ const symbolPhrases = section1.symbol.phrases;
         :impulse-spray-z="0.6"
         :velocity-follow="0.1"
         :max-speed="3000"
-        :max-particles="14000"
+        :max-particles="24000"
         bg-color="#000"
         :float-amp="18"
         :float-micro="0.5"
@@ -86,12 +74,20 @@ const symbolPhrases = section1.symbol.phrases;
           'A', 'B', 'C', 'D', 'E', 'F',
         ]"
         :color="['#000000', '#77c6e0', '#d1f4ff', '#ffffff']"
-        :sample-step="4"
-        :min-density="1"
-        :dark-boost="1"
-        :density-gamma="1"
-        :size-min="31"
-        :size-max="13"
+        :color-stops="[0, 0.4, 0.75, 1]"
+        :cols="85"
+        :char-aspect="0.65"
+        :contrast="1.2"
+        :invert="false"
+        :size-min="0.43"
+        :size-max="1.0"
+        :weight-steps="5"
+        :weight-min="100"
+        :weight-max="900"
+        :glitch-items="[
+          { color: '#ff0055', density: 3, fps: 12 },
+          { color: '#00ffcc', density: 2, fps: 8 },
+        ]"
       />
       <!-- 改寫前的快照，props 沿用舊介面、與新版互不牽動（見 legacy/SymbolFaceScatter.vue） -->
       <LegacySymbolFaceScatter

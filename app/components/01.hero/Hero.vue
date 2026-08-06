@@ -218,15 +218,27 @@ function applyScrollLock() {
         :impulse-spray-z="0.6"
         :velocity-follow="0.1"
         :max-speed="3000"
-        :max-particles="10000"
-        :color="['#ffffff', '#9fd6ff', '#77c6e0', '#3f8fb5']"
+        :max-particles="24000"
+        :chars="[
+          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+          'A', 'B', 'C', 'D', 'E', 'F',
+        ]"
+        :color="['#000000', '#77c6e0', '#d1f4ff', '#ffffff']"
+        :color-stops="[0, 0.4, 0.75, 1]"
         bg-color="#000"
-        :sample-step="5"
-        :size-min="16"
-        :size-max="32"
-        :min-density="0.7"
-        :density-gamma="2.4"
-        :dark-boost="1.8"
+        :cols="85"
+        :char-aspect="0.65"
+        :contrast="1.2"
+        :invert="false"
+        :size-min="0.43"
+        :size-max="1.0"
+        :weight-steps="5"
+        :weight-min="100"
+        :weight-max="900"
+        :glitch-items="[
+          { color: '#ff0055', density: 3, fps: 12 },
+          { color: '#00ffcc', density: 2, fps: 8 },
+        ]"
         :float-amp="18"
         :float-micro="0.5"
       />

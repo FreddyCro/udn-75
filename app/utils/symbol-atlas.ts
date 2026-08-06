@@ -8,6 +8,7 @@
 // 這樣切是因為專案 vitest 跑 node 環境（見 vitest.config.ts），碰 document 會直接爆。
 
 import * as THREE from 'three';
+import { GLYPH_FONT_SCALE } from './symbol-sampler';
 
 /** glyph sprite sheet 的 cell 邊長（px）。字元實際字級遠小於此，靠 mipmap 縮下去。 */
 const CELL = 64;
@@ -137,7 +138,9 @@ export function buildGlyphAtlas(
       const i = glyphIndex(ci + 1, wi, weights.length);
       const cx = (i % cols) * CELL + CELL / 2;
       const cy = Math.floor(i / cols) * CELL + CELL / 2;
-      ctx.font = `${w} ${CELL * 0.78}px "Courier New", monospace`;
+      // 字級佔比與 symbol-sampler 的 GLYPH_FONT_SCALE 共用同一個常數：
+      // 取樣端算 sprite 邊長時要把這裡的留白除回去，兩邊分開寫遲早不同步。
+      ctx.font = `${w} ${CELL * GLYPH_FONT_SCALE}px "Courier New", monospace`;
       ctx.fillText(ch, cx, cy);
     });
   });

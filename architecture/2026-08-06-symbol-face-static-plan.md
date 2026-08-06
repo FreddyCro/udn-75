@@ -20,7 +20,42 @@
 - 元件 auto-import 規則見 `nuxt.config.ts` 的 `components`：`~/components/01a.symbol` 設 `pathPrefix: false`（故是 `<SymbolFace>`），`~/components` 為預設規則（故 `legacy/Foo.vue` 是 `<LegacyFoo>`）。
 - Shader 是 GLSL ES 1.0（three.js `ShaderMaterial` 未指定 `glslVersion`）→ 迴圈上界必須是常數，動態次數用常數上界 + `break`。
 
-**gemini 參照值**（spec § 移植時的三個技術關鍵）：`cols` 130、`charAspect` 0.65、`contrast` 1.2、字重 100–900 五階、`sizeMin` 0.43 / `sizeMax` 1.0、色標位置 0% / 40% / 75% / 100%。
+**參照值**：`cols` **85**、`charAspect` 0.65、`contrast` 1.2、字重 100–900 五階、`sizeMin` 0.43 / `sizeMax` 1.0、色標位置 0% / 40% / 75% / 100%。
+`cols` 是唯一偏離 gemini 的一項（它是 130）—— 滿版一屏放不下 130 欄的可辨識字級，理由見 spec § 2。
+
+---
+
+## 執行進度（2026-08-06 更新）
+
+| Task | 狀態 | commit |
+|---|---|---|
+| 1 備份 legacy + demo 切換 | ✅ | `cc4f22f` |
+| 2 `symbol-atlas.ts` 純函式 | ✅ | `b193a4b` |
+| 3 `symbol-atlas.ts` DOM 部分 | ✅ | `cae00a0` |
+| 4 `symbol-sampler.ts` 色調 / 格數 | ✅ | `6a2d187` |
+| 5 `sampleImageToGrid` | ⬜ | |
+| 6 `sampleImageToGridWithLimit` | ⬜ | |
+| 7 SymbolFace.vue 接上 utils | ⬜ | ← 唯一會改變畫面的一步 |
+| 8 dev 面板 glitch 欄位 | ⬜ | |
+| 9 Hero / demo props 同步 | ⬜ | |
+
+⚠️ Task 2–4 的產物目前**只有測試檔在 import**，`SymbolFace.vue` 完全沒接上，
+所以 demo 頁的「新版 矩陣」與「舊版 散點」除了 5 行註解外是同一份程式碼。
+
+`3d3e32c` 是一次 props-only 的方向驗證（只改 demo.vue，元件零改動），
+證實色盤／密度／字級方向正確，並修正了本計畫兩處推導錯誤，見下方「已更正的推導」。
+
+### 已更正的推導（2026-08-06）
+
+1. **atlas 留白**：`aSize` 是 point sprite 邊長，但 `buildGlyphAtlas` 只把字烘在
+   `CELL × 0.78` 上。`sizeMax = 1.0` 若不除掉這 0.78，字級只有格高的 78%。
+   → Task 5 新增 `GLYPH_FONT_SCALE` 常數並套進 size 公式。
+2. **原判定「字級比格距大 1.66 倍必定重疊」是錯的** —— 那是拿 sprite 外框比格距，
+   未計入 atlas 留白（×0.78）與 monospace 墨水比（×0.6）。實際墨水/格距在 58%–105%，
+   缺陷是「隨視窗高度漂移」而非「固定超標」。修法不變（Task 7 的 `uWorldToPx`），
+   但 Task 7 的程式碼註解要改寫，見該 Task。
+3. **`face.png` 實測 1013×1478**（原記 1024×1470），alpha 覆蓋 80%，亮度平均 0.533、
+   0.2–0.8 均勻分佈 —— 中間調，不是暗調。
 
 ---
 
@@ -667,6 +702,8 @@ describe('toneMap', () => {
   });
 });
 
+// ⚠️ 以下是 Task 4 當時寫進 test/symbol-sampler.spec.ts 的原樣（已 commit `6a2d187`）。
+//    其中的 1024×1470 與 cols 130 事後證實過期 —— 由 Task 5 Step 0 修正，此處保留歷史。
 describe('computeGrid', () => {
   const base = {
     cols: 130,
@@ -829,16 +866,64 @@ git commit -m "feat(symbol): 加入網格幾何計算與繞中灰的對比映射
 
 **Files:**
 - Modify: `app/utils/symbol-sampler.ts`
+- Modify: `app/utils/symbol-atlas.ts:140`（`CELL * 0.78` 改用共用常數，見 Step 5）
 - Test: `test/symbol-sampler.spec.ts`
 
 **Interfaces:**
 - Consumes: Task 4 的 `toneMap` / `computeGrid` / `ImageLike` / `GridMetrics`
 - Produces:
+  - `const GLYPH_FONT_SCALE = 0.78`
   - `interface SampleOptions extends GridOptions { contrast: number; invert: boolean; charCount: number; weightSteps: number; sizeMin: number; sizeMax: number; jitter: number; random?: () => number }`
   - `interface GridSample extends GridMetrics { positions: Float32Array; sizes: Float32Array; glyphs: Float32Array; brights: Float32Array; count: number }`
   - `sampleImageToGrid(pixels: ImageLike, opts: SampleOptions): GridSample`
 
 `charCount` 是 `sortCharsByInk()` 的回傳長度（**含**前置空白），例如 8 個字元時是 9。
+
+**`GLYPH_FONT_SCALE` 是這個 Task 新增的跨檔常數。** `sizes` 存的是 point sprite 的邊長，
+不是字級；`buildGlyphAtlas` 把字烘在 `CELL × 0.78` 上，sprite 四周有 22% 空白。
+故 `sizes = 字級 / 0.78`，否則 `sizeMax = 1.0` 畫出來只有格高的 78%。
+
+宣告在 `symbol-sampler.ts`（無 DOM、測試碰得到），`symbol-atlas.ts` 反過來 import ——
+`buildGlyphAtlas` 現在的 `CELL * 0.78` magic literal 一併換掉（本 Task Step 5）。
+兩邊必須是同一個數，分開寫遲早不同步。
+
+- [ ] **Step 0: 先修掉 Task 4 留下的過期常數**
+
+`test/symbol-sampler.spec.ts` 用 `1024×1470` 當 face.png 的尺寸，實測是 `1013×1478`；
+且 `base` 裡的 `cols: 130` 已不是預設值（改 85）。這些不影響 `computeGrid` 的正確性，
+但測試名在說謊，會誤導後面的人。把該檔的 `computeGrid` 那一組改成：
+
+```ts
+const base = {
+  cols: 85,
+  charAspect: 0.65,
+  fitWidth: 500,
+  fitHeight: 500,
+  worldScale: 1,
+};
+
+it('contain-fit：取寬高比較小的那一邊', () => {
+  // 1013x1478 塞進 500x500：min(500/1013, 500/1478) = 500/1478
+  const g = computeGrid(1013, 1478, base);
+  expect(close(g.scale, 500 / 1478)).toBe(true);
+});
+
+it('face.png 在預設 cols 85 下是 85 欄 80 列', () => {
+  const g = computeGrid(1013, 1478, base);
+  expect(g.cols).toBe(85);
+  expect(g.rows).toBe(80);
+});
+
+it('cols 130 時是 130 欄 123 列', () => {
+  const g = computeGrid(1013, 1478, { ...base, cols: 130 });
+  expect(g.rows).toBe(123);
+});
+```
+
+該檔其餘用到 `computeGrid(1024, 1470, ...)` 的案例，一律把引數改成 `1013, 1478`
+（`halfW` 那一條的期望值 `(1024 * (500 / 1470)) / 2` 同步改成 `(1013 * (500 / 1478)) / 2`）。
+
+Run: `pnpm vitest run test/symbol-sampler.spec.ts` → 應全綠。
 
 - [ ] **Step 1: 寫失敗的測試**
 
@@ -846,6 +931,7 @@ git commit -m "feat(symbol): 加入網格幾何計算與繞中灰的對比映射
 
 ```ts
 import {
+  GLYPH_FONT_SCALE,
   computeGrid,
   sampleImageToGrid,
   toneMap,
@@ -929,10 +1015,16 @@ describe('sampleImageToGrid', () => {
     expect(s.brights[0]).toBeCloseTo(1);
   });
 
-  it('字級是格高乘上 sizeMin..sizeMax 的插值（world 單位）', () => {
+  it('字級是格高乘上 sizeMin..sizeMax 的插值，再除掉 atlas 留白（world 單位）', () => {
     const s = sampleImageToGrid(solidImage(20, 20, 1), sampleOpts);
-    // b=1 → sizeMax → cellH * 1
-    expect(s.sizes[0]).toBeCloseTo(s.cellH);
+    // b=1 → sizeMax=1 → 字級 = cellH；sizes 存的是 sprite 邊長 → 再 / 0.78
+    expect(s.sizes[0]).toBeCloseTo(s.cellH / GLYPH_FONT_SCALE);
+  });
+
+  it('sizes 是 sprite 邊長，恆大於對應字級', () => {
+    const s = sampleImageToGrid(solidImage(20, 20, 1), sampleOpts);
+    expect(GLYPH_FONT_SCALE).toBeLessThan(1);
+    expect(s.sizes[0]).toBeGreaterThan(s.cellH);
   });
 
   it('jitter=0 時座標落在格中心，完全規則', () => {
@@ -983,6 +1075,18 @@ Expected: FAIL — `sampleImageToGrid is not a function`
 在 `app/utils/symbol-sampler.ts` 檔尾加：
 
 ```ts
+/**
+ * glyph 在 atlas cell 裡的字級佔比 —— `buildGlyphAtlas` 以 `CELL × 此值` 烘字。
+ *
+ * 放在這裡而不是 symbol-atlas.ts：那邊 import THREE，而本檔要維持無 DOM／無 three.js
+ * 才能在 node 環境的 vitest 下測。symbol-atlas.ts 反過來 import 這個常數。
+ *
+ * 用途：粒子的 `aSize` 是 point sprite 的邊長，sprite 四周有 (1 - 此值) 的空白，
+ * 故 sprite 邊長 = 目標字級 / GLYPH_FONT_SCALE。少了這一項，sizeMax = 1.0
+ * 畫出來的字級只有格高的 78%，橫向會留一大截空隙。
+ */
+export const GLYPH_FONT_SCALE = 0.78;
+
 export interface SampleOptions extends GridOptions {
   contrast: number;
   invert: boolean;
@@ -991,7 +1095,7 @@ export interface SampleOptions extends GridOptions {
   weightSteps: number;
   /** 暗部字級佔格高的比例 */
   sizeMin: number;
-  /** 亮部字級佔格高的比例；1.0 ＝ 剛好塞滿格、不重疊 */
+  /** 亮部字級佔格高的比例；1.0 ＝ 字級等於格高（墨水寬 ≈ 0.92 × cellW，同 gemini） */
   sizeMax: number;
   /** 格點隨機位移比例，0 ＝ 全規則 */
   jitter: number;
@@ -1065,7 +1169,11 @@ export function sampleImageToGrid(
 
       const weightIdx = Math.round(b * (weightSteps - 1));
       glyphs.push((charIdx - 1) * weightSteps + weightIdx);
-      sizes.push(g.cellH * (opts.sizeMin + (opts.sizeMax - opts.sizeMin) * b));
+      // 字級 = cellH × 插值；sizes 存的是 sprite 邊長，故再除掉 atlas 的 0.78 留白
+      sizes.push(
+        (g.cellH * (opts.sizeMin + (opts.sizeMax - opts.sizeMin) * b)) /
+          GLYPH_FONT_SCALE,
+      );
       brights.push(b);
 
       let x = (col + 0.5) * g.cellW - g.halfW;
@@ -1098,12 +1206,34 @@ export function sampleImageToGrid(
 - [ ] **Step 4: 跑測試確認通過**
 
 Run: `pnpm vitest run test/symbol-sampler.spec.ts`
-Expected: PASS，全部 26 個測試綠
+Expected: PASS，全部 28 個測試綠
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: 讓 symbol-atlas.ts 改用同一個常數**
+
+`app/utils/symbol-atlas.ts` 目前把 0.78 寫死在 `buildGlyphAtlas()` 裡。把 import 補上：
+
+```ts
+import { GLYPH_FONT_SCALE } from './symbol-sampler';
+```
+
+再把烘字那行（約 140 行）改成：
+
+```ts
+      ctx.font = `${w} ${CELL * GLYPH_FONT_SCALE}px "Courier New", monospace`;
+```
+
+相依方向是 `symbol-atlas` → `symbol-sampler`（有 THREE 的 import 沒 THREE 的），
+不會把 THREE 拉進 `symbol-sampler.spec.ts`。
+
+- [ ] **Step 6: 跑全部測試，確認沒把 atlas 的測試弄壞**
+
+Run: `pnpm test`
+Expected: PASS（`symbol-atlas.spec.ts` 只測純函式，不碰 `buildGlyphAtlas`，應不受影響）
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add app/utils/symbol-sampler.ts test/symbol-sampler.spec.ts
+git add app/utils/symbol-sampler.ts app/utils/symbol-atlas.ts test/symbol-sampler.spec.ts
 git commit -m "feat(symbol): 加入網格化取樣，字元/字重/字級依亮度對應"
 ```
 
@@ -1246,7 +1376,8 @@ import { sampleImageToGridWithLimit } from '~/utils/symbol-sampler';
 ```ts
   /** 暗部字級佔格高的比例（0..1） */
   sizeMin: { type: Number, default: 0.43 },
-  /** 亮部字級佔格高的比例；1.0 ＝ 剛好塞滿格、不重疊，>1 會刻意重疊成塊 */
+  /** 亮部字級佔格高的比例；1.0 ＝ 字級等於格高（墨水寬 ≈ 0.92 × cellW，同 gemini），
+   *  超過約 1.08 開始橫向重疊成塊 */
   sizeMax: { type: Number, default: 1.0 },
   /** 粒子數上限；超過時自動遞減 cols 重新取樣（不隨機淘汰，那會打壞矩陣） */
   maxParticles: { type: Number, default: 24000 },
@@ -1255,8 +1386,9 @@ import { sampleImageToGridWithLimit } from '~/utils/symbol-sampler';
 在 `worldScale` 之後插入新 props：
 
 ```ts
-  /** 橫向格數＝疏密主控（同 gemini 的 cols），clamp 到 20..400 */
-  cols: { type: Number, default: 130 },
+  /** 橫向格數＝疏密主控，clamp 到 20..400。
+   *  85 而非 gemini 的 130：滿版一屏放不下 130 欄的可辨識字級（見 spec § 2 的對照表） */
+  cols: { type: Number, default: 85 },
   /** monospace 寬高比：cellH = cellW / charAspect。0.65 取自 gemini 的 baseFontSize × 0.65 */
   charAspect: { type: Number, default: 0.65 },
   /** 對比：繞中灰 0.5 放大明暗差（取代舊的 darkBoost 乘法增益） */
@@ -1333,8 +1465,9 @@ cfg.glitchItems = props.glitchItems;
 
 ```ts
   // world → 螢幕 px 的換算：gl_PointSize 原本用寫死的 300/-mv.z，導致「字級是螢幕 px、
-  // 格距是 world」兩套單位，換算後 sizeMax 比 sampleStep 大 1.66 倍必定重疊，
-  // 而且視窗高度一變比例還會跑掉。改成 aSize 直接是 world 單位，這裡算轉換係數。
+  // 格距是 world」兩套單位 —— 墨水/格距的填充率會隨視窗高度在 58%(1440px) 到
+  // 105%(800px) 之間漂移，調不出一組能定案的值。改成 aSize 直接是 world 單位，
+  // 這裡算轉換係數，resize 時一併更新 uWorldToPx。
   const worldToPx = () =>
     wrap.clientHeight /
     (2 * camera.position.z * Math.tan((camera.fov * Math.PI) / 360));
@@ -1802,7 +1935,7 @@ const applyRefresh = () => {
 Run: `pnpm dev`，開 `/demo`
 
 Expected:
-- dev 面板底部顯示「130 × 121 格 ／ 9,xxx 顆」之類的統計
+- dev 面板底部顯示「85 × 80 格 ／ 5,xxx 顆」之類的統計
 - glitch(JSON) 欄位填入 `[{"color":"#ff0055","density":3,"fps":12}]` 後按 Refresh，畫面出現少量粉紅色跳動字元
 - 把該欄位改成 `[{bad json` 後按 Refresh，面板顯示「glitch(JSON) 格式錯誤，已保留原值」，其餘設定照常套用、畫面不崩
 - Export JSON 內含所有新欄位
@@ -1828,12 +1961,25 @@ git commit -m "feat(symbol): dev 面板加 glitch JSON 欄位與格數/粒子數
 
 - [ ] **Step 1: 改 demo.vue 的新版 props**
 
-把 `<SymbolFace v-if="symbolVersion === 'matrix'" ... />` 的這五個屬性
-`:sample-step="5"`、`:size-min="16"`、`:size-max="32"`、`:min-density="0.7"`、
-`:density-gamma="2.4"`、`:dark-boost="1.8"` 整批替換成：
+⚠️ demo.vue 已在 `3d3e32c`（props-only 方向驗證）改過一輪，現況與本計畫初稿不同。
+`<SymbolFace v-if="symbolVersion === 'matrix'" ... />` 目前是：
 
 ```
-        :cols="130"
+        :chars="['0'…'F']"     ← 保留
+        :color="[…4 色…]"       ← 保留
+        :sample-step="4"        ← 刪（prop 已不存在）
+        :min-density="1"        ← 刪
+        :dark-boost="1"         ← 刪
+        :density-gamma="1"      ← 刪
+        :size-min="31"          ← 改（語意從螢幕 px 變成格高比）
+        :size-max="13"          ← 改（同上，且不再需要 min>max 的翻轉技巧）
+        :max-particles="14000"  ← 改
+```
+
+刪掉前四個，把後三個連同新 props 換成：
+
+```
+        :cols="85"
         :char-aspect="0.65"
         :contrast="1.2"
         :invert="false"
@@ -1843,9 +1989,16 @@ git commit -m "feat(symbol): dev 面板加 glitch JSON 欄位與格數/粒子數
         :weight-min="100"
         :weight-max="900"
         :color-stops="[0, 0.4, 0.75, 1]"
+        :max-particles="24000"
 ```
 
-並把 `:max-particles="10000"` 改成 `:max-particles="24000"`。
+`:chars` 與 `:color` 維持不動 —— Step 0 已把它們調成 gemini 的值。
+`:size-min` / `:size-max` 這裡回到正常的 min < max：Step 0 之所以要傳 `31 / 13`
+（min > max）是因為舊公式 `sizeMin + (sizeMax-sizeMin) × dark` 是暗驅動，
+只能靠倒傳來翻方向；新的 `sampleImageToGrid` 已改成亮驅動，不需要這個技巧。
+
+一併刪掉 demo.vue 裡那段以 `⚠️ Step 0：純 props 的「方向驗證」` 開頭的註解 ——
+它列的六項限制此時全部已解決，留著會誤導。
 
 `<LegacySymbolFaceScatter>` 那一段**完全不動**（它吃的是舊 props）。
 
@@ -1894,9 +2047,18 @@ Expected:
 2. `browser_resize` 到 1920×1080
 3. `browser_take_screenshot` 存新版
 4. 另開 `file://` 載入 `gemini-code-1785912047417.html`，上傳 `app/assets/img/face.png`，
-   設 cols 130 / contrast 1.2 / 字重 100–900 / 字級 6–14 / 色標 `#000000`,`#77c6e0`,`#d1f4ff`,`#ffffff` 位置 40%,75%
+   設 **cols 85**（不是它預設的 130）/ contrast 1.2 / 字重 100–900 / 字級 6–14 /
+   色標 `#000000`,`#77c6e0`,`#d1f4ff`,`#ffffff` 位置 40%,75%
 5. `browser_take_screenshot` 存 gemini 版
 6. 目視比對：明暗分布方向、字元濃淡階梯、矩陣規整度
+
+第 4 步的 cols 必須與我方一致，否則比到的是「每欄幾 px」的差異而非移植品質
+（gemini 的 canvas 可捲動、我方是滿版一屏，同樣 130 欄下每欄寬度差近一倍）。
+
+- [ ] **Step 6b: 視窗高度迴歸**
+
+`browser_resize` 到 1920×800 與 1920×1440 各截一張，確認字與格距等比縮放、
+填充率不變（這是 Step 4 `uWorldToPx` 的迴歸點；舊版在此會從 105% 漂到 58%）。
 
 截圖存 `temp/`（依 CLAUDE.md 的輸出檔規則；目錄不存在先建立）。
 
@@ -1931,10 +2093,16 @@ git commit -m "feat(symbol): Hero 與 demo 同步新版 SymbolFace props"
 | § 6 錯誤與邊界 | chars 為空 → Task 7 Step 10；cols clamp → Task 4 Step 3；不隨機抽樣改降 cols → Task 6；colorStops 長度不符 → Task 3 Step 4；glitchItems > 4 → Task 7 Step 7；weightSteps < 1 → Task 2 Step 3 |
 | § 7 dev 面板 | Task 7 Step 3、Task 8 |
 | § 8 舊版保留與 demo 對照 | Task 1、Task 9 Step 7 |
-| § 9 驗證 | Task 9 Step 4–7 |
-| § 10 已知取捨 | `jitter` prop 於 Task 7 Step 2 定義、Task 5 實作 |
+| § 9 驗證 | Task 9 Step 4–7（含 Step 6b 的視窗高度迴歸） |
+| § 10 已知取捨 | `jitter` prop 於 Task 7 Step 2 定義、Task 5 實作；cols 85 的取捨見 Task 7 Step 2 註解 |
 
 **未在計畫內的 spec 項目**：無。
+
+**2026-08-06 修訂涵蓋**（見檔頭「已更正的推導」）：
+`GLYPH_FONT_SCALE` → Task 5 Interfaces / Step 3 / Step 5；
+`cols` 130 → 85 → Global Constraints、Task 7 Step 2、Task 8、Task 9 Step 1 / Step 6；
+`face.png` 尺寸與 Task 4 過期測試 → Task 5 Step 0；
+「1.66 倍必定重疊」的錯誤註解 → Task 7 Step 4。
 
 **Placeholder 掃描**：無 TBD / TODO / 「類似 Task N」/ 無程式碼的程式步驟。
 

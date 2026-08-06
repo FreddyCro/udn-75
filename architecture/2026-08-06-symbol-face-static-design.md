@@ -35,7 +35,7 @@
 | 版面 | 嚴格網格 `cols × rows`，字元置中於固定 cell | 依 `sampleStep` 掃描原圖像素座標，另加 z ±4 隨機 |
 | 疏密 | 每格必畫（映射到空白字元則不畫），由 `cols` / `spacing` 決定 | `minDensity + (1-minDensity)·dark^gamma` 機率丟點，再受 `maxParticles` 二次隨機抽樣 |
 | 橫縱比 | `rows` 有做 `cellW/cellH` 校正（monospace 字比高窄） | 無，橫縱等距 |
-| 數量級 | 130 cols × 121 rows ≈ 15,700 格（`face.png` 1024×1470，cell 比 0.65） | `maxParticles` 6,000（demo 10,000） |
+| 數量級 | 130 cols × 123 rows ≈ 15,990 格（`face.png` 1013×1478，cell 比 0.65） | `maxParticles` 6,000（demo 10,000） |
 
 ### 字元映射（質感差距主因）
 
@@ -85,24 +85,55 @@
 atlas cell 數 = `字元數 × 字重階數`。8 字 × 5 階 = 40 cells → 7×6 grid × 64px = 448×384 貼圖。
 `aGlyph` 改成 `charIdx × weightSteps + weightIdx`，fragment shader 不需改動，只是 `uAtlasGrid` 變大。
 
-### ② 字級與格距單位不一致 → 現在必然重疊
+### ② 字級與格距用兩套單位 → 填充率隨視窗高度漂移
+
+> 2026-08-06 更正：本節原先判定「字比格距大 1.66 倍、必定重疊」，那是拿 point sprite
+> 的外框在跟格距比，沒有計入 atlas 留白與墨水比。實測後現行值並未明顯超標，真正的缺陷
+> 是比例會隨視窗高度漂移。以下為更正後的推導。
 
 現行 `gl_PointSize = aSize × uPixelRatio × (300/-mv.z)`，camera z=600 → 螢幕 px ≈ `aSize × 0.5`。
 fov 50°、z=600 下可視高度 = `2 × 600 × tan(25°)` ≈ 559.6 world units；視窗 1080px 時 1 world ≈ 1.93 px。
-故 `sizeMax=32` 換算 world ≈ 8.3，但 `sampleStep=5` → 字比格距大 1.66 倍，必定重疊；且視窗高度一變比例還會跑掉。
+**位置**吃後者（隨視窗縮放），**字級**吃前者（寫死 0.5，不隨視窗變）—— 兩套單位。
+
+`aSize` 是 point sprite 的邊長，不是字的墨水寬。sprite 內還有兩層縮減：
+`buildGlyphAtlas` 把字烘在 `CELL × 0.78` 的字級上（22% 留白），
+monospace digit 的墨水寬又只有字級的 ~0.6。故
+
+```
+墨水寬（螢幕 px） ≈ aSize × 0.5 × 0.78 × 0.6 = aSize × 0.234
+格距（螢幕 px）   =  sampleStep × viewH / 559.6
+```
+
+以 demo 的 `sizeMax = 32` / `sampleStep = 5` 代入，墨水寬固定 7.5px，格距卻隨視窗高度變：
+
+| 視窗高 | 格距 | 墨水 / 格距 |
+|---|---|---|
+| 800 | 7.15px | 105%（貼死、開始糊） |
+| 1080 | 9.65px | 78%（尚可） |
+| 1440 | 12.87px | 58%（過疏） |
+
+無法定案的是這個 58%–105% 的漂移，不是絕對值。
 
 **解法**：`aSize` 改成 world 單位，
 `gl_PointSize = aSize × uWorldToPx × (uCamZ / -mv.z) × breath × local × uPixelRatio`，
 其中 `uWorldToPx = viewH / (2 × uCamZ × tan(fov/2))`、`uCamZ = camera.position.z`。
 兩者都不硬編 600 / 25°，一律由 camera 讀出，resize 時更新 `uWorldToPx`。
 `z = 0` 的粒子 `-mv.z = uCamZ` → 透視項為 1；有 z 位移時仍保留遠近大小差。
-字級與格距同單位 → 永不重疊、視窗縮放整體等比、透視深度感保留。
+字級與格距同單位 → 填充率固定、視窗縮放整體等比、透視深度感保留。
+
+另需把上面那層 atlas 留白抵銷掉，見 § 3 的 `GLYPH_FONT_SCALE`。
 
 ### ③ 粒子數
 
-`face.png` 為 1024×1470。cols=130、charAspect 0.65 → rows = 121 → 15,730 格；
-扣掉去背外與空白階，實際約 9k–12k 顆。CPU 物理迴圈 O(n)，20k 顆約 0.8M flops/frame、
-attribute 上傳 240KB/frame，在預算內。`maxParticles` 由 6,000 提高到 24,000。
+`face.png` 實測 **1013×1478**（原記 1024×1470 有誤），alpha 覆蓋率 80%，
+亮度平均 0.533、0.2–0.8 均勻分佈 —— 是中間調 3D render，不是暗調，
+故 `contrast` 繞中灰做對比是對的做法。
+
+`cols = 85`（取值理由見 § 2）、charAspect 0.65 → cellW 4.03 / cellH 6.20 world
+→ rows = 80 → 6,800 格；扣掉去背外與空白階，實際約 4.5k–5.4k 顆。
+若日後把 `cols` 拉回 130 則是 15,990 格、約 9k–12k 顆。
+CPU 物理迴圈 O(n)，20k 顆約 0.8M flops/frame、attribute 上傳 240KB/frame，在預算內。
+`maxParticles` 由 6,000 提高到 24,000 —— 對 cols 85 綽綽有餘，留的是設計師往上調 cols 的空間。
 
 ## 設計
 
@@ -130,7 +161,7 @@ three.js 場景、物理積分、mode 三態、彩蛋、resize、dispose 全部�
 
 | prop | 預設 | 說明 |
 |---|---|---|
-| `cols` | `130` | 橫向格數 = 疏密主控（同 gemini） |
+| `cols` | `85` | 橫向格數 = 疏密主控。**刻意不取 gemini 的 130**，理由見下方 |
 | `charAspect` | `0.65` | monospace 寬高比，`cellH = cellW / charAspect`（值取自 gemini 的 `baseFontSize × 0.65`） |
 | `contrast` | `1.2` | `(b-0.5) × contrast + 0.5`，繞中灰的真對比 |
 | `invert` | `false` | 負片 |
@@ -147,14 +178,31 @@ three.js 場景、物理積分、mode 三態、彩蛋、resize、dispose 全部�
 
 | prop | 舊 | 新 |
 |---|---|---|
-| `sizeMin` | `18`，螢幕 px，暗驅動 | `0.43`，佔格高比例，亮驅動 |
-| `sizeMax` | `36`，螢幕 px，暗驅動 | `1.0`，佔格高比例，亮驅動。`1.0` ＝ 亮部字剛好塞滿格 |
+| `sizeMin` | `18`，螢幕 px，暗驅動 | `0.43`，**字級**佔格高比例，亮驅動 |
+| `sizeMax` | `36`，螢幕 px，暗驅動 | `1.0`，**字級**佔格高比例，亮驅動。`1.0` ＝ 亮部字級等於格高（同 gemini 的 `maxSize = cellHeight`） |
 | `maxParticles` | `6000` | `24000` |
 
 移除：`sampleStep`、`minDensity`、`densityGamma`、`darkBoost`。
 （機率抽樣消失；對比改由 `contrast` 負責。）
 
-`sizeMax > 1.0` 可讓字互相重疊成塊，等同 gemini 的負 `spacing`，故不另開 `spacing` prop。
+`sizeMin` / `sizeMax` 是**字級**對格高的比例，**不是 point sprite 邊長對格高的比例** ——
+sprite 還要再除以 atlas 的 0.78 留白，換算見 § 3。
+`sizeMax = 1.0` 時墨水寬 ≈ `0.6 × cellH = 0.92 × cellW`，與 gemini 一致；
+超過約 `1.08` 開始橫向重疊成塊，等同 gemini 的負 `spacing`，故不另開 `spacing` prop。
+
+**`cols` 為何取 85 而非 gemini 的 130**
+
+gemini 的 canvas 是 1183px 寬、可捲動；我們是滿版 100vh 舞台。
+`face.png` contain-fit 進 500×500 後 world 寬 342.7，視窗高 1080 時 = 661 螢幕 px。
+
+| cols | cellW | 墨水寬 | 觀感 |
+|---|---|---|---|
+| 130 | 5.1px | 4.7px | 退化成彩色點陣，數字不可辨 |
+| **85** | 7.8px | 7.2px | ≈ gemini 截圖的 7.5px/欄 |
+
+「130 欄」與「gemini 那樣的字級」在滿版一屏上無法同時成立，必須二選一；85 是保字級那一邊。
+已於 2026-08-06 的 props-only 驗證（commit `3d3e32c`）目視確認。
+`cols` 是 dev 面板可調欄位，設計師若偏好更細的點陣質感可自行往上調。
 
 ### § 3. 取樣管線 `sampleImageToGrid()`
 
@@ -175,12 +223,27 @@ halfH  = (H × scale) / 2
   if charIdx === 0            → skip                   // 空白階＝暗部留空
   weightIdx = round(b × (weightSteps - 1))
   glyph     = (charIdx - 1) × weightSteps + weightIdx  // 空白不進 atlas，故 -1
-  size      = cellH × (sizeMin + (sizeMax - sizeMin) × b)   // world 單位
+  size      = cellH × (sizeMin + (sizeMax - sizeMin) × b) / GLYPH_FONT_SCALE  // world 單位
   pos       = ((col + 0.5) × cellW - halfW,
                halfH - (row + 0.5) × cellH,
                0)
   aBright   = b
 ```
+
+**`GLYPH_FONT_SCALE` = 0.78 —— atlas 留白的抵銷項。**
+`size` 最終會變成 `gl_PointSize`，也就是 point sprite 的邊長；
+但 `buildGlyphAtlas` 是把字烘在 `CELL × 0.78` 的字級上，sprite 四周有 22% 是空的。
+若不除掉這一項，`sizeMax = 1.0` 畫出來的字級只有格高的 0.78 倍，橫向留一大截空隙
+（墨水寬只有 `0.72 × cellW`，而 gemini 是 `0.92 × cellW`）。
+
+`0.78` 目前是 `buildGlyphAtlas()` 裡的 magic literal。實作時抽成
+`export const GLYPH_FONT_SCALE = 0.78`，**宣告在 `symbol-sampler.ts`**（無 DOM／無 three.js，
+測試碰得到），由 `symbol-atlas.ts` import 回去用 —— 兩邊必須是同一個數，
+分開寫遲早會不同步。
+
+換算檢查：`charAspect = 0.65`、`sizeMax = 1.0` →
+sprite = `cellH / 0.78` = `cellW / 0.65 / 0.78` = `1.97 × cellW`。
+與 props-only 驗證時實測「sprite ≈ 1.96 × 格距時墨水剛好填滿」吻合。
 
 此處 `cols` 為「圖片內容」的橫向格數（`W × scale` 是 contain-fit 後圖片本身的 world 寬，
 非 `fitWidth`），故換圖時格距不隨圖片比例跳動。
@@ -295,9 +358,12 @@ const symbolVersion = ref<'matrix' | 'scatter'>('matrix');
    - `sampleImageToGrid`：格數計算、alpha 遮罩 skip、空白階 skip、`invert` / `contrast`
      的亮度變換、`maxParticles` 觸發降 cols、`jitter=0` 時座標完全規則
 2. demo 頁 dev panel 逐項調參目視
-3. Playwright 截圖比對：同一組參數（cols 130 / contrast 1.2 / weight 100–900 /
-   sizeMin 0.43 / sizeMax 1.0 / 四色標位置 0%,40%,75%,100%）對照 gemini HTML 的輸出
-4. demo 頁切到舊版，確認 `<LegacySymbolFaceScatter>` 行為與改寫前完全一致
+3. Playwright 截圖比對：（cols 85 / contrast 1.2 / weight 100–900 /
+   sizeMin 0.43 / sizeMax 1.0 / 四色標位置 0%,40%,75%,100%）對照 gemini HTML 的輸出。
+   gemini 端要把 `cols` 也調到 85 才是同一個比較基準 —— 直接拿它預設的 130 欄截圖來比，
+   比到的是「每欄幾 px」的差異，不是移植品質
+4. 視窗高度 800 / 1080 / 1440 各截一張，確認墨水/格距填充率不再漂移（§ 移植關鍵 ② 的迴歸）
+5. demo 頁切到舊版，確認 `<LegacySymbolFaceScatter>` 行為與改寫前完全一致
    （dev 面板、三態切換、物理手感、彩蛋）
 
 ### § 10. 已知取捨
@@ -307,3 +373,10 @@ const symbolVersion = ref<'matrix' | 'scatter'>('matrix');
 - 不移植 gemini 的匯入 / 匯出設定檔 UI：SymbolFace 的 dev 面板已有 Export JSON，
   匯入功能無人使用，YAGNI。
 - 不移植 gemini 的「上傳圖片」：`src` prop 已可換圖。
+- **做不到 gemini 截圖的「130 欄 × 可辨識數字」。** gemini 的 canvas 是 1183px 寬可捲動，
+  我們是滿版一屏；同一張 `face.png` contain-fit 後只有 661 螢幕 px 寬。欄數與字級二選一，
+  已選字級（`cols` 85）。若設計師堅持 130 欄的細密感，唯一的路是把人像放大到超出視窗
+  （調 `fitWidth` / `fitHeight` / `worldScale`）並接受裁切，屬版面決策，不在本次範圍。
+- 字級是 5 階量化（`weightSteps`）＋ atlas mipmap 縮放，不是 gemini 的連續 `fillText`。
+  小字級下會略軟一階。若 Task 7 目視覺得糊，退路是把 `CELL` 由 64 降到 32
+  （縮放倍率變小、mipmap 層級更貼近實際渲染尺寸）。
