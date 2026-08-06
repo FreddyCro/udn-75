@@ -9,10 +9,10 @@
 
     面向        HeartMetaball（前一版）         HeartMetaballPatch（本檔）
     ─────────  ──────────────────────────────  ──────────────────────────────
-    版面結構    中心圓角方形 + 外圍兩區         4 個矩形紋理 patch 拼貼
+    版面結構    中心圓角方形 + 外圍兩區         3 個矩形紋理 patch 拼貼
     紋理來源    變寬棋盤(1,2,3,6 帶) / 線段紋   1格棋盤 / 2格棋盤 / 線段紋
     紋理分佈    accentBlock 區塊逐塊換 variant  每 patch 一種紋理、固定不換
-    構圖變化    區塊 variant 慢速換抽           patch 在定點附近些微漂移
+    構圖變化    區塊 variant 慢速換抽           patch 大幅漂移、可互換位置
     重疊交織    無（同一格只屬一區）            有（透空格讓位下層 → 雙紋交織）
     顆粒        cellSize 14px                   cellSize 4px（貼合設計稿）
     橘色配置    中心 base 色、外圍藍            圓形核心內慢速換抽變橘
@@ -24,18 +24,25 @@
 
   【組成】
   1. patch 陣容固定（ROSTER）：每個 patch 固定尺寸、固定疊放順序（後者在上）、
-     固定 base 偏移；逐 patch 以不可公度頻率 sin 在定點附近「些微」漂移
-     （振幅 = 短邊 × driftRatio/2，預設僅數格）→ 四塊永遠保持重疊、不跑遠。
+     固定 base 偏移（＝平均位置）；逐 patch 以不可公度頻率 × 自己的速度倍率
+     sin 大幅漂移（振幅 = 短邊 × driftRatio/2，預設約 ±17 格 > 塊間距）
+     → 三塊會漂過彼此、互換左右前後，構圖持續重組；但遮罩（持久球）半徑改以
+     「不含漂移的靜態半徑」為基準，所以團塊外形大小不變，只有裡面的紋理在換位。
      patch 本體以「超橢圓正規化半徑」羽化（同正式版中心區）：中心 keep=1、
      邊緣經 smoothstep 降到 0 + 抖動 hash 讓位 → 圓角方形、四邊溶解，
      不見方形直角。紋理錨定畫布絕對格座標，patch 移動時圖案不滑動。
   2. 逐格上色：由上往下找第一個「覆蓋該格且紋理實格」的 patch（透空格讓位下層
      → 重疊區兩紋理自然交織）；未被任何 patch 接手的格子不畫。
-  3. 中心變橘（慢速換抽・圓弧收邊）：橘色是「圓形核心＋羽化過渡帶」（參考正式
-     版中心區的羽化）——核心內（rn ≤ 1-orangeFeather）機率 = orangeMax 全額，
-     過渡帶經 smoothstep 降到 0（rn=1 即 orangeCells×CELL px 處）；以 accentBlock
-     格見方區塊為單位、由「區塊 × epoch」穩定 hash 決定、相位逐塊錯開
-     （switchPeriod）→ 橘核心是圓弧邊、區塊此起彼落地變橘/變回、不閃爍。
+  3. 中心變橘（雙層慢速換抽・中心密集邊緣稀疏）：橘色是「以焦點為中心的機率
+     場」，密度 p = orangeMax × (1-rn)^orangeGamma 連續衰減（rn=1 即
+     orangeCells×CELL px 處歸零），沒有「內圈全滿」的平台區 → 中心密、邊緣疏。
+     機率場再由兩層獨立的慢速換抽落成實際色塊：
+       區塊層  accentBlock 格見方為單位、「區塊 × epoch」穩定 hash（switchPeriod、
+               相位逐塊錯開）→ 橘色成小團塊、此起彼落地變橘/變回
+       格層    逐格 dropout（orangeHole，另一個較慢的 epoch）→ 團塊內再挖空，
+               不會出現實心橘色大面積
+     另加逐區塊半徑抖動 ±15% → 橘色範圍邊界不是完美同心圓。兩層都綁 epoch，
+     同 epoch 內每幀同值 → 不閃爍。
   4. 收邊（參考正式版・圓弧）：metaball 場（游標/漂移沿路蓋章 + 逐格隨機閾值）
      作為總遮罩，且持久球半徑「小於」叢集名目半徑 → 場的圓形等值線切進 patch
      外緣，矩形直邊只保留在內部、外緣被收成圓弧＋隨機閾值毛糙；移動時舊章隨
@@ -54,9 +61,10 @@
     accentColor    強調色（橘）
     accentBlock    變橘區塊邊長（格數）
     switchPeriod   變橘慢速換抽週期（秒）
-    orangeCells    橘色圓形核心半徑（距叢集中心格數，含羽化帶）
-    orangeMax      核心內的變橘機率（0~1）
-    orangeFeather  橘色邊緣羽化帶寬（佔半徑比例 0~1）— 越大圓弧邊越散
+    orangeCells    橘色範圍半徑（距叢集中心格數，此處密度歸零）
+    orangeMax      中心（rn=0）的變橘機率（0~1）
+    orangeGamma    密度衰減指數 — 越大中心越集中、邊緣越快變稀疏
+    orangeHole     橘色挖空比例（0~1）— 被抽中的格子再以此機率留藍
     patchScale     patch 整體縮放倍率
     driftRatio     漂移振幅（佔 patch 短邊比例）— 越大越散、太大會失去重疊
     driftSpeed     漂移速度倍率
@@ -94,17 +102,20 @@ const props = withDefaults(
     accentBlock?: number;
     /** 變橘慢速換抽的週期（秒）：各區塊相位錯開、此起彼落 */
     switchPeriod?: number;
-    /** 橘色圓形核心半徑（距叢集中心的格數，含羽化帶；rn=1 處機率歸零） */
+    /** 橘色範圍半徑（距叢集中心的格數；rn=1 即此處密度歸零） */
     orangeCells?: number;
-    /** 核心內（羽化帶以內）的變橘機率（0~1） */
+    /** 中心（rn=0）的變橘機率（0~1） */
     orangeMax?: number;
-    /** 橘色邊緣羽化帶寬（佔半徑比例 0~1）：核心內全額、過渡帶 smoothstep 降到 0
-     *  → 橘核心呈圓弧邊、與藍色交錯溶解（參考正式版中心羽化） */
-    orangeFeather?: number;
+    /** 密度衰減指數：p = orangeMax × (1-rn)^orangeGamma
+     *  → 1 為線性、越大中心越集中、邊緣越快變稀疏 */
+    orangeGamma?: number;
+    /** 橘色挖空比例（0~1）：被區塊層抽中變橘的格子，再以此機率留藍
+     *  → 橘色團塊內部透空、不成實心（另用一組較慢的 epoch，不閃爍） */
+    orangeHole?: number;
     /** patch 整體縮放倍率 */
     patchScale?: number;
-    /** 漂移振幅佔 patch 短邊的比例（振幅 = 短邊 × 此值 / 2）：預設僅些微晃動，
-     *  patch 停留在定點附近、不跑遠 */
+    /** 漂移振幅佔 patch 短邊的比例（振幅 = 短邊 × 此值 / 2）：預設約 ±17 格
+     *  （> 塊間基準間距）→ 三塊會漂過彼此、互換前後位置，構圖持續重組 */
     driftRatio?: number;
     /** 漂移速度倍率 */
     driftSpeed?: number;
@@ -135,14 +146,15 @@ const props = withDefaults(
     cellSize: 4,
     color: '#9FD6FF',
     accentColor: '#FF7F00',
-    accentBlock: 6,
+    accentBlock: 3,
     switchPeriod: 3,
-    orangeCells: 24,
-    orangeMax: 0.9,
-    orangeFeather: 0.45,
+    orangeCells: 36,
+    orangeMax: 1,
+    orangeGamma: 1.8,
+    orangeHole: 0.22,
     patchScale: 1,
-    driftRatio: 0.25,
-    driftSpeed: 1,
+    driftRatio: 0.85,
+    driftSpeed: 1.6,
     coreScale: 1,
     edgePeriod: 2.5,
     idleRoamRange: 0.3,
@@ -170,6 +182,10 @@ onMounted(() => {
   const SWITCH_PERIOD = Math.max(0.1, props.switchPeriod);
   const EDGE_PERIOD = Math.max(0.1, props.edgePeriod); // 邊緣呼吸週期（秒）
   const ORANGE_R = props.orangeCells * CELL; // 變橘衰減終點（px）
+  const ORANGE_GAMMA = Math.max(0.1, props.orangeGamma); // 密度衰減指數
+  const ORANGE_HOLE = Math.min(Math.max(props.orangeHole, 0), 1); // 挖空比例
+  // 挖空層換抽週期：刻意與區塊層不可公度 → 兩層各自緩慢重抽、不同步
+  const HOLE_PERIOD = SWITCH_PERIOD * 1.7;
 
   // 穩定的偽隨機（同輸入每幀同值 → 不閃爍）
   const hash = (x: number, y: number) => {
@@ -202,32 +218,41 @@ onMounted(() => {
   };
 
   // ---------- 固定 patch 陣容：尺寸/基準偏移/疊放順序都不變，只漂移 ----------
-  // 需求 1：線段紋 ×2、1格棋盤 ×1、2格棋盤 ×1。陣列順序 = 疊放順序（後者在上）。
-  // 垂直基準偏移刻意拉開（±12~22）且垂直漂移振幅縮小（DRIFT_Y_MUL）：
-  // 確保四塊不會漂到垂直對齊、聯集變成扁平帶狀，讓上下直邊露進圓形遮罩內
+  // 需求 1：三種紋理各一塊（線段紋 ×1、1格棋盤 ×1、2格棋盤 ×1）。
+  // 陣列順序 = 疊放順序（後者在上，漂移不改變上下關係）。
+  // phase / fq：逐 patch 的相位與速度倍率（彼此不可公度）→ 各走各的節奏，
+  // 不同步、不週期性回到同一構圖；ox/oy 只是「平均位置」，振幅大於塊間距時
+  // 三塊會漂過彼此、互換左右前後（需求 4：範圍大、明顯、可互換位子）
   const ROSTER = [
-    { tex: 1, w: 72, h: 40, ox: 14, oy: 12, phase: 0.0 }, // 2格棋盤（底層）
-    { tex: 0, w: 64, h: 44, ox: -16, oy: -16, phase: 1.7 }, // 1格棋盤
-    { tex: 2, w: 60, h: 36, ox: -4, oy: 20, phase: 3.9 }, // 線段紋
-    { tex: 2, w: 52, h: 30, ox: 6, oy: -22, phase: 5.2 }, // 線段紋（頂層）
+    { tex: 1, w: 72, h: 40, ox: 14, oy: 12, phase: 0.0, fq: 0.9 }, // 2格棋盤（底層）
+    { tex: 0, w: 64, h: 44, ox: -16, oy: -16, phase: 1.7, fq: 1.17 }, // 1格棋盤
+    { tex: 2, w: 60, h: 36, ox: -4, oy: 20, phase: 3.9, fq: 1.38 }, // 線段紋（頂層）
   ];
-  const DRIFT_Y_MUL = 0.35; // 垂直漂移振幅倍率（相對水平）
+  // 垂直漂移振幅倍率（相對水平）：垂直空間比水平窄，壓一點避免整叢集上下抽動
+  const DRIFT_Y_MUL = 0.7;
   // patch 本體羽化（超橢圓，同正式版中心區）：以正規化半徑 rn 判定，中心 keep=1、
   // 邊緣（1-PATCH_FEATHER ~ 1）smoothstep 降到 0 + 抖動 hash 讓位 → 圓角方形、
   // 四邊溶解，不見方形直角。也同時是「聯集縮到遮罩以內」時的防線：
   // 露出來的 patch 邊永遠是溶解圓角，不會出現生硬直線
   const PATCH_FEATHER = 0.4; // 羽化帶寬（佔半徑比例）
   const SUPER_N = 4; // 超橢圓指數：4 ≈ 圓角方形（2=橢圓、越大越方）
-  // 叢集名目半徑（px）：最遠 patch 邊緣 + 漂移振幅。持久球半徑以此為基準
+  // 兩種叢集半徑基準（格）：
+  //   coreC   靜態半徑（不含漂移）→ 持久球（遮罩）半徑基準。遮罩大小刻意「不」
+  //           隨 driftRatio 變：加大漂移只讓紋理在同一顆團塊內換位、團塊不變大
+  //   extentC 含漂移，但只計半額振幅（三塊不會同時外擴到極值，且超出的部分本
+  //           來就被遮罩切掉）→ 僅供 roamArea 內縮用
+  let coreC = 0;
   let extentC = 0;
   for (const p of ROSTER) {
     const ampC = Math.min(p.w, p.h) * 0.5 * props.driftRatio;
+    coreC = Math.max(coreC, Math.abs(p.ox) + p.w / 2, Math.abs(p.oy) + p.h / 2);
     extentC = Math.max(
       extentC,
-      Math.abs(p.ox) + p.w / 2 + ampC,
-      Math.abs(p.oy) + p.h / 2 + ampC * DRIFT_Y_MUL,
+      Math.abs(p.ox) + p.w / 2 + ampC * 0.5,
+      Math.abs(p.oy) + p.h / 2 + ampC * DRIFT_Y_MUL * 0.5,
     );
   }
+  const CORE_PX = coreC * props.patchScale * CELL;
   const EXTENT_PX = extentC * props.patchScale * CELL;
 
   // 叢集焦點：pc 追游標、其餘閒置自走；spread 由 0 緩動到 1（掛載擴散現身）
@@ -391,10 +416,10 @@ onMounted(() => {
     }
 
     // 持久球（常駐，非只閒置）：確保 patch 群永不被遮罩吃光（需求 2：不消失）。
-    // 半徑刻意「小於」叢集名目半徑（×0.55）→ 場的圓形等值線切進 patch 外緣，
+    // 半徑刻意「小於」靜態叢集半徑（×0.68）→ 場的圓形等值線切進 patch 外緣，
     // 矩形直邊只保留在內部、外緣被收成圓弧＋隨機閾值毛糙（圓弧收邊，參考正式版）
     if (centerX > -9000 && width > 0) {
-      const headR = EXTENT_PX * 0.62 * props.coreScale * spread * clusterScale;
+      const headR = CORE_PX * 0.68 * props.coreScale * spread * clusterScale;
       if (headR > 1) {
         live.push({ x: centerX, y: centerY, r: headR });
         minX = Math.min(minX, centerX - headR * 2.5);
@@ -409,20 +434,22 @@ onMounted(() => {
     const gy0 = Math.max(Math.floor(minY / CELL), 0);
     const gy1 = Math.min(Math.ceil(maxY / CELL), rows);
 
-    // ---------- 本幀的 4 個 patch 矩形（格座標）：基準偏移 + 逐 patch 漂移 ----------
+    // ---------- 本幀的 3 個 patch 矩形（格座標）：基準偏移 + 逐 patch 漂移 ----------
     const focalGX = Math.round(centerX / CELL);
     const focalGY = Math.round(centerY / CELL);
     const ds = t * props.driftSpeed;
     const rects = ROSTER.map((p) => {
       const ampC = Math.min(p.w, p.h) * 0.5 * props.driftRatio;
-      // 不可公度頻率 + 逐 patch 相位 → 各走各的有機路徑、不同步
+      // 不可公度頻率 × 逐 patch 速度倍率 fq + 逐 patch 相位
+      // → 各走各的有機路徑、不同步，長時間不重複同一構圖
+      const dp = ds * p.fq;
       const dx =
-        (Math.sin(ds * 0.1 + p.phase) * 0.6 +
-          Math.sin(ds * 0.17 + p.phase * 2.3) * 0.4) *
+        (Math.sin(dp * 0.1 + p.phase) * 0.6 +
+          Math.sin(dp * 0.17 + p.phase * 2.3) * 0.4) *
         ampC;
       const dy =
-        (Math.cos(ds * 0.08 + p.phase * 1.7) * 0.6 +
-          Math.cos(ds * 0.15 + p.phase * 0.9) * 0.4) *
+        (Math.cos(dp * 0.08 + p.phase * 1.7) * 0.6 +
+          Math.cos(dp * 0.15 + p.phase * 0.9) * 0.4) *
         ampC *
         DRIFT_Y_MUL;
       const f = props.patchScale * spread * clusterScale;
@@ -492,19 +519,29 @@ onMounted(() => {
           if (q > 0) field += q;
         }
         if (field >= th) {
-          // 顏色：預設藍；橘色 = 圓形核心＋羽化過渡帶（圓弧收邊，參考正式版）。
-          // 核心內（rn ≤ 1-orangeFeather）機率全額 orangeMax、過渡帶 smoothstep
-          // 降到 0；區塊 × epoch 穩定 hash 慢速換抽、相位逐塊錯開 → 不閃爍
+          // 顏色：預設藍；橘色 = 以焦點為中心的機率場，兩層慢速換抽落成色塊。
+          // 密度連續衰減（無平台區）→ 中心密集、邊緣稀疏；半徑逐區塊抖動 ±15%
+          // → 邊界不是完美同心圓
           const bx = Math.floor(gx / ACCENT_BLOCK);
           const by = Math.floor(gy / ACCENT_BLOCK);
+          const rJit = 0.85 + hash(bx * 3.9 + 5.7, by * 5.3 + 1.9) * 0.3;
+          const rn = (Math.hypot(cx - centerX, cy - centerY) / ORANGE_R) * rJit;
+          const p =
+            rn >= 1 ? 0 : props.orangeMax * Math.pow(1 - rn, ORANGE_GAMMA);
+          // 區塊層：accentBlock 見方為單位、區塊 × epoch 穩定 hash、相位逐塊
+          // 錯開（switchPeriod）→ 橘色成小團塊、此起彼落地變橘/變回
           const bPhase = hash(bx * 7.1 + 1.3, by * 7.1 + 2.7);
           const epoch = Math.floor(t / SWITCH_PERIOD + bPhase);
-          const rn = Math.hypot(cx - centerX, cy - centerY) / ORANGE_R;
-          const p =
-            props.orangeMax *
-            (1 - smoothstep(1 - props.orangeFeather, 1, rn));
-          ctx.fillStyle =
-            p > 0 && hash3(bx, by, epoch + 0.5) < p ? ACCENT : COLOR;
+          let accent = p > 0 && hash3(bx, by, epoch + 0.5) < p;
+          // 格層挖空：被抽中的格子再逐格 dropout（自己的較慢 epoch、相位逐格
+          // 錯開）→ 橘色團塊內部透空，不會有實心橘色大面積
+          if (accent && ORANGE_HOLE > 0) {
+            const hPhase = hash(gx * 1.9 + 4.4, gy * 2.7 + 6.1);
+            const hEpoch = Math.floor(t / HOLE_PERIOD + hPhase);
+            if (hash3(gx * 0.7 + 3.1, gy * 1.3 + 9.7, hEpoch + 4.2) < ORANGE_HOLE)
+              accent = false;
+          }
+          ctx.fillStyle = accent ? ACCENT : COLOR;
           ctx.fillRect(gx * CELL, gy * CELL, CELL, CELL);
         }
       }
