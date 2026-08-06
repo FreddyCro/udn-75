@@ -7,7 +7,6 @@ metadata:
 
 2026-08-04 依 [[page-route-naming]] 六頁架構完成 `/education`（青春印記）與 `/health`（行動倡議），沿用 Subpage 外殼 + `.sp-*` 基元 + Tailwind 間距，新元件 `SubpageCta.vue`（置中外連按鈕，可選 lead 引導句，border 0.6px）。
 
-**待補（設計稿未提供）**：三顆 CTA 按鈕連結目前是 `#` 佔位——education「聯合盃二十週年線上特輯」、health「失智・時空記憶的旅人」與「台灣新醫情共享圖庫」，正式網址確定後改 `education.json` / `health.json`。
 
 **SVG 匯出陷阱**：
 - Figma MCP `download_assets` 的 `export` 版會帶祖層背景（`#515151` rect），要用 `svgAssets` 版（純向量）。

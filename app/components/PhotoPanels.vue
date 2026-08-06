@@ -108,9 +108,12 @@ onBeforeUnmount(() => {
             :height="320"
             :alt="p.alt ?? ''"
           />
-          <figcaption v-if="p.caption" class="photo-panels__caption">
-            {{ p.caption }}
-          </figcaption>
+          <!-- 圖說可含 <a> 外連結（文案為本地靜態檔，非使用者輸入） -->
+          <figcaption
+            v-if="p.caption"
+            class="photo-panels__caption"
+            v-html="p.caption"
+          />
         </figure>
       </div>
     </div>
@@ -183,6 +186,17 @@ onBeforeUnmount(() => {
 
   @include rwd-min('tablet') {
     margin-top: 16px; // 此區為 16，非全站 --sp-img-caption
+  }
+
+  // 圖說內的外連結（v-html 輸出，scoped 樣式須 :deep）
+  :deep(a) {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+
+    &:hover {
+      color: var(--color-orange);
+    }
   }
 }
 

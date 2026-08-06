@@ -93,6 +93,17 @@
     font-size: var(--text-body);
     line-height: var(--text-body--line-height);
     font-weight: 300;
+
+    // 內文字外連結（locales JSON 內以 <a> 標記、v-html 輸出）
+    a {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 4px;
+
+      &:hover {
+        color: var(--color-orange);
+      }
+    }
   }
 
   // 圖說
