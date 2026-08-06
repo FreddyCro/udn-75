@@ -149,6 +149,16 @@ const props = defineProps({
   /** 彩蛋文字顏色 */
   phraseColor: { type: String, default: '#ffffff' },
 
+  /** 是否在場：false → 停掉 rAF 迴圈（不做物理積分、不上傳 buffer、不 render）。
+   *  ⚠️ 為什麼需要這個 prop、而不是在元件內自己判斷：本元件在 Hero 是住在
+   *     HeroSymbolTransition 的 slot 內，那層是 fixed inset:0、以 visibility:hidden 隱藏
+   *     —— 幾何上永遠滿版落在視口，IntersectionObserver 恆為 intersecting
+   *     （IO 只看幾何與 display:none，visibility / opacity 都不算），元件自己偵測不到
+   *     「其實看不見」。唯一便宜的替代是每幀 getComputedStyle，那是強制 style recalc。
+   *     故由做出隱藏決定的那一層把「本層在場嗎」傳進來。
+   *  預設 true：demo 等一般 in-flow 用法不必傳，交給下方 IntersectionObserver 判斷即可。 */
+  active: { type: Boolean, default: true },
+
   /** 開發用：顯示右上角可收合的參數面板（預設 false；demo 頁設 true） */
   dev: { type: Boolean, default: false },
 });
@@ -206,6 +216,10 @@ let disperseFn: ((animated?: boolean) => void) | null = null;
 
 // 狀態改變時，可逆地補間 uDisperse / uConverge（0↔1）
 watch(mode, () => disperseFn?.(true));
+
+// 父層告知「本層是否在場」→ 重算執行閘門（onMounted 內指派，見 shouldRun / syncRunning）
+let syncActive: (() => void) | null = null;
+watch(() => props.active, () => syncActive?.());
 
 // ---------- 開發用 config 面板（dev=true 顯示）----------
 // 面板編輯 draft（不即時套用）；按 Refresh 才把 draft → cfg 並重建粒子系統。
@@ -994,11 +1008,20 @@ onMounted(() => {
     disperseFn(false); // 套用初始預設狀態（不動畫）
   };
 
-  // 進入視口且圖片採樣完成後才開始 reveal
+  // ---------- 執行閘門：三個訊號皆為真才跑 rAF（迴圈啟停見下方 syncRunning）----------
+  //   props.active — 父層是否讓本層在場（元件看不到祖先的 visibility，見該 prop 的說明）
+  //   inView       — 自己的幾何是否落在視口內（demo 等 in-flow 用法的主訊號）
+  //   docVisible   — 分頁是否在前景（切分頁時瀏覽器雖已節流 rAF，仍要自己停以處理恢復接縫）
   let inView = false;
+  let docVisible = true;
+  const shouldRun = () => props.active && inView && docVisible;
+
+  // reveal（uProgress 0→1）改成「真的看得見才跑」：原本綁 IntersectionObserver 一次性啟動，
+  // 但在 Hero 那層 IO 恆真 → mount 就開跑、3 秒後結束，遠早於轉場開窗，
+  // 於是這段「粒子從無淡入、從 0 長大」從來沒有觀眾。改綁執行閘門即與可見性同步。
   let revealStarted = false;
   const tryReveal = () => {
-    if (!inView || !mat || revealStarted) return;
+    if (!shouldRun() || !mat || revealStarted) return;
     revealStarted = true;
     gsap.to(mat.uniforms.uProgress, {
       value: 1,
@@ -1006,17 +1029,6 @@ onMounted(() => {
       ease: 'power2.inOut',
     });
   };
-  const observer = new IntersectionObserver(
-    (entries) => {
-      if (entries.some((e) => e.isIntersecting)) {
-        inView = true;
-        tryReveal();
-        observer.disconnect();
-      }
-    },
-    { threshold: 0.3 },
-  );
-  observer.observe(wrap);
 
   // 已載入的圖與其 src（refresh 時若 src 未變可直接重採樣，不必重載）
   let loadedImg: HTMLImageElement | null = null;
@@ -1083,6 +1095,10 @@ onMounted(() => {
   const clock = new THREE.Clock();
   let raf = 0;
   let prevT = 0;
+  let running = false;
+  // 動畫時間：自行累積 dt 而非直接用 clock.getElapsedTime()。clock 在暫停期間照走，
+  // 直接餵給 uTime 會讓恢復那一刻 sway / twinkle / breath / glitch 全部跳一大段。
+  let simTime = 0;
   // 上一幀游標位置（算游標速度 → 沿移動方向甩出粒子）；9999 = 尚未接觸
   let prevMx = 9999;
   let prevMy = 9999;
@@ -1093,9 +1109,11 @@ onMounted(() => {
   if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
 
   const animate = () => {
-    const t = clock.getElapsedTime();
-    const dt = Math.min(t - prevT, 0.1); // clamp 避免分頁切回時大跳
-    prevT = t;
+    const nowT = clock.getElapsedTime();
+    const dt = Math.min(nowT - prevT, 0.1); // clamp 避免分頁切回時大跳
+    prevT = nowT;
+    simTime += dt; // 暫停期間不前進 → 恢復時所有 uTime 驅動的動態都從斷點續上
+    const t = simTime;
     // 自動游標：以多頻率正弦疊加做出非重複的平滑遊走，覆寫真實游標
     if (cfg.autoMouse) {
       const at = t * cfg.autoMouseSpeed;
@@ -1244,7 +1262,65 @@ onMounted(() => {
     renderer.render(scene, camera);
     raf = requestAnimationFrame(animate);
   };
-  animate();
+
+  // ---------- 迴圈啟停 ----------
+  // 停下來省掉的是整幀成本：pCount 顆的 CPU 物理積分、aDisp 的 buffer 上傳、
+  // 以及那個 point sprite 的 draw call。（cols=85 實測 5,471 顆 → 64KB/幀；
+  // maxParticles 只是上限，不是實際顆數。）
+  // 這些原本與「有沒有在畫面上」完全無關，只要元件掛著就一直跑。
+  const startLoop = () => {
+    if (running) return;
+    running = true;
+    // 恢復接縫：四個會被暫停打斷的狀態要接回去，否則第一幀會被看出來。
+    prevT = clock.getElapsedTime(); // 第一幀 dt = 0，不吃暫停期間累積的時間
+    prevMx = 9999; // 不拿暫停前的座標算游標速度（mvx/mvy 會爆衝把粒子甩飛）
+    prevMy = 9999;
+    targetInfluence = 0; // 暫停期間收不到 pointerleave → 強制從「無互動」重新淡入
+    influence = 0;
+    raf = requestAnimationFrame(animate);
+  };
+  const stopLoop = () => {
+    if (!running) return;
+    running = false;
+    cancelAnimationFrame(raf);
+    raf = 0;
+    // 位移/速度歸零：下次恢復時粒子直接在原位，不會從上次被游標撞開的地方 ease 回來。
+    if (dispArr && velArr && dispAttr) {
+      dispArr.fill(0);
+      velArr.fill(0);
+      dispAttr.needsUpdate = true;
+    }
+  };
+  const syncRunning = () => {
+    if (shouldRun()) {
+      tryReveal();
+      startLoop();
+    } else {
+      stopLoop();
+    }
+  };
+  syncActive = syncRunning; // 供 props.active 的 watch 呼叫
+
+  // threshold 0（原為 0.3）：這個 observer 從「一次性的 reveal 觸發器」變成常駐執行閘門，
+  // 0.3 會讓「只露出 20%」的期間整個場凍住＝看得見卻不動。rootMargin 提前一點喚醒，
+  // 讓粒子在捲進視口前就已在跑（避免入場第一眼是靜止畫面）。
+  // ⚠️ 不再 disconnect：要持續收離開/回來的事件。
+  const observer = new IntersectionObserver(
+    (entries) => {
+      inView = entries.some((e) => e.isIntersecting);
+      syncRunning();
+    },
+    { threshold: 0, rootMargin: '10%' },
+  );
+  observer.observe(wrap);
+
+  const onDocVisibility = () => {
+    docVisible = document.visibilityState === 'visible';
+    syncRunning();
+  };
+  document.addEventListener('visibilitychange', onDocVisibility);
+  docVisible = document.visibilityState === 'visible';
+  // 迴圈由 observer 的首次回呼（下一幀）啟動，此處不必先跑 —— inView 尚為 false。
 
   const onResize = () => {
     const w = wrap.clientWidth;
@@ -1263,6 +1339,7 @@ onMounted(() => {
     unmounted = true;
     observer.disconnect();
     cancelAnimationFrame(raf);
+    document.removeEventListener('visibilitychange', onDocVisibility);
     window.removeEventListener('resize', onResize);
     renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('pointerleave', onLeave);

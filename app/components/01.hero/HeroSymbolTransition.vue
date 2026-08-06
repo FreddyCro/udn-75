@@ -19,6 +19,8 @@
      （disperse→face→converge，由 01a.symbol/SymbolScene 的捲動驅動）才能撤場，
      故 done 讀的是 symbolLayerDone（序列越過 enter、交棒給 ForumCore），不是「轉場放大完成」。
   ⚠️ 以 opacity 而非 display 隱藏：本層一開始就要有真實尺寸，three.js 才量得到 canvas 大小。
+     代價是 slot 內的 WebGL 元件會「看不見但仍在滿版跑」→ 故把 active 當 slot prop 交出去，
+     由它自己停掉 rAF（見 SymbolFace 的 active prop）。
 -->
 <script setup lang="ts">
 const props = defineProps<{
@@ -137,9 +139,14 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize));
     aria-hidden="true"
   >
     <div ref="fieldRef" class="hero-symbol-transition__field">
-      <!-- 真正的 <SymbolFace>（由 Hero 傳入）：滿版、隨展開段淡入 -->
+      <!--
+        真正的 <SymbolFace>（由 Hero 傳入）：滿版、隨展開段淡入。
+        active 透過 slot prop 交出去：本層是「做出隱藏決定」的那一層，而 slot 內的
+        WebGL 元件靠自己偵測不到祖先的 visibility（IntersectionObserver 只看幾何，
+        本層又是 fixed 滿版 → 恆為 intersecting）。由這裡交棒，判斷式就只有一份。
+      -->
       <div ref="stageRef" class="hero-symbol-transition__stage">
-        <slot />
+        <slot :active="active" />
       </div>
     </div>
   </div>

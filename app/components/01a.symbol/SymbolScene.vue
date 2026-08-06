@@ -44,7 +44,10 @@ const sceneHeight = `${SYMBOL_VH * 100}vh`;
 // 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本段合計 440vh。
 //
 // ⚠️ SymbolFace 內部並不吃 scroll：上表的 mode 切換只是「觸發」它 2.2s 的 gsap 補間
-//    （disperseDuration），reveal 則由 IntersectionObserver 一次性啟動。本表只管門檻位置。
+//    （disperseDuration）。本表只管門檻位置。
+// ⚠️ reveal（粒子淡入）不在本表內：它由 SymbolFace 的執行閘門一次性啟動 ——
+//    ＝ 轉場層 active（transitionProgress > 0，比本段的起點更早）＋ 進入視口 ＋ 分頁在前景。
+//    也就是說 reveal 發生在前一軌（hero 轉場的拉長段）裡，本段接手時粒子已在場。
 const sceneRef = ref<HTMLElement | null>(null);
 let symbolST: ScrollTrigger | null = null;
 

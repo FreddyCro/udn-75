@@ -204,44 +204,51 @@ function applyScrollLock() {
         序列（disperse→face→converge）由 01a.symbol/SymbolScene 依捲動指派 symbolMode，
         本處只負責「在場」與外觀參數；兩邊透過 useOrangeCoreProgress 的 symbolMode 對接。
         phrases 為 face 狀態下的宮格彩蛋句（row-major，對應 gridCols × gridRows）。
+
+        active 由轉場層以 slot prop 交出（＝該層自己的顯隱條件），SymbolFace 據此停/續 rAF：
+        轉場開始前與交棒之後，那顆滿版 canvas 是看不見的，不該還在跑幾千顆粒子的
+        物理積分 + buffer 上傳 + draw call。
       -->
-      <SymbolFace
-        v-model:mode="symbolMode"
-        :dev="false"
-        :phrases="str.symbol.phrases"
-        :hole-radius="25"
-        :hole-spread="50"
-        :return-ease="1.5"
-        :friction="1.8"
-        :impulse-strength="10000"
-        :impulse-spray="0.9"
-        :impulse-spray-z="0.6"
-        :velocity-follow="0.1"
-        :max-speed="3000"
-        :max-particles="24000"
-        :chars="[
-          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-          'A', 'B', 'C', 'D', 'E', 'F',
-        ]"
-        :color="['#000000', '#77c6e0', '#d1f4ff', '#ffffff']"
-        :color-stops="[0, 0.4, 0.75, 1]"
-        bg-color="#000"
-        :cols="85"
-        :char-aspect="0.65"
-        :contrast="1.2"
-        :invert="false"
-        :size-min="0.43"
-        :size-max="1.0"
-        :weight-steps="5"
-        :weight-min="100"
-        :weight-max="900"
-        :glitch-items="[
-          { color: '#ff0055', density: 3, fps: 12 },
-          { color: '#00ffcc', density: 2, fps: 8 },
-        ]"
-        :float-amp="18"
-        :float-micro="0.5"
-      />
+      <template #default="{ active: symbolLayerActive }">
+        <SymbolFace
+          :active="symbolLayerActive"
+          v-model:mode="symbolMode"
+          :dev="false"
+          :phrases="str.symbol.phrases"
+          :hole-radius="25"
+          :hole-spread="50"
+          :return-ease="1.5"
+          :friction="1.8"
+          :impulse-strength="10000"
+          :impulse-spray="0.9"
+          :impulse-spray-z="0.6"
+          :velocity-follow="0.1"
+          :max-speed="3000"
+          :max-particles="24000"
+          :chars="[
+            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+            'A', 'B', 'C', 'D', 'E', 'F',
+          ]"
+          :color="['#000000', '#77c6e0', '#d1f4ff', '#ffffff']"
+          :color-stops="[0, 0.4, 0.75, 1]"
+          bg-color="#000"
+          :cols="85"
+          :char-aspect="0.65"
+          :contrast="1.2"
+          :invert="false"
+          :size-min="0.43"
+          :size-max="1.0"
+          :weight-steps="5"
+          :weight-min="100"
+          :weight-max="900"
+          :glitch-items="[
+            { color: '#ff0055', density: 3, fps: 12 },
+            { color: '#00ffcc', density: 2, fps: 8 },
+          ]"
+          :float-amp="18"
+          :float-micro="0.5"
+        />
+      </template>
     </HeroSymbolTransition>
   </section>
 </template>
