@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Matrix Image Generator - Studio Ultimate Pro</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #121212;
+            color: #eee;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        /* 主畫面：左側展示區 + 右側面板 */
+        .main-layout {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+        }
+        .canvas-area {
+            flex: 1;
+            background: #080808;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            overflow: auto;
+        }
+        .canvas-container {
+            background: #000;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            border: 1px solid #222;
+            max-width: 100%;
+            max-height: 100%;
+            overflow: auto;
+        }
+        canvas {
+            display: block;
+            background-color: #000;
+        }
+        /* 右側控制面板 */
+        .sidebar {
+            width: 380px;
+            background: #1e1e1e;
+            border-left: 1px solid #333;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            box-shadow: -5px 0 20px rgba(0,0,0,0.5);
+        }
+        .sidebar h2 {
+            color: #77c6e0;
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        label {
+            font-size: 12px;
+            color: #aaa;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            background: #2b2b2b;
+            border: 1px solid #444;
+            color: #77c6e0;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            width: 100%;
+        }
+        input[type="color"] {
+            border: none;
+            width: 36px;
+            height: 32px;
+            cursor: pointer;
+            background: none;
+            padding: 0;
+        }
+        input[type="range"] {
+            cursor: pointer;
+            width: 100%;
+        }
+        .val {
+            color: #77c6e0;
+            font-family: monospace;
+        }
+        .toggle-btn, .action-btn {
+            background: #2b2b2b;
+            border: 1px solid #77c6e0;
+            color: #77c6e0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+            transition: 0.2s;
+            text-align: center;
+        }
+        .toggle-btn.active, .action-btn:hover {
+            background: #77c6e0;
+            color: #000;
+        }
+        .preset-btn-group {
+            display: flex;
+            gap: 10px;
+        }
+        .preset-btn-group button, .preset-btn-group label {
+            flex: 1;
+        }
+        .delete-btn {
+            background: #2b2b2b;
+            border: 1px solid #ff5555;
+            color: #ff5555;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .delete-btn:hover {
+            background: #ff5555;
+            color: #fff;
+        }
+        .section-title {
+            font-size: 11px;
+            color: #77c6e0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 4px;
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .glitch-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 5px;
+        }
+        .glitch-card {
+            background: #252525;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .glitch-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        /* 自訂 Scrollbar */
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .sidebar::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-layout">
+        <!-- 左側畫布區 -->
+        <div class="canvas-area">
+            <div class="canvas-container">
+                <canvas id="displayCanvas"></canvas>
+            </div>
+        </div>
+
+        <!-- 右側面板 -->
+        <div class="sidebar">
+            <h2>Matrix Studio Pro</h2>
+
+            <!-- 數據備份與匯出/導入 -->
+            <div class="section-title">數據備份與匯入</div>
+            <div class="preset-btn-group">
+                <button class="action-btn" id="exportBtn">📥 匯出設定檔</button>
+                <label class="action-btn" style="display: inline-block;">
+                    📤 導入設定檔
+                    <input type="file" id="importInput" accept=".json" style="display: none;">
+                </label>
+            </div>
+
+            <div class="section-title">基礎設定與負片轉換</div>
+            <div class="control-group">
+                <label>1. 上傳圖片</label>
+                <input type="file" id="upload" accept="image/*">
+            </div>
+
+            <div class="control-group">
+                <label>2. 排列字元集</label>
+                <input type="text" id="customChars" value="0123456789ABCDEF">
+            </div>
+
+            <div class="control-group">
+                <label>3. 負片/明暗反轉</label>
+                <button class="toggle-btn" id="invertBtn">負片效果: 關閉</button>
+            </div>
+
+            <div class="section-title">圖像對比與解析度</div>
+            <div class="control-group">
+                <label>4. 密度/解析度 (<span class="val" id="colsVal">130</span> 列)</label>
+                <input type="range" id="colsInput" min="50" max="250" value="130">
+            </div>
+
+            <div class="control-group">
+                <label>5. 圖像對比度 (<span class="val" id="contrastVal">1.2</span>)</label>
+                <input type="range" id="contrastInput" min="0.5" max="2.5" step="0.1" value="1.2">
+            </div>
+
+            <div class="section-title">字粗與字級落差</div>
+            <div class="control-group">
+                <label>6. 暗部字重 (<span class="val" id="minWeightVal">100</span>)</label>
+                <input type="range" id="minWeightInput" min="100" max="900" step="100" value="100">
+            </div>
+
+            <div class="control-group">
+                <label>7. 亮部字重 (<span class="val" id="maxWeightVal">900</span>)</label>
+                <input type="range" id="maxWeightInput" min="100" max="900" step="100" value="900">
+            </div>
+
+            <div class="control-group">
+                <label>8. 暗部字體大小 (<span class="val" id="minSizeVal">6</span>px)</label>
+                <input type="range" id="minSizeInput" min="4" max="24" value="6">
+            </div>
+
+            <div class="control-group">
+                <label>9. 亮部字體大小 (<span class="val" id="maxSizeVal">14</span>px)</label>
+                <input type="range" id="maxSizeInput" min="4" max="24" value="14">
+            </div>
+
+            <!-- 新增：字元間距控制 -->
+            <div class="control-group">
+                <label>10. 字元間距/疏密 (<span class="val" id="spacingVal">0</span>px)</label>
+                <input type="range" id="spacingInput" min="-5" max="20" value="0">
+            </div>
+
+            <div class="section-title">漸層色彩與控制點 (Color Stops)</div>
+            <div class="control-group">
+                <label>色號 1 (底色) / 2 / 3 / 4 (高光)</label>
+                <div class="control-row">
+                    <input type="color" id="c1" value="#000000">
+                    <input type="color" id="c2" value="#77c6e0">
+                    <input type="color" id="c3" value="#d1f4ff">
+                    <input type="color" id="c4" value="#ffffff">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>色號 2 位置 (<span class="val" id="pos2Val">40</span>%)</label>
+                <input type="range" id="pos2Input" min="0" max="100" value="40">
+            </div>
+
+            <div class="control-group">
+                <label>色號 3 位置 (<span class="val" id="pos3Val">75</span>%)</label>
+                <input type="range" id="pos3Input" min="0" max="100" value="75">
+            </div>
+
+            <div class="section-title">
+                <span>Glitch 動態跳動設定</span>
+                <button class="action-btn" id="addGlitchBtn" style="padding: 2px 6px; font-size: 10px;">+ 新增顏色</button>
+            </div>
+
+            <div class="glitch-list" id="glitchContainer">
+                <!-- 動態產生的顏色卡片 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const upload = document.getElementById('upload');
+        const customCharsInput = document.getElementById('customChars');
+        const invertBtn = document.getElementById('invertBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const importInput = document.getElementById('importInput');
+        
+        const colsInput = document.getElementById('colsInput');
+        const contrastInput = document.getElementById('contrastInput');
+        const minWeightInput = document.getElementById('minWeightInput');
+        const maxWeightInput = document.getElementById('maxWeightInput');
+        const minSizeInput = document.getElementById('minSizeInput');
+        const maxSizeInput = document.getElementById('maxSizeInput');
+        const spacingInput = document.getElementById('spacingInput'); // 間距元素
+
+        const c1 = document.getElementById('c1');
+        const c2 = document.getElementById('c2');
+        const c3 = document.getElementById('c3');
+        const c4 = document.getElementById('c4');
+        const pos2Input = document.getElementById('pos2Input');
+        const pos3Input = document.getElementById('pos3Input');
+
+        const glitchContainer = document.getElementById('glitchContainer');
+        const addGlitchBtn = document.getElementById('addGlitchBtn');
+
+        const displayCanvas = document.getElementById('displayCanvas');
+        const ctx = displayCanvas.getContext('2d');
+
+        let currentImg = null;
+        let isInverted = false;
+        let animationFrameId = null;
+
+        let glitchItems = [
+            { id: 1, color: '#ff0055', density: 3, fps: 12 },
+            { id: 2, color: '#00ffcc', density: 2, fps: 8 }
+        ];
+
+        // 負片切換按鈕
+        invertBtn.addEventListener('click', () => {
+            isInverted = !isInverted;
+            invertBtn.textContent = `負片效果: ${isInverted ? '開啟' : '關閉'}`;
+            invertBtn.classList.toggle('active', isInverted);
+            startLoop();
+        });
+
+        // 匯出 JSON 設定數據
+        exportBtn.addEventListener('click', () => {
+            const configData = {
+                customChars: customCharsInput.value,
+                isInverted: isInverted,
+                cols: colsInput.value,
+                contrast: contrastInput.value,
+                minWeight: minWeightInput.value,
+                maxWeight: maxWeightInput.value,
+                minSize: minSizeInput.value,
+                maxSize: maxSizeInput.value,
+                spacing: spacingInput.value, // 包含間距
+                c1: c1.value,
+                c2: c2.value,
+                c3: c3.value,
+                c4: c4.value,
+                pos2: pos2Input.value,
+                pos3: pos3Input.value,
+                glitchItems: glitchItems
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(configData, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `matrix_preset_${Date.now()}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        });
+
+        // 導入 JSON 設定數據
+        importInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    
+                    if (data.customChars !== undefined) customCharsInput.value = data.customChars;
+                    if (data.isInverted !== undefined) {
+                        isInverted = data.isInverted;
+                        invertBtn.textContent = `負片效果: ${isInverted ? '開啟' : '關閉'}`;
+                        invertBtn.classList.toggle('active', isInverted);
+                    }
+                    if (data.cols !== undefined) { colsInput.value = data.cols; document.getElementById('colsVal').textContent = data.cols; }
+                    if (data.contrast !== undefined) { contrastInput.value = data.contrast; document.getElementById('contrastVal').textContent = data.contrast; }
+                    if (data.minWeight !== undefined) { minWeightInput.value = data.minWeight; document.getElementById('minWeightVal').textContent = data.minWeight; }
+                    if (data.maxWeight !== undefined) { maxWeightInput.value = data.maxWeight; document.getElementById('maxWeightVal').textContent = data.maxWeight; }
+                    if (data.minSize !== undefined) { minSizeInput.value = data.minSize; document.getElementById('minSizeVal').textContent = data.minSize; }
+                    if (data.maxSize !== undefined) { maxSizeInput.value = data.maxSize; document.getElementById('maxSizeVal').textContent = data.maxSize; }
+                    if (data.spacing !== undefined) { spacingInput.value = data.spacing; document.getElementById('spacingVal').textContent = data.spacing; }
+                    if (data.c1 !== undefined) c1.value = data.c1;
+                    if (data.c2 !== undefined) c2.value = data.c2;
+                    if (data.c3 !== undefined) c3.value = data.c3;
+                    if (data.c4 !== undefined) c4.value = data.c4;
+                    if (data.pos2 !== undefined) { pos2Input.value = data.pos2; document.getElementById('pos2Val').textContent = data.pos2; }
+                    if (data.pos3 !== undefined) { pos3Input.value = data.pos3; document.getElementById('pos3Val').textContent = data.pos3; }
+                    if (data.glitchItems !== undefined) { glitchItems = data.glitchItems; renderGlitchUI(); }
+
+                    startLoop();
+                } catch (err) {
+                    alert('讀取設定檔失敗，請確認檔案格式是否正確。');
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // 渲染獨立 Glitch 卡片控制項
+        function renderGlitchUI() {
+            glitchContainer.innerHTML = '';
+            glitchItems.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'glitch-card';
+                card.innerHTML = `
+                    <div class="glitch-card-header">
+                        <div class="control-row">
+                            <label>顏色</label>
+                            <input type="color" value="${item.color}" data-index="${index}" class="glitch-color-picker">
+                        </div>
+                        <button class="delete-btn" data-index="${index}">刪除</button>
+                    </div>
+                    <div class="control-group">
+                        <label>密度 (<span class="val">${item.density}</span>%)</label>
+                        <input type="range" min="1" max="30" value="${item.density}" data-index="${index}" class="glitch-density-slider">
+                    </div>
+                    <div class="control-group">
+                        <label>頻率 (<span class="val">${item.fps}</span> FPS)</label>
+                        <input type="range" min="0" max="60" value="${item.fps}" data-index="${index}" class="glitch-fps-slider">
+                    </div>
+                `;
+                glitchContainer.appendChild(card);
+            });
+
+            document.querySelectorAll('.glitch-color-picker').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    glitchItems[e.target.dataset.index].color = e.target.value;
+                    startLoop();
+                });
+            });
+
+            document.querySelectorAll('.glitch-density-slider').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const idx = e.target.dataset.index;
+                    glitchItems[idx].density = parseInt(e.target.value);
+                    e.target.previousElementSibling.querySelector('.val').textContent = e.target.value;
+                    startLoop();
+                });
+            });
+
+            document.querySelectorAll('.glitch-fps-slider').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const idx = e.target.dataset.index;
+                    glitchItems[idx].fps = parseInt(e.target.value);
+                    e.target.previousElementSibling.querySelector('.val').textContent = e.target.value;
+                    startLoop();
+                });
+            });
+
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    glitchItems.splice(e.target.dataset.index, 1);
+                    renderGlitchUI();
+                    startLoop();
+                });
+            });
+        }
+
+        addGlitchBtn.addEventListener('click', () => {
+            const defaultColors = ['#ffff00', '#ff00ff', '#00ffff', '#ff8800', '#00ff88'];
+            glitchItems.push({
+                id: Date.now(),
+                color: defaultColors[Math.floor(Math.random() * defaultColors.length)],
+                density: 2,
+                fps: 10
+            });
+            renderGlitchUI();
+            startLoop();
+        });
+
+        function hexToRgb(hex) {
+            let cleanHex = hex.replace('#', '');
+            if (cleanHex.length === 3) {
+                cleanHex = cleanHex.split('').map(c => c + c).join('');
+            }
+            const num = parseInt(cleanHex, 16);
+            return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+        }
+
+        function getColorStops() {
+            const p2 = parseInt(pos2Input.value) / 100;
+            const p3 = parseInt(pos3Input.value) / 100;
+            return [
+                { pos: 0.0, ...hexToRgb(c1.value) },
+                { pos: p2,  ...hexToRgb(c2.value) },
+                { pos: p3,  ...hexToRgb(c3.value) },
+                { pos: 1.0, ...hexToRgb(c4.value) }
+            ];
+        }
+
+        function getGradientColor(brightness, colorStops) {
+            const factor = brightness / 255;
+            let lower = colorStops[0];
+            let upper = colorStops[colorStops.length - 1];
+
+            for (let i = 0; i < colorStops.length - 1; i++) {
+                if (factor >= colorStops[i].pos && factor <= colorStops[i+1].pos) {
+                    lower = colorStops[i];
+                    upper = colorStops[i+1];
+                    break;
+                }
+            }
+
+            const range = upper.pos - lower.pos;
+            const rangeFactor = range === 0 ? 0 : (factor - lower.pos) / range;
+
+            const r = Math.round(lower.r + (upper.r - lower.r) * rangeFactor);
+            const g = Math.round(lower.g + (upper.g - lower.g) * rangeFactor);
+            const b = Math.round(lower.b + (upper.b - lower.b) * rangeFactor);
+
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function getSortedChars(str) {
+            if (!str) return [" "];
+            const uniqueChars = Array.from(new Set(str.split(''))).filter(c => c !== ' ');
+            if (uniqueChars.length === 0) return [" "];
+
+            const testCanvas = document.createElement('canvas');
+            testCanvas.width = 20;
+            testCanvas.height = 20;
+            const tCtx = testCanvas.getContext('2d');
+
+            const scored = uniqueChars.map(char => {
+                tCtx.clearRect(0, 0, 20, 20);
+                tCtx.fillStyle = '#fff';
+                tCtx.font = '900 16px monospace';
+                tCtx.fillText(char, 2, 16);
+                const data = tCtx.getImageData(0, 0, 20, 20).data;
+                let count = 0;
+                for (let i = 3; i < data.length; i += 4) {
+                    if (data[i] > 0) count++;
+                }
+                return { char, count };
+            });
+
+            scored.sort((a, b) => a.count - b.count);
+            return [" "].concat(scored.map(item => item.char));
+        }
+
+        const baseControls = [
+            { el: colsInput, valEl: 'colsVal' },
+            { el: contrastInput, valEl: 'contrastVal' },
+            { el: minWeightInput, valEl: 'minWeightVal' },
+            { el: maxWeightInput, valEl: 'maxWeightVal' },
+            { el: minSizeInput, valEl: 'minSizeVal' },
+            { el: maxSizeInput, valEl: 'maxSizeVal' },
+            { el: spacingInput, valEl: 'spacingVal' }, // 綁定間距數值顯示
+            { el: pos2Input, valEl: 'pos2Val' },
+            { el: pos3Input, valEl: 'pos3Val' },
+            { el: customCharsInput, valEl: null },
+            { el: c1, valEl: null }, { el: c2, valEl: null }, { el: c3, valEl: null }, { el: c4, valEl: null }
+        ];
+
+        baseControls.forEach(item => {
+            item.el.addEventListener('input', () => {
+                if (item.valEl) {
+                    document.getElementById(item.valEl).textContent = item.el.value;
+                }
+                
+                if (item.el === minWeightInput && parseInt(minWeightInput.value) > parseInt(maxWeightInput.value)) {
+                    maxWeightInput.value = minWeightInput.value;
+                    document.getElementById('maxWeightVal').textContent = minWeightInput.value;
+                }
+                if (item.el === maxWeightInput && parseInt(maxWeightInput.value) < parseInt(minWeightInput.value)) {
+                    minWeightInput.value = maxWeightInput.value;
+                    document.getElementById('minWeightVal').textContent = maxWeightInput.value;
+                }
+                if (item.el === pos2Input && parseInt(pos2Input.value) > parseInt(pos3Input.value)) {
+                    pos3Input.value = pos2Input.value;
+                    document.getElementById('pos3Val').textContent = pos2Input.value;
+                }
+
+                startLoop();
+            });
+        });
+
+        upload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                currentImg = new Image();
+                currentImg.onload = startLoop;
+                currentImg.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function startLoop() {
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            
+            const hasActiveAnimation = glitchItems.some(item => item.fps > 0);
+            if (hasActiveAnimation) {
+                loop(performance.now());
+            } else {
+                render();
+            }
+        }
+
+        function loop(timestamp) {
+            render(timestamp);
+            const hasActiveAnimation = glitchItems.some(item => item.fps > 0);
+            if (hasActiveAnimation) {
+                animationFrameId = requestAnimationFrame(loop);
+            }
+        }
+
+        function render(now = 0) {
+            if (!currentImg) return;
+
+            const cols = parseInt(colsInput.value);
+            const contrast = parseFloat(contrastInput.value);
+            const minW = parseInt(minWeightInput.value);
+            const maxW = parseInt(maxWeightInput.value);
+            const minS = parseFloat(minSizeInput.value);
+            const maxS = parseFloat(maxSizeInput.value);
+            const spacing = parseFloat(spacingInput.value); // 讀取字元間距
+            const sortedChars = getSortedChars(customCharsInput.value);
+            const colorStops = getColorStops();
+
+            const baseFontSize = Math.max(minS, maxS, 10);
+            // 加上間距偏移 (spacing)
+            const cellWidth = Math.max(2, baseFontSize * 0.65 + spacing); 
+            const cellHeight = Math.max(2, baseFontSize + spacing);
+
+            const rows = Math.floor((cols * (currentImg.height / currentImg.width)) * (cellWidth / cellHeight));
+            
+            displayCanvas.width = cols * cellWidth;
+            displayCanvas.height = rows * cellHeight;
+
+            const processCanvas = document.createElement('canvas');
+            processCanvas.width = cols;
+            processCanvas.height = rows;
+            const pCtx = processCanvas.getContext('2d');
+            pCtx.drawImage(currentImg, 0, 0, cols, rows);
+
+            const imgData = pCtx.getImageData(0, 0, cols, rows).data;
+
+            ctx.fillStyle = c1.value;
+            ctx.fillRect(0, 0, displayCanvas.width, displayCanvas.height);
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center';
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const idx = (y * cols + x) * 4;
+                    let brightness = imgData[idx] * 0.299 + imgData[idx+1] * 0.587 + imgData[idx+2] * 0.114;
+
+                    if (isInverted) {
+                        brightness = 255 - brightness;
+                    }
+
+                    brightness = ((brightness / 255 - 0.5) * contrast + 0.5) * 255;
+                    brightness = Math.max(0, Math.min(255, brightness));
+
+                    const charIdx = Math.floor((brightness / 255) * (sortedChars.length - 1));
+                    const char = sortedChars[charIdx];
+
+                    if (char !== " ") {
+                        const factor = brightness / 255;
+
+                        const calculatedWeight = Math.round((minW + (maxW - minW) * factor) / 100) * 100;
+                        const calculatedSize = minS + (maxS - minS) * factor;
+
+                        ctx.font = `${calculatedWeight} ${calculatedSize}px monospace`;
+                        
+                        let fillStyle = getGradientColor(brightness, colorStops);
+
+                        for (let g = 0; g < glitchItems.length; g++) {
+                            const item = glitchItems[g];
+                            if (item.fps > 0 && item.density > 0) {
+                                const frameInterval = 1000 / item.fps;
+                                const currentFrame = Math.floor(now / frameInterval);
+                                
+                                const hash = Math.sin(x * 12.9898 + y * 78.233 + currentFrame * 43758.5453) * 43758.5453;
+                                const randomVal = hash - Math.floor(hash);
+
+                                if (randomVal < (item.density / 100)) {
+                                    fillStyle = item.color;
+                                    break;
+                                }
+                            }
+                        }
+
+                        ctx.fillStyle = fillStyle;
+                        
+                        const centerX = x * cellWidth + cellWidth / 2;
+                        const centerY = y * cellHeight + cellHeight / 2;
+                        ctx.fillText(char, centerX, centerY);
+                    }
+                }
+            }
+        }
+
+        renderGlitchUI();
+    </script>
+</body>
+</html>
