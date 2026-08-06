@@ -82,3 +82,5 @@ navbar 永續祝福錨點設定在笑臉已經完整顯示
 3. intro 偏下的用意 => pin + 躲 toc
 4. mobile navbar sticky 設定，被景色(問) => fixed 視窗下緣(subpage mobile navbar 下方沒有內容)
 5. pc 錨點和 intro 文字重疊 => pin
+
+PR https://github.com/FreddyCro/udn-75/pull/2

@@ -21,6 +21,11 @@
           classname="showcase-gallery__img"
           :alt="c.alt ?? ''"
         />
+        <!-- 【測試用】左上角白底黑字的順序編號，僅供確認卡片排序／滾動方向；
+             正式上線時把 DEBUG_SHOW_INDEX 設為 false（或整段連同樣式一起刪除） -->
+        <span v-if="DEBUG_SHOW_INDEX" class="showcase-gallery__card-index">
+          {{ i + 1 }}
+        </span>
       </div>
     </div>
   </section>
@@ -83,6 +88,9 @@ const props = defineProps({
   scaleYMin: { type: Number, default: 0.6 },
   scaleYMax: { type: Number, default: 1.3 },
 });
+
+// 【測試用】顯示每張卡片左上角的順序編號；不需要時改成 false 即可拿掉
+const DEBUG_SHOW_INDEX = true;
 
 /** 設計稿 stage 寬（卡片尺寸以此換算為 %） */
 const DESIGN_W = 1280;
@@ -168,7 +176,7 @@ onMounted(() => {
     for (let i = 0; i < N; i++) {
       const el = els[i];
       if (!el) continue;
-      const t = (i / N + state.p) % 1; // 輸送帶：每張各自的相位 + 全域進度（左 → 右）
+      const t = (i / N - state.p + 1) % 1; // 輸送帶：每張各自的相位 − 全域進度（右 → 左）
       const pt = path.getPointAtLength(t * total);
       const c = cosθ[i]!;
       // rotateX（正交投影）：軌跡 Y 乘 cosθ → 同一條 bell 被垂直壓縮/翻轉成各自路徑
@@ -264,5 +272,20 @@ onMounted(() => {
     height: 100%;
     object-fit: cover;
   }
+}
+
+// 【測試用】卡片左上角的順序編號；不需要時連同 template 內的 DEBUG_SHOW_INDEX 區塊一起刪除
+.showcase-gallery__card-index {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  padding: 2px 6px;
+  background: #fff;
+  color: #000;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  pointer-events: none;
 }
 </style>
