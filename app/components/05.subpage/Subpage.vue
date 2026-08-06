@@ -6,6 +6,7 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 export interface SubpageNavData {
   backUrl: string;
@@ -38,82 +39,186 @@ defineProps<{ content: SubpageContent }>();
 // 藝術字路徑來自 locales/*.json，需補上資產前綴才吃得到子路徑／CDN 部署（bg 走 UPic，內部已前綴）
 const assetUrl = useAssetUrl();
 
+const stageRef = ref<HTMLElement | null>(null);
+const heroRef = ref<HTMLElement | null>(null);
 const heroInnerRef = ref<HTMLElement | null>(null);
 const introInnerRef = ref<HTMLElement | null>(null);
 
-// header, intro內容由下往上、透明度 0→100%，translate 0.4s
+/** 錨點列（SubpageAnchorBar）是否滑入：捲過 hero/引言舞台後才固定在視窗下緣出現 */
+const anchorBarVisible = ref(false);
+
+/**
+ * 舞台是否啟用 pin 模式（hero 與引言疊在同一屏）。
+ * SSR／no-JS／reduced-motion 維持 false：兩塊照文件流各佔一屏、全程可見，不疊不藏。
+ */
+const stagePinned = ref(false);
+
+// hero 進場：由下往上、透明度 0→100%，0.4s
 const REVEAL = { autoAlpha: 0, y: 200, duration: 0.4, ease: 'power2.out' };
 
+// pin 進度過這兩條線就切換：先送走 hero，隔一小段再迎進引言（快速捲過≈交叉淡化）
+const HERO_OUT = 0.35;
+const INTRO_IN = 0.5;
+
 let tweens: gsap.core.Tween[] = [];
+let triggers: ScrollTrigger[] = [];
 
-onMounted(() => {
-  // 降級：不建 tween，內容維持 CSS 的可見狀態
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+/** 過線就播 0.4s 的淡入/淡出；overwrite 讓兩個方向對打時直接接手，不疊 tween */
+function makeFade(targets: HTMLElement[]) {
+  const show = () =>
+    tweens.push(
+      gsap.to(targets, { autoAlpha: 1, y: 0, duration: 0.4, ease: 'power2.out', overwrite: 'auto' }),
+    );
+  const hide = (y: number) =>
+    tweens.push(
+      gsap.to(targets, { autoAlpha: 0, y, duration: 0.4, ease: 'power2.in', overwrite: 'auto' }),
+    );
+  return { show, hide };
+}
 
+onMounted(async () => {
   gsap.registerPlugin(ScrollTrigger);
 
-  // hero 在首屏、一載入就播；引言捲進視窗才播（once，回捲不重播）
-  if (heroInnerRef.value) tweens.push(gsap.from(heroInnerRef.value, REVEAL));
-  if (introInnerRef.value) {
-    tweens.push(
-      gsap.from(introInnerRef.value, {
-        ...REVEAL,
-        scrollTrigger: { trigger: introInnerRef.value, start: 'top 80%', once: true },
+  // 降級：不 pin、不藏內容，只補一個錨點列的顯隱 trigger（純換 class）
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (stageRef.value) {
+      triggers.push(
+        ScrollTrigger.create({
+          trigger: stageRef.value,
+          start: 'bottom top',
+          onEnter: () => (anchorBarVisible.value = true),
+          onLeaveBack: () => (anchorBarVisible.value = false),
+        }),
+      );
+    }
+    return;
+  }
+
+  // 切到 pin 版型（引言改為疊在 hero 上的同屏 overlay），等 DOM 套完再量測
+  stagePinned.value = true;
+  await nextTick();
+
+  // 主/副標藝術字（hero-inner）與裝飾圖一組進出。
+  // 裝飾圖的定位 transform（mob/pad 的 translateX(-50%)）由 CSS 負責；gsap 動 y 時會把
+  // 既有 transform 拆成分量後保留 x，再疊上自己的 y，不會蓋掉置中。
+  const heroTargets = [
+    heroInnerRef.value,
+    heroRef.value?.querySelector<HTMLElement>('.subpage__hero-bg') ?? null,
+  ].filter((el): el is HTMLElement => !!el);
+  const introTarget = introInnerRef.value ? [introInnerRef.value] : [];
+
+  const heroFade = makeFade(heroTargets);
+  const introFade = makeFade(introTarget);
+
+  // 載入即播 hero 進場；引言先藏著等進度線
+  if (heroTargets.length) tweens.push(gsap.from(heroTargets, REVEAL));
+  gsap.set(introTarget, { autoAlpha: 0, y: 200 });
+
+  /**
+   * 舞台 pin 一屏的距離（end: '+=100%'）：hero 與引言疊在這一屏內完成交接，
+   * 滾動進度只當開關 —— 過 HERO_OUT 送走 hero、過 INTRO_IN 迎進引言（各 0.4s，回捲反向）。
+   * 交接發生在原地，不需要捲過兩塊各自的 100vh，就不會有空白捲動段。
+   */
+  let heroShown = true;
+  let introShown = false;
+  if (stageRef.value) {
+    triggers.push(
+      ScrollTrigger.create({
+        trigger: stageRef.value,
+        start: 'top top',
+        end: '+=100%',
+        pin: true,
+        anticipatePin: 1,
+        onUpdate: (self) => {
+          const p = self.progress;
+          if (heroShown && p >= HERO_OUT) {
+            heroShown = false;
+            heroFade.hide(-120);
+          } else if (!heroShown && p < HERO_OUT) {
+            heroShown = true;
+            heroFade.show();
+          }
+          if (!introShown && p >= INTRO_IN) {
+            introShown = true;
+            introFade.show();
+          } else if (introShown && p < INTRO_IN) {
+            introShown = false;
+            introFade.hide(200);
+          }
+        },
+        // pin 結束＝hero/引言演完 → 錨點列於視窗下緣滑入；回捲進 pin 段則收回
+        onLeave: () => (anchorBarVisible.value = true),
+        onEnterBack: () => (anchorBarVisible.value = false),
       }),
     );
+
+    // 舞台 pin 位在頁面最上方卻最晚建立（內文各 pin 先在子元件 onMounted 建好），
+    // 且佔位（pin-spacer）此刻才插進 DOM —— 立即全體重算，讓內文各 pin 以最終版面
+    // 取得正確起點（sort 保證由上到下的重算順序，見 utils/scroll-trigger）。
+    refreshScrollTriggers();
   }
 });
 
 onBeforeUnmount(() => {
-  tweens.forEach((t) => {
-    t.scrollTrigger?.kill();
-    t.kill();
-  });
+  triggers.forEach((st) => st.kill());
+  triggers = [];
+  tweens.forEach((t) => t.kill());
   tweens = [];
 });
 </script>
 
 <template>
   <article class="subpage">
-    <header class="subpage__hero">
-      <UPic
-        :src="content.hero.bg"
-        classname="subpage__hero-bg"
-        :use-prefix="false"
-        :use2x="false"
-        :webp="false"
-        loading="eager"
-        alt=""
-      />
-      <div ref="heroInnerRef" class="subpage__col subpage__col--wide subpage__hero-inner">
-        <h1 class="subpage__title">
-          <img
-            class="subpage__title-img"
-            :src="assetUrl(content.hero.titleImg)"
-            :alt="content.hero.title"
-          />
-        </h1>
-        <p class="subpage__subtitle">
-          <img
-            class="subpage__subtitle-img"
-            :src="assetUrl(content.hero.subtitleImg)"
-            :alt="content.hero.subtitle"
-          />
-        </p>
-        <p class="subpage__unit">{{ content.hero.unit }}／{{ content.hero.author }}</p>
-      </div>
-    </header>
-
-    <!-- hero 之後的內容：不透明背景，維持 rail(z1) / 滿版區塊(z2) 的疊層約定 -->
-    <div class="subpage__content">
-      <!-- <1280 錨點列（取代 pc 的右側 rail） -->
-      <SubpageAnchorBar />
+    <!-- hero＋引言舞台：pin 模式下兩塊疊同一屏，滾動進度觸發交接；
+         降級（no-JS／reduced-motion）維持文件流各佔一屏 -->
+    <div
+      ref="stageRef"
+      class="subpage__stage"
+      :class="{ 'subpage__stage--pinned': stagePinned }"
+    >
+      <header ref="heroRef" class="subpage__hero">
+        <UPic
+          :src="content.hero.bg"
+          classname="subpage__hero-bg"
+          :use-prefix="false"
+          :use2x="false"
+          :webp="false"
+          loading="eager"
+          alt=""
+        />
+        <div
+          ref="heroInnerRef"
+          class="subpage__col subpage__col--wide subpage__hero-inner"
+        >
+          <h1 class="subpage__title">
+            <img
+              class="subpage__title-img"
+              :src="assetUrl(content.hero.titleImg)"
+              :alt="content.hero.title"
+            />
+          </h1>
+          <p class="subpage__subtitle">
+            <img
+              class="subpage__subtitle-img"
+              :src="assetUrl(content.hero.subtitleImg)"
+              :alt="content.hero.subtitle"
+            />
+          </p>
+          <p class="subpage__unit">{{ content.hero.unit }}／{{ content.hero.author }}</p>
+        </div>
+      </header>
 
       <div class="subpage__intro">
         <div ref="introInnerRef" class="subpage__col subpage__col--wide">
           <p class="subpage__intro-text" v-html="content.intro" />
         </div>
       </div>
+    </div>
+
+    <!-- 舞台之後的內容：不透明背景，維持 rail(z1) / 滿版區塊(z2) 的疊層約定 -->
+    <div class="subpage__content">
+      <!-- <1280 錨點列（取代 pc 的右側 rail）：固定在視窗下緣，舞台演完才滑入 -->
+      <SubpageAnchorBar :visible="anchorBarVisible" />
 
       <!-- 內文：各頁以預設 slot 撰寫，間距在頁面上逐塊標 Tailwind mt-*/mb-* -->
       <div class="subpage__body">
@@ -151,6 +256,23 @@ onBeforeUnmount(() => {
   }
 }
 
+// hero＋引言舞台。預設（SSR／no-JS／reduced-motion）為文件流，兩塊各佔一屏、全程可見；
+// --pinned（JS 啟用動畫後）收成一屏，hero 與引言改為絕對定位疊在同層，
+// 由 ScrollTrigger pin 住、滾動進度觸發兩者交接（見 script 的 onUpdate）。
+.subpage__stage--pinned {
+  position: relative;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+
+  .subpage__hero,
+  .subpage__intro {
+    position: absolute;
+    inset: 0;
+    min-height: 0; // 高度由 inset 決定（= 舞台一屏），不再各自撐 100svh
+  }
+}
+
 // 設計稿 canvas＝裝置視窗且 header 疊在 frame 內 → 首屏滿版 100vh（非 100vh − header）；
 // 文案距視窗頂為固定距離（padding-top），非垂直置中。
 .subpage__hero {
@@ -168,7 +290,7 @@ onBeforeUnmount(() => {
   }
 }
 
-// hero 之後的內容底。z-index 須維持 auto，否則會建立 stacking context，
+// 舞台之後的內容底。z-index 須維持 auto，否則會建立 stacking context，
 // 破壞 rail(z1) / 滿版區塊(z2) 的約定（見 SubpageAnchor）。
 .subpage__content {
   position: relative;
@@ -259,18 +381,15 @@ onBeforeUnmount(() => {
   }
 }
 
-// 引言同為滿版一屏：mob/pad 對稿上下留白相等 → 垂直置中；pc 對稿不置中，
-// 改以「靠下 + 底距 80」表達，視窗高度一離開 720 也不會失準。
-// 滿版區塊須依 SubpageAnchor 的約定：relative + z-index 2 + 白底，蓋過 rail(z1)。
+// 引言滿版一屏（pin 模式時 = 舞台那一屏）：mob/pad 對稿上下留白相等 → 垂直置中；
+// pc 對稿不置中，改以「靠下 + 底距 80」表達，視窗高度一離開 720 也不會失準。
+// 不設 z-index／自身底色：引言不遮蓋右側 rail（SubpageAnchor），錨點照樣疊在上面。
 .subpage__intro {
-  position: relative;
-  z-index: 2;
   display: flex;
   align-items: center;
   min-height: 100vh;
   min-height: 100svh;
-  background: #fff;
-  padding: 56px 0; // 內容超過一屏時（窄機／放大字級）自然撐高，不裁切
+  padding: 56px 0; // 內容超過一屏時（窄機／放大字級）自然撐高，不裁切（pin 模式改由 overflow 裁）
 
   @include rwd-min('tablet') {
     padding: 96px 0;
