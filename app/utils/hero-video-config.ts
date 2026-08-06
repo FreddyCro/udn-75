@@ -42,6 +42,8 @@ export const HERO_VIDEO_POSTER: Record<HeroVideoDevice, string> = {
  * 段落的 `end` 填此值 ＝「一路播到影片結束」。
  * 實際收尾時間不寫死在設定裡，改由 `<video>.duration` / `@ended` 決定
  * （見 HeroVideo 的 onTimeUpdate / onEnded）—— 換剪輯時 outro 不必跟著改秒數。
+ *
+ * 目前 outro 有明確秒數（40s）故未使用；若之後想「不寫死、跟著剪輯長度走」再填回 outro.end。
  */
 export const HERO_VIDEO_END = Number.POSITIVE_INFINITY;
 
@@ -53,12 +55,11 @@ export const HERO_VIDEO_END = Number.POSITIVE_INFINITY;
 // 段落請「相接」（前段 end ＝ 後段 start）：自動推進時 currentTime 已落在新段內，
 // 不會多做一次 seek（跳動）。影片全長實測 40.02s。
 //
-// ⚠️ main / loop 的 24 / 30 仍是舊 demo 剪輯的值，新剪輯（40.02s）的主段與 loop 區間
-//    尚未確認 → 目前 loop 會在 24–30 一直循環，按「退場」才跳到 37。
+// 秒數依 #首頁影片(ENG) 提供的時間點：正片 0–30、loop 30–33、退場 33 → 影片結束（40s）。
 export const HERO_VIDEO_SEGMENTS: HeroVideoSegments = {
-  main: { start: 0, end: 24 },
-  loop: { start: 24, end: 30 },
-  outro: { start: 37, end: HERO_VIDEO_END }, // 37s → 影片結束（40.02s）→ gone
+  main: { start: 0, end: 30 },
+  loop: { start: 30, end: 33 },
+  outro: { start: 33, end: 38.5 },
 };
 
 // pad / mob 剪輯段落不同時在此覆寫（未列的裝置沿用上方共用值）—— RWD 預留。
@@ -72,6 +73,12 @@ export const HERO_VIDEO_SEGMENTS_BY_DEVICE: Partial<
 export function heroVideoSegments(device: HeroVideoDevice): HeroVideoSegments {
   return HERO_VIDEO_SEGMENTS_BY_DEVICE[device] ?? HERO_VIDEO_SEGMENTS;
 }
+
+/**
+ * skip 按鈕淡入的時間點（影片時間軸秒數，設計稿 #BN skip：正片播放 3 秒後原地淡入）。
+ * 淡出不另設秒數 —— 一離開正片（main → loop）就淡出，故跟著 main.end 走。
+ */
+export const HERO_SKIP_APPEAR_AT = 3;
 
 // 等待影片「可播放」的上限（ms）：逾時就放行 HeroLoader，
 // 避免慢速網路／大檔案把載入層永遠卡在 99%。

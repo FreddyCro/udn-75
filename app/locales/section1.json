@@ -2,7 +2,9 @@
   "hero": {
     "title": "聯合七五・智慧未來",
     "subtitle": "UDN 75 — Shaping An Intelligent Future",
-    "scrollHint": "下滑看更多"
+    "scrollHint": "下滑看更多",
+    "skipLabel": "Skip",
+    "skipAria": "跳過開場影片"
   },
   "start": {
     "label": "start",

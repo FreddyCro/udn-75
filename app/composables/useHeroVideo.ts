@@ -55,9 +55,10 @@ export function useHeroVideo() {
   /**
    * SKIP：在 main / loop 時「跳過整支影片」— 直接進 gone，效果等同 dev 控制列的「4.消失」
    * （影片淡出、orange core 於第一屏正中央淡入）。非 main / loop 時無作用。
+   * 使用者端的 skip 按鈕（HeroVideo 右下角，正片 3s 後淡入）與 dev 控制列共用這個行為。
    *
-   * 刻意「不」先播退場段：outro 是 37s → 影片結束（約 3 秒，見 hero-video-config 的
-   * HERO_VIDEO_SEGMENTS），按了 SKIP 還要等它播完才看到結果，對開發與試看都是浪費。
+   * 刻意「不」先播退場段：outro 約 5.5 秒（見 hero-video-config 的 HERO_VIDEO_SEGMENTS），
+   * 按了 SKIP 還要等它播完才看到結果，對開發與試看都是浪費。
    * 要單獨預覽退場段請按 dev 控制列的「3.退場」。
    */
   const skip = () => {

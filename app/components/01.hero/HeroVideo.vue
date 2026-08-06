@@ -5,6 +5,7 @@
 import str from '@/locales/section1.json';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
 import {
+  HERO_SKIP_APPEAR_AT,
   HERO_VIDEO_POSTER,
   HERO_VIDEO_READY_TIMEOUT,
   HERO_VIDEO_SRC,
@@ -21,12 +22,21 @@ import {
 const {
   state: heroState,
   setState,
+  skip,
   rewindToLoop,
   isGone,
   videoReady,
   heroStarted,
   currentTime,
 } = useHeroVideo();
+
+// skip 按鈕的現身條件（設計稿 #BN skip）：正片播放 HERO_SKIP_APPEAR_AT 秒後淡入，
+// 正片播完進 loop 就淡出。
+// 綁「影片時間軸」而非 setTimeout：暫停 / 換 RWD 來源重載 / dev 控制列跳段 / 倒帶回 loop
+// 都自動一致，也沒有計時器要清。currentTime 由 onTimeUpdate 寫入（約每 250ms）。
+const showSkip = computed(
+  () => heroState.value === 'main' && currentTime.value >= HERO_SKIP_APPEAR_AT,
+);
 
 // 全站音效開關：開啟時本影片不 muted（見 composables/useAppSound）。
 const { soundOn } = useAppSound();
@@ -155,7 +165,7 @@ watch(heroState, (s) => {
     v.pause();
     return;
   }
-  // 不在目標段內才 seek。用 segEnd 而非 seg.end：outro 的 end 是 HERO_VIDEO_END(Infinity)，
+  // 不在目標段內才 seek。用 segEnd 而非 seg.end：end 若填 HERO_VIDEO_END(Infinity)，
   // 直接比會把「影片已播完」也算在段內 → play() 對已 ended 的影片會從 0 重播整支。
   const seg = segments.value[s];
   if (v.currentTime < seg.start || v.currentTime >= segEnd(v, seg)) {
@@ -290,6 +300,41 @@ onBeforeUnmount(() => {
     <h1 class="visually-hidden">{{ str.hero.title }}</h1>
     <p class="visually-hidden">{{ str.hero.subtitle }}</p>
 
+    <!--
+      skip：正片播放 3s 後「原地」淡入（預設 40%、hover / 按下 100%），進 loop 段淡出消失。
+      設計稿 1957:54965。刻意不用 v-if + <Transition>：常駐 DOM 只切 class，淡出期間
+      hover 規則已隨 .is-visible 一起失效（不會卡在 100% 又被瞬間移除）。
+      隱藏時 pointer-events: none ＋ tabindex -1 ＋ aria-hidden → 看不見就完全不可及。
+    -->
+    <button
+      class="sec1__hero-skip"
+      :class="{ 'is-visible': showSkip }"
+      type="button"
+      :tabindex="showSkip ? 0 : -1"
+      :aria-hidden="!showSkip"
+      :aria-label="str.hero.skipAria"
+      @click="skip()"
+    >
+      <span class="sec1__hero-skip-text">{{ str.hero.skipLabel }}</span>
+      <!--
+        雙箭頭（設計稿 instance 「提示下滑」×2，各 12×22）：原稿是 11 顆 2×2 實心方塊
+        （匯出的 vector 就是 2×2 方塊）排成階梯狀 chevron —— 這裡照 inset 換算出的整數
+        座標重畫成同一組 2×2 rect，幾何與原稿逐點相同。shape-rendering 保住像素邊緣。
+      -->
+      <svg
+        class="sec1__hero-skip-icon"
+        viewBox="0 0 24 22"
+        shape-rendering="crispEdges"
+        aria-hidden="true"
+      >
+        <path
+          id="sec1-hero-skip-chevron"
+          d="M0 0h2v2H0z M2 2h2v2H2z M4 4h2v2H4z M6 6h2v2H6z M8 8h2v2H8z M10 10h2v2H10z M8 12h2v2H8z M6 14h2v2H6z M4 16h2v2H4z M2 18h2v2H2z M0 20h2v2H0z"
+        />
+        <use href="#sec1-hero-skip-chevron" x="12" />
+      </svg>
+    </button>
+
     <!-- 下滑看更多：僅 loop 狀態顯示（提示使用者向下滾動以觸發退場） -->
     <div v-if="heroState === 'loop'" class="sec1__hero-scroll">
       <span class="sec1__hero-scroll-text">{{ str.hero.scrollHint }}</span>
@@ -344,6 +389,74 @@ $light-gray: #898989;
   }
 }
 
+// skip 按鈕：設計稿 1957:54965（100×48 / padding 11 10 9 / opacity 40%，右下角 right 34、bottom 31）。
+//
+// ⚠️ 尺寸換算：該稿畫在 1920×1080 的「影片稿」上，而 hero 其餘 UI（start cube 95、載入層方塊
+// 83.333）都是 1280×720 稿 —— 兩者剛好 1.5 倍。影片以 object-fit: cover 鋪滿視窗，1920 稿上的
+// 20px 在 1280 寬的視窗只佔 13.33px，故此處一律 ÷1.5 落回 1280 稿，才與影片內容、其餘 UI 同比例。
+// 若要改成照 1920 稿的絕對字級，把下面的 13.33px / 8px / 16px 乘回 1.5 即可。
+.sec1__hero-skip {
+  position: absolute;
+  right: 22.67px; // 34 ÷ 1.5
+  bottom: 20.67px; // 31 ÷ 1.5
+  z-index: 2; // 疊在影片層之上（dev 控制列 z-index 10 仍在最上）
+  display: flex;
+  align-items: center;
+  // 尺寸／padding 照設計稿的固定外框（100×48、padding 11 10 9）÷1.5 —— 命中區與稿一致，
+  // 內容靠左排（同稿上 items-start），右側留白也就跟著稿走。
+  width: 66.67px;
+  height: 32px;
+  gap: 8px; // 12 ÷ 1.5
+  padding: 7.33px 6.67px 6px;
+  color: $gray;
+  background: none;
+  border: 0;
+  // 未到 3s（或已離開正片）：全透明且完全不可點
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+
+  // 命中區外擴到 44×82.67（觸控最小建議尺寸）—— 視覺尺寸維持設計稿的 32 高。
+  // 同 HeroStart 音效鈕的作法：用 ::after 外擴，不必為了好按而放大按鈕本體。
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -6px -8px;
+  }
+
+  // 淡入後的預設態＝設計稿的 40%；hover / focus / 按下 → 100%
+  &.is-visible {
+    opacity: 0.4;
+    pointer-events: auto;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible,
+    &:active {
+      opacity: 1;
+    }
+  }
+}
+
+// 設計稿 1864:52374：Noto Sans TC Regular / 20px / line-height 20（÷1.5）。
+// padding-bottom 承自稿上文字外框的 pb 4 —— 讓文字視覺中線與雙箭頭對齊。
+.sec1__hero-skip-text {
+  padding-bottom: 2.67px; // 4 ÷ 1.5
+  font-weight: 400;
+  font-size: 13.33px; // 20 ÷ 1.5
+  line-height: 1;
+  white-space: nowrap;
+}
+
+// 雙箭頭：稿上 24×22（兩個 12×22 並排，無間距）÷1.5；fill 跟著按鈕的 color 走
+.sec1__hero-skip-icon {
+  display: block;
+  flex: none;
+  width: 16px; // 24 ÷ 1.5
+  height: 14.67px; // 22 ÷ 1.5
+  fill: currentColor;
+}
+
 // 下滑看更多：文字置中、下方一條細線垂直延伸至 hero 底緣
 .sec1__hero-scroll {
   position: absolute;
@@ -372,8 +485,9 @@ $light-gray: #898989;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sec1__hero-video {
-    transition: none;
+  .sec1__hero-video,
+  .sec1__hero-skip {
+    transition: none; // skip 改為直接出現 / 消失（時間點不變）
   }
 }
 </style>
