@@ -32,7 +32,7 @@ navbar 永續祝福錨點設定在笑臉已經完整顯示
 
 ## Media
 
-- 智慧心媒體下來後的位置要調整
+- (Y)智慧心媒體下來後的位置要調整
 - Metaball
   1. 中心橘色再隨機一點
   2. hover 跟著游標的感覺像舊版一點
@@ -45,13 +45,13 @@ navbar 永續祝福錨點設定在笑臉已經完整顯示
 
 ## Subpage
 
-- hero 都要定住再出現
-- intro 也要定住，title 原地消失，intro 再出現
-- intro pc 刻意偏下沒錯
-- container 調整寬度
-- 下一頁按鈕除了原本的放大縮小，再加上漣漪
-- link 加上
-- photos panel 上下文字靠近一點，可以看參考範例
+- (Y)hero 都要定住再出現
+- (Y)intro 也要定住，title 原地消失，intro 再出現
+- (Y)intro pc 刻意偏下沒錯
+- (Y)container 調整寬度
+- (Y)下一頁按鈕除了原本的放大縮小，再加上漣漪
+- (Y)link 加上
+- (Y)photos panel 上下文字靠近一點，可以看參考範例
 - ShowcaseGallery
   1. 左右順序反了，由右到左
   2. 加上編號
@@ -59,19 +59,19 @@ navbar 永續祝福錨點設定在笑臉已經完整顯示
 
 ### 01.News
 
-- publish x 1. 葉子出去的時候，樹枝也要同時出去 2. 呈上，樹枝要接在葉子角落
-- publish x 3. 中間 node 一開始就顯示 4. 標題還在的時候動態就先走，看起來比較不會空
-- 獲獎經歷的 progress，藍色一直出現，箭頭一直走在最前面
+- (Y)publish x 1. 葉子出去的時候，樹枝也要同時出去 2. 呈上，樹枝要接在葉子角落
+- (Y)publish x 3. 中間 node 一開始就顯示 4. 標題還在的時候動態就先走，看起來比較不會空
+- (Y)獲獎經歷的 progress，藍色一直出現，箭頭一直走在最前面
 
 ### 02.VISAUL
 
-- 哪張是AI生成圖，左右按鈕 svg 有換
-- 體驗段文字要換
-- 作品集 hover 顏色錯誤
+- (Y)哪張是AI生成圖，左右按鈕 svg 有換
+- (Y)體驗段文字要換
+- (Y)作品集 hover 顏色錯誤
 
 ### 04.DATA
 
-- AI搜尋，click 完後，等摘要結果全部出來後，input placeholder 再繼續輪播，並且可以 click 再繼續使用
+- (Y)AI搜尋，click 完後，等摘要結果全部出來後，input placeholder 再繼續輪播，並且可以 click 再繼續使用
 
 ---
 
