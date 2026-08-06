@@ -35,6 +35,9 @@ export interface SubpageContent {
 
 defineProps<{ content: SubpageContent }>();
 
+// 藝術字路徑來自 locales/*.json，需補上資產前綴才吃得到子路徑／CDN 部署（bg 走 UPic，內部已前綴）
+const assetUrl = useAssetUrl();
+
 const heroInnerRef = ref<HTMLElement | null>(null);
 const introInnerRef = ref<HTMLElement | null>(null);
 
@@ -86,14 +89,14 @@ onBeforeUnmount(() => {
         <h1 class="subpage__title">
           <img
             class="subpage__title-img"
-            :src="content.hero.titleImg"
+            :src="assetUrl(content.hero.titleImg)"
             :alt="content.hero.title"
           />
         </h1>
         <p class="subpage__subtitle">
           <img
             class="subpage__subtitle-img"
-            :src="content.hero.subtitleImg"
+            :src="assetUrl(content.hero.subtitleImg)"
             :alt="content.hero.subtitle"
           />
         </p>

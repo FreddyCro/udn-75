@@ -19,6 +19,9 @@ interface HealthContent extends SubpageContent {
 
 // JSON import 會把字面值寬化成 string，須斷言回 HealthContent
 const c = raw as HealthContent;
+
+// 獎項圖是裸 <img>（非 UPic），路徑取自 JSON → 須自行補資產前綴
+const assetUrl = useAssetUrl();
 </script>
 
 <template>
@@ -54,7 +57,7 @@ const c = raw as HealthContent;
           :key="i"
           class="flex flex-col items-center gap-4 sm:flex-row sm:gap-6"
         >
-          <img class="w-[186px] shrink-0" :src="a.img" :alt="a.alt" loading="lazy" />
+          <img class="w-[186px] shrink-0" :src="assetUrl(a.img)" :alt="a.alt" loading="lazy" />
           <p class="m-0 text-[15px] leading-6 font-light text-(--color-gray)">{{ a.body }}</p>
         </div>
       </div>

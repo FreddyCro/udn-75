@@ -7,6 +7,8 @@ import str from '~/locales/common.json';
 
 const { subpageAnchors } = str;
 const route = useRoute();
+// 藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
+const assetUrl = useAssetUrl();
 
 const listRef = ref<HTMLElement | null>(null);
 
@@ -33,7 +35,7 @@ onMounted(() => {
         >
           <span
             class="subpage-anchor-bar__title"
-            :style="{ '--mask': `url('${a.titleImg}')` }"
+            :style="{ '--mask': `url('${assetUrl(a.titleImg)}')` }"
           />
           <span class="subpage-anchor-bar__text">{{ a.title }}</span>
         </NuxtLink>

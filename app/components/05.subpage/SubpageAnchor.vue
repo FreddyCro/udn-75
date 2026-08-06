@@ -10,6 +10,8 @@ import str from '~/locales/common.json';
 
 const { subpageAnchors } = str;
 const route = useRoute();
+// 藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
+const assetUrl = useAssetUrl();
 </script>
 
 <template>
@@ -24,11 +26,11 @@ const route = useRoute();
           <span class="subpage-anchor__art">
             <span
               class="subpage-anchor__title"
-              :style="{ '--mask': `url('${a.titleImg}')` }"
+              :style="{ '--mask': `url('${assetUrl(a.titleImg)}')` }"
             />
             <span
               class="subpage-anchor__num"
-              :style="{ '--mask': `url('${a.numImg}')` }"
+              :style="{ '--mask': `url('${assetUrl(a.numImg)}')` }"
             />
           </span>
           <span class="subpage-anchor__text">{{ a.title }}</span>

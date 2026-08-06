@@ -3,6 +3,8 @@
 import common from '@/locales/common.json';
 
 const { subpageAnchors } = common;
+// 編號藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
+const assetUrl = useAssetUrl();
 
 const rowEls: HTMLElement[] = [];
 const setRow = (el: any, i: number) => {
@@ -29,7 +31,7 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
           <!-- 編號藝術字（同 SubpageAnchor：mask 上色，資料共用 numImg） -->
           <span
             class="media__num"
-            :style="{ '--mask': `url('${a.numImg}')` }"
+            :style="{ '--mask': `url('${assetUrl(a.numImg)}')` }"
             aria-hidden="true"
           />
           <span class="media__row-title"
