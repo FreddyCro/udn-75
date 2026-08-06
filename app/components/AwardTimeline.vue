@@ -7,6 +7,7 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 export interface TimelineAward {
   /** 獎項機構 */
@@ -40,6 +41,7 @@ const rootRef = ref<HTMLElement | null>(null);
 const stageRef = ref<HTMLElement | null>(null);
 const trackRef = ref<HTMLElement | null>(null);
 const lineRef = ref<HTMLElement | null>(null);
+const arrowRef = ref<HTMLElement | null>(null);
 const activeIdx = ref(0);
 const itemEls: HTMLElement[] = [];
 const setItem = (el: any, i: number) => {
@@ -54,7 +56,9 @@ function build() {
   const stage = stageRef.value;
   const track = trackRef.value;
   const line = lineRef.value;
-  if (!root || !stage || !track || !line || itemEls.length === 0) return;
+  const arrow = arrowRef.value;
+  if (!root || !stage || !track || !line || !arrow || itemEls.length === 0)
+    return;
 
   // 軌道超出舞台的量（函式值 + invalidateOnRefresh：resize 後 refresh 即重算）
   const shift = () => Math.max(0, track.scrollWidth - stage.clientWidth);
@@ -63,7 +67,9 @@ function build() {
   tl = gsap.timeline({
     scrollTrigger: {
       trigger: root,
-      start: 'top top',
+      // 舞台為內容自然高度（非滿版）→ 置中時釘住；超過一屏退回貼頂（同 PhotoPanels）
+      start: () =>
+        root.clientHeight >= window.innerHeight ? 'top top' : 'center center',
       end: `+=${props.pinDistance}`,
       pin: true,
       anticipatePin: 1,
@@ -74,13 +80,19 @@ function build() {
       },
     },
   });
-  tl.fromTo(line, { scaleX: 0 }, { scaleX: 1, ease: 'none', duration: 1 }, 0);
+  // 藍線靜態鋪滿；箭頭綁滾動沿線右移到線尾（函式值：resize refresh 後重算）
+  tl.fromTo(
+    arrow,
+    { x: 0 },
+    { x: () => Math.max(0, line.offsetWidth - arrow.offsetWidth), ease: 'none', duration: 1 },
+    0,
+  );
   itemEls.forEach((el, i) => {
     tl!.fromTo(
       el,
       { opacity: 0.3 },
       { opacity: 1, duration: 0.12, ease: 'none' },
-      (i / n) * 0.85 + 0.05, // 線頭抵達該欄的近似時間點
+      (i / n) * 0.85 + 0.05, // 箭頭抵達該欄的近似時間點
     );
   });
   if (shift() > 0) {
@@ -92,15 +104,16 @@ function teardown() {
   tl?.scrollTrigger?.kill();
   tl?.kill();
   tl = null;
-  gsap.set([trackRef.value, lineRef.value, ...itemEls].filter(Boolean), {
-    clearProps: 'all',
-  });
+  gsap.set(
+    [trackRef.value, lineRef.value, arrowRef.value, ...itemEls].filter(Boolean),
+    { clearProps: 'all' },
+  );
 }
 
 function onResize() {
   if (resizeTimer) clearTimeout(resizeTimer);
   // end 固定、其餘皆函式值 → refresh 即可，免重建
-  resizeTimer = setTimeout(() => ScrollTrigger.refresh(), 200);
+  resizeTimer = setTimeout(refreshScrollTriggers, 200);
 }
 
 onMounted(() => {
@@ -127,7 +140,7 @@ onBeforeUnmount(() => {
       <slot name="title" />
 
       <div ref="trackRef" class="award-timeline__track">
-        <!-- 歷程線（藍，scaleX 延伸）+ 橘色像素箭頭（定於左端） -->
+        <!-- 歷程線（藍，靜態鋪滿）+ 橘色像素箭頭（隨捲動沿線右移） -->
         <div class="award-timeline__head" aria-hidden="true">
           <img
             ref="lineRef"
@@ -136,6 +149,7 @@ onBeforeUnmount(() => {
             alt=""
           />
           <img
+            ref="arrowRef"
             class="award-timeline__arrow"
             src="/img/news/udn75_news_timeline_arrow.svg"
             alt=""
@@ -185,12 +199,11 @@ onBeforeUnmount(() => {
   background: #fff;
 }
 
+// 舞台為內容自然高度（不撐 100vh）：pin 改在置中時釘住（見 build 的 start）
 .award-timeline__stage {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   width: 100%;
-  height: 100vh;
   overflow: hidden;
 }
 
@@ -209,7 +222,7 @@ onBeforeUnmount(() => {
   }
 }
 
-// 歷程線列（44 高）：藍線落在 y20–24，與箭頭尾線同高、被其覆蓋後自箭頭尖端露出
+// 歷程線列（44 高）：藍線落在 y20–24，與箭頭尾線同高；箭頭疊在線上隨捲動右移
 .award-timeline__head {
   position: relative;
   height: 44px;
@@ -222,7 +235,6 @@ onBeforeUnmount(() => {
   display: block;
   width: 100%;
   height: 4px;
-  transform-origin: 0 50%;
 }
 
 .award-timeline__arrow {

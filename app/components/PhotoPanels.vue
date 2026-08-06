@@ -5,6 +5,7 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 export interface PanelPhoto {
   /** UPic 圖片路徑（不含副檔名與裝置後綴，如 /img/news/udn75_pic04_01） */
@@ -43,7 +44,10 @@ function build() {
   tl = gsap.timeline({
     scrollTrigger: {
       trigger: root,
-      start: 'top top',
+      // 舞台為內容自然高度（非滿版）→ 置中時釘住，上下仍看得到前後文；
+      // 若自然高度超過一屏（橫式手機等）退回貼頂，避免頂部被裁
+      start: () =>
+        root.clientHeight >= window.innerHeight ? 'top top' : 'center center',
       end: () => `+=${shift()}`, // 捲動距離 = 位移量 → 垂直水平 1:1，不搶拍
       pin: true,
       anticipatePin: 1,
@@ -63,7 +67,7 @@ function teardown() {
 
 function onResize() {
   if (resizeTimer) clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => ScrollTrigger.refresh(), 200);
+  resizeTimer = setTimeout(refreshScrollTriggers, 200);
 }
 
 // mob（<768）為 CSS 直排圖列，不建 pin；跨斷點時拆掉／重建
@@ -71,6 +75,8 @@ let mq: MediaQueryList | null = null;
 const onMqChange = (e: MediaQueryListEvent) => {
   teardown();
   if (e.matches) build();
+  // 拆掉／重建都改變佔位與隊列順序 → 走共用 sort+refresh 讓下方 pin 重算
+  refreshScrollTriggers();
 };
 
 onMounted(() => {
@@ -99,6 +105,7 @@ onBeforeUnmount(() => {
     <div ref="stageRef" class="photo-panels__stage">
       <div ref="trackRef" class="photo-panels__track">
         <figure v-for="(p, i) in photos" :key="i" class="photo-panels__item">
+          <!-- eager：軌道是水平平移進場，lazy 圖會在 scrub 途中才解碼、造成掉幀 -->
           <UPic
             classname="photo-panels__img"
             :src="p.src"
@@ -106,6 +113,7 @@ onBeforeUnmount(() => {
             :srcset="['mob']"
             :width="480"
             :height="320"
+            loading="eager"
             :alt="p.alt ?? ''"
           />
           <!-- 圖說可含 <a> 外連結（文案為本地靜態檔，非使用者輸入） -->
@@ -130,12 +138,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   width: 100%;
-  height: auto; // mob 直排：不 pin、不滿版
+  height: auto;
   overflow: hidden;
-
-  @include rwd-min('tablet') {
-    height: 100vh;
-  }
 }
 
 // mob 直排；pad 以上為水平軌道，x 位移由 timeline 依滾動推進
