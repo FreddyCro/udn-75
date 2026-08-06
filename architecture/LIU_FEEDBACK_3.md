@@ -1,9 +1,11 @@
 ## Base
 
+- 8/10 提供完整素材
 - 注意星星
 - Navbar 分享有特別的設計
 - Button hover 元件要音效
 - 作品元件 hover 要音效
+- SEO、GA
 
 ## Hero
 
@@ -13,6 +15,7 @@
 - 人臉段 前面有一段 intro
 - 人臉段最後面背景要從黑色變成白色
 - Face 顏色深，文字大、顏色淺，文字深
+- 影片 RWD 放上 placeholder
 
 ## Forum
 
@@ -49,6 +52,10 @@ navbar 永續祝福錨點設定在笑臉已經完整顯示
 - 下一頁按鈕除了原本的放大縮小，再加上漣漪
 - link 加上
 - photos panel 上下文字靠近一點，可以看參考範例
+- ShowcaseGallery
+  1. 左右順序反了，由右到左
+  2. 加上編號
+	3. 未來要有指定圖片加大的功能
 
 ### 01.News
 
@@ -65,6 +72,13 @@ navbar 永續祝福錨點設定在笑臉已經完整顯示
 ### 04.DATA
 
 - AI搜尋，click 完後，等摘要結果全部出來後，input placeholder 再繼續輪播，並且可以 click 再繼續使用
-- gallery
-  1.  左右順序反了，由右到左
-  2.  加上編號，未來要有指定圖片加大的功能
+
+---
+
+## Yumi 問題
+
+1. 動態時間很短 => pin
+2. intro 很開 => pin
+3. intro 偏下的用意 => pin + 躲 toc
+4. mobile navbar sticky 設定，被景色(問) => fixed 視窗下緣(subpage mobile navbar 下方沒有內容)
+5. pc 錨點和 intro 文字重疊 => pin
