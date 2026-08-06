@@ -1,5 +1,7 @@
 # Memory Index
 
+- [No auto commit](no-auto-commit.md) — 絕不自行 commit；停下來給 commit message，由使用者決定
+- [UI component workflow](ui-component-workflow.md) — 共用元件建置流程與清單在 architecture/components.md；ui/ + U 前綴、五步 SOP
 - [Comment style](comment-style.md) — 註解精簡原則：不寫 Figma node ID、不寫敘事型檔頭，只留維護必要資訊
 - [i18n convention](i18n-convention.md) — 文案外部化慣例，無 i18n 套件，JSON 放 app/locales/
 - [Four animation issues](four-animation-issues.md) — 2026-06-10 確認的四個動態需求摘要，issue 在 temp/issue-01~04
