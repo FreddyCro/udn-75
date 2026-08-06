@@ -86,6 +86,12 @@ const props = defineProps({
   floatMicro: { type: Number, default: 4 },
   /** 漂浮速度倍率 */
   floatSpeed: { type: Number, default: 1.0 },
+  /** glyph alpha 的 gamma（<1 會讓字變飽滿）。
+   *  atlas 縮放時 mipmap 把筆劃攤成半透明，實測總 alpha 只剩原生 fillText 的 0.746，
+   *  整片會比 gemini 暗一截。這一項把部分覆蓋的像素拉回來，1 = 不補償。
+   *  0.6 是對照 gemini 實測校準的：畫面總墨水量（ink bbox 內總亮度／面積）
+   *  1.0→52%、0.55→112%、**0.6→101%**、0.65→97%。 */
+  inkGamma: { type: Number, default: 0.6 },
   /** 透明度明滅幅度（原本寫死 0.18） */
   twinkleAmp: { type: Number, default: 0.06 },
   /** 字級呼吸幅度（原本寫死 0.12） */
@@ -339,6 +345,13 @@ const CONFIG_SCHEMA = [
     key: 'disperseSpread',
     label: '散場範圍 xyz',
     kind: 'csvNum',
+    group: '場景 / 節奏',
+  },
+  {
+    key: 'inkGamma',
+    label: '字墨飽滿度',
+    kind: 'num',
+    step: 0.05,
     group: '場景 / 節奏',
   },
   {
@@ -797,6 +810,7 @@ onMounted(() => {
         uAtlas: { value: atlas.texture },
         uAtlasGrid: { value: new THREE.Vector2(atlas.cols, atlas.rows) },
         uColorRamp: { value: colorRamp },
+        uInkGamma: { value: cfg.inkGamma },
         uColorRandom: { value: cfg.colorMode === 'random' ? 1 : 0 },
         uGlitchCount: { value: glitchCount },
         uGlitchColor: { value: glitchColors },
@@ -901,8 +915,12 @@ onMounted(() => {
           for (int i = 0; i < 4; i++) {
             if (i >= uGlitchCount) break;
             if (uGlitchFps[i] > 0.0 && uGlitchDensity[i] > 0.0) {
-              float frame = floor(uTime * uGlitchFps[i]);
-              float r = hash(aSeed * 127.1 + frame * 311.7 + float(i) * 57.3);
+              // 引數必須維持在小範圍：hash 是 fract(sin(n)·43758)，而 GLSL 的 sin
+              // 在 |n| 大時做不準範圍化，n 到 1e5（uTime 30 秒 × fps × 311.7）就會退化成
+              // 非均勻分佈 —— 實測命中率會膨脹到設定密度的數倍。
+              // 故 frame 先 mod 回小週期再縮成小數，整條引數壓在 ~30 以內。
+              float frame = mod(floor(uTime * uGlitchFps[i]), 251.0) * 0.017;
+              float r = hash(aSeed * 17.13 + frame + float(i) * 2.71);
               if (r < uGlitchDensity[i]) {
                 vGlitchColor = uGlitchColor[i];
                 vGlitchOn = 1.0;
@@ -929,6 +947,7 @@ onMounted(() => {
         uniform sampler2D uAtlas;
         uniform vec2 uAtlasGrid;
         uniform sampler2D uColorRamp;
+        uniform float uInkGamma;
         varying float vAlpha;
         varying float vGlyph;
         varying float vT;
@@ -940,7 +959,9 @@ onMounted(() => {
             (cell.x + gl_PointCoord.x) / uAtlasGrid.x,
             1.0 - (cell.y + gl_PointCoord.y) / uAtlasGrid.y
           );
-          float a = texture2D(uAtlas, uv).a * vAlpha;
+          // atlas 縮放後筆劃被 mipmap 攤成半透明（實測總 alpha 只剩 0.746），
+          // uInkGamma < 1 把部分覆蓋的像素拉回來，讓整片亮度回到 gemini 的水準
+          float a = pow(texture2D(uAtlas, uv).a, uInkGamma) * vAlpha;
           if (a < 0.02) discard;
           vec3 ramp = texture2D(uColorRamp, vec2(clamp(vT, 0.0, 1.0), 0.5)).rgb;
           vec3 col = mix(ramp, vGlitchColor, vGlitchOn);

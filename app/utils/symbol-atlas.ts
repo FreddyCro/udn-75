@@ -10,8 +10,15 @@
 import * as THREE from 'three';
 import { GLYPH_FONT_SCALE } from './symbol-sampler';
 
-/** glyph sprite sheet 的 cell 邊長（px）。字元實際字級遠小於此，靠 mipmap 縮下去。 */
-const CELL = 64;
+/**
+ * glyph sprite sheet 的 cell 邊長（px）。
+ *
+ * 32 而非 64：sprite 在畫面上約 12–20px，從 64px 縮下來要 mipmap 走兩層，
+ * 筆劃被 box filter 攤平 —— 實測總 alpha 只剩原生同尺寸 `fillText` 的 0.746，
+ * 整片字因此暗掉一截（見 buildGlyphAtlas 的註解與 spec § 10）。
+ * 32 讓烘字尺寸（32 × 0.78 ≈ 25px）貼近實際渲染尺寸，縮放倍率降到 ~1.3–2。
+ */
+const CELL = 32;
 
 export interface GlyphAtlas {
   texture: THREE.CanvasTexture;
