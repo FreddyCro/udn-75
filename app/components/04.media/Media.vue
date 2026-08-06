@@ -62,12 +62,10 @@ useMediaIntroMotion({
   <section id="media" ref="sectionRef" class="media" data-metaball-scope>
     <!-- 互動底紋 -->
     <div ref="bgRef" class="media__bg" aria-hidden="true">
-      <HeartMetaball
-        :idle-blob-min="0.1"
-        :idle-blob-max="0.2"
-        :life="3"
-        :roam-area="bgRoamArea"
-      />
+      <!-- 章半徑/壽命一律吃元件預設：舊的 idle-blob-min/max 與 life 是為前一版
+           （legacy/HeartMetaballBlock，cellSize 14px）調的，換成 patch 版後
+           會讓尾巴大上一倍。尾巴大小改在 HeartMetaball 的 tailBlobMin/Max 調。 -->
+      <HeartMetaball :roam-area="bgRoamArea" />
     </div>
 
     <div class="media__inner">

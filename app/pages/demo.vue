@@ -102,15 +102,15 @@ const symbolPhrases = section1.symbol.phrases;
         :float-amp="18"
         :float-micro="0.5"
       />
-      <!-- 前一版底紋（已退出 Section 4，僅此處對照）：中心/外圍兩區 + variant 換抽 -->
-      <HeartMetaball
+      <!-- 前一版底紋（已退役、搬到 legacy/，僅此處對照）：中心/外圍兩區 + variant 換抽 -->
+      <LegacyHeartMetaballBlock
         :idleBlobMin="0.1"
         :idleBlobMax="0.2"
         :idleRoamSpeed="3"
         :life="3"
       />
-      <!-- 現役底紋（Section 4 使用）：4 patch 漂移重疊（線段紋×2、1格棋盤×1、2格棋盤×1） -->
-      <HeartMetaballPatch :idleRoamSpeed="2" />
+      <!-- 現役底紋（Section 4 使用）：三塊紋理 patch 漂移重疊（1格棋盤×1、2格棋盤×1、線段紋×1） -->
+      <HeartMetaball :idleRoamSpeed="2" />
       <!-- <section class="glitch-demo">
         <GlitchImage
           ref="glitchRef"
