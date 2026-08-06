@@ -11,6 +11,12 @@ const config = useRuntimeConfig();
 // 改這裡決定預設狀態；之後任何地方指派 symbolMode.value = 'disperse' | 'converge' | 'face' 即可切換
 const symbolMode = ref<'face' | 'disperse' | 'converge'>('face');
 
+// SymbolFace 版本對照：'matrix' = 新版網格矩陣 / 'scatter' = 改寫前的機率散點版
+// 用 v-if 一次只掛一個：兩者都是 100vh 滿版 WebGL，同時掛載會有兩個 three.js
+// 場景與兩組 RAF（約 30k 粒子），低階機會掉幀。切換時舊元件的 onBeforeUnmount
+// 會 dispose 場景，資源乾淨釋放。
+const symbolVersion = ref<'matrix' | 'scatter'>('matrix');
+
 // GlitchImage 觸發 API（暫用右下角按鈕；之後改由列表 hover/scroll 呼叫 start()）
 const glitchRef = ref<{ start: () => void; reset: () => void } | null>(null);
 const startGlitch = () => glitchRef.value?.start();
@@ -23,8 +29,55 @@ const symbolPhrases = section1.symbol.phrases;
   <div>
     <!-- <AppHeader /> -->
     <main class="main-content">
+      <div class="symbol-switch">
+        <button
+          type="button"
+          :class="{ 'symbol-switch__btn--active': symbolVersion === 'matrix' }"
+          class="symbol-switch__btn"
+          @click="symbolVersion = 'matrix'"
+        >
+          新版 矩陣
+        </button>
+        <button
+          type="button"
+          :class="{ 'symbol-switch__btn--active': symbolVersion === 'scatter' }"
+          class="symbol-switch__btn"
+          @click="symbolVersion = 'scatter'"
+        >
+          舊版 散點
+        </button>
+      </div>
+
       <!-- :auto-mouse="true" -->
       <SymbolFace
+        v-if="symbolVersion === 'matrix'"
+        v-model:mode="symbolMode"
+        :dev="true"
+        :phrases="symbolPhrases"
+        :hole-radius="25"
+        :hole-spread="50"
+        :return-ease="1.5"
+        :friction="1.8"
+        :impulse-strength="10000"
+        :impulse-spray="0.9"
+        :impulse-spray-z="0.6"
+        :velocity-follow="0.1"
+        :max-speed="3000"
+        :max-particles="10000"
+        :color="['#ffffff', '#9fd6ff', '#77c6e0', '#3f8fb5']"
+        bg-color="#000"
+        :sample-step="5"
+        :size-min="16"
+        :size-max="32"
+        :min-density="0.7"
+        :density-gamma="2.4"
+        :dark-boost="1.8"
+        :float-amp="18"
+        :float-micro="0.5"
+      />
+      <!-- 改寫前的快照，props 沿用舊介面、與新版互不牽動（見 legacy/SymbolFaceScatter.vue） -->
+      <LegacySymbolFaceScatter
+        v-else
         v-model:mode="symbolMode"
         :dev="true"
         :phrases="symbolPhrases"
@@ -80,6 +133,36 @@ const symbolPhrases = section1.symbol.phrases;
 </template>
 
 <style scoped>
+/* 新舊版 SymbolFace 對照切換：z-index 需高於 SymbolFace dev 面板（5）
+   與 layout 的 AppHeader（1000）—— 後者是 fixed 滿版頂條，會蓋住左上角。 */
+.symbol-switch {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1001;
+  display: flex;
+  gap: 6px;
+}
+
+.symbol-switch__btn {
+  padding: 8px 14px;
+  font-family: ui-monospace, 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: rgba(20, 22, 28, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.symbol-switch__btn--active {
+  color: #10141b;
+  background: #ffb060;
+  border-color: #ffb060;
+}
+
 .story-section {
   display: flex;
   flex-direction: column;
