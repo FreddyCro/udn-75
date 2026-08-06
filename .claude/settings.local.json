@@ -49,7 +49,8 @@
       "mcp__playwright__browser_resize",
       "mcp__claude_ai_Figma__get_figma_skill",
       "mcp__playwright__browser_console_messages",
-      "Bash(pnpm test *)"
+      "Bash(pnpm test *)",
+      "mcp__playwright__browser_close"
     ]
   }
 }

@@ -49,6 +49,20 @@ const symbolPhrases = section1.symbol.phrases;
       </div>
 
       <!-- :auto-mouse="true" -->
+      <!--
+        ⚠️ Step 0：純 props 的「方向驗證」，元件程式碼一行沒改。
+        目的是先讓設計師確認色盤 / 密度 / 字級三項的方向對不對，再決定要不要投入
+        architecture/2026-08-06-symbol-face-static-plan.md 的 Task 5–9（真正的移植）。
+        數值依 face.png 1013×1478、fit 500×500（scale 0.3383）、視窗高 1080 推算。
+
+        這一版做得到：格子填滿、字不再糊成塊、亮=大、gemini 色盤（暗端收黑）。
+        這一版做不到（要 Task 7 改 shader / 取樣才行）：
+          ・字元仍是隨機指定（glyph = random），與亮度無關 → 圖像辨識度上不去
+          ・字重只有單一 bold，沒有 100→900 九階
+          ・沒有 glitch 跳色（#ff0055 / #00ffcc）
+          ・亮部被 vAlpha 壓到 0.55（shader 寫死，方向與 gemini 相反）→ 高光偏灰
+          ・字級以寫死的 300/600 換算，與格距的 worldToPx 不同單位 → 換視窗高度會失準
+      -->
       <SymbolFace
         v-if="symbolVersion === 'matrix'"
         v-model:mode="symbolMode"
@@ -63,17 +77,21 @@ const symbolPhrases = section1.symbol.phrases;
         :impulse-spray-z="0.6"
         :velocity-follow="0.1"
         :max-speed="3000"
-        :max-particles="10000"
-        :color="['#ffffff', '#9fd6ff', '#77c6e0', '#3f8fb5']"
+        :max-particles="14000"
         bg-color="#000"
-        :sample-step="5"
-        :size-min="16"
-        :size-max="32"
-        :min-density="0.7"
-        :density-gamma="2.4"
-        :dark-boost="1.8"
         :float-amp="18"
         :float-micro="0.5"
+        :chars="[
+          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+          'A', 'B', 'C', 'D', 'E', 'F',
+        ]"
+        :color="['#000000', '#77c6e0', '#d1f4ff', '#ffffff']"
+        :sample-step="4"
+        :min-density="1"
+        :dark-boost="1"
+        :density-gamma="1"
+        :size-min="31"
+        :size-max="13"
       />
       <!-- 改寫前的快照，props 沿用舊介面、與新版互不牽動（見 legacy/SymbolFaceScatter.vue） -->
       <LegacySymbolFaceScatter
