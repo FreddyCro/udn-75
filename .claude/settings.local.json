@@ -48,7 +48,8 @@
       "Bash(cp \"C:/Users/fredd/AppData/Local/Temp/claude/c--Users-fredd-Documents-works-projects-udn-75/09300457-39cf-488a-9ad2-a9e3931aa1ef/scratchpad/forum2.png\" \"C:/Users/fredd/AppData/Local/Temp/claude/c--Users-fredd-Documents-works-projects-udn-75/09300457-39cf-488a-9ad2-a9e3931aa1ef/scratchpad/forum3.png\" temp/compare/)",
       "mcp__playwright__browser_resize",
       "mcp__claude_ai_Figma__get_figma_skill",
-      "mcp__playwright__browser_console_messages"
+      "mcp__playwright__browser_console_messages",
+      "Bash(pnpm test *)"
     ]
   }
 }
