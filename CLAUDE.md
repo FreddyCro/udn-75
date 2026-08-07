@@ -28,6 +28,16 @@
 
 讀取 Figma 時，優先使用 Figma MCP（`mcp__claude_ai_Figma__*` 工具），避免直接呼叫 Figma API。
 
+## 文案（所謂的 i18n）
+
+本專案**沒有多語系切換**，`i18n` 一詞在這裡指的是**文案外部化慣例**，且**不使用任何 i18n 套件**（無 `@nuxtjs/i18n`、無 `vue-i18n`），新增 section 時也不要引入。
+
+- 文字依 section / component 分檔放 `app/locales/*.json`，元件直接 `import str from '~/locales/section-x.json'`。
+- 共用檔：`meta.json`（SEO，在 `app.vue` 用 `useSeoMeta` 消費）、`common.json`（header/nav）、`footer.json`（製作團隊名單）。
+- `meta.json` 的圖片路徑用 runtimeConfig 的 `APP_ASSETS_PATH` 組：`${ASSETS_PATH}/img/${meta.metaImage}`。
+
+目的是把中文文案與排版分離，方便編輯校稿。
+
 ## SCSS
 
 1. 優先使用 BEM（`block__element--modifier`）命名。

@@ -11,9 +11,11 @@ defineProps<{
   visible?: boolean;
 }>();
 
-// OrangeCorePath 以 gsap.set 驅動位置，需要真實 DOM 元素 → 對外曝露 root el。
+// root：OrangeCorePath 以 gsap.set 驅動位置，需要真實 DOM 元素。
+// dot ：Hero 的退場交棒動畫寫在內層（外層的 transform 屬於 path，兩邊不互撞）。
 const root = ref<HTMLElement | null>(null);
-defineExpose({ root });
+const dot = ref<HTMLElement | null>(null);
+defineExpose({ root, dot });
 </script>
 
 <template>
@@ -27,7 +29,7 @@ defineExpose({ root });
     :class="{ 'is-visible': visible }"
     aria-hidden="true"
   >
-    <span class="sec1__orange-core-dot" />
+    <span ref="dot" class="sec1__orange-core-dot" />
   </span>
 </template>
 
@@ -51,7 +53,7 @@ defineExpose({ root });
 }
 
 // 內層 dot：橘方塊本體。留一層是為了「外層走 GSAP 的 transform、內層走自己的形變」不互撞
-// （新稿的階段形變定案後可在此加 transform，不必動外層）。
+// —— 退場交棒動畫（Hero.vue 的 runCoreEntrance）就寫在這一層，外層同時仍被 path 驅動。
 .sec1__orange-core-dot {
   display: block;
   width: 100%;

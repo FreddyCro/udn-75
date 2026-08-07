@@ -1,18 +1,20 @@
 ---
 name: rwd-breakpoint-mapping
-description: 三段式 RWD 設計稿對應：mob 稿套 ≤767、pad 稿套 768–1279、pc 稿 ≥1280
+description: RWD 斷點的權威來源是 mixins.scss；這裡只留它沒寫的三件事（1024 誤傳、JS 判斷值、稿的細切原則）
 metadata:
   type: project
 ---
 
-RWD 設計稿與視窗範圍的對應（2026-07-28 使用者指定並修正，智慧心媒體先行）：
+**斷點值與 mobile-first 寫法的權威來源是 `app/assets/styles/mixins.scss` 開頭的註解**
+（mob 稿 ≤767／pad 稿 768–1279／pc 稿 ≥1280，`rwd-min` / `rwd-max` 用法都在那）。
+不要在這裡再抄一份。以下只留那份註解沒寫、但踩過的三件事：
 
-- **mob 稿**（414 canvas）→ 套用 **≤767**（版面流動縮放，不在 414 再細切）
-- **pad 稿**（768 canvas）→ 套用 **768–1279**（元素多為固定 px，如標題 518 置中）
-- **pc 稿**（1280 canvas）→ **≥1280**（既有基準樣式）
+1. ⚠️ **勿再引用 1024 當 mob/pad 切點。** 使用者 2026-07-28 最初誤說「mob 到 1023」，
+   當天即更正為 767。舊對話與舊註解裡可能還留著 1024，看到請以 767 為準。
+2. **JS 端的判斷值**（mixins.scss 只管 SCSS）：`matchMedia('(max-width: 767.98px)')`
+   與 `'(max-width: 1279.98px)'`。
+3. **mob 稿不在 414 再細切**——414 canvas 的版面直接流動縮放到 ≤767 全段；
+   pad 稿則相反，元素多為固定 px（如標題 518 置中），不隨視窗流動。
 
-**How to apply:** **mobile-first**：基準寫 mob 稿，`@include rwd-min('tablet')`（≥768）蓋 pad 稿、`@include rwd-min('pc')`（≥1280）蓋 pc 稿。JS 判斷用 `matchMedia('(max-width: 767.98px)')` / `1279.98px`。
-
-**Why:** 設計稿只出三套，切點與 canvas 同寬（768 起套 pad 稿、1280 起套 pc 稿）。注意使用者最初誤說 mob 到 1023，已更正為 767——勿再引用 1024 當 mob/pad 切點。
-
-相關：共用箭頭圓鈕素材 `/img/udn75_arrow_circle.svg`（像素箭頭為 fill 縮放不變形；外圈 stroke 0.5 會隨 img 縮放等比，若需定寬可在 circle 加 `vector-effect="non-scaling-stroke"`）。智慧心媒體 mob 開場 motion 為直向組字（[[four-animation-issues]]）。
+相關：共用箭頭圓鈕素材 `/img/udn75_arrow_circle.svg`（像素箭頭為 fill，縮放不變形；
+外圈 stroke 0.5 會隨 img 縮放等比，若需定寬可在 circle 加 `vector-effect="non-scaling-stroke"`）。

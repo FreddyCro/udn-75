@@ -5,6 +5,8 @@
 import str from '@/locales/section1.json';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
 import {
+  HERO_OUTRO_MAX_MS,
+  HERO_OUTRO_STALL_GRACE_MS,
   HERO_SKIP_APPEAR_AT,
   HERO_VIDEO_POSTER,
   HERO_VIDEO_READY_TIMEOUT,
@@ -49,6 +51,11 @@ const ASSETS_PATH = runtime.public.APP_ASSETS_PATH;
 // 掛載後再依實際解析度校正並監聽 resize（同 UVid）。
 const device = ref<HeroVideoDevice>('pc');
 const videoEl = ref<HTMLVideoElement | null>(null);
+const heroEl = ref<HTMLElement | null>(null);
+
+// Hero 需要 <video> 的螢幕矩形與 videoWidth/Height，才能把影片裡那顆 orange core 的落點
+// 換算成螢幕座標（退場交棒，見 ~/utils/hero-core-handoff）。
+defineExpose({ videoEl });
 
 const videoSrc = computed(() => `${ASSETS_PATH}${HERO_VIDEO_SRC[device.value]}`);
 const videoPoster = computed(() => {
@@ -156,9 +163,42 @@ function onError() {
   setState('gone');
 }
 
+// ── 退場段的保險絲 ──────────────────────────────────────────────────
+// outro 期間頁面鎖住（見 useHeroVideo 的 shouldLockScroll），影片若卡住就永遠等不到 gone、
+// 整頁鎖死。timeupdate / @ended 都靠影片自己前進，卡住時兩者都不會來，故另起一支計時器。
+let outroTimer: ReturnType<typeof setTimeout> | undefined;
+
+function clearOutroTimer() {
+  if (outroTimer) {
+    clearTimeout(outroTimer);
+    outroTimer = undefined;
+  }
+}
+
+// ── hero 捲出視窗 → 直接收尾 ────────────────────────────────────────
+// orange core 綁在 gone 上（見 Hero.vue 的 coreVisible），影片沒播完 core 就不會出現。
+// 影片都已經捲出視窗了，繼續播只是讓 core 遲到 —— 直接進 gone。兩種情形都吃得到：
+//   ① 退場播到一半被捲走 → 不必等剩下的秒數
+//   ② 倒帶回 loop 後用捲軸 / End 鍵跳走（沒有 wheel 手勢 → 永遠不會進 outro）
+//      → 否則影片在畫面外無限循環，core 永遠不出現
+// main / loop 期間頁面鎖著、hero 不可能離開視窗，故這條實際上只在「離開過 loop」之後生效。
+let heroIO: IntersectionObserver | null = null;
+
+function armOutroTimer(v: HTMLVideoElement) {
+  const seg = segments.value.outro;
+  const end = segEnd(v, seg);
+  const ms = Number.isFinite(end)
+    ? (end - seg.start) * 1000 + HERO_OUTRO_STALL_GRACE_MS
+    : HERO_OUTRO_MAX_MS;
+  outroTimer = setTimeout(() => {
+    if (heroState.value === 'outro') setState('gone');
+  }, ms);
+}
+
 // 狀態改變（SKIP / 手勢 / 自動推進）→ 對齊該段起點並續播；gone 則停住影片。
 // 已落在目標段內就不 seek，所以「段落相接」的自動推進不會有跳動。
 watch(heroState, (s) => {
+  clearOutroTimer(); // 離開 outro（正常播完或倒帶）都要拆掉保險絲
   const v = videoEl.value;
   if (!v) return;
   if (s === 'gone') {
@@ -172,6 +212,7 @@ watch(heroState, (s) => {
     v.currentTime = seg.start;
   }
   void play();
+  if (s === 'outro') armOutroTimer(v);
 });
 
 // 按下 start 後才開始播 main（見 useHeroVideo 的 heroStarted）
@@ -249,6 +290,19 @@ onMounted(() => {
   window.addEventListener('touchmove', onTouchMove, { passive: true });
   window.addEventListener('keydown', onKeydown);
 
+  // threshold 0 ＝ 完全沒有交集才算離開，與 Hero 判斷「從哪裡進場」用的
+  // isVerticallyOnScreen 同一條界線（見 ~/utils/hero-core-handoff）。
+  if (heroEl.value) {
+    heroIO = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry || entry.isIntersecting || heroState.value === 'gone') return;
+        setState('gone');
+      },
+      { threshold: 0 },
+    );
+    heroIO.observe(heroEl.value);
+  }
+
   // ⚠️ <video> 是 SSR 就吐出來的（帶 src + preload="auto"），瀏覽器在 HTML 解析階段就開始載入，
   // canplay 很可能在 hydration 掛上 @canplay 之前就已經觸發 → 事件永遠等不到，
   // 載入層會一路卡在 99% 直到 HERO_VIDEO_READY_TIMEOUT 才放行。
@@ -267,12 +321,16 @@ onBeforeUnmount(() => {
   window.removeEventListener('touchmove', onTouchMove);
   window.removeEventListener('keydown', onKeydown);
   if (readyTimer) clearTimeout(readyTimer);
+  clearOutroTimer();
+  heroIO?.disconnect();
+  heroIO = null;
 });
 </script>
 
 <template>
-  <!-- id 供 AppHeader 以 IntersectionObserver 監看 hero（捲離後才顯示 header） -->
-  <div class="sec1__hero" id="app-hero">
+  <!-- id 供 AppHeader 以 IntersectionObserver 監看 hero（捲離後才顯示 header）；
+       本元件自己也監看同一個元素 —— 捲出視窗就直接收尾（見上方 heroIO） -->
+  <div ref="heroEl" class="sec1__hero" id="app-hero">
     <!-- 影片層：滿版；退場消失（gone）時淡出，露出 hero 白底 -->
     <div
       class="sec1__hero-video"
@@ -366,6 +424,10 @@ onBeforeUnmount(() => {
 // <video> 本體：滿版裁切置中。
 // RWD 影片「來源」在 ~/utils/hero-video-config 依裝置切換；此處預留各斷點的裁切位置
 // （pad / mob 剪輯到位後，再依設計稿調整 object-position / 尺寸）。
+//
+// ⚠️ 改 object-position 要一起改退場交棒的換算：coverAnchorToScreen 預設以 center 分配
+//    裁切量（見 ~/utils/hero-core-handoff 與 Hero.vue 的 runCoreEntrance），
+//    不同步就會讓 DOM core 疊到影片裡那顆的旁邊。
 .sec1__hero-video-el {
   display: block;
   width: 100%;

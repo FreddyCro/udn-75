@@ -1,3 +1,17 @@
+# 互動需求筆記（設計端原稿）
+
+> **維護註記（2026-08-07）**
+>
+> 以下是設計端交來的原始 motion 需求，**逐字保留、不改寫**，含他們附的參考網站。
+> 多數條目已實作（智慧心媒體 motion、HeartMetaball、FormulaBlocks、PhotoPanels、
+> AiImageQuiz、GlitchImage、AiSearch、ShowcaseGallery）。
+>
+> **仍未實作**：子頁共用的「前往下一篇」呼吸縮放動態。目前四子頁的下一篇按鈕是靜態的，
+> 這裡是該需求唯一的書面來源。
+>
+> ⚠️ **待設計確認的矛盾**：本文寫「hover 時停在 **Default(圓形放大)**」，
+> Figma 元件頁的黃色註解寫「hover 時停在 **small(圓形縮小)**」，兩者相反。動手前先問清楚。
+
 - 智慧心媒體motion
     1. 80vw 色塊左右縮小縮成長條
     2. 直條上下縮小成中心點

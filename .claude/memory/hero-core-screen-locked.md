@@ -18,4 +18,4 @@ hero 段（01.hero）的 orange core 在**螢幕座標上完全靜止**，恆定
 - 要讓 core 在螢幕上真的移動，得破壞等式本身：起訖不要都取 50vh，或另立一段捲動尺。改 `MOVE_EASE` 只會讓它在 50vh 附近前後晃（頭尾仍回到 50vh）。
 - 這個「core 恆在 50vh」的事實反而好用：任何「core 走到文字某處」的時機都能寫成「該處升到視窗中央」的 ScrollTrigger（`start: 'bottom center'` 等），不必算進度門檻 —— 引言淡出就是這樣做的（`INTRO_FADE_VH`，見 Hero.vue 的 introFadeST）。
 
-相關：[[scroll-speed-knob]]
+相關：[[hero-body-lock-rules]]、[[hero-outro-core-handoff]]

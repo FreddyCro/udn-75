@@ -11,11 +11,11 @@
 
 - v hero intro orange core 走在文字後面
 - v hero intro 文字太早消失
-- 人臉段 navbar 黑色主題
+- v 人臉段 navbar 黑色主題
 - 人臉段 前面有一段 intro
 - 人臉段最後面背景要從黑色變成白色
 - v Face 顏色深，文字大、顏色淺，文字深
-- 影片 RWD 放上 placeholder
+- v 影片 RWD 放上 placeholder
 
 ## Forum
 

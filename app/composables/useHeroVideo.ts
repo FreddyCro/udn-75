@@ -39,17 +39,20 @@ export function useHeroVideo() {
   // 供「綁影片時間軸」的判定使用 —— 目前是 skip 按鈕的現身時機（見 HERO_SKIP_APPEAR_AT）。
   const currentTime = useState('hero-video-time', () => 0);
 
-  // 是否已經離開過 loop（進過 outro / gone）。一旦為 true 就「永不重新上鎖」。
+  // 是否已經看完過開場（進過 gone）。一旦為 true 就「永不重新上鎖」。
   //
   // 這是決策而非疏漏（2026-08-04 確認）：倒帶回 loop（rewindToLoop）發生在 scrollY 已是 0
   // 的時候，不鎖也上不去，所以省下重新上鎖的風險 —— iOS 在「往上橡皮筋回彈還在飛」的當下
   // 切 overflow:hidden，畫面可能卡在彈起的位置。
   // 已接受的代價：倒帶回 loop 後頁面可自由捲動，往下滑會同時進 outro 又捲走 hero，
   // 與第一次（鎖住時只觸發 outro、頁面不動）的手感略有不同。
+  //
+  // ⚠️ 判定點是 gone 而非 outro：退場段本身仍要鎖（見下方 shouldLockScroll）。
+  //    rewindToLoop 只在 gone 時有作用，故「倒帶時必為 true」這個前提不受影響。
   const hasLeftLoop = useState('hero-has-left-loop', () => false);
 
   const setState = (s: HeroState) => {
-    if (s === 'outro' || s === 'gone') hasLeftLoop.value = true;
+    if (s === 'gone') hasLeftLoop.value = true;
     state.value = s;
   };
 
@@ -82,11 +85,18 @@ export function useHeroVideo() {
   };
 
   const isGone = computed(() => state.value === 'gone');
-  // main / loop 期間應鎖住頁面捲動；但「離開過 loop」之後不再上鎖（見 hasLeftLoop）。
+  // main / loop / outro 期間鎖住頁面捲動，gone 才解鎖；但「看完過開場」之後不再上鎖
+  // （見 hasLeftLoop）。
+  //
+  // outro 也鎖是 2026-08-07 的修正：退場段一解鎖，觸發退場的那個手勢會「同時」啟動退場
+  // 又把影片往上捲走 → 影片裡那顆 orange core 與 DOM 的 core（恆在視窗 50vh，見
+  // .claude/memory/hero-core-screen-locked.md）差一個「使用者滑了多少」，永遠對不上。
+  // 鎖住這 2.5 秒，影片與視窗維持 1:1，兩顆 core 的落點才是可推算的。
+  // 影片卡住不會鎖死：HeroVideo 進 outro 時會起一支保險絲（HERO_OUTRO_STALL_GRACE_MS）。
   const shouldLockScroll = computed(
     () =>
       !hasLeftLoop.value &&
-      (state.value === 'main' || state.value === 'loop'),
+      (state.value === 'main' || state.value === 'loop' || state.value === 'outro'),
   );
 
   return {

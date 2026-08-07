@@ -50,7 +50,11 @@ export const SYMBOL_TRANSITION = {
 };
 
 // 註：以下常數已於 2026-08-03 隨 date 段 / pinST / 星空斜角轉場一併移除，需要時從 git 取回：
-//   MOVE_VH   — 在 date 之前墊 vh spacer 拉長 scrub 距離＝相對速度旋鈕（見 .claude/memory/scroll-speed-knob.md）
+//   MOVE_VH   — 相對速度旋鈕：在 trigger 區間**內**墊一個空 div 拉長 scrub 距離，同一段動畫要
+//               捲更多才走完 → 看起來變慢。與 ease 正交（ease 只改同一段距離內的節奏分佈）。
+//               spacer 若落在 trigger 元素之外、或 end 用固定 `+=px`，墊高完全不起作用。
+//               取回：git show 7ff9f19:app/utils/orange-core-config.ts（常數）
+//                     git show 7ff9f19:app/components/01.hero/Hero.vue（template spacer）
 //   PIN_VH    — pin 釘住距離（Hero pinST 與 OrangeCorePath 的 end 共用同一值）
 //   CROSSFADE — stage 5 星空淡入所占比例（避免大片半透明星空透出白底而 washy）
 //   TRANSITION— 星空遮罩起點尺寸（由 CORE.dotSize × lineScaleX 推導，永遠對齊那條 core 線）

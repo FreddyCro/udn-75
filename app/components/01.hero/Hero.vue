@@ -5,15 +5,31 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section1.json';
+import { getDeviceTypeByResolution } from '@/utils/get-device';
+import {
+  coverAnchorToScreen,
+  isVerticallyOnScreen,
+  unrotateDelta,
+} from '@/utils/hero-core-handoff';
+import {
+  HERO_CORE_DROP_IN,
+  HERO_CORE_HANDOFF,
+  HERO_OUTRO_CORE_ANCHOR,
+} from '@/utils/hero-video-config';
 
 // ref：
 //   sec1Ref       — 座標範圍 / ScrollTrigger trigger
-//   orangeCoreRef — orange core 元件（曝露 root el 供 GSAP 驅動）
+//   orangeCoreRef — orange core 元件（曝露 root / dot：root 供 path 驅動、dot 供進場動畫）
+//   heroVideoRef  — hero 影片元件（曝露 <video>：core 進場要量它的螢幕矩形）
 //   innerRef      — 含 core / path / 內容的整組（絕對定位原點，也是 transition pin 的目標）
 //   introRef      — 引言整段（含 runway）：path 終點與 pin 起點共用的參照
 //   introBodyRef  — 引言文字本體（不含 runway）：淡出起點的量測對象
 const sec1Ref = ref<HTMLElement | null>(null);
-const orangeCoreRef = ref<{ root: HTMLElement | null } | null>(null);
+const orangeCoreRef = ref<{
+  root: HTMLElement | null;
+  dot: HTMLElement | null;
+} | null>(null);
+const heroVideoRef = ref<{ videoEl: HTMLVideoElement | null } | null>(null);
 const innerRef = ref<HTMLElement | null>(null);
 const introRef = ref<HTMLElement | null>(null);
 const introBodyRef = ref<HTMLElement | null>(null);
@@ -43,7 +59,7 @@ const introOpacity = computed(() => String(1 - introFade.value));
 const introRunway = `${(0.5 + INTRO_FADE_VH) * 100}vh`;
 
 // hero 影片四階段（main/loop/outro/gone）全域共享，定義見 composables/useHeroVideo。
-// 此處只讀狀態驅動畫面與捲動鎖：main / loop 鎖捲動、outro 起解鎖。
+// 此處只讀狀態驅動畫面與捲動鎖：main / loop / outro 鎖捲動、gone 起解鎖。
 //
 // 載入層與影片的握手也走同一份全域狀態：
 //   videoReady — HeroVideo 的 <video> canplay（或逾時 / 載入失敗）時設 true → HeroLoader 收尾條件。
@@ -59,6 +75,16 @@ const {
 } = useHeroVideo();
 
 watch(heroState, applyScrollLock);
+
+// gone ＝ core 的進場時機。fromOutro 只用來回答「影片畫面裡有沒有一顆 core 可以交棒」——
+// 不是所有 gone 都經過退場段（SKIP、hero 捲出視窗的強制收尾都會直接跳過來）。
+watch(heroState, (s, prev) => {
+  if (s !== 'gone') {
+    resetCoreEntrance(); // 倒帶回 loop：收掉動畫、dot 歸位
+    return;
+  }
+  runCoreEntrance(prev === 'outro');
+});
 
 // core 於轉場開始後隱去：其後畫面上那個方塊由 HeroSymbolTransition 接手畫
 // （避免兩層各畫一次而 drift）。以 opacity 隱藏而非 display:none —— 轉場層仍要讀它的螢幕矩形。
@@ -79,6 +105,8 @@ let transitionST: ScrollTrigger | null = null;
 // 故這一刻正是「方塊剛穿出最後一行」。其後吃掉 INTRO_FADE_VH 的捲動距離淡完。
 // trigger 取文字本體（不含 runway）；scrub → 往回捲自動復原。
 let introFadeST: ScrollTrigger | null = null;
+// core 的進場動畫（見 runCoreEntrance）：留著才能在倒帶回 loop 時中途收掉。
+let entranceTween: gsap.core.Tween | null = null;
 
 onMounted(() => {
   // hero 影片體驗一律從頂端開始：停用瀏覽器捲動位置還原，
@@ -97,7 +125,7 @@ onMounted(() => {
   }
 
   // 捲動鎖由本元件「單一擁有」：載入層一掛上就上鎖（此時為 main），一路持有到
-  // outro/gone 才解鎖。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
+  // gone 才解鎖（退場段也鎖，見 useHeroVideo）。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
   // 先解鎖、本元件下一 tick 才重新上鎖，中間會出現「瞬間可捲動」的破口。
   applyScrollLock();
 
@@ -171,7 +199,89 @@ onBeforeUnmount(() => {
   transitionST = null;
   introFadeST?.kill();
   introFadeST = null;
+  entranceTween?.kill();
+  entranceTween = null;
 });
+
+// ── core 的進場（gone 的那一刻）────────────────────────────────────────
+// core 的落點由 OrangeCorePath 驅動（恆在視窗正中央，見
+// .claude/memory/hero-core-screen-locked.md）；這裡只決定「它從哪裡滑過來」，
+// 位移寫在內層 dot，外層仍歸 path 管、兩邊不互撞。三種情形：
+//
+//   影片在畫面上 ＋ 播過退場 → 交棒：疊到影片裡那顆 orange core 身上（位置＋尺寸）
+//     再滑回落點。退場最後幾秒影片畫面裡就有一顆 core，直接淡入會「跳」一下。前提是
+//     「影片與視窗維持 1:1」—— outro 期間鎖住捲動就是為了這件事（見 shouldLockScroll）。
+//     影片剪輯若已把 core 收在畫面正中心（＝ HERO_OUTRO_CORE_ANCHOR 的預設值），
+//     位移與縮放都是 0、這條等於沒作用；它是吸收剪輯落點誤差的保險。
+//
+//   影片已捲出視窗 → 從畫面上緣滑進來。沒有可對齊的目標，硬套交棒會讓 core 從幾千 px
+//     外飛進來。這條同時涵蓋「退場播到一半被捲走」與「根本沒進過 outro 就被捲走」
+//     （兩者都由 HeroVideo 的 heroIO 強制收尾）。
+//
+//   影片在畫面上但沒播過退場（SKIP）→ 什麼都不做，維持單純淡入：畫面上根本沒有
+//     影片那顆 core，硬做交棒會從一個不存在的東西身上滑出來。
+//
+// 影片只剩一角露在上緣時仍走交棒 —— 算出來的起點自然就落在畫面外偏上，與滑入是連續的。
+function runCoreEntrance(fromOutro: boolean) {
+  // 減少動態偏好：不做位移，直接在自己的落點淡入（同本檔其餘 reduced-motion 處理）
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+  const dot = orangeCoreRef.value?.dot ?? null;
+  const core = orangeCoreEl.value;
+  const video = heroVideoRef.value?.videoEl ?? null;
+  if (!dot || !core || !video) return;
+
+  // core 目前的螢幕矩形＝進場的終點（此刻在視窗正中央）
+  const to = core.getBoundingClientRect();
+  if (!to.width) return;
+  const toX = to.left + to.width / 2;
+  const toY = to.top + to.height / 2;
+
+  const videoBox = video.getBoundingClientRect();
+  const onScreen = isVerticallyOnScreen(videoBox, window.innerHeight);
+  if (onScreen && !fromOutro) return; // SKIP
+
+  const fromVideo = onScreen
+    ? coverAnchorToScreen(
+        videoBox,
+        video.videoWidth,
+        video.videoHeight,
+        HERO_OUTRO_CORE_ANCHOR[getDeviceTypeByResolution()],
+      )
+    : null;
+  // 影片在畫面上卻讀不到 metadata（例如載入失敗直接進 gone）→ 沒有可對齊的目標，
+  // 也不該改用滑入（那是為「影片不在畫面上」設計的）→ 退回單純淡入。
+  if (onScreen && !fromVideo) return;
+
+  // 滑入：同一條垂直線、起點在視窗上緣之外（整顆看不見），尺寸不變。
+  // 落點若本來就在上緣之上（捲得很遠的極端情形）就別動 —— 那會變成由下往上滑。
+  if (!fromVideo && toY <= 0) return;
+  const from = fromVideo ?? { x: toX, y: -to.height / 2, size: to.width };
+  const cfg = fromVideo ? HERO_CORE_HANDOFF : HERO_CORE_DROP_IN;
+
+  // core 外層帶著路徑切線 rotation（hero 段恆為 90°），子層的 translate 會跟著轉 →
+  // 先把螢幕位移換回外層的 local 座標，否則水平位移會跑到垂直方向去。
+  const rotation = Number(gsap.getProperty(core, 'rotation')) || 0;
+  const d = unrotateDelta(from.x - toX, from.y - toY, rotation);
+
+  entranceTween?.kill();
+  gsap.set(dot, { x: d.x, y: d.y, scale: from.size / to.width });
+  entranceTween = gsap.to(dot, {
+    x: 0,
+    y: 0,
+    scale: 1,
+    duration: cfg.duration,
+    ease: cfg.ease,
+    onComplete: () => (entranceTween = null),
+  });
+}
+
+function resetCoreEntrance() {
+  entranceTween?.kill();
+  entranceTween = null;
+  const dot = orangeCoreRef.value?.dot;
+  if (dot) gsap.set(dot, { clearProps: 'x,y,scale' });
+}
 
 // main / loop 期間鎖住頁面捲動；其餘（outro / gone）解鎖。
 // 樣式集中在 base.scss 的 .is-scroll-locked：overflow:hidden ＋ padding-right
@@ -236,13 +346,13 @@ function applyScrollLock() {
     <!-- 視覺內容整組包一層 inner：core / path 的絕對定位原點，也是 transition pin 的目標。 -->
     <div ref="innerRef" class="sec1__inner">
       <!-- hero：第一屏影片區塊（已抽為子元件 01.hero/HeroVideo.vue） -->
-      <HeroVideo />
+      <HeroVideo ref="heroVideoRef" />
 
       <!--
-        orange core：影片結束後於第一屏正中央淡入 —— 這是 core 在 DOM 端的起點。
+        orange core：影片退場結束後於第一屏正中央淡入 —— 這是 core 在 DOM 端的起點。
         位置由 OrangeCorePath 以 GSAP 驅動；此處只保留外觀與淡入。
-        🚧 淡入點目前為「第一屏正中央」＝沿用舊稿的 placeholder。新稿的核心是從影片
-           最後一幀的階梯線缺口掉出（設計稿約在 x 515/1280），待正式影片到位後對齊。
+        影片裡那顆 core 的落點若不在畫面正中心，由 runCoreEntrance 在淡入的同一刻補上
+        位移／縮放（落點寫在 HERO_OUTRO_CORE_ANCHOR）。
       -->
       <OrangeCore ref="orangeCoreRef" :visible="coreVisible" />
 

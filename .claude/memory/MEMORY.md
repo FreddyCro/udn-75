@@ -1,21 +1,12 @@
 # Memory Index
 
 - [No auto commit](no-auto-commit.md) — 絕不自行 commit；停下來給 commit message，由使用者決定
-- [UI component workflow](ui-component-workflow.md) — 共用元件建置流程與清單在 architecture/components.md；ui/ + U 前綴、五步 SOP
 - [Comment style](comment-style.md) — 註解精簡原則：不寫 Figma node ID、不寫敘事型檔頭，只留維護必要資訊
-- [i18n convention](i18n-convention.md) — 文案外部化慣例，無 i18n 套件，JSON 放 app/locales/
-- [Four animation issues](four-animation-issues.md) — 2026-06-10 確認的四個動態需求摘要，issue 在 temp/issue-01~04
-- [Section component naming](section-component-naming.md) — agenda 議程時間軸在 02.forum（非 section 3）；section 3 已 rename 為 03.blessing/Blessing.vue
-- [RWD breakpoint mapping](rwd-breakpoint-mapping.md) — mob 稿 ≤767、pad 稿 768–1279、pc ≥1280；用 rwd-max('tablet')/rwd-max('pc')
-- [Subpage hero 100vh](subpage-hero-100vh.md) — 子頁首屏滿版 100svh＋進場 fade-up（不做 sticky）；文案距頂固定、bg 距底比例
-- [News subpage RWD](news-subpage-rwd.md) — /news 三斷點完成紀錄：FormulaBlocks 三舞台、GlitchImage 1280 觸發、待確認問題
-- [Visual subpage RWD](visual-subpage-rwd.md) — /visual 三斷點完成紀錄：mob 測驗邊框盒按鈕、works 作用中列、桂冠圖原寸與 titleCenter
-- [Service subpage RWD](service-subpage-rwd.md) — /service 三斷點完成紀錄：沿用 visual 版型、chart svg 留白規範、figures pad 32
-- [Data subpage RWD](data-subpage-rwd.md) — /data 三斷點完成紀錄：AiSearch 欄寬、ShowcaseGallery designW/spread/vScale 斷點參數
-- [Education/Health subpages](education-health-subpages.md) — /education、/health 完成紀錄：CTA 佔位連結待補、SVG 匯出陷阱、錨點列橫向滑動
-- [Scroll speed knob](scroll-speed-knob.md) — scrub 相對速度＝在 trigger 區間內墊 vh spacer（非調 ease）；已移除，可從 7ff9f19 取回
-- [Hero body lock rules](hero-body-lock-rules.md) — hero 開場捲動鎖逐拍規則：①–⑦ 鎖、⑧ 起解；例外是離開 loop 後永不重鎖
-- [Hero core screen-locked](hero-core-screen-locked.md) — hero orange core 螢幕上完全不動（恆 50vh），是文字捲上去穿過它；路徑距離＝捲動距離由構造必然相等
-- [Forum RWD](forum-rwd.md) — 論壇段 pad/mob 完成紀錄：desktop-first 覆蓋、兩處 display:contents、venue 與稿的差異
-- [Forum core path alignment](forum-core-path-alignment.md) — 動到論壇段設計線／日期版位／段落主標／02.forum 版面前，先讀 architecture/forum-core-path.md
-- [Redesign branch state](redesign-branch-state.md) — redesign branch 改版進度、PRD（單一份）、下一步工作單 temp/issue-05；0.6.0(7ff9f19) 是改版前參考
+- [UI component workflow](ui-component-workflow.md) — 共用元件建置流程與清單在 architecture/components.md；ui/ + U 前綴、五步 SOP
+- [RWD breakpoint mapping](rwd-breakpoint-mapping.md) — 斷點權威來源是 mixins.scss；這裡只留 1024 誤傳的更正、JS matchMedia 值、稿的細切原則
+- [Page route naming](page-route-naming.md) — 六子頁路由↔單位對應與閱讀順序（下一篇鏈）；JSON 改名史
+- [Hero body lock rules](hero-body-lock-rules.md) — hero 開場捲動鎖逐拍規則；.is-scroll-locked 必須同時掛 html 與 body 否則完全無效
+- [Hero core screen-locked](hero-core-screen-locked.md) — hero orange core 螢幕上完全不動（恆 50vh），是文字捲上去穿過它；程式註解本身會誤導
+- [Hero outro core handoff](hero-outro-core-handoff.md) — 影片裡的 core → DOM core 交棒：anchor 在 config、cover 換算與旋轉補償在 hero-core-handoff.ts
+- [Forum RWD](forum-rwd.md) — 動 02.forum 版面前先讀 architecture/forum-core-path.md；desktop-first 例外的理由、特異度陷阱
+- [Subpage hero 100vh](subpage-hero-100vh.md) — 子頁首屏滿版 100svh＋進場 fade-up（不做 sticky）；hero 須保留 position: relative

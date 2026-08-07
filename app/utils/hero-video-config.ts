@@ -9,6 +9,8 @@
 // 目前只有 pc 版一支剪輯（實測 40.02s，main / loop / outro 都在同一支裡），
 // pad / mob 尚未提供 → 先指向同一支、段落秒數共用。
 
+import type { HeroCoreAnchor } from './hero-core-handoff';
+
 export type HeroVideoDevice = 'mob' | 'pad' | 'pc';
 
 /** 有影片的階段（對應 HeroState 前三個；gone 已無影片，不占時間軸） */
@@ -83,3 +85,48 @@ export const HERO_SKIP_APPEAR_AT = 3;
 // 等待影片「可播放」的上限（ms）：逾時就放行 HeroLoader，
 // 避免慢速網路／大檔案把載入層永遠卡在 99%。
 export const HERO_VIDEO_READY_TIMEOUT = 8000;
+
+// ── 退場交棒：影片裡那顆 orange core 的落點 ────────────────────────────
+// gone 那一刻 DOM 的 OrangeCore 要「長在影片裡那顆 core 的位置上」再滑回自己的落點，
+// 兩顆才不會錯開（見 01.hero/Hero.vue 的 runCoreEntrance 與 ~/utils/hero-core-handoff）。
+//
+// 座標是**影片畫面**的正規化比例，不是螢幕比例 —— object-fit: cover 會等比放大並裁掉溢出
+// 部分，換算交給 coverAnchorToScreen，故換視窗尺寸 / 換斷點都不必重量。
+//
+// 怎麼量：DevHeroVideoControls 切到「3.退場」，把影片停在交棒的那一幀（＝ outro.end），
+// 截圖量那顆橘塊的中心與邊長，各除以影片畫面尺寸（pc 版 1920×1080）：
+//   x = 中心x ÷ 1920   y = 中心y ÷ 1080   size = 邊長 ÷ 1920
+//
+// 預設值＝畫面正中心、邊長換算後在 1280 寬視窗上剛好 26px（＝ orange-core-config 的
+// CORE.dotSize）。影片剪輯本來就把 core 收在正中心的話，這組預設不必動，交棒位移為 0。
+export const HERO_OUTRO_CORE_ANCHOR: Record<HeroVideoDevice, HeroCoreAnchor> = {
+  pc: { x: 0.5, y: 0.5, size: 39 / 1920 },
+  pad: { x: 0.5, y: 0.5, size: 39 / 1920 }, // TODO: 換成 pad 版剪輯後重量
+  mob: { x: 0.5, y: 0.5, size: 39 / 1920 }, // TODO: 換成 mob 版剪輯後重量
+};
+
+// 交棒動畫：DOM core 從影片那顆的位置／尺寸滑回自己的位置／26px。
+// 略短於影片層的淡出（0.8s，見 HeroVideo 的 .sec1__hero-video）—— 讓 core 先歸位、
+// 影片再淡完；反過來會先看到影片消失、core 才開始動。
+export const HERO_CORE_HANDOFF = {
+  duration: 0.55,
+  ease: 'power2.out',
+} as const;
+
+// 影片已經捲出視窗才進 gone（倒帶回 loop 之後不重新上鎖，再往下滑就會這樣 ——
+// 見 .claude/memory/hero-body-lock-rules.md 的例外條款）：畫面上沒有可對齊的目標，
+// 改讓 core 從畫面上緣滑到自己的落點。
+// 走的距離約半個視窗高（交棒只有幾十 px），故比 HERO_CORE_HANDOFF 慢。
+export const HERO_CORE_DROP_IN = {
+  duration: 0.9,
+  ease: 'power2.out',
+} as const;
+
+// ── 退場段的保險絲 ────────────────────────────────────────────────────
+// outro 期間頁面是鎖住的（見 useHeroVideo 的 shouldLockScroll）—— 影片若卡住（緩衝、
+// seek 失敗、分頁被切走）就永遠等不到 gone、整頁鎖死。進 outro 時起算「該段應有長度
+// ＋ 這個寬限」，逾時直接進 gone。
+export const HERO_OUTRO_STALL_GRACE_MS = 3000;
+
+/** duration 還讀不到（outro.end 填 HERO_VIDEO_END）時，退場段的絕對上限（ms） */
+export const HERO_OUTRO_MAX_MS = 15000;
