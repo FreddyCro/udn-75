@@ -143,7 +143,7 @@ useMediaIntroMotion({
   }
 
   @include rwd-min('pc') {
-    padding: 46px 108px 0;
+    padding: 80px 108px 0; // 設計稿 951-36596：標題距頂 80
   }
 }
 
@@ -161,16 +161,17 @@ useMediaIntroMotion({
     margin-inline: auto;
   }
 
-  // pc 稿：欄寬 509、18/32 Light、靠左
+  // pc 稿（951-36596）：欄寬 518、18/36 Light、靠左（標題底 → 內文頂 16）
   @include rwd-min('pc') {
-    max-width: 509px;
-    margin: 28px 0 0;
-    line-height: 32px;
+    max-width: 518px;
+    margin: 16px 0 0;
   }
 }
 
-// 底紋活動帶：內文與清單之間讓給互動底紋的留白（mob 稿固定 384；pad 以上
-// flex 彈性撐開＝把清單推到視窗底的推擠來源），也是 JS 量測漂移範圍的依據
+// 底紋活動帶：內文與清單之間讓給互動底紋的留白（mob 稿固定 384；pad 稿
+// flex 彈性撐開＝把清單推到視窗底的推擠來源），也是 JS 量測漂移範圍的依據。
+// pc 稿（951-36596）改固定 73：標題 80＋內容 247＋roam 73 → 清單頂＝400，
+// 清單不再貼視窗底，section 以 min-height 100vh 收尾
 .media__roam {
   height: 384px;
 
@@ -178,6 +179,12 @@ useMediaIntroMotion({
     flex: 1 1 0;
     height: auto;
     min-height: 40px; // 視窗過矮時與清單的最小間距
+  }
+
+  @include rwd-min('pc') {
+    flex: 0 0 auto;
+    height: 114px;
+    min-height: 0;
   }
 }
 

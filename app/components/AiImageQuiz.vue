@@ -28,6 +28,9 @@ const props = withDefaults(
   },
 );
 
+// 對錯圖示為 runtime 組出的動態路徑，須自行補資產前綴
+const assetUrl = useAssetUrl();
+
 const picked = ref(-1); // 使用者選的 index；-1 = 未作答
 const answered = computed(() => picked.value >= 0);
 const isCorrect = computed(() => props.options[picked.value]?.isAi === true);
@@ -105,32 +108,19 @@ function pick(i: number) {
       <p class="ai-quiz__hint">說明：</p>
       <div class="ai-quiz__body" :class="{ 'ai-quiz__body--open': answered }">
         <div class="ai-quiz__body-inner">
+          <!-- 對稿只有圖示不帶文字；對錯文字保留在 alt 供 aria-live 朗讀 -->
           <p class="ai-quiz__badge" aria-live="polite">
-            <svg
+            <img
               class="ai-quiz__badge-icon"
-              viewBox="0 0 28 28"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <circle cx="14" cy="14" r="12.5" stroke="#fff" stroke-width="1.5" />
-              <path
-                v-if="isCorrect"
-                d="m8.5 14.5 3.8 3.8 7.2-8"
-                stroke="#fff"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <path
-                v-else
-                d="M9.5 9.5 18.5 18.5M18.5 9.5 9.5 18.5"
-                stroke="#fff"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              />
-            </svg>
-            {{ isCorrect ? correctLabel : wrongLabel }}
+              :src="
+                assetUrl(
+                  isCorrect
+                    ? '/img/visual/udn75_quiz_correct.svg'
+                    : '/img/visual/udn75_quiz_wrong.svg',
+                )
+              "
+              :alt="isCorrect ? correctLabel : wrongLabel"
+            />
           </p>
           <p v-if="explain" class="ai-quiz__explain">{{ explain }}</p>
         </div>
@@ -306,23 +296,14 @@ function pick(i: number) {
 
 .ai-quiz__badge {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  width: fit-content;
-  margin: 12px auto 0;
-  padding: 7px 16px;
-  font-size: var(--text-h5);
-  line-height: var(--text-h5--line-height);
-  font-weight: 400;
-  color: #fff;
-  background: var(--color-orange);
+  justify-content: center;
+  margin: 12px 0 0;
 }
 
 .ai-quiz__badge-icon {
   display: block;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 48px;
+  height: 48px;
 }
 
 .ai-quiz__explain {

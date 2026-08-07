@@ -32,15 +32,19 @@ interface MediaIntroMotionTargets {
 
 /**
  * 智慧媒體開場 motion：morph 色塊分鏡組字 → settle 交棒完成態標題。
- * section 頂到視窗頂即 pin 定住，整段分鏡以捲動 scrub 驅動（捲多少播多少、
- * 回捲倒帶，同 FormulaBlocks pc）；prefers-reduced-motion 直接顯示完成態。
+ * 兩段式播放：section 頂到視窗頂 pin 定住並「自動」播放，播到 phase2
+ * （morph 收成一個點、左右 bar 消失）暫停；使用者再捲動才續播到結束
+ * （續播仍為時間驅動，非 scrub）。prefers-reduced-motion 直接顯示完成態。
  * 分鏡稿：pc / pad＝951-40360（橫向、有 bar）、mob＝6070-56570（直向、無 bar）；
  * 分件位置全在 D／BAR／QUOTE／HOME 常數表（分鏡稿 px、777 基準），改稿改表。
  */
 export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
-  // pin 期間可捲動距離（px）＝整段分鏡的捲動長度（timeline 約 5s ≈ 400px/s）
-  const PIN_DISTANCE = 2000;
+  // pin 期間可捲動距離（px）：只是給「再捲動續播」的緩衝，非分鏡長度
+  const PIN_DISTANCE = 1200;
+  // 暫停後需再捲多少（pin 進度差）才續播：0.02 × 1200 ≈ 24px，一撥滾輪即觸發
+  const RESUME_DELTA = 0.02;
   let tl: gsap.core.Timeline | null = null;
+  let st: ScrollTrigger | null = null;
 
   const buildMotion = () => {
     const section = targets.section.value;
@@ -68,6 +72,7 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const revealEls = [bg, body, ...rows].filter(Boolean);
 
     // 重播（如 HMR）殘留的 inline 樣式會讓量測失準，先全部清掉
+    st?.kill();
     tl?.kill();
     gsap.set(
       [title, titleFinal, titleMotion, ...all, heartBox, morph, barL, barR, lineL, lineR],
@@ -149,19 +154,50 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const MORPH_W = 12;
     const MORPH_H = 82;
 
-    // pin＋scrub：section 頂到視窗頂定住、分鏡由捲動進度驅動（可逆）。
-    // 不設 invalidateOnRefresh——各 tween 的目標值是建置時量好的常數，
-    // refresh 重抓起始值反而會在捲動中途污染狀態。
-    tl = gsap.timeline({
-      scrollTrigger: {
-        trigger: section,
-        start: 'top top',
-        end: `+=${PIN_DISTANCE}`,
-        pin: true,
-        anticipatePin: 1,
-        scrub: true,
+    // timeline 為時間驅動（paused 起始），播放時機全由下方 ScrollTrigger 的
+    // pin 回呼控制：進 pin 起播 → addPause('phase2') 停 → 再捲動續播。
+    tl = gsap.timeline({ paused: true });
+
+    // 暫停後的續播判斷：記下暫停當下的 pin 進度，之後只要進度再變化
+    // （＝使用者又捲動了）就續播；若已捲離 pin 段（leftPin）則不等捲動直接播完。
+    // 續播須從 pause 點「微幅跳過」再播——原地 play() 會立刻再次觸發同一個
+    // addPause（並把 pausedAt 蓋成新進度），永遠停在點的狀態。
+    let leftPin = false;
+    let pausedAt = -1;
+    const resumeFromPause = () => tl?.play(tl.time() + 0.001);
+    const onPhase2Pause = () => {
+      if (leftPin) {
+        resumeFromPause();
+        return;
+      }
+      pausedAt = st?.progress ?? 0;
+    };
+
+    st = ScrollTrigger.create({
+      trigger: section,
+      start: 'top top',
+      end: `+=${PIN_DISTANCE}`,
+      pin: true,
+      anticipatePin: 1,
+      onEnter: () => tl?.play(),
+      onUpdate: (self) => {
+        if (tl?.paused() && Math.abs(self.progress - pausedAt) > RESUME_DELTA)
+          resumeFromPause();
+      },
+      // 快速捲過 pin 段：之後不再有 onUpdate，暫停中（或即將暫停）都直接播完
+      onLeave: () => {
+        leftPin = true;
+        if (tl?.paused()) resumeFromPause();
+      },
+      onEnterBack: () => (leftPin = false),
+      // 回捲到 section 之前＝重來：歸零暫停，下次進場重播
+      onLeaveBack: () => {
+        leftPin = false;
+        pausedAt = -1;
+        tl?.pause(0);
       },
     });
+
     tl
       // 1. 色塊（BLOCK_VW×100vh）左右縮成直條
       .fromTo(
@@ -189,11 +225,14 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       )
       .to(sides[0]!, { ...partAt(0, D.inner), duration: 0.6, ease: 'power2.inOut' }, 'text')
       .to(sides[1]!, { ...partAt(1, D.inner), duration: 0.6, ease: 'power2.inOut' }, 'text')
-      // 5. 中心點抽高成直線
+      // ── phase2：morph 已收成點、（pc/pad）bar 也已甩出消失 → 在此暫停等捲動 ──
+      .addLabel('phase2', `text+=${hasBars ? 0.9 : 0.6}`)
+      .addPause('phase2', onPhase2Pause)
+      // 5. 中心點抽高成直線（續播起手式）
       .to(
         morph,
         { scaleY: lineH / MORPH_H, duration: 0.35, ease: 'power3.inOut' },
-        'text+=0.85',
+        'phase2',
       )
       // 6. 直線分裂成兩個引號：兩線飛到上／下引號的中心並收成引號高，
       //    抵達時原地交棒（線淡出、引號自窄條展開）；文字同拍撐開到定位
@@ -289,13 +328,15 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     gsap.registerPlugin(ScrollTrigger);
-    // 掛載即建置（scrub 的 timeline 必須先於捲動存在）；量測只需 layout 完成，
-    // 不需 section 進到視窗。進到 pin 起點前 timeline 停在 0＝分鏡 1 色塊蓋版。
+    // 掛載即建置（pin 的量測只需 layout 完成，不需 section 進到視窗）；
+    // 進到 pin 起點前 timeline 停在 0＝分鏡 1 色塊蓋版。
     buildMotion();
   });
 
   onBeforeUnmount(() => {
-    tl?.scrollTrigger?.kill();
+    st?.kill();
+    st = null;
     tl?.kill();
+    tl = null;
   });
 }
