@@ -49,7 +49,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section id="blessing" class="section3">
+  <section id="blessing" class="section3" data-header-theme="orange">
     <!-- ① 逐格臉屏 -->
     <div
       ref="trackRef"

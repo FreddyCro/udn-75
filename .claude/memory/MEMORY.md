@@ -16,5 +16,6 @@
 - [Scroll speed knob](scroll-speed-knob.md) — scrub 相對速度＝在 trigger 區間內墊 vh spacer（非調 ease）；已移除，可從 7ff9f19 取回
 - [Hero body lock rules](hero-body-lock-rules.md) — hero 開場捲動鎖逐拍規則：①–⑦ 鎖、⑧ 起解；例外是離開 loop 後永不重鎖
 - [Hero core screen-locked](hero-core-screen-locked.md) — hero orange core 螢幕上完全不動（恆 50vh），是文字捲上去穿過它；路徑距離＝捲動距離由構造必然相等
+- [Forum RWD](forum-rwd.md) — 論壇段 pad/mob 完成紀錄：desktop-first 覆蓋、兩處 display:contents、venue 與稿的差異
 - [Forum core path alignment](forum-core-path-alignment.md) — 動到論壇段設計線／日期版位／段落主標／02.forum 版面前，先讀 architecture/forum-core-path.md
 - [Redesign branch state](redesign-branch-state.md) — redesign branch 改版進度、PRD（單一份）、下一步工作單 temp/issue-05；0.6.0(7ff9f19) 是改版前參考

@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { NmdHeaderShare } from '@udn-digital-center/common-components';
-import { shareURL_fb, shareURL_line, shareURL_twitter } from '@/utils/share';
 import str from '@/locales/common.json';
 import logoUrl from '@/assets/img/logo.svg';
+import {
+  pickHeaderTheme,
+  type HeaderTheme,
+  type ThemeSpan,
+} from '@/utils/header-theme';
 
 /**
- * AppHeader — 只做白底版本。
- * - 桌機（≥1024px）：logo 靠左 ＋ 錨點導覽 ＋ share，合併於頂部單一列。
- * - 手機（<1024px）：頂部 navbar（logo 置中 ＋ share）＋ 底部 TOC（三個錨點）。
+ * AppHeader — 底色隨捲動段落切換白／黑／橘（見 data-header-theme、updateTheme）。
+ * - ≥1280：logo 靠左 ＋ AppHeaderNav 錨點列 ＋ 音效 ＋ share，合併於頂部單一列。
+ * - <1280：頂部 navbar（logo 置中／靠左 ＋ 音效 ＋ 漢堡）＋ 漢堡開啟 AppHeaderMenu 全螢幕選單。
  * - 頂部閱讀進度條（橘色進度 / 淺藍底軌）。
- * 沿用原 app header 的 share 功能（NmdHeaderShare）。
  */
 
 interface Anchor {
@@ -26,16 +28,20 @@ const props = defineProps({
   autoHide: { type: Boolean, default: true },
 });
 
+// 錨點列只在首頁顯示；子頁改用 SubpageAnchor / SubpageAnchorBar。
+// 用路由而非 autoHide 判斷，兩者語意不同，日後子頁若也想 autoHide 不會互相牽動。
+const route = useRoute();
+const showNav = computed(() => route.path === '/');
+
 const progress = ref(0);
 const activeTarget = ref<string>('');
+const menuOpen = ref(false);
+const theme = ref<HeaderTheme>('light');
+let themeEls: HTMLElement[] = [];
 // header 是否顯示。autoHide=false 時自始為 true（含 SSR），避免子頁載入時的滑入動畫；
 // autoHide=true 時初始隱藏，待 hero 完全捲離視窗才顯示。
 const isVisible = ref(!props.autoHide);
 const anchors = str.headerAnchors as Anchor[];
-
-// NmdHeaderShare 內部會 inject 'isHeaderShown'（原本由 NmdHeader 提供）。
-// 這裡自行提供，避免 console 警告；本 header 常駐顯示故固定為 true。
-provide('isHeaderShown', ref(true));
 
 let observer: IntersectionObserver | null = null;
 let heroObserver: IntersectionObserver | null = null;
@@ -44,6 +50,10 @@ let heroRafId = 0;
 
 onMounted(() => {
   updateProgress();
+  themeEls = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-header-theme]'),
+  );
+  updateTheme();
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', onScroll, { passive: true });
 
@@ -53,11 +63,20 @@ onMounted(() => {
     .filter((el): el is HTMLElement => !!el);
 
   if (sections.length) {
+    // 維護「目前與中央帶重疊的區塊」集合，再由它推導 activeTarget。
+    // 只在 isIntersecting 時設值（不處理離開）會讓錨點永遠停在第一個曾命中的區塊上：
+    // hero 期間 ScrollTrigger 還沒建立 pin spacer，文件較短、#forum 位置偏高會誤觸一次，
+    // 之後就再也清不掉 —— 表現就是 hero 時「論壇」已經是 active。
+    const visible = new Set<string>();
     observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) activeTarget.value = entry.target.id;
+          if (entry.isIntersecting) visible.add(entry.target.id);
+          else visible.delete(entry.target.id);
         });
+        // 同時命中兩區塊時取文件順序較前者（＝ anchors 的順序）。
+        activeTarget.value =
+          anchors.find((a) => visible.has(a.target))?.target ?? '';
       },
       { rootMargin: '-45% 0px -45% 0px', threshold: 0 },
     );
@@ -118,10 +137,25 @@ function updateProgress() {
     total > 0 ? Math.min(100, (window.scrollY / total) * 100) : 0;
 }
 
+// 偵測線＝header 底緣。段落用 data-header-theme 宣告顏色，子頁不標 → 回落 light。
+function updateTheme() {
+  const headerBottom = getHeaderOffset();
+  const spans: ThemeSpan[] = themeEls.map((el) => {
+    const r = el.getBoundingClientRect();
+    return {
+      top: r.top,
+      bottom: r.bottom,
+      theme: (el.dataset.headerTheme ?? 'light') as HeaderTheme,
+    };
+  });
+  theme.value = pickHeaderTheme(spans, headerBottom);
+}
+
 function onScroll() {
   if (rafId) return;
   rafId = window.requestAnimationFrame(() => {
     updateProgress();
+    updateTheme();
     rafId = 0;
   });
 }
@@ -139,10 +173,18 @@ function scrollToTop(e?: Event) {
   e?.preventDefault();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+// 選單面板是白底（設計稿只有這一版），開啟期間 header 一併切白底
+const effectiveTheme = computed<HeaderTheme>(() =>
+  menuOpen.value ? 'light' : theme.value,
+);
 </script>
 
 <template>
-  <header class="app-header" :class="{ 'is-visible': isVisible }">
+  <header
+    class="app-header"
+    :class="[`app-header--${effectiveTheme}`, { 'is-visible': isVisible }]"
+  >
     <!-- 閱讀進度 -->
     <div v-show="isVisible" class="app-header__progress">
       <div
@@ -151,7 +193,7 @@ function scrollToTop(e?: Event) {
       />
     </div>
 
-    <!-- 頂部列（桌機：全部 / 手機：logo ＋ share） -->
+    <!-- 頂部列（≥1280：logo ＋ 錨點列 ＋ 音效 ＋ share；<1280：logo ＋ 音效 ＋ 漢堡） -->
     <div class="app-header__bar-wrap">
       <div class="app-header__bar">
         <a
@@ -161,95 +203,110 @@ function scrollToTop(e?: Event) {
           @click="scrollToTop"
         >
           <img
+            class="app-header__logo-img"
             :src="logoUrl"
             alt="聯合七五・智慧未來 UDN 75 — Shaping An Intelligent Future"
           />
+          <span class="app-header__logo-mask" aria-hidden="true" />
         </a>
 
-        <div class="app-header__nav-wrap">
-          <nav class="app-header__nav">
-            <a
-              v-for="anchor in anchors"
-              :key="anchor.target"
-              class="app-header__link"
-              :class="{ 'is-active': activeTarget === anchor.target }"
-              :href="`#${anchor.target}`"
-              @click="scrollToTarget(anchor.target, $event)"
-            >
-              {{ anchor.title }}
-            </a>
-          </nav>
+        <div class="app-header__actions">
+          <AppHeaderNav
+            v-if="showNav"
+            :anchors="anchors"
+            :active-target="activeTarget"
+            @select="scrollToTarget"
+          />
 
-          <div class="app-header__share">
-            <ClientOnly>
-              <NmdHeaderShare
-                :facebook="{ href: shareURL_fb }"
-                :line="{ href: shareURL_line, target: '_blank' }"
-                :twitter="{ href: shareURL_twitter }"
-              />
-            </ClientOnly>
+          <div class="app-header__icons">
+            <AppHeaderSound />
+            <!-- 包一層 div 而非把 class 掛在元件上：兩邊 scoped 樣式同特異度，
+                 靠檔案順序決勝不可靠（同 subpage.vue 那個 !important 的教訓） -->
+            <div class="app-header__share">
+              <AppHeaderShare />
+            </div>
+            <button
+              class="app-header__menu-toggle"
+              type="button"
+              :aria-label="menuOpen ? '關閉選單' : '開啟選單'"
+              :aria-expanded="menuOpen"
+              @click="menuOpen = !menuOpen"
+            >
+              <AppHeaderIcon :name="menuOpen ? 'close' : 'menu'" />
+            </button>
           </div>
         </div>
       </div>
     </div>
 
-    <!--
-      手機底部 TOC（首頁區塊錨點）。
-      注意：子頁（layouts/subpage.vue）用 SubpageAnchorBar 佔住視窗下緣同一位置，
-      目前由該 layout 以 :deep(.app-header__toc) { display: none } 就地關掉；
-      待 header／layout 統一調整時改為由此元件控制（見該 layout 的 TODO）。
-    -->
-    <nav class="app-header__toc">
-      <a
-        v-for="anchor in anchors"
-        :key="anchor.target"
-        class="app-header__link"
-        :class="{ 'is-active': activeTarget === anchor.target }"
-        :href="`#${anchor.target}`"
-        @click="scrollToTarget(anchor.target, $event)"
-      >
-        {{ anchor.title }}
-      </a>
-    </nav>
+    <AppHeaderMenu
+      :open="menuOpen"
+      :anchors="anchors"
+      :active-target="activeTarget"
+      @close="menuOpen = false"
+      @select="scrollToTarget"
+    />
   </header>
 </template>
 
 <style lang="scss" scoped>
-$bar-bg: rgba(255, 255, 255, 0.7);
-$pc-min: 1024px;
-
 .app-header {
   position: fixed;
   inset: 0 0 auto 0;
   z-index: 1000;
   font-family: 'Noto Sans TC', sans-serif;
+  --hd-icon-h: 28px; // mob／pad 稿的 icon 外框高
+  --hd-bg: rgb(255 255 255 / 0.7);
+  --hd-fg: var(--color-gray);
+  --hd-accent: var(--color-orange);
+
+  @include rwd-min('pc') {
+    --hd-icon-h: 22px;
+  }
+
+  &--dark {
+    --hd-bg: rgb(0 0 0 / 0.5);
+    --hd-fg: #fff;
+    --hd-accent: var(--color-orange);
+  }
+
+  &--orange {
+    --hd-bg: color-mix(in srgb, var(--color-orange) 70%, transparent);
+    --hd-fg: #fff;
+    --hd-accent: #fff;
+  }
 }
 
 /* 顯示/隱藏：捲過 hero 後才滑入。
-   注意：transform 不可加在 .app-header 上，否則會成為底部 fixed TOC 的
-   containing block，害 .app-header__toc 的 bottom 定位跑掉。因此上方列與
-   底部 TOC 各自做位移動畫。 */
+   注意：transform 不可加在 .app-header 上，否則會成為子層 AppHeaderMenu（position: fixed）的
+   containing block，害它的 inset 定位跑掉。因此位移動畫只做在 bar-wrap 上。
+   這個 class 只能定義一次：曾經拆成兩處（各自宣告 transition），後宣告的 shorthand 會整個
+   覆蓋前者、把 transform 那段吃掉，變成滑入動畫失效、reduced-motion 的 transition:none 也
+   同時被蓋掉。合併後 transition 要同時列出 transform 與 background-color 兩段。 */
 .app-header__bar-wrap {
-  transition: transform 0.3s ease;
+  position: relative;
+  z-index: 2; // 疊在選單面板（z-index 1）之上，主列不被面板蓋住
+  display: flex;
+  justify-content: center;
+  margin: 0 auto;
+  background-color: var(--hd-bg);
+  backdrop-filter: blur(2px);
+  transition:
+    transform 0.3s ease,
+    background-color 0.3s ease;
   transform: translateY(-100%);
 }
 
-.app-header__toc {
-  transition: transform 0.3s ease;
-  transform: translateY(100%);
-}
-
 .app-header.is-visible {
-  .app-header__bar-wrap,
-  .app-header__toc {
+  .app-header__bar-wrap {
     transform: translateY(0);
   }
 }
 
+// 必須放在 .app-header__bar-wrap 本體之後：兩者特異度相同，靠來源順序覆蓋。
 @media (prefers-reduced-motion: reduce) {
   .app-header__progress,
-  .app-header__bar-wrap,
-  .app-header__toc {
+  .app-header__bar-wrap {
     transition: none;
   }
 }
@@ -267,129 +324,125 @@ $pc-min: 1024px;
   transition: width 0.15s linear;
 }
 
-.app-header__bar-wrap {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  margin: 0 auto;
-  background-color: $bar-bg;
-  backdrop-filter: blur(2px);
-}
-
 .app-header__bar {
   position: relative;
+  display: flex;
+  align-items: center;
   width: 100%;
   max-width: 1920px;
   height: calc(var(--header-height) - 3px);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
   padding: 0 20px;
+
+  // mob：logo 靠左；pad：logo 置中；pc：logo 靠左＋錨點列
+  justify-content: flex-start;
+
+  @include rwd-min('tablet') {
+    justify-content: center;
+  }
+
+  @include rwd-min('pc') {
+    justify-content: space-between;
+    gap: 24px;
+  }
 }
 
 .app-header__logo {
   display: inline-flex;
-  align-items: center;
   flex-shrink: 0;
-
-  img {
-    display: block;
-    width: auto;
-    height: 37px;
-  }
-}
-
-.app-header__nav-wrap {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-}
-
-.app-header__nav {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-}
-
-.app-header__share {
-  flex-shrink: 0;
-  display: flex;
   align-items: center;
 }
 
-/* 錨點連結（桌機 nav ＋ 手機 TOC 共用） */
-.app-header__link {
-  position: relative;
-  flex-shrink: 0;
-  padding: 4px 0;
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 1.4;
-  color: var(--color-gray);
-  text-decoration: none;
-  white-space: nowrap;
-
-  &::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 2px;
-    background-color: var(--color-orange);
-    transform: scaleX(0);
-    transition: transform 0.2s ease;
-  }
-
-  &:hover::after,
-  &.is-active::after {
-    transform: scaleX(1);
-  }
-
-  &.is-active {
-    color: var(--color-orange);
-  }
+.app-header__logo-img {
+  display: block;
 }
 
-/* 手機底部 TOC（預設隱藏，<1024px 顯示） */
-.app-header__toc {
+// 黑底／橘底用 mask 把彩色 logo 壓成純白（手法同 SubpageAnchor）
+// 路徑是編譯期常數，直接寫 SCSS url() 讓 Vite 解析，不必走 v-bind
+.app-header__logo-mask {
   display: none;
+  background-color: #fff;
+  mask-image: url('../assets/img/logo.svg');
+  mask-repeat: no-repeat;
+  mask-size: contain;
 }
 
-/* ---- 手機（<1024px） ---- */
-@media screen and (max-width: #{$pc-min - 0.02px}) {
-  .app-header__bar {
-    justify-content: center;
-    height: calc(var(--header-height) - 3px);
-  }
+// 寬度用 min(63vw, 260px) 流動縮放：320 時貼近 320 稿的 204px、414 起卡在 260px 的 mob 稿值，
+// 避免窄螢幕下與右側 icon 群組疊在一起（見 task-5-report.md 的 fix 記錄）。
+// 高度不能各自寫死，兩顆都用同一份寬度除以 228÷37（pc 稿的原生比例）反推，
+// 才不會 img／mask 兩顆尺寸走鐘。
+.app-header__logo-img,
+.app-header__logo-mask {
+  --hd-logo-w: min(63vw, 260px);
+  width: var(--hd-logo-w);
+  height: calc(var(--hd-logo-w) / 6.1622);
 
-  .app-header__nav {
+  @include rwd-min('pc') {
+    --hd-logo-w: 228px;
+  }
+}
+
+.app-header--dark,
+.app-header--orange {
+  .app-header__logo-img {
     display: none;
   }
 
-  .app-header__logo img {
-    height: 34px;
+  .app-header__logo-mask {
+    display: block;
   }
+}
 
-  .app-header__share {
-    position: absolute;
-    top: 50%;
-    right: 20px;
-    transform: translateY(-50%);
-  }
+.app-header__actions {
+  // mob／pad：icon 群組脫離流排、固定在右緣，logo 才能置中不被推歪
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  transform: translateY(-50%);
 
-  .app-header__toc {
-    position: fixed;
-    inset: auto 0 0 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  @include rwd-min('pc') {
+    position: static;
     gap: 32px;
-    height: 60px;
-    padding: 0 16px;
-    background-color: $bar-bg;
-    backdrop-filter: blur(2px);
+    transform: none;
+  }
+}
+
+.app-header__icons {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  @include rwd-min('pc') {
+    gap: 20px;
+  }
+}
+
+.app-header__share {
+  display: none; // <1280 的 share 在漢堡選單裡
+
+  @include rwd-min('pc') {
+    display: flex;
+  }
+}
+
+.app-header__menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--hd-icon-h);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--hd-fg);
+  cursor: pointer;
+
+  :deep(.app-header-icon) {
+    height: 60%; // menu：設計稿 16.8 / 28
+  }
+
+  @include rwd-min('pc') {
+    display: none;
   }
 }
 </style>

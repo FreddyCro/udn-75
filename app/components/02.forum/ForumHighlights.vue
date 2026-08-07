@@ -45,11 +45,22 @@ const { heading, items } = str.highlights;
 </template>
 
 <style lang="scss" scoped>
-// 容器寬度同 <Agenda> 的 1064，兩區左右邊界對齊。
+// 容器寬度同 <Agenda> 的 1064，兩區左右邊界對齊（pad／mob 亦同：608／左右 26）。
+// pad／mob 沒有對應設計稿，僅等比收斂。
 .highlights {
   max-width: 1064px;
   margin: 0 auto;
   padding-bottom: 120px;
+
+  @include rwd-max('pc') {
+    max-width: 608px;
+    padding-bottom: 96px;
+  }
+
+  @include rwd-max('tablet') {
+    max-width: none;
+    padding: 0 26px 72px;
+  }
 }
 
 // 段落標題：設計稿置中、字級 33。
@@ -60,6 +71,17 @@ const { heading, items } = str.highlights;
   line-height: 48px;
   letter-spacing: 0.05em;
   text-align: center;
+
+  @include rwd-max('pc') {
+    margin-bottom: 32px;
+    font-size: 26px;
+    line-height: 40px;
+  }
+
+  @include rwd-max('tablet') {
+    font-size: 22px;
+    line-height: 34px;
+  }
 }
 
 .highlights__list {
@@ -68,7 +90,7 @@ const { heading, items } = str.highlights;
   list-style: none;
 }
 
-// 每列：縮圖左、文字右；列距 40。
+// 每列：縮圖左、文字右；列距 40。mob 轉直排（縮圖滿版）。
 .highlights__item {
   display: flex;
   gap: 32px;
@@ -76,12 +98,33 @@ const { heading, items } = str.highlights;
   & + & {
     margin-top: 40px;
   }
+
+  @include rwd-max('pc') {
+    gap: 24px;
+  }
+
+  @include rwd-max('tablet') {
+    flex-direction: column;
+    gap: 12px;
+
+    & + & {
+      margin-top: 32px;
+    }
+  }
 }
 
 // UPic 的外層是 <picture class="u-pic">，它才是 flex item，故寬度要掛在它身上；
 // 只設內層 <img> 會讓 picture 自行伸縮而跑版（<ForumEvent> 有同一坑的紀錄）。
 .highlights__item :deep(.u-pic) {
   flex: 0 0 240px;
+
+  @include rwd-max('pc') {
+    flex-basis: 200px;
+  }
+
+  @include rwd-max('tablet') {
+    flex: 0 0 auto;
+  }
 }
 
 // UPic 把 classname 掛在內層 <img>，scoped 選不到，故用 :deep。
@@ -90,6 +133,17 @@ const { heading, items } = str.highlights;
   width: 240px;
   height: 160px;
   object-fit: cover;
+
+  @include rwd-max('pc') {
+    width: 200px;
+    height: 133px;
+  }
+
+  @include rwd-max('tablet') {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 3 / 2;
+  }
 }
 
 // 縮圖佔位：尺寸同實圖，虛線語彙同 <ForumEvent> 的講者照片 placeholder。
@@ -97,6 +151,17 @@ const { heading, items } = str.highlights;
   flex: 0 0 240px;
   height: 160px;
   border: 1px dashed var(--accent);
+
+  @include rwd-max('pc') {
+    flex-basis: 200px;
+    height: 133px;
+  }
+
+  @include rwd-max('tablet') {
+    flex: 0 0 auto;
+    height: auto;
+    aspect-ratio: 3 / 2;
+  }
 }
 
 .highlights__detail {

@@ -1,12 +1,18 @@
 <!--
   進場閘門：HeroLoader 收尾後**不直接播影片**，先停在這一屏等使用者按 start。
-  設計稿 1774:61076（start播放影片，預設）／1774:61082（start hover）。
+  設計稿 1774:61076（start播放影片，預設）。
 
-  兩個狀態的差異（依設計稿）：
-    預設   cube 95×95 ＋ 白色 "start" 字；音效 icon 為靜音版、背後有橘色同心圓、下方兩行提示。
-    hover  cube 放大到 131×131 且 "start" 字消失。
+  畫面：cube 95×95 ＋ 白色 "start" 字；音效 icon 為靜音版、背後有橘色同心圓、下方兩行提示。
   同心圓與提示只是「開場提示」：呼吸 PULSE_COUNT 次後一起淡出，收成 1774:61082 的乾淨狀態
   （icon 保留可點）；使用者中途自己點開音效也立刻收掉。
+  註：設計稿另有 hover 態（cube 放大到 131×131、"start" 字消失），已依需求移除 —— cube 從
+      進場到退場維持 HANDOFF_CUBE 尺寸不動，交接期間不會有任何尺寸變化。
+
+  這一屏的三段時序（都圍繞「橘塊在畫面正中心原地不動」這件事）：
+    進場  載入層用 0.6s 淡掉（Hero.scss 的 .loader-fade-leave-active），本層瞬間就位 →
+          橘塊視覺上完全沒動，接著 "start" 字才淡入（見 LABEL_*）。
+    等待  同心圓呼吸 PULSE_COUNT 次後提示收掉。
+    退場  按下 start：白底淡出讓影片透出，橘塊同時縮小淡掉（見 .hero-start-exit-*）。
 
   為什麼需要這道閘門：有聲自動播放會被瀏覽器封鎖，必須綁在一次使用者手勢上。
   按下 start 的那一下同時「解鎖播放」與「套用當前音效選擇」，故 hero 影片可直接有聲播。
@@ -24,10 +30,27 @@ const PULSE_DURATION = 1.5; // 單一圈由 icon 中心擴到最外圈的秒數
 const PULSE_STAGGER = 0.75; // 第二圈的相位差（＝半個週期，故畫面上同時見到中圈＋外圈）
 const PULSE_COUNT = 3; // 呼吸幾次後收掉
 
-const pulseVars = {
+// 「start」字淡入：本層是「瞬間就位、由載入層淡掉來揭露」（loader-fade 只有 leave，見 Hero.scss），
+// 故字必須等那 0.6s 走完才出現 —— 否則會與載入層還沒淡掉的「100%」在同一個橘塊上疊字。
+// ⚠ LABEL_DELAY 需 ≥ Hero.scss `.loader-fade-leave-active` 的 0.6s；那個值改了要一起調
+//   （兩份數值分屬 scss 與 ts，無法共用，只能靠這行註解追）。
+const LABEL_DELAY = 0.6;
+const LABEL_DURATION = 0.5;
+
+// 退場（按下 start）：白底淡出 ＋ 橘塊縮小淡掉。時長由 CSS 單一來源 --exit-dur 控制，
+// 故 Hero.vue 那邊的 <Transition name="hero-start-exit"> 不必也寫一份秒數。
+const EXIT_DURATION = 0.45;
+
+const styleVars = {
   '--pulse-dur': `${PULSE_DURATION}s`,
   '--pulse-stagger': `${PULSE_STAGGER}s`,
   '--pulse-count': String(PULSE_COUNT),
+  '--label-delay': `${LABEL_DELAY}s`,
+  '--label-dur': `${LABEL_DURATION}s`,
+  '--exit-dur': `${EXIT_DURATION}s`,
+  // cube 邊長：與 HeroLoader 的交接方塊共用 HANDOFF_CUBE（見 ~/utils/orange-core-config）——
+  // 兩層的方塊必須完全重合，尺寸不能各寫一份。
+  '--cube-size': `${HANDOFF_CUBE}px`,
 };
 
 // 提示是否還在場（同心圓＋文字共用同一個開關，一起淡出）
@@ -58,9 +81,12 @@ const onSoundClick = () => {
 </script>
 
 <template>
-  <div class="hero-start" :style="pulseVars">
+  <div class="hero-start" :style="styleVars">
     <!-- start：按下才開始播影片（emit 由 Hero 轉成 heroStarted）。
-         只有 cube 在 flow 內 → cube 中心＝視窗正中心，延續載入層橘塊的位置。 -->
+         只有 cube 在 flow 內 → cube 中心＝視窗正中心，延續載入層橘塊的位置。
+         ⚠ emit 必須留在 click 內**同步**發出，不可等退場動畫跑完再送：有聲播放綁在這一次
+           使用者手勢上，延後 play() 會被 Safari 判為非手勢而靜音/封鎖。故「影片開播」與
+           「本層退場」是並行的 —— 影片在淡出的白底後面已經在播了（見 .hero-start-exit-*）。 -->
     <button
       class="hero-start__cube"
       type="button"
@@ -185,41 +211,69 @@ const onSoundClick = () => {
   align-items: center;
   justify-content: center;
   background: #fff;
+
+  // 退場：白底淡出 → 後面已經在播的影片透出來。
+  // 進場刻意「沒有」transition —— 本層瞬間就位，由 HeroLoader 淡掉來揭露（見檔頭時序表）。
+  &.hero-start-exit-leave-active {
+    transition: opacity var(--exit-dur) ease;
+  }
+
+  &.hero-start-exit-leave-to {
+    opacity: 0;
+  }
 }
 
 // cube：設計稿 95×95，中心＝視窗正中心（312+95/2 ≈ 360）——「載入層橘塊 → cube → core」
 // 三者同一點，故 cube 必須是唯一在 flow 內的元素（音效區改絕對定位，見下）。
-// hover 放大到 131×131 且文字消失 —— 用 scale 而非改寬高，避免推動下方元素。
+// 邊長吃 --cube-size（＝HANDOFF_CUBE），與 HeroLoader 的交接方塊同一來源 → 兩層必然等大。
+// 無 hover 態（已依需求移除）：尺寸從進場到退場都不動，故交接期間不可能出現尺寸跳動。
+// 沒有覆寫 outline，鍵盤 focus 仍走瀏覽器預設的 focus ring。
 .hero-start__cube {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 95px;
-  height: 95px;
+  width: var(--cube-size);
+  height: var(--cube-size);
   padding: 0;
   border: 0;
   background: var(--color-orange);
   cursor: pointer;
-  transition: transform 0.3s ease;
 
-  &:hover,
-  &:focus-visible {
-    transform: scale(calc(131 / 95));
+  // 退場：往正中心縮小（transform-origin 預設 center → 原地縮掉，不會往某個角落跑）。
+  // leave class 掛在本層 root 上，故用 & 反向選。
+  // ⚠ 這裡刻意**只做 scale、不做 opacity**：淡出由 root 的白底負責，而 cube 是它的子孫，
+  //   兩層各淡一次會相乘（opacity²）—— 實測 root 還在 0.31 時 cube 已掉到 0.09，方塊會比
+  //   白底早一半消失。要讓方塊「陪著白底一起淡完」，淡出就只能有一個來源。
+  .hero-start-exit-leave-active & {
+    transition: transform var(--exit-dur) cubic-bezier(0.4, 0, 0.2, 1);
+  }
 
-    .hero-start__cube-label {
-      opacity: 0;
-    }
+  .hero-start-exit-leave-to & {
+    transform: scale(0.4);
   }
 }
 
 // 設計稿 951:36775：28px / weight 400 / line-height 32 / letter-spacing 1.4px
+// 用 animation 而非 transition 做淡入：本層是 v-if 掛上的，掛上時已是最終狀態，
+// transition 沒有「起始幀」可以過渡（要另外補 rAF 才會動）；animation + fill both
+// 則能在 --label-delay 的等待期間穩定停在 opacity 0，交接結束才浮出來。
 .hero-start__cube-label {
   color: #fff;
   font-weight: 400;
   font-size: 28px;
   line-height: 32px;
   letter-spacing: 1.4px;
-  transition: opacity 0.2s ease;
+  animation: hero-start-label-in var(--label-dur) ease var(--label-delay) both;
+}
+
+@keyframes hero-start-label-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 // 音效區：設計稿 icon 頂 456，視窗中心 360 → 中心下方 96px。
@@ -343,9 +397,19 @@ const onSoundClick = () => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-start__cube,
+  // 字直接在場（不淡入）。animation 收掉後 fill both 也一併消失，故要補回 opacity。
   .hero-start__cube-label {
+    animation: none;
+    opacity: 1;
+  }
+
+  // 退場只淡出、不縮放（尺寸變化才是這裡要避免的動態；白底的淡出保留，否則會硬切掉）。
+  .hero-start-exit-leave-active .hero-start__cube {
     transition: none;
+  }
+
+  .hero-start-exit-leave-to .hero-start__cube {
+    transform: none;
   }
 
   // 不擴散：直接定在設計稿的靜態三層（中圈 25.678/47.743、外圈原尺寸）。

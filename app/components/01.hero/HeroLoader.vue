@@ -12,8 +12,15 @@
 const props = defineProps({
   /** 自動播放總秒數（0 → 100%）；越小越快 */
   duration: { type: Number, default: 3.2 },
-  /** 方塊邊長（px）；固定尺寸，欄列數由視窗推算。設計稿 loading-1~7：1280×720 稿上 83.333px */
-  tileSize: { type: Number, default: 83.333 },
+  /**
+   * 方塊邊長（px）；固定尺寸，欄列數由視窗推算。
+   * 預設取共用常數 HANDOFF_CUBE —— 收尾時中央那格就是「交接橘塊」，它必須等於 HeroStart 的
+   * cube（否則載入層淡出時方塊會換個大小）。同一個常數同時決定網格密度，故**整份網格與
+   * 交接橘塊必然等大**，不會出現「中央那顆比別人大」。見 ~/utils/orange-core-config。
+   * 註：設計稿 loading-1~7 的格子是 1280×720 稿上的 83.333px，比 cube 小 11.7px；此處
+   * 刻意選「整份跟著 cube 放大」而非兩者各留一份數字。
+   */
+  tileSize: { type: Number, default: HANDOFF_CUBE },
   /** 橘色「處理中」前緣的方塊數（同時有幾顆橘）。設計稿 loading-6（96%）為 1 顆橘＋2 顆藍 */
   orangeTiles: { type: Number, default: 1 },
   /** 底色（未載入） */
@@ -48,7 +55,10 @@ const tileRefs = ref<HTMLDivElement[]>([]);
 const cols = ref(0);
 const count = ref(0);
 let rows = 0;
-let centerIndex = 0; // 正中央那格的 index（最先翻白、最後翻橘、且中心對齊視窗正中心）
+// 正中央那格的 index：最先翻白、最後翻橘，且中心對齊視窗正中心。
+// 收尾時它就是「交接橘塊」——邊長＝tileSize＝HANDOFF_CUBE＝HeroStart 的 cube，
+// 置中方式也與 cube 等效（奇數網格置中 ⇔ flex 置中），故兩層的方塊完全重合。
+let centerIndex = 0;
 
 // 每格在翻白順序中的「名次」（0..N-1）；名次越小越早翻白
 let order: number[] = [];
@@ -117,7 +127,8 @@ const finish = () => {
   finished = true;
   const n = count.value;
   // 其餘翻白、正中央格「直接」翻橘（同一幀）：不再有先全白、隔一段才冒出橘色的空檔；
-  // 橘塊精準落在視窗正中心，數字同時淡出（被橘塊取代/遮蓋）
+  // 橘塊精準落在視窗正中心，數字同時淡出（被橘塊取代/遮蓋）。
+  // → 淡出後 HeroStart 的 cube 接在同一位置、同一尺寸（tileSize＝HANDOFF_CUBE）。
   for (let idx = 0; idx < n; idx++) paint(idx, idx === centerIndex ? 1 : 2);
   if (counterRef.value) counterRef.value.style.opacity = '0';
   emit('done');
