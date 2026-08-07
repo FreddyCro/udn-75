@@ -193,7 +193,12 @@ function scrollToTop(e?: Event) {
       </div>
     </div>
 
-    <!-- 手機底部 TOC -->
+    <!--
+      手機底部 TOC（首頁區塊錨點）。
+      注意：子頁（layouts/subpage.vue）用 SubpageAnchorBar 佔住視窗下緣同一位置，
+      目前由該 layout 以 :deep(.app-header__toc) { display: none } 就地關掉；
+      待 header／layout 統一調整時改為由此元件控制（見該 layout 的 TODO）。
+    -->
     <nav class="app-header__toc">
       <a
         v-for="anchor in anchors"

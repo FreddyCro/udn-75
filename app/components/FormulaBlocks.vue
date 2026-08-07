@@ -13,6 +13,7 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 export interface FormulaItem {
   /** 藝術字標題圖（SVG 路徑；無圖時 fallback 為 title 文字） */
@@ -192,7 +193,7 @@ function onWindowResize() {
   onResize();
   if (resizeTimer) clearTimeout(resizeTimer);
   // end 為定值、其餘皆重算 → refresh 即可，免重建
-  resizeTimer = setTimeout(() => ScrollTrigger.refresh(), 200);
+  resizeTimer = setTimeout(refreshScrollTriggers, 200);
 }
 
 // 跨 768 斷點時 pin 與否會變 → 整組重建
@@ -200,7 +201,7 @@ watch(isPinned, () => {
   teardown();
   onResize();
   build();
-  ScrollTrigger.refresh();
+  refreshScrollTriggers();
   // 兩套時序的 start/end 不同 → 以 refresh 後的實際捲動位置重新校正進度
   if (st) progress.value = st.progress;
 });

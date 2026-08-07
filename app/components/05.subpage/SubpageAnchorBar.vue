@@ -1,9 +1,15 @@
 <script lang="ts" setup>
 /**
- * SubpageAnchorBar — <1280 的子頁錨點列（sticky 貼在常駐 header 的 bar 下方）；
+ * SubpageAnchorBar — <1280 的子頁錨點列（固定在視窗下緣，捲過 hero 才滑入）；
  * pc 改用右側 rail（SubpageAnchor）。
+ * 顯隱由 Subpage.vue 以 hero 的 ScrollTrigger 決定，本元件只負責呈現。
  */
 import str from '~/locales/common.json';
+
+defineProps<{
+  /** true 時滑入；預設隱藏在視窗下緣之外 */
+  visible?: boolean;
+}>();
 
 const { subpageAnchors } = str;
 const route = useRoute();
@@ -25,7 +31,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <nav class="subpage-anchor-bar" aria-label="子頁導覽">
+  <nav
+    class="subpage-anchor-bar"
+    :class="{ 'subpage-anchor-bar--visible': visible }"
+    aria-label="子頁導覽"
+  >
     <ul ref="listRef" class="subpage-anchor-bar__list">
       <li v-for="a in subpageAnchors" :key="a.url" class="subpage-anchor-bar__item">
         <NuxtLink
@@ -46,11 +56,12 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .subpage-anchor-bar {
-  // sticky 貼在常駐 header（fixed、高 = --header-height）下方，隨內容捲動到頂後吸附。
-  // z-index 3：高於滿版區塊(z2)／rail(z1) 的疊層約定（見 SubpageAnchor），低於 header(1000)。
-  position: sticky;
-  top: var(--header-height);
-  z-index: 3;
+  // 固定在視窗下緣（子頁 navbar 下方沒有內容，不需要 sticky 佔版面）：
+  // 預設收在視窗外，捲過 hero 後由 --visible 滑入。
+  // z-index 900：高於滿版區塊(z2)／rail(z1) 的疊層約定（見 SubpageAnchor），低於 header(1000)。
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 900;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -58,6 +69,16 @@ onMounted(() => {
   // 與 app-header__bar-wrap 同款背景：半透明白＋毛玻璃
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(2px);
+  transform: translateY(100%);
+  transition: transform 0.3s ease;
+
+  &--visible {
+    transform: translateY(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 
   @include rwd-min('pc') {
     display: none;

@@ -3,9 +3,15 @@
  * AiSearch — 「聯合報數位版 AI 搜尋」體驗區塊（data 頁）。
  * 搜尋框輪播關鍵字；點擊展開 AI 摘要面板、內文逐字打出；
  * reduced-motion 直接整段顯示。
+ *
+ * 摘要「全部出來」（打完字＋來源／聲明淡入）之後輪播會自己接回去跑，
+ * 面板仍留著上一筆結果 —— 因此輪播中的關鍵字（current）與面板正在顯示的
+ * 關鍵字（activeIndex）要分開記，否則輪播會把已顯示的摘要換掉。
+ * 此時再點一次搜尋框，就用「當下輪播到的關鍵字」重跑一次。
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 export interface AiKeyword {
   term: string;
@@ -35,6 +41,8 @@ const props = withDefaults(
 const rootRef = ref<HTMLElement | null>(null);
 const foldRef = ref<HTMLElement | null>(null);
 const current = ref(0); // 輪播中的關鍵字 index
+const activeIndex = ref(0); // 面板正在顯示（點擊時選中）的關鍵字 index
+const inView = ref(false); // 區塊是否在視窗內：離開視窗不讓輪播在背景空轉
 const expanded = ref(false);
 const typedCount = ref(0); // 已打出的總字數（跨段落）
 const typing = ref(false);
@@ -52,13 +60,13 @@ function scheduleRefresh() {
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
     refreshTimer = null;
-    ScrollTrigger.refresh();
+    refreshScrollTriggers();
   }, 250);
 }
 
-/** 目前關鍵字的摘要段落 */
+/** 面板正在顯示的關鍵字摘要段落（跟著 activeIndex，不跟輪播） */
 const paragraphs = computed(() => {
-  const s = props.keywords[current.value]?.summary ?? [];
+  const s = props.keywords[activeIndex.value]?.summary ?? [];
   return Array.isArray(s) ? s : [s];
 });
 
@@ -78,7 +86,7 @@ const typedParas = computed(() => {
 });
 
 function startRotate() {
-  if (rotateTimer || props.keywords.length < 2) return;
+  if (rotateTimer || props.keywords.length < 2 || !inView.value) return;
   rotateTimer = setInterval(() => {
     current.value = (current.value + 1) % props.keywords.length;
   }, props.interval);
@@ -99,15 +107,17 @@ function stopType() {
   typing.value = false;
 }
 
-/** 展開目前關鍵字的摘要，逐字打出 */
+/** 以「當下輪播到的關鍵字」展開摘要，逐字打出；打完才把輪播接回去 */
 function expand() {
-  stopRotate(); // 展開期間輪播暫停
+  stopRotate(); // 打字期間輪播暫停，避免結果被換掉
   stopType();
+  activeIndex.value = current.value;
   expanded.value = true;
   done.value = false;
   if (reduced) {
     typedCount.value = totalChars.value; // 降級：整段直接顯示
     done.value = true;
+    startRotate(); // 結果已全部出來 → placeholder 繼續輪播
     return;
   }
   typedCount.value = 0;
@@ -116,7 +126,8 @@ function expand() {
     typedCount.value += 1;
     if (typedCount.value >= totalChars.value) {
       stopType();
-      done.value = true;
+      done.value = true; // 來源／聲明淡入＝結果全部出來
+      startRotate(); // placeholder 繼續輪播，面板留著這筆結果，可再點一次重跑
     }
   }, props.typeSpeed);
 }
@@ -129,6 +140,7 @@ function collapse() {
   startRotate(); // 收合後恢復輪播
 }
 
+/** AI摘要 標題列：純展開／收合（收合後輪播照跑） */
 function toggle() {
   if (expanded.value) collapse();
   else expand();
@@ -137,9 +149,10 @@ function toggle() {
 onMounted(() => {
   gsap.registerPlugin(ScrollTrigger);
   reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // 進入視窗才開始輪播、離開即停，避免背景空轉
+  // 進入視窗才開始輪播、離開即停，避免背景空轉；打字中不搶回輪播
   observer = new IntersectionObserver(([e]) => {
-    if (e?.isIntersecting && !expanded.value) startRotate();
+    inView.value = !!e?.isIntersecting;
+    if (inView.value && !typing.value) startRotate();
     else stopRotate();
   });
   if (rootRef.value) observer.observe(rootRef.value);
@@ -159,12 +172,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="rootRef" class="ai-search">
-    <!-- 搜尋框：輪播關鍵字＋放大鏡星芒 icon -->
+    <!-- 搜尋框：輪播關鍵字＋放大鏡星芒 icon。
+         點擊＝搜尋「當下輪播到的關鍵字」，面板開著也能再點一次換一筆（收合走 AI摘要 標題列） -->
     <button
       class="ai-search__bar"
       type="button"
       :aria-expanded="expanded"
-      @click="toggle"
+      @click="expand"
     >
       <span class="ai-search__term-clip" aria-live="polite">
         <Transition name="ai-search-roll">
