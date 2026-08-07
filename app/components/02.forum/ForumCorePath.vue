@@ -14,11 +14,14 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { ForumPathSeg } from '~/utils/orange-core-config';
+import type { MobPathMeasure } from '~/utils/forum-mob-path';
 
 const rootEl = ref<HTMLElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
 const coreEl = ref<HTMLElement | null>(null);
 const slashEl = ref<SVGLineElement | null>(null);
+// mob 專用：整條線由 waypoint 算出來，故只有一個 <path>（見下方 buildMob）。
+const genEl = ref<SVGPathElement | null>(null);
 
 const { setForumPathProgress, setForumPathActive, forumPathRiding } =
   useOrangeCoreProgress();
@@ -143,8 +146,11 @@ function build() {
   const motion = motionEl.value;
   if (!motion) return;
 
+  // mob 走產生器：整條線依 waypoint 即時算出，不吃 FORUM_PATH（見 buildMob）。
+  if (bp.value === 'mob') return buildMob(motion);
+
   const list = segs.value;
-  // 該斷點沒有線稿（pad / mob 目前是空陣列）→ 不建驅動線。
+  // 該斷點沒有線稿（pad 目前是空陣列）→ 不建驅動線。
   if (!list.length) return reset();
 
   const placements = layout();
@@ -191,6 +197,74 @@ function build() {
   } else {
     slash = { startLen: 0, len: 0 };
   }
+
+  setForumPathActive(true);
+  place(st ? st.progress : 0);
+}
+
+// ── mob：整條線由 waypoint 算出 ───────────────────────────────────────
+// 稿是 414 寬、線本來就撞到左右緣，而 pc 那套「整段平移不縮放」在 320 寬會超出畫面 94px；
+// 加上 mob 版面是流排版（.forum-event 退回 flex 直排），垂直位置隨字數／字體一起變。
+// 故 mob 不吃 FORUM_PATH，改由 FORUM_MOB_NODES ＋ 即時量測算出單一連續 path。
+// 線寬全程 4px 等寬 → **驅動線＝可見線**，同一個 d 餵兩邊，不必跑 extract-centerline.mjs。
+// ⚠ 完整規則見 architecture/forum-mob-path.md。
+function buildMob(motion: SVGPathElement) {
+  const root = rootEl.value;
+  const scope = root?.closest('.sec2__path');
+  if (!root || !scope) return reset();
+
+  // 座標原點取 .forum-path 自身（同 layout()）：它是 inset: 0 的絕對定位子元素，
+  // 而 padding box 的上緣就是 .sec2__path 的 border box 上緣 ＝ 黑白接縫。
+  const rootRect = root.getBoundingClientRect();
+
+  // 先把所有錨點量完再算，不在中途寫任何 style → 不會觸發強制同步 reflow。
+  const measure: MobPathMeasure = (a) => {
+    // 限定在某一場之內時，以該場的日期錨點往上找 .forum-event 當 scope ——
+    // 用具名的 data-forum-anchor 而非 querySelectorAll 索引，增刪／重排場次都不會錯位
+    // （理由同 forum-core-path.md「錨點是具名的，不是索引」）。
+    const base = a.event
+      ? scope
+          .querySelector(`[data-forum-anchor="${a.event}"]`)
+          ?.closest('.forum-event')
+      : scope;
+    if (!base) return null;
+    // scope 自己也可能就是目標（P0 掛的是 .sec2__path 本身）→ 先試 matches 再往下查。
+    const el = base.matches(a.sel)
+      ? base
+      : base.querySelectorAll<HTMLElement>(a.sel)[a.nth ?? 0];
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { top: r.top - rootRect.top, height: r.height };
+  };
+
+  const out = buildNodePathD(FORUM_MOB_NODES, {
+    width: rootRect.width,
+    measure,
+  });
+  // 任何一個錨點量不到就整條放棄 —— 少一個點會讓後面全部接到錯的鄰居身上，靜默變形。
+  if (!out) return reset();
+
+  // 可見線只吃路徑段（尾段刻意不可見，見下）。
+  genEl.value?.setAttribute('d', out.d);
+
+  motion.setAttribute('d', out.d);
+  pathLen = motion.getTotalLength();
+  lineEndY = out.endY;
+
+  // 隱形尾段：與 pc 分支同一套機制 —— 從設計線末端直下到議程底緣，核心在這段恆停在
+  // 視窗中央、由議程的不透明白底從上方咬住。ScrollTrigger 的 end 讀 tailEndY，
+  // ⚠ 沒設它的話 end 會解析成 `top+=0 center`，被 GSAP 夾成 start + 0.01
+  //   → 捲動尺零長度、核心一進場就跳到路徑末端。
+  const tail = measureTailEndY();
+  tailEndY = tail !== null && tail > lineEndY ? tail : lineEndY;
+  if (tailEndY > lineEndY) {
+    motion.setAttribute('d', appendTail(out.d, lastPoint(out.d)[0], tailEndY));
+  }
+  motionLen = motion.getTotalLength();
+
+  // 單段線稿沒有連接段 → 論壇二那一撇不畫（mob 稿的 09/15 斜線是靜態圖稿）。
+  slash = { startLen: 0, len: 0 };
+  drawSlash(0);
 
   setForumPathActive(true);
   place(st ? st.progress : 0);
@@ -308,6 +382,16 @@ onBeforeUnmount(() => {
       />
     </svg>
 
+    <!-- mob 的可見線：由 buildMob() 寫入 d。座標已在本層座標系，故不需要 left/top。
+         描邊 4px（＝稿的 outline 帶寬），驅動線吃同一個 d。 -->
+    <svg
+      v-if="bp === 'mob'"
+      class="forum-path__gen"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path ref="genEl" :stroke-width="FORUM_MOB_STROKE" />
+    </svg>
+
     <!-- 驅動線：stroke:none，只給 getPointAtLength 取樣用，不呈現。 -->
     <svg class="forum-path__motion" xmlns="http://www.w3.org/2000/svg">
       <path ref="motionEl" fill="none" stroke="none" />
@@ -353,6 +437,19 @@ onBeforeUnmount(() => {
   &--stroke {
     fill: none;
     stroke: var(--accent);
+  }
+}
+
+// mob 的可見線：整條在同一個座標系，故 svg 直接鋪滿本層。線色取稿的「黑 10%」
+// （pc 的 outline 是黑 3%；mob 是 4px 描邊，較細故較深）。
+.forum-path__gen {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+
+  path {
+    fill: none;
+    stroke: rgba(#000, 0.1);
   }
 }
 
