@@ -2,14 +2,10 @@
 /**
  * FormulaBlocks — 「Publish X 議題智囊包」放射圖（news 頁）。
  * 三段式版面：pc 中央放射 2×2、pad 上下兩排、mob 直排＋左側 rail；
- * 連接線三版皆由像素元件生成（PixelBranch／PixelRail）而非 SVG 素材，才能逐格畫。
- *
- * 兩份分鏡稿、兩套時序（皆以捲動 scrub，往回捲自動倒退）：
- *   pc/pad 6043:77372（五格）：中央塊 → 四格同時往四角滑出 → 四線同時往外畫 → 議題框轉灰。
- *     五格的頁面位置不動 → pin 住舞台跑固定捲動距離。
- *   mob 6100:64117（四格）：中央塊 → 由上而下逐組「rail 往下畫 → 議題框現身」→ 四框轉灰。
- *     舞台 882 高塞不進一屏 → 不 pin，改以整段自身的捲動行程當進度（見 build()）。
- * 進度以 `--p`（0..1）交給 CSS，形變算在 CSS 端。
+ * 連接線由像素元件（PixelBranch／PixelRail)生成。中央塊常駐，
+ * 捲動 scrub 驅動（不 pin、回捲倒退）：
+ *   pc/pad：四格自中央塊後方現身 → 經 2×2 堆疊散開到四角，分支黏著格子角於末段推出。
+ *   mob：由上而下逐組「rail 往下畫 → 議題框滑入」。
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -24,19 +20,16 @@ export interface FormulaItem {
   points?: string[];
 }
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     /** 中央塊：藝術字圖（img）+ 副標（title）；eyebrow 作為圖的 alt 與 fallback */
     center?: { img?: string; eyebrow?: string; title?: string };
     /** 四角格子（依序：左上、右上、左下、右下） */
     items?: FormulaItem[];
-    /** pad 以上 pin 期間可捲動距離（px）＝整段分鏡的捲動長度 */
-    pinDistance?: number;
   }>(),
   {
     center: () => ({ title: '議題智囊包' }),
     items: () => [],
-    pinDistance: 1400,
   },
 );
 
@@ -44,30 +37,25 @@ const props = withDefaults(
 const assetUrl = useAssetUrl();
 
 const POS = ['tl', 'tr', 'bl', 'br'] as const;
-// 分支線方向：tl/br 為「\」、tr/bl 鏡射為「/」；from = 靠中央塊的那端（往外畫）
+// 分支方向：tl/br「\」、tr/bl 鏡射「/」；push＝收合方向（朝中央塊，視覺座標、與 flip 無關）
 const BRANCH: Record<
   (typeof POS)[number],
-  { flip: boolean; from: 'start' | 'end' }
+  { flip: boolean; push: { x: number; y: number } }
 > = {
-  tl: { flip: false, from: 'end' },
-  tr: { flip: true, from: 'end' },
-  bl: { flip: true, from: 'start' },
-  br: { flip: false, from: 'start' },
+  tl: { flip: false, push: { x: 1, y: 1 } },
+  tr: { flip: true, push: { x: -1, y: 1 } },
+  bl: { flip: true, push: { x: 1, y: -1 } },
+  br: { flip: false, push: { x: -1, y: -1 } },
 };
 
-// 分鏡時序（捲動進度 0..1）：at＝該段起點、span＝長度。
-// pc/pad：四格與四線皆不逐格錯開（分鏡稿是齊步的）；settle 之後留白維持定版。
+// pc/pad 時序（捲動進度 0..1，at＝起點、span＝長度）：box＝四格位移段（分支同步）
 const STOPS = {
-  center: { at: 0, span: 0.16 },
-  box: { at: 0.16, span: 0.34 },
-  conn: { at: 0.54, span: 0.26 },
-  settle: 0.86,
+  box: { at: 0, span: 0.5 },
+  settle: 0.75,
 } as const;
 
-// mob：改為由上而下依序跑四組，每組先畫 rail、rail 接到框後該框才進場；
-// 四框最後才一起轉灰（分鏡稿第三格仍是橘、第四格才全灰）。
+// mob 時序：由上而下逐組（先 rail 後議題框），四框最後才一起轉灰
 const MOB_STOPS = {
-  center: { at: 0, span: 0.12 },
   step: { at: 0.12, span: 0.19 }, // 每組（rail + 議題框）佔的進度長度
   rail: 0.12, // 組內 rail 畫線長度，其餘為議題框進場
   settle: 0.94,
@@ -83,8 +71,7 @@ const STAGES = {
   mob: { w: 360, h: 882 },
 } as const;
 
-// mob 左側垂直 rail（x=0，依序接到四個格子）；rows＝垂直段列數，
-// 第一段自中央塊長出故較短、首列切半（對稿素材 rail_01／rail_02）
+// mob 左側垂直 rail（x=0、依序接到四格）；第一段自中央塊長出故較短、首列切半
 const RAILS = [
   { y: 156, rows: 29, shortStart: true },
   { y: 284, rows: 41 },
@@ -92,7 +79,7 @@ const RAILS = [
   { y: 636, rows: 41 },
 ];
 
-// 分支線幾何（對稿素材）：pc 44×44 斜切階梯、pad 76×60 平切斜帶；mob 不顯示分支線
+// 分支幾何：pc 44×44 斜切階梯、pad 76×60 平切斜帶；mob 不顯示
 const BRANCH_GEO = {
   pc: { steps: 9, cut: 'bevel' },
   pad: { steps: 15, cut: 'flat' },
@@ -107,25 +94,86 @@ const mode = ref<keyof typeof STAGES>('pc');
 const reduced = ref(false);
 
 const isMob = computed(() => mode.value === 'mob');
-// mob 舞台 882 高塞不進一屏 → 不 pin（改跑自身捲動行程）；reduced-motion 亦一律不 pin（直接定版）
-const isPinned = computed(() => !reduced.value && !isMob.value);
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
 /** 某段內的 local 進度（0..1，未套 ease） */
 const local = (at: number, span: number) => clamp01((progress.value - at) / span);
 
-const centerP = computed(() => {
-  const s = isMob.value ? MOB_STOPS.center : STOPS.center;
-  return easeOut(local(s.at, s.span));
+// 分支盒尺寸（同 PixelBranch 的幾何換算）：pc bevel 44×44、pad flat 76×60
+const branchBox = computed(() => {
+  const g = BRANCH_GEO[mode.value];
+  const run = g.steps * 4;
+  return g.cut === 'flat' ? { w: run + 16, h: run } : { w: run + 8, h: run + 8 };
 });
-// pc/pad — 四格共用一份進度（同時往外）：p＝滑出、o＝不透明度（前 12% 就轉滿，見 CSS）
+
+// 四格兩段路徑（與定位點的 xy 偏移）：center＝全疊舞台正中（藏在中央塊後）
+// → cluster＝2×2 緊排堆疊（欄距 24、下列疊上列 16px）→ 四角定位。
+// mob 未用（--from 寫在 CSS、進度走 mobBoxP）
+const BOX_PATH = {
+  pc: { center: { x: 370, y: 185 }, cluster: { x: 196, y: 116 } },
+  pad: { center: { x: 168, y: 223 }, cluster: { x: 20, y: 154 } },
+  mob: null,
+} as const;
+// 進度前 45%：中央 → 堆疊；其餘：堆疊 → 四角定位
+const CLUSTER_SPLIT = 0.45;
+
+// pc/pad 共用進度：量化到 4px 步距（像素感來源；四格不淡入、常駐不透明）
 const boxP = computed(() => {
+  const path = BOX_PATH[mode.value];
+  if (!path) return 0;
+  const steps = Math.round(Math.max(path.center.x, path.center.y) / 4) || 1;
   const t = local(STOPS.box.at, STOPS.box.span);
-  return { p: easeOut(t), o: clamp01(t / 0.12) };
+  return Math.round(t * steps) / steps;
 });
-// pc/pad — 四線共用一份進度；不套 ease，與捲動等速才像逐格描出來
-const connP = computed(() => local(STOPS.conn.at, STOPS.conn.span));
+
+// 與定位點的當前偏移（未帶方向）：兩段內插、ease 各段自套
+//（整段套會讓「中央→堆疊」瞬間衝完、堆疊態一閃而過）
+const boxOffset = computed(() => {
+  const path = BOX_PATH[mode.value];
+  if (!path) return { x: 0, y: 0 };
+  const p = boxP.value;
+  const lerp = (a: { x: number; y: number }, b: { x: number; y: number }, t: number) => ({
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+  });
+  return p < CLUSTER_SPLIT
+    ? lerp(path.center, path.cluster, easeOut(p / CLUSTER_SPLIT))
+    : lerp(path.cluster, { x: 0, y: 0 }, easeOut((p - CLUSTER_SPLIT) / (1 - CLUSTER_SPLIT)));
+});
+
+// 分支收合位移＝格子剩餘偏移（各軸 cap 在整條尺寸，任一軸達上限即全藏）：
+// 格子還在中央塊旁時分支看不見，近定點才被推出、黏著格子角
+const branchOffset = computed(() => {
+  const o = boxOffset.value;
+  const b = branchBox.value;
+  return {
+    x: Math.min(o.x, b.w),
+    y: Math.min(o.y, b.h),
+  };
+});
+
+/** 四格當前偏移（--p 缺省 0 → CSS transform 即 translate(--from)） */
+function boxStyle(i: number) {
+  const o = boxOffset.value;
+  const sign = BRANCH[POS[i]!].push;
+  return {
+    '--from-x': `${sign.x * o.x}px`,
+    '--from-y': `${sign.y * o.y}px`,
+  };
+}
+
+/** 分支裁切框樣式：尺寸＋收合位移（方向見 BRANCH.push） */
+function branchStyle(p: (typeof POS)[number]) {
+  const b = branchBox.value;
+  const o = branchOffset.value;
+  return {
+    width: `${b.w}px`,
+    height: `${b.h}px`,
+    '--bx': `${BRANCH[p].push.x * o.x}px`,
+    '--by': `${BRANCH[p].push.y * o.y}px`,
+  };
+}
 
 /** mob 第 i 組（由上而下）的起點 */
 const mobAt = (i: number) => MOB_STOPS.step.at + i * MOB_STOPS.step.span;
@@ -154,9 +202,7 @@ function onResize() {
   const stage = STAGES[mode.value];
   // 量 viewport（padding 內側）而非 section，縮放後才保得住左右留白
   const w = viewportRef.value?.clientWidth ?? stage.w;
-  // pin 模式的舞台要塞進一屏 → 高度也納入縮放
-  const fitH = isPinned.value ? window.innerHeight / stage.h : Infinity;
-  scale.value = Math.min(1, w / stage.w, fitH);
+  scale.value = Math.min(1, w / stage.w);
 }
 
 function build() {
@@ -164,17 +210,9 @@ function build() {
   if (!root) return;
   st = ScrollTrigger.create({
     trigger: root,
-    // pc/pad：pin 住舞台跑固定捲動距離（五格的頁面位置不動）。
-    // mob：不 pin，直接把整段自身的捲動行程當進度 —— 線性對應之下，
-    // 四格議題框都會在畫面同一高度附近現身（框間距與每組行程幾乎等長）。
-    ...(isPinned.value
-      ? {
-          start: 'top top',
-          end: `+=${props.pinDistance}`,
-          pin: true,
-          anticipatePin: 1,
-        }
-      : { start: 'top 40%', end: 'bottom bottom' }),
+    // 不 pin：以區塊自身的捲動行程當進度
+    start: 'top 50%',
+    end: 'center center',
     scrub: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => (progress.value = self.progress),
@@ -196,13 +234,13 @@ function onWindowResize() {
   resizeTimer = setTimeout(refreshScrollTriggers, 200);
 }
 
-// 跨 768 斷點時 pin 與否會變 → 整組重建
-watch(isPinned, () => {
+// 跨 768 斷點時序不同 → 整組重建，並以 refresh 後的實際捲動位置校正進度
+watch(isMob, () => {
+  if (reduced.value) return;
   teardown();
   onResize();
   build();
   refreshScrollTriggers();
-  // 兩套時序的 start/end 不同 → 以 refresh 後的實際捲動位置重新校正進度
   if (st) progress.value = st.progress;
 });
 
@@ -226,25 +264,23 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section
-    ref="rootRef"
-    class="formula"
-    :class="{ 'formula--pin': isPinned, 'is-settled': settled }"
-  >
+  <section ref="rootRef" class="formula" :class="{ 'is-settled': settled }">
+    <!-- pc 高度固定 600（舞台 524 垂直置中）；pad/mob＝舞台縮放後的自然高 -->
     <div
       ref="viewportRef"
       class="formula__viewport"
-      :style="{ height: isPinned ? '100vh' : `${STAGES[mode].h * scale}px` }"
+      :style="{ height: mode === 'pc' ? '600px' : `${STAGES[mode].h * scale}px` }"
     >
       <div
         class="formula__stage"
         :style="{
-          transform: isPinned
-            ? `translate(-50%, -50%) scale(${scale})`
-            : `translateX(-50%) scale(${scale})`,
+          transform:
+            mode === 'pc'
+              ? `translate(-50%, -50%) scale(${scale})`
+              : `translateX(-50%) scale(${scale})`,
         }"
       >
-        <div class="formula__center" :style="{ '--p': centerP }">
+        <div class="formula__center">
           <img
             v-if="center.img"
             class="formula__center-logo"
@@ -257,20 +293,23 @@ onBeforeUnmount(() => {
           <p class="formula__center-title">{{ center.title }}</p>
         </div>
 
-        <!-- pc / pad：四條像素分支線同時自中央塊角落逐格往外畫（幾何差異見 BRANCH_GEO） -->
-        <PixelBranch
+        <!-- pc/pad 分支：裁切框定位不動，整條 PixelBranch 以 --bx/--by 平移推出 -->
+        <div
           v-for="p in POS"
           :key="p"
           class="formula__branch"
           :class="`formula__branch--${p}`"
-          :progress="connP"
-          :flip="BRANCH[p].flip"
-          :from="BRANCH[p].from"
-          :steps="BRANCH_GEO[mode].steps"
-          :cut="BRANCH_GEO[mode].cut"
-        />
+          :style="branchStyle(p)"
+        >
+          <PixelBranch
+            :progress="1"
+            :flip="BRANCH[p].flip"
+            :steps="BRANCH_GEO[mode].steps"
+            :cut="BRANCH_GEO[mode].cut"
+          />
+        </div>
 
-        <!-- mob：左側垂直棋盤格 rail，自上往下逐列畫到各格子（四條依序、不齊步） -->
+        <!-- mob 左側 rail：自上往下逐列畫到各格子 -->
         <PixelRail
           v-for="(r, i) in RAILS"
           :key="`rail-${i}`"
@@ -286,11 +325,7 @@ onBeforeUnmount(() => {
           :key="i"
           class="formula__box"
           :class="`formula__box--${POS[i]}`"
-          :style="
-            isMob
-              ? { '--p': mobBoxP[i], '--o': mobBoxP[i] }
-              : { '--p': boxP.p, '--o': boxP.o }
-          "
+          :style="isMob ? { '--p': mobBoxP[i] } : boxStyle(i)"
         >
           <p class="formula__box-head">
             <img
@@ -313,8 +348,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
-// 像素外框：4px 線、角落缺 8px 再於 4px 內縮處補一格 4px 方塊（對稿 Figma 拼法）。
-// 以多重背景繪製 → 盒子寬高伸縮時線寬與角點恆為 4px，不變形。
+// 像素外框：4px 線、角落缺 8px 再於 4px 內縮處補一格 4px 方塊；
+// 多重背景繪製 → 盒子伸縮時線寬與角點恆為 4px
 @mixin pixel-frame($c) {
   content: '';
   position: absolute;
@@ -337,12 +372,6 @@ onBeforeUnmount(() => {
   background: #fff;
 }
 
-// pin 模式：viewport 撐滿一屏（inline style），故左右留白照舊、上下不留
-.formula--pin {
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
 .formula__viewport {
   position: relative;
   width: 100%;
@@ -357,19 +386,18 @@ onBeforeUnmount(() => {
   height: 882px;
   transform-origin: top center;
 
-  // pin 模式（transform 由 template 換成 translate(-50%, -50%)）：舞台垂直置中於一屏
-  .formula--pin & {
-    top: 50%;
-    transform-origin: center;
-  }
-
   @include rwd-min('tablet') {
     width: 610px;
     height: 600px;
   }
+
+  // pc：viewport 固定 600、舞台 524 垂直置中（transform 由 template 換成
+  // translate(-50%, -50%)）
   @include rwd-min('pc') {
+    top: 50%;
     width: 1064px;
     height: 524px;
+    transform-origin: center;
   }
 }
 
@@ -386,9 +414,6 @@ onBeforeUnmount(() => {
   gap: 4px;
   width: 360px;
   height: 160px;
-  // 分鏡 1：現身（--p ＝ script 的 centerP）
-  opacity: var(--p, 0);
-  transform: scale(calc(0.88 + 0.12 * var(--p, 0)));
 
   @include rwd-min('tablet') {
     top: 214px;
@@ -449,16 +474,24 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
-// ── 分支線（pad 斜帶／pc 四角斜線，與角落各斜疊 8px 對接）──
-// 尺寸由 PixelBranch 依 steps／cut 自算，此處只定位。
-// 掛 .formula__stage 提高特異性，蓋過 PixelBranch 根元素自帶的 position: relative
-// （兩者同為單一 class，僅靠載入順序會不穩定）。
+// 分支＝裁切框（尺寸由 branchStyle() 帶入）：定位不動、overflow 裁切，
+// 內部 PixelBranch 以 --bx/--by 平移；與中央塊角落斜疊 8px 對接
 .formula__stage .formula__branch {
   position: absolute;
   display: none; // mob 改用 .formula__rail
+  overflow: hidden;
 
   @include rwd-min('tablet') {
     display: block;
+  }
+
+  // translate 寫在 scaleX 前（外層座標）：flip 只鏡射圖形，不影響推出方向
+  :deep(.pixel-branch) {
+    transform: translate(var(--bx, 0px), var(--by, 0px));
+  }
+
+  :deep(.pixel-branch--flip) {
+    transform: translate(var(--bx, 0px), var(--by, 0px)) scaleX(-1);
   }
 
   &--tl {
@@ -499,7 +532,7 @@ onBeforeUnmount(() => {
   }
 }
 
-// ── mob 左側垂直 rail（top 由 template 的 RAILS 帶入；寬高由 PixelRail 自算）──
+// mob 左側垂直 rail（top 由 RAILS 帶入；寬高由 PixelRail 自算）
 .formula__stage .formula__rail {
   position: absolute;
   left: 0;
@@ -510,18 +543,14 @@ onBeforeUnmount(() => {
   }
 }
 
-// ── 四角議題格子 ──
-// 進場滑出階段為橘色（--box-c），is-settled 後瞬間轉灰——多重背景外框無法平滑過渡
+// 四角議題格子：位移中為橘色（--box-c），is-settled 後瞬間轉灰
+//（多重背景外框無法平滑過渡）；三斷點皆不改透明度
 .formula__box {
   --box-c: var(--color-orange);
   position: absolute;
   width: 301px;
   height: 154px;
   padding-top: 68px; // 列點區距格子頂，三斷點一致
-  // pc/pad 分鏡 2–3：自中央塊後方（--from-*）滑到定位（位移歸零）。
-  // --o 於滑出前 12% 就轉滿 → 現身瞬間仍被中央塊遮住，看不到淡入（像素風不淡入）；
-  // mob 則無遮蔽物，改順著 rail 水平臂的方向自左滑入 16px（4 格）＋淡入。
-  opacity: var(--o, 0);
   transform: translate(
     calc(var(--from-x) * (1 - var(--p, 0))),
     calc(var(--from-y) * (1 - var(--p, 0)))
@@ -542,7 +571,7 @@ onBeforeUnmount(() => {
     --box-c: var(--color-gray-light);
   }
 
-  // --from-*：進場起點到定位點的位移量（pc/pad 為中央塊正後方；mob 為左方 16px）
+  // --from-*：mob 自左 16px 滑入；pc/pad 由 boxStyle() 每幀帶入（路徑見 BOX_PATH）
   &--tl {
     top: 197px;
     left: 44px;
@@ -552,12 +581,6 @@ onBeforeUnmount(() => {
     @include rwd-min('tablet') {
       top: 0;
       left: 0;
-      --from-x: 165px;
-      --from-y: 223px;
-    }
-    @include rwd-min('pc') {
-      --from-x: 370px;
-      --from-y: 185px;
     }
   }
   &--tr {
@@ -570,12 +593,6 @@ onBeforeUnmount(() => {
       top: 0;
       right: 0;
       left: auto;
-      --from-x: -171px;
-      --from-y: 223px;
-    }
-    @include rwd-min('pc') {
-      --from-x: -370px;
-      --from-y: 185px;
     }
   }
   &--bl {
@@ -588,12 +605,6 @@ onBeforeUnmount(() => {
       top: auto;
       bottom: 0;
       left: 0;
-      --from-x: 165px;
-      --from-y: -223px;
-    }
-    @include rwd-min('pc') {
-      --from-x: 370px;
-      --from-y: -185px;
     }
   }
   &--br {
@@ -607,12 +618,6 @@ onBeforeUnmount(() => {
       right: 0;
       bottom: 0;
       left: auto;
-      --from-x: -171px;
-      --from-y: -223px;
-    }
-    @include rwd-min('pc') {
-      --from-x: -370px;
-      --from-y: -185px;
     }
   }
 }
