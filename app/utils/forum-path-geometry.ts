@@ -75,3 +75,34 @@ export function joinSegments(ds: string[]): string {
     return `${acc}L${x.toFixed(2)} ${y.toFixed(2)}${rest}`;
   }, '');
 }
+
+// 在末端追加一段直線（論壇段的「隱形尾段」：從設計線末端直下穿過議程）。
+// 保持單一 M，故 getPointAtLength 在接縫不跳點。
+export function appendTail(d: string, x: number, y: number): string {
+  if (!d) return d;
+  return `${d}L${x.toFixed(2)} ${y.toFixed(2)}`;
+}
+
+/**
+ * 把「目前落在視窗中央的容器 y」換算成驅動線上的弧長。
+ *
+ * ScrollTrigger 的 start / end 都錨在 center，故 rawP × tailEndY ＝ 此刻位於視窗中央的容器 y。
+ *   y ≤ lineEndY → 路徑段：ease(y / lineEndY) × pathLen（ease 為 identity 時等同改動前的公式）
+ *   y > lineEndY → 垂直尾段：pathLen + (y − lineEndY)
+ *
+ * ⚠ 尾段**必須**是 1:1，不能沿用路徑段的比例。驅動線總長 9093 比垂直跨距 5400.5 長 1.68 倍，
+ *   尾段若吃同一個比例，核心每捲 1px 會下沉 1.68px，走完議程就沉出畫面 908px。
+ */
+export function arcAtCenterY(
+  centerY: number,
+  lineEndY: number,
+  pathLen: number,
+  ease: (v: number) => number = (v) => v,
+): number {
+  if (lineEndY <= 0) return 0;
+  if (centerY <= lineEndY) {
+    const p = Math.min(1, Math.max(0, centerY / lineEndY));
+    return ease(p) * pathLen;
+  }
+  return pathLen + (centerY - lineEndY);
+}

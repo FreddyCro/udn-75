@@ -133,7 +133,14 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
 // 議程＋recap 整組：coreOut 前一律藏著，避免 SymbolFace↔橘核心 crossfade 期間
 // （淡出的星空層與淡入的橘核心黑底皆未達全滿）從縫隙短暫露餡；
 // --revealed（agendaRevealed）時隨橘核心淡出而淡入，剛好接上。捲回自動反向。
+//
+// position + 白底是為了讓核心「從議程背後穿過」：.sec2__path 是 positioned（z-index auto）、
+// 本層原本是 static，positioned 會畫在 static 之上 → 核心會浮在議程上面。兩者同層之後由
+// DOM 順序決定，本層在後 → 在上；白底則是遮蔽本身（原本靠 .sec2 的白底，那是祖先遮不到）。
+// 不需要 z-index。AgendaReport 的灰底是子層，畫在這層白底之上，不受影響。
 .sec2__pin {
+  position: relative;
+  background: #fff;
   opacity: 0;
   transition: opacity 0.4s ease;
 

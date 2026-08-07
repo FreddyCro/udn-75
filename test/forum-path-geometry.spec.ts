@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  appendTail,
+  arcAtCenterY,
   firstPoint,
   joinSegments,
   lastPoint,
@@ -105,5 +107,73 @@ describe('joinSegments', () => {
     ]);
     expect((d.match(/M/g) ?? []).length).toBe(1);
     expect(lastPoint(d)).toEqual([327.16, 5260.47]);
+  });
+});
+
+describe('appendTail', () => {
+  it('在末端追加一段直線', () => {
+    expect(appendTail('M0 0L10 10', 10, 500)).toBe('M0 0L10 10L10.00 500.00');
+  });
+
+  // 追加後必須仍是單一連續 path —— 多個 M 會讓 getPointAtLength 在接縫跳點。
+  it('不新增 M', () => {
+    const d = appendTail('M0 0L10 10', 10, 500);
+    expect((d.match(/M/g) ?? []).length).toBe(1);
+  });
+
+  it('末端就是追加的那個點', () => {
+    expect(lastPoint(appendTail('M0 0L10 10', 327.16, 6771.5))).toEqual([
+      327.16, 6771.5,
+    ]);
+  });
+
+  it('空字串原樣回傳（該斷點沒有線稿）', () => {
+    expect(appendTail('', 10, 20)).toBe('');
+  });
+
+  // 實際線稿：串完兩段再接尾段，末端 x 不變、y 換成尾段終點。
+  it('接在實際線稿末端', () => {
+    const joined = joinSegments([
+      translateD(SEG1, 167, 0),
+      translateD(SEG2, 150, 3840.6),
+    ]);
+    const [ex] = lastPoint(joined);
+    const d = appendTail(joined, ex, 6771.5);
+    expect((d.match(/M/g) ?? []).length).toBe(1);
+    expect(lastPoint(d)).toEqual([327.16, 6771.5]);
+  });
+});
+
+describe('arcAtCenterY', () => {
+  // 路徑段：ease 為 identity 時就是等比映射（＝改動前的公式）。
+  it('路徑段等比映射到 pathLen', () => {
+    expect(arcAtCenterY(0, 5400, 9093)).toBeCloseTo(0, 6);
+    expect(arcAtCenterY(2700, 5400, 9093)).toBeCloseTo(4546.5, 6);
+    expect(arcAtCenterY(5400, 5400, 9093)).toBeCloseTo(9093, 6);
+  });
+
+  it('套用 ease 只影響路徑段的節奏', () => {
+    const ease = (v: number) => v * v;
+    expect(arcAtCenterY(2700, 5400, 9093, ease)).toBeCloseTo(0.25 * 9093, 6);
+  });
+
+  // 尾段 1:1 —— 這就是「核心恆停在視窗中央」的保證。
+  it('尾段的弧長增量等於 y 的增量', () => {
+    expect(arcAtCenterY(5401, 5400, 9093)).toBeCloseTo(9094, 6);
+    expect(arcAtCenterY(6727, 5400, 9093)).toBeCloseTo(10420, 6);
+  });
+
+  it('在 lineEndY 兩側連續', () => {
+    const left = arcAtCenterY(5400, 5400, 9093);
+    const right = arcAtCenterY(5400.001, 5400, 9093);
+    expect(right - left).toBeCloseTo(0.001, 6);
+  });
+
+  it('centerY 為負時夾到 0', () => {
+    expect(arcAtCenterY(-100, 5400, 9093)).toBe(0);
+  });
+
+  it('lineEndY 為 0（reset 後）回 0，不除以零', () => {
+    expect(arcAtCenterY(100, 0, 0)).toBe(0);
   });
 });

@@ -49,10 +49,14 @@ const coreStyle = {
 };
 
 let st: ScrollTrigger | null = null;
-// 驅動線總長：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用（避免 getTotalLength 熱路徑）。
+// 驅動線總長（含尾段）：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用。
 let motionLen = 0;
-// 驅動線末端的容器 y：ScrollTrigger 的 end 讀它（見 onMounted）。
+// 追加尾段**之前**的長度。分段映射用它切「路徑段 / 尾段」，也用來換算 forumPathProgress。
+let pathLen = 0;
+// 設計線末端的容器 y（＝路徑段的終點）。
 let lineEndY = 0;
+// 尾段末端的容器 y（＝議程底緣）。ScrollTrigger 的 end 讀它。無尾段時等於 lineEndY。
+let tailEndY = 0;
 // 那一撇（＝直線連接段）在驅動線上的弧長區間，place() 用它算 dashoffset。len 為 0 表示沒有
 // 連接段（單段線稿，如 pad 的 Vector 276）→ 不畫斜線。
 let slash = { startLen: 0, len: 0 };
@@ -99,6 +103,15 @@ function layout(): ({ tx: number; ty: number } | null)[] {
   return placements.map((p) => (p ? { tx: p.tx, ty: p.ty } : null));
 }
 
+// 尾段終點（容器 y）＝ 議程底緣。議程不在 .sec2__path 裡，但 rect 跨子樹可用；
+// 量不到就回 null → 不建尾段，行為退回改動前。
+function measureTailEndY(): number | null {
+  const root = rootEl.value;
+  const agenda = document.querySelector('[data-core-tail-end]');
+  if (!root || !agenda) return null;
+  return agenda.getBoundingClientRect().bottom - root.getBoundingClientRect().top;
+}
+
 // 沒有可跑的驅動線時清空：核心藏起來，橘點回到原本的 coreOut 淡出（見 forumCoreDotVisible）。
 // ⚠ progress 也要歸零，不能只清 active：從 pc 切到 pad/mob 時它會留著上一個斷點的殘值，
 //   forumPathRiding 因此卡在 true —— 路徑核心保持可見，而 place() 已因 motionLen=0 提早
@@ -106,7 +119,9 @@ function layout(): ({ tx: number; ty: number } | null)[] {
 function reset() {
   motionEl.value?.removeAttribute('d');
   motionLen = 0;
+  pathLen = 0;
   lineEndY = 0;
+  tailEndY = 0;
   slash = { startLen: 0, len: 0 };
   drawSlash(0);
   setForumPathActive(false);
@@ -143,14 +158,24 @@ function build() {
 
   const list2 = ds as string[];
   // 先只放第一段量弧長，再換成完整路徑 —— 為了知道「連接段從驅動線的哪個弧長開始」。
-  // 借用同一個 <path> 而不另開元素：build() 只在幾何重建時跑，兩次 setAttribute 不在熱路徑上。
+  // 借用同一個 <path> 而不另開元素：build() 只在幾何重建時跑，三次 setAttribute 不在熱路徑上。
   motion.setAttribute('d', list2[0]!);
   const firstLen = motion.getTotalLength();
 
   const d = joinSegments(list2);
   motion.setAttribute('d', d);
-  motionLen = motion.getTotalLength();
+  pathLen = motion.getTotalLength();
   lineEndY = lastPoint(d)[1];
+
+  // 隱形尾段：從設計線末端直下到議程底緣。核心在這一段恆停在視窗中央，
+  // 由議程（.sec2__pin 的不透明白底）從上方咬住它 —— 全程看不見，故不需要淡出。
+  const tail = measureTailEndY();
+  tailEndY = tail !== null && tail > lineEndY ? tail : lineEndY;
+  motion.setAttribute(
+    'd',
+    tailEndY > lineEndY ? appendTail(d, lastPoint(d)[0], tailEndY) : d,
+  );
+  motionLen = motion.getTotalLength();
 
   // 那一撇 ＝ seg1 末端 → seg2 起點 的直線連接段（不寫死幾何，故核心永遠沿著它走）。
   // 只有恰好兩段時才有單一連接段；單段線稿（pad 的 Vector 276）沒有 → 不畫。
@@ -178,12 +203,16 @@ function place(rawP: number) {
   const core = coreEl.value;
   const motion = motionEl.value;
   if (!core || !motion || !motionLen) return;
-  const p = easeMove(rawP);
-  const len = p * motionLen;
+  // rawP × tailEndY ＝ 此刻落在視窗中央的容器 y（start / end 都錨在 center，故線性）。
+  const len = arcAtCenterY(rawP * tailEndY, lineEndY, pathLen, easeMove);
   const pt = motion.getPointAtLength(len);
   const d = 1; // 取樣間距（px）
-  const behind = motion.getPointAtLength(Math.max(0, len - d));
-  const ahead = motion.getPointAtLength(Math.min(motionLen, len + d));
+  // 切線只在路徑段取樣：尾段是垂直的（90°），而設計線末端的切線是 112°，若讓尾段參與取樣，
+  // 核心會在接縫處約 2px 捲動內轉正 22° —— 而那正是它唯一露臉的時刻（交接窗 43.5px）。
+  // 尾段全程被議程遮住，旋轉停在設計線末端的角度即可。無尾段時 pathLen === motionLen，逐字等價。
+  const tanLen = Math.min(len, pathLen || motionLen);
+  const behind = motion.getPointAtLength(Math.max(0, tanLen - d));
+  const ahead = motion.getPointAtLength(Math.min(pathLen || motionLen, tanLen + d));
   const angle =
     (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
   gsap.set(core, { x: pt.x, y: pt.y, rotation: angle });
@@ -194,7 +223,8 @@ function place(rawP: number) {
     drawSlash(Math.min(1, Math.max(0, (len - slash.startLen) / slash.len)));
   }
 
-  setForumPathProgress(p);
+  // 語意維持「設計線走完的比例」（尾段一律 1），下游的 forumPathRiding 因此不變。
+  setForumPathProgress(pathLen ? Math.min(1, len / pathLen) : 0);
 }
 
 let mqPc: MediaQueryList | null = null;
@@ -232,11 +262,11 @@ onMounted(async () => {
     // 路徑起點在容器 (640, 0)＝黑白接縫，而 ForumCore 的橘點釘在視窗正中央 ——
     // 「容器頂端抵達視窗中央」的那一刻兩者是同一點，交棒不需要任何補償值。
     start: 'top center',
-    // 終點同理：路徑末端抵達視窗中央。lineEndY 由 build() 從實際幾何算出，
+    // 終點：尾段末端（議程底緣）抵達視窗中央。tailEndY 由 build() 從實際幾何算出，
     // refreshInit → build() 先跑，故每次 refresh 都是最新值。
     // ⚠ 刻意不掛 endTrigger：.forum-event__date 是 position: absolute，量不到有效高度；
     //   也刻意不碰 .sec2 的 bottom —— 上游 SymbolScene 的 pin-spacer 會撐高它，變成循環依賴。
-    end: () => `top+=${lineEndY} center`,
+    end: () => `top+=${tailEndY} center`,
     scrub: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => place(self.progress),

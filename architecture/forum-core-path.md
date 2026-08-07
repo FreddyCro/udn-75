@@ -60,14 +60,43 @@ top  = 錨點.top  − 容器.top  + offset.y
 | | 設定 | 意義 |
 | --- | --- | --- |
 | start | `'top center'` | `.sec2__path` 頂端抵達視窗中央 → 路徑起點 (640, 0) 正好在視窗正中央 |
-| end | `() => \`top+=${lineEndY} center\`` | 路徑末端（實測容器 y = 5400.5）抵達視窗中央 |
+| end | `() => \`top+=${tailEndY} center\`` | 尾段末端（議程底緣，實測容器 y ≈ 6770）抵達視窗中央；量不到議程時退回 `lineEndY`（5400.5） |
 
 刻意避開兩個陷阱：`.forum-event__date` 是 `position: absolute`，當 `endTrigger` 量不到有效
 高度；而 `.sec2` 的 bottom 會被上游 `SymbolScene` 的 pin-spacer 撐高，用它當基準是循環依賴。
 
 實測精度（1440×900）：核心到可見線的距離中位數 **0.59px**、連接段以外最大 **2.05px**
 （outline 帶寬約 2px，完美居中的點到邊界就是 ~1px）；往回捲 drift **0px**；
-核心精準停在線末端 (327.16, 5400.49)。連接段那 3.5% 的路徑刻意沒有可見線（穿過 09/15 空隙）。
+核心精準停在線末端 (327.16, 5400.49)（加了尾段之後改停在議程底緣，見下方「隱形尾段」）。
+連接段那 3.5% 的路徑刻意沒有可見線（穿過 09/15 空隙）。
+
+### 隱形尾段（穿過議程）
+
+設計線末端之後追加一段**垂直尾段**，從末端 (327.16, 5400.5) 直下到議程底緣
+（`[data-core-tail-end]` ＝ `.agenda` 的根節點）。ScrollTrigger 的 `end` 因此改讀 `tailEndY`。
+
+⚠ **尾段必須用 1:1 的映射，不能沿用路徑段的比例。** 現行 ST 把捲動跨距 `lineEndY`（5400.5）
+線性對應到**弧長** `motionLen`（9093）—— 比例 1.68。尾段若吃同一個比例，核心每捲 1px 會下沉
+1.68px，走完議程就沉出畫面 908px。故 `place()` 改用 `arcAtCenterY()` 分段：
+
+| | 映射 |
+| --- | --- |
+| `y ≤ lineEndY` | `ease(y / lineEndY) × pathLen` ← 與加尾段之前逐字等價 |
+| `y > lineEndY` | `pathLen + (y − lineEndY)` ← 1:1，核心精準釘在 50vh |
+
+其中 `y = rawP × tailEndY` ＝ 此刻落在視窗中央的容器 y（start / end 都錨在 `center`，故線性）。
+
+`forumPathProgress` 的語意刻意維持「**設計線**走完的比例」（尾段一律 1），故下游的
+`forumPathRiding` 不受影響。
+
+**核心在尾段全程看不見**，靠 `Forum.vue` 的 `.sec2__pin { position: relative; background: #fff }`
+遮蔽 —— 原本 `.sec2__path` 是 positioned、`.sec2__pin` 是 static，positioned 會畫在 static 之上，
+核心會浮在議程**上面**。兩者同層之後由 DOM 順序決定，`.sec2__pin` 在後 → 在上。白底是必要的：
+原本靠 `.sec2` 的白底，那是祖先，遮不到。
+
+實測（1440×900）：設計線末端在 page y 11458.5、`.agenda` 頂緣 11502 → **交接窗只有 43.5px**。
+那 43.5px 內核心停在視窗中央不動，議程頂緣升上來咬住它，同一瞬間第一組的箭頭亮起。
+加尾段之前的舊行為是核心停住後隨頁面往上飄出畫面（可見約半個視窗）。
 
 ### 兩個容易漏掉的顯隱規則
 

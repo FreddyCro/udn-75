@@ -47,4 +47,6 @@ mobile-first。原因：pc 版是「整段絕對定位到 1280 設計稿座標�
 
 要照稿就得把 venue 拆成三筆，但那會讓 pc 也變三行（pc 稿是兩行），故未動。
 
+議程本身（`Agenda.vue`）另有三張專用稿與穿透互動，見 [[agenda-core-crossing]]。
+
 相關：[[rwd-breakpoint-mapping]]、[[comment-style]]、[[no-auto-commit]]
