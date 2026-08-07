@@ -219,7 +219,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 .forum-event__body {
   width: 623px;
   margin: 16px 0 0;
-  color: #898989;
+  color: var(--color-gray-light);
   font-size: 24px;
   line-height: 44px;
   text-align: justify;
@@ -491,7 +491,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   order: 1;
   min-height: 68px;
   margin: 12px 0 0;
-  color: #898989;
+  color: var(--color-gray-light);
   font-size: 20px;
   line-height: 32px;
   letter-spacing: 0.05em;

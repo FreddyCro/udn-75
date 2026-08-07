@@ -390,7 +390,7 @@ useHead({ title: '素材總覽 · udn 75' });
     overflow: hidden;
     border: 1px solid #e5e5e5;
     border-radius: 8px;
-    background-color: #fafafa;
+    background-color: var(--color-white-light);
     background-image:
       linear-gradient(45deg, #eee 25%, transparent 25%),
       linear-gradient(-45deg, #eee 25%, transparent 25%),

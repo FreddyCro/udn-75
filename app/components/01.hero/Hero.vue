@@ -10,11 +10,13 @@ import str from '@/locales/section1.json';
 //   sec1Ref       — 座標範圍 / ScrollTrigger trigger
 //   orangeCoreRef — orange core 元件（曝露 root el 供 GSAP 驅動）
 //   innerRef      — 含 core / path / 內容的整組（絕對定位原點，也是 transition pin 的目標）
-//   introRef      — 引言整段（含 60vh runway）：path 終點與 pin 起點共用的參照
+//   introRef      — 引言整段（含 runway）：path 終點與 pin 起點共用的參照
+//   introBodyRef  — 引言文字本體（不含 runway）：淡出起點的量測對象
 const sec1Ref = ref<HTMLElement | null>(null);
 const orangeCoreRef = ref<{ root: HTMLElement | null } | null>(null);
 const innerRef = ref<HTMLElement | null>(null);
 const introRef = ref<HTMLElement | null>(null);
+const introBodyRef = ref<HTMLElement | null>(null);
 
 // OrangeCore 元件曝露的 root el，交給 OrangeCorePath 以 GSAP 驅動。
 const orangeCoreEl = computed(() => orangeCoreRef.value?.root ?? null);
@@ -30,12 +32,15 @@ const {
   symbolLayerDone,
 } = useOrangeCoreProgress();
 
-// 引言淡出：core 接近視窗中央（path 進度過 INTRO_FADE_FROM）時整段淡出，讓位給轉場。
-const introOpacity = computed(() => {
-  const p =
-    (pathProgress.value - INTRO_FADE_FROM) / (1 - INTRO_FADE_FROM || 1);
-  return String(1 - Math.min(1, Math.max(0, p)));
-});
+// 引言淡出進度（0..1）：由下方 introFadeST 的 scrub 寫入。
+// 刻意不掛在 pathProgress 的門檻上 —— 那條軌的進度換算成「文字還剩幾行沒被穿過」會隨
+// 視窗高與文字行數浮動，門檻寫死就會像先前那樣在方塊還在字裡時就開始淡。
+const introFade = ref(0);
+const introOpacity = computed(() => String(1 - introFade.value));
+
+// 引言的 runway：50vh（core 從文字底緣走到視窗中央所需）＋ 淡出窗口，兩者都由
+// INTRO_FADE_VH 推出 → 淡出必然剛好在 pin 接手的同一刻結束（見 orange-core-config）。
+const introRunway = `${(0.5 + INTRO_FADE_VH) * 100}vh`;
 
 // hero 影片四階段（main/loop/outro/gone）全域共享，定義見 composables/useHeroVideo。
 // 此處只讀狀態驅動畫面與捲動鎖：main / loop 鎖捲動、outro 起解鎖。
@@ -68,6 +73,11 @@ const coreVisible = computed(
 // ⚠️ pin 會在 .sec1__inner 寫入 transform，使其成為 fixed 子孫的 containing block →
 //    HeroLoader 與 HeroSymbolTransition 都必須掛在 inner「外面」，否則改以 inner 為基準而跑位。
 let transitionST: ScrollTrigger | null = null;
+// 引言淡出：start 用量出來的幾何而非進度門檻 —— 'bottom center' ＝ 文字底緣升到視窗中央，
+// 而 core 全程定在視窗中央（見 .claude/memory/hero-core-screen-locked.md），
+// 故這一刻正是「方塊剛穿出最後一行」。其後吃掉 INTRO_FADE_VH 的捲動距離淡完。
+// trigger 取文字本體（不含 runway）；scrub → 往回捲自動復原。
+let introFadeST: ScrollTrigger | null = null;
 
 onMounted(() => {
   // hero 影片體驗一律從頂端開始：停用瀏覽器捲動位置還原，
@@ -91,6 +101,20 @@ onMounted(() => {
     onLeaveBack: () => setTransitionProgress(0), // 捲回 pin 之前 → 收回轉場
     onLeave: () => setTransitionProgress(1), //     捲過 pin 之後 → 維持滿版，等 SymbolScene 接手
   });
+
+  if (introBodyRef.value) {
+    introFadeST = ScrollTrigger.create({
+      trigger: introBodyRef.value,
+      start: 'bottom center',
+      end: () => `+=${window.innerHeight * INTRO_FADE_VH}`,
+      scrub: true,
+      invalidateOnRefresh: true,
+      onUpdate: (self) => (introFade.value = self.progress),
+      // 捲過整段後 ScrollTrigger 不再 update：明確補到 0 / 1，否則快速捲動會留下殘影透明度。
+      onLeave: () => (introFade.value = 1),
+      onLeaveBack: () => (introFade.value = 0),
+    });
+  }
 });
 
 onBeforeUnmount(() => {
@@ -98,6 +122,8 @@ onBeforeUnmount(() => {
   document.body.classList.remove('is-scroll-locked');
   transitionST?.kill();
   transitionST = null;
+  introFadeST?.kill();
+  introFadeST = null;
 });
 
 // main / loop 期間鎖住頁面捲動；其餘（outro / gone）解鎖。
@@ -181,10 +207,15 @@ function applyScrollLock() {
       />
 
       <div class="sec1__scene">
-        <!-- intro 引言：置中窄欄；core 垂直穿透這段文字，接近視窗中央時整段淡出讓位給轉場。
-             本元素（含 60vh runway）的底緣＝path 終點與 transition pin 起點的共用參照。 -->
-        <div ref="introRef" class="sec1__intro" :style="{ opacity: introOpacity }">
-          <p class="sec1__intro-body">{{ str.intro.body }}</p>
+        <!-- intro 引言：置中窄欄；core 從文字後方垂直穿過，穿出最後一行後整段才淡出讓位給轉場。
+             本元素（含 runway）的底緣＝path 終點與 transition pin 起點的共用參照；
+             runway 長度由 INTRO_FADE_VH 推出（--intro-runway），故淡完＝pin 接手。 -->
+        <div
+          ref="introRef"
+          class="sec1__intro"
+          :style="{ opacity: introOpacity, '--intro-runway': introRunway }"
+        >
+          <p ref="introBodyRef" class="sec1__intro-body">{{ str.intro.body }}</p>
         </div>
       </div>
     </div>

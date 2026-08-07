@@ -92,7 +92,12 @@ const onSoundClick = () => {
             viewBox="0 0 95.9863 95.9863"
             aria-hidden="true"
           >
-            <circle cx="47.9943" cy="47.9943" r="8.72603" fill="#ff7f00" />
+            <circle
+              class="hero-start__sound-dot"
+              cx="47.9943"
+              cy="47.9943"
+              r="8.72603"
+            />
             <circle
               class="hero-start__sound-wave"
               cx="47.9932"
@@ -171,9 +176,6 @@ const onSoundClick = () => {
 </template>
 
 <style lang="scss" scoped>
-$gray: #686868;
-$orange: #ff7f00;
-
 // 滿版白底蓋住影片：本層在 .sec1__inner「外面」（見 Hero.vue），故 fixed 不受 pin 影響。
 .hero-start {
   position: fixed;
@@ -196,7 +198,7 @@ $orange: #ff7f00;
   height: 95px;
   padding: 0;
   border: 0;
-  background: $orange;
+  background: var(--color-orange);
   cursor: pointer;
   transition: transform 0.3s ease;
 
@@ -240,7 +242,7 @@ $orange: #ff7f00;
   width: 50px;
   height: 40px;
   padding: 0;
-  color: $gray;
+  color: var(--color-gray);
   background: none;
   border: 0;
   cursor: pointer;
@@ -254,7 +256,7 @@ $orange: #ff7f00;
 
   &:hover,
   &:focus-visible {
-    color: $orange;
+    color: var(--color-orange);
   }
 }
 
@@ -271,9 +273,13 @@ $orange: #ff7f00;
   pointer-events: none;
 }
 
+.hero-start__sound-dot {
+  fill: var(--color-orange);
+}
+
 .hero-start__sound-wave {
   fill: none;
-  stroke: $orange;
+  stroke: var(--color-orange);
   stroke-width: 0.5;
   transform-box: fill-box;
   transform-origin: center;
@@ -317,7 +323,7 @@ $orange: #ff7f00;
 // icon 底 496 → 文字頂 504，故 margin-top 8px。
 .hero-start__sound-hint {
   margin: 8px 0 0;
-  color: $gray;
+  color: var(--color-gray);
   font-weight: 300;
   font-size: 15px;
   line-height: 24px;

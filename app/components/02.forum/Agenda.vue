@@ -43,7 +43,7 @@ const { groups, actions } = str.agenda;
 
 <style lang="scss" scoped>
 .agenda {
-  --agenda-line: #898989;
+  --agenda-line: var(--color-gray-light);
 
   max-width: 1064px;
   margin: 0 auto;
@@ -102,12 +102,12 @@ const { groups, actions } = str.agenda;
 
   @include rwd-max('tablet') {
     padding: 4px 10px;
-    color: #fafafa;
+    color: var(--color-white-light);
     font-size: 20px;
     font-weight: 400;
     line-height: 30px;
     letter-spacing: 0.15em;
-    background: #686868;
+    background: var(--color-gray);
   }
 }
 

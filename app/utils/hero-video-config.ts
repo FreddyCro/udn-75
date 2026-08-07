@@ -59,7 +59,7 @@ export const HERO_VIDEO_END = Number.POSITIVE_INFINITY;
 export const HERO_VIDEO_SEGMENTS: HeroVideoSegments = {
   main: { start: 0, end: 30 },
   loop: { start: 30, end: 33 },
-  outro: { start: 33, end: 38.5 },
+  outro: { start: 36, end: 38.5 },
 };
 
 // pad / mob 剪輯段落不同時在此覆寫（未列的裝置沿用上方共用值）—— RWD 預留。

@@ -37,8 +37,10 @@ defineExpose({ root });
   top: 0;
   left: 0;
   z-index: 2;
-  width: 24px;
-  height: 24px;
+  // 邊長對稿 26px；與 ~/utils/orange-core-config 的 CORE.dotSize 同值（ForumCore 等讀該常數，
+  // 此處是 hero 段唯一寫死的一份 —— 兩邊要一起改）。
+  width: 26px;
+  height: 26px;
   opacity: 0;
   transition: opacity 0.6s ease;
 

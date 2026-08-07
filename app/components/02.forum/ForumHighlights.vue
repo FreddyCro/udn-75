@@ -113,7 +113,7 @@ const { heading, items } = str.highlights;
 
 .highlights__excerpt {
   margin: 8px 0 0;
-  color: #898989;
+  color: var(--color-gray-light);
   font-size: 17px;
   font-weight: 300;
   line-height: 28px;

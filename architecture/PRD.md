@@ -83,7 +83,7 @@ app/components/
 | [useHeroVideo.ts](../app/composables/useHeroVideo.ts)                   | 狀態機        | hero 影片四階段 `main / loop / outro / gone`，衍生 `shouldLockScroll` / `isGone` / `hasLeftLoop`；與載入層的握手 `videoReady` / `loaderDone` / `heroStarted`；`currentTime`（dev 讀數）。狀態本身不含計時器，推進由 HeroVideo 依影片時間軸驅動 |
 | [hero-video-config.ts](../app/utils/hero-video-config.ts)               | 設定台        | `HERO_VIDEO_SRC` / `HERO_VIDEO_POSTER`（mob／pad／pc 三段，**RWD 預留**，目前三者共用 pc 版）、`HERO_VIDEO_SEGMENTS`（四階段的秒數區間，段落相接）、`HERO_VIDEO_SEGMENTS_BY_DEVICE`、`HERO_VIDEO_READY_TIMEOUT`、`HERO_GESTURE`（手勢門檻與冷卻） |
 | [useOrangeCoreProgress.ts](../app/composables/useOrangeCoreProgress.ts) | 狀態機        | 四條 progress 軌（見下表）＋ 由它們解出的 `stage` / `stageProgress` / `symbolTarget` / `symbolMode` / `symbolLayerDone` / `forumCoreActive` / `agendaRevealed` / `blessingFrame`，以及 `reduceMotion`                       |
-| [orange-core-config.ts](../app/utils/orange-core-config.ts)             | 設定台        | 門檻與距離：`STAGE_STOPS`、`MOVE_EASE`、`INTRO_FADE_FROM`、`TRANSITION_VH`、`SYMBOL_TRANSITION`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`BLESSING_VH`、`BLESSING_HOLD`；幾何與外觀：`CORE`、`FORUM_PATH`。刻意**不含**子元件自身外觀參數（HeroLoader 的方塊／SymbolFace 的粒子物理），那些留在各元件 |
+| [orange-core-config.ts](../app/utils/orange-core-config.ts)             | 設定台        | 門檻與距離：`STAGE_STOPS`、`MOVE_EASE`、`INTRO_FADE_VH`、`TRANSITION_VH`、`SYMBOL_TRANSITION`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`BLESSING_VH`、`BLESSING_HOLD`；幾何與外觀：`CORE`、`FORUM_PATH`。刻意**不含**子元件自身外觀參數（HeroLoader 的方塊／SymbolFace 的粒子物理），那些留在各元件 |
 | [blessing-face-frames.ts](../app/utils/blessing-face-frames.ts)         | 設定台        | 永續祝福逐格像素臉的格資料（`FACE_FRAME_COUNT` 17 格）                                                                                                                                                                   |
 | [hero-scroll-intent.ts](../app/utils/hero-scroll-intent.ts)             | 純函式        | loop ↔ outro 的方向手勢判定（body 鎖住時沒有 scroll 事件，故由 wheel／touchmove／方向鍵位移累積判定）。有 vitest 覆蓋                                                                                                     |
 
@@ -93,10 +93,12 @@ app/components/
 
 | 軌                    | 寫入者                   | 捲動尺                                                            | 距離                        | 解出                                                          |
 | --------------------- | ------------------------ | ----------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------- |
-| `pathProgress`        | `OrangeCorePath`（scrub）| `trigger: .sec1`、`start: 'top top'`、`endTrigger: .sec1__intro`、`end: 'bottom bottom'` | 由版面決定                  | core 沿線位置；`STAGE_STOPS` → `stage` 1–3；`INTRO_FADE_FROM` → 引言淡出 |
+| `pathProgress`        | `OrangeCorePath`（scrub）| `trigger: .sec1`、`start: 'top top'`、`endTrigger: .sec1__intro`、`end: 'bottom bottom'` | 由版面決定                  | core 沿線位置；`STAGE_STOPS` → `stage` 1–3                     |
 | `transitionProgress`  | `Hero.vue` 的 transition pin | `trigger: .sec1__intro`、`start: 'bottom bottom'`、`end: +=TRANSITION_VH×vh` | **120vh**（`TRANSITION_VH` 1.2） | `SYMBOL_TRANSITION` → 兩段軸向放大（見 Section 1 詳規）        |
 | `symbolProgress`      | `SymbolScene`            | `trigger: .sec-symbol`、`start: 'top bottom'`、`end: 'bottom bottom'` | **320vh**（`SYMBOL_VH` 3.2） | `SYMBOL_STOPS` → `symbolMode` / `symbolLayerDone`；`FORUM_HANDOFF` → `forumCoreActive` / `agendaRevealed` |
 | `blessingProgress`    | `Blessing.vue`           | `trigger: .section3__face-track`、`start: 'top top'`、`end: 'bottom bottom'` | **120vh**（`BLESSING_VH` 1.2） | `blessingFrame`（17 格逐格臉，尾端 `BLESSING_HOLD` 停在最後一格） |
+
+> 引言淡出**不在**這四條軌上：它由 `Hero.vue` 自己的一條 scrub ScrollTrigger 驅動（`trigger: .sec1__intro-body`、`start: 'bottom center'`、`end: +=INTRO_FADE_VH×vh`），起點是量出來的幾何（文字底緣升到視窗中央 ＝ core 剛穿出最後一行），不是 path 進度門檻。詳見 Section 1 的 ⑤。
 
 > 🚧 `stage` / `stageProgress`（stage 1–3）模型目前**無 production 消費者** —— 舊的 stage 4–6 視覺（橘→黑變色、星空撐大）已隨舊架構移除，core 在 1–3 全程都是等速移動的橘點。保留此模型作為新稿後續 checkpoint 的接點，目前只有 `DevOrangeCoreProgress` 在讀。
 
@@ -124,8 +126,10 @@ app/components/
    ✅ ④ core 淡入（isGone）於第一屏正中央 ＝ 載入層橘塊的位置（延續同一點）
                                │
 ╞═ path 軌 ════════════════════╪══════════════════════  [OrangeCorePath] ═╡
-   ✅ ⑤ 沿垂直線下降，**穿透引言文字**（引言過 INTRO_FADE_FROM 後整段淡出）
-   ✅ ⑥ 停在**視窗正中央**（path 終點 ＝ 引言整段底緣 − 50vh）
+   ✅ ⑤ **從引言文字後方**垂直穿過（`.sec1__scene` z-index 3 疊在 core 之上 → 只有
+        筆畫遮住方塊）；穿出最後一行後引言才開始淡出，吃掉 INTRO_FADE_VH 淡完
+   ✅ ⑥ 停在**視窗正中央**（path 終點 ＝ 引言整段底緣 − 50vh）；引言淡完＝pin 接手
+        （runway ＝ 50vh ＋ INTRO_FADE_VH×100vh，由 --intro-runway 綁定，故必然同刻）
                                │
 ╞═ transition 軌 ══════════════╪════════════════  [Hero transition pin] ══╡
    ✅ ⑦ 上下拉長成窄長條，同時 橘 → 黑（#000）

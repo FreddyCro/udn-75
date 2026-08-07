@@ -76,10 +76,10 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
 // 而它的座標原點是 .sec2__path 的 padding box —— 留白掛在 .sec2 會讓原點下沉 140，
 // 線就少了那一段。見 architecture/forum-core-path.md。
 .sec2 {
-  --accent: #ff7f00;
+  --accent: var(--color-orange);
 
   min-height: 100vh;
-  color: #686868;
+  color: var(--color-gray);
   background-color: #fff;
 }
 

@@ -8,8 +8,9 @@
 
   幾何全由量測推導、無寫死座標：x = section 水平中心（引言文字也置中，故一路穿過文字），
   終點 y = endEl 底緣 − 半個視窗高（endEl 底緣貼齊視窗底時，該點正好是視窗正中央）。
-  ⚠️ endEl 尾端必須留 ≥ 50vh 的 runway（見 Hero.scss 的 .sec1__intro padding-bottom），
-     否則終點會落在文字之內、core 還沒穿出文字就停住。
+  ⚠️ endEl 尾端必須留 ≥ 50vh 的 runway（見 Hero.scss 的 .sec1__intro padding-bottom，
+     實際值為 50vh ＋ 引言淡出窗口 INTRO_FADE_VH），否則終點會落在文字之內、
+     core 還沒穿出文字就停住。
   ⚠️ 起訖與 endEl 都刻意避開 .sec1 的 bottom：Hero 的 transition pin 會在 .sec1 內插入
      pin-spacer 把 section 撐高，用 .sec1 的 bottom 當基準會變成循環依賴（量到的高度含 spacer）。
      endEl 位於被 pin 的 .sec1__inner 之內，其幾何不受 spacer 影響。

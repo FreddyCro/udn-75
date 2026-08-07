@@ -57,7 +57,7 @@ const { heading, body, cta } = str.report;
   width: 422px;
   height: 74px;
   margin: 40px auto 0;
-  background: #686868;
+  background: var(--color-gray);
   color: #fff;
   font-size: 22px;
   line-height: 36px;

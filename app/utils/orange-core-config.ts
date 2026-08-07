@@ -24,9 +24,16 @@ export const STAGE_STOPS = [
 // 註：ease 同時作用於「定位」與「stage 判定」，故 stage 門檻仍對齊路徑幾何位置（不會錯位）。
 export const MOVE_EASE = 'none';
 
-// ── 引言文字淡出：core 接近視窗中央時，引言整段淡出讓位給轉場 ─────────────
-// path 進度到此門檻開始淡出，p=1（core 抵達視窗中央）時完全消失。
-export const INTRO_FADE_FROM = 0.7;
+// ── 引言文字淡出：core 走出文字之後才開始，淡出窗口的長度（× 視窗高）─────────
+// 起點不是 path 進度門檻，而是量出來的：引言文字**底緣升到視窗中央**（＝ core 所在高度，
+// 見 .claude/memory/hero-core-screen-locked.md）的那一刻 —— 即方塊剛穿出最後一行。
+// 其後吃掉這段捲動距離把整段淡完（＝「慢慢淡出」的旋鈕，越大越慢）。
+//
+// ⚠️ 這個值同時決定引言的 runway：`.sec1__intro` 的 padding-bottom 必須是
+//    `50vh + INTRO_FADE_VH × 100vh`，淡出才會剛好在轉場 pin 接手的同一刻結束
+//    （50vh 是 core 從文字底緣走到視窗中央所需，見 OrangeCorePath）。
+//    故 Hero.vue 直接由本值算出 `--intro-runway` 餵給 SCSS，不需兩邊手動同步。
+export const INTRO_FADE_VH = 0.4;
 
 // ── hero → SymbolScene 轉場（設計稿標註「綁滾動」＝ 全程 scrub，非定時動畫）──
 // core 停在視窗正中央後，由 Hero 的 transition pin scrub 驅動「兩段軸向放大」：
@@ -60,9 +67,9 @@ export const SYMBOL_TRANSITION = {
 //
 // ⚠ 實際長度用算的（連接段 356），比設計稿的 224.7 長 58%。這是「幾何用算的」必然的
 //   取捨，換來的是永不飄掉。
-// ⚠ width 7 比核心的 CORE.dotSize（24）細三倍，故**核心不會被斜線遮住** ——
+// ⚠ width 7 比核心的 CORE.dotSize（26）細將近四倍，故**核心不會被斜線遮住** ——
 //   畫面上是「細灰線在移動的方塊後面長出來」，不是「方塊被吞進斜線再從尾端冒出」。
-//   要吞掉核心就把 width 調到 ≥ 24。
+//   要吞掉核心就把 width 調到 ≥ 26。
 export const FORUM_SLASH = {
   width: 7,
   color: 'var(--color-gray)',
@@ -118,9 +125,10 @@ export const SYMBOL_VH = 3.2;
 
 // ── core dot 外觀 ────────────────────────────────────────────────────
 // dotSize：dot 邊長（px），亦為 HeroSymbolTransition 讀不到 core 時的退回尺寸。
-// 🚧 設計稿為 26px、此處仍為 24px（OrangeCore / ForumCore 的 SCSS 亦寫死 24）—— 尺寸對稿待辦。
+// 對稿 26px（2026-08-07）。ForumCore / ForumCorePath / HeroSymbolTransition 都讀這個常數，
+// 唯一的例外是 hero 段的 OrangeCore.vue —— 它的 SCSS 寫死同一個值，改這裡要一起改。
 export const CORE = {
-  dotSize: 24,
+  dotSize: 26,
   orange: [255, 127, 0] as [number, number, number],
 };
 

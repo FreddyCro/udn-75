@@ -1,9 +1,6 @@
 <script lang="ts" setup>
 import story from '~/locales/story.json';
 import section1 from '~/locales/section1.json';
-import glitch1 from '~/assets/img/glitch-01.jpg';
-import glitch2 from '~/assets/img/glitch-02.jpg';
-import glitch3 from '~/assets/img/glitch-03.jpg';
 
 const config = useRuntimeConfig();
 

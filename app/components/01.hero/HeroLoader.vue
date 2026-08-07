@@ -223,7 +223,7 @@ onBeforeUnmount(() => {
 .tile {
   width: var(--tile);
   height: var(--tile);
-  background-color: #9fd6ff;
+  background-color: var(--color-blue);
   /* 翻色帶一點點過渡，避免硬切；前緣波看起來會「流動」 */
   transition: background-color 0.18s linear;
 }
@@ -237,7 +237,7 @@ onBeforeUnmount(() => {
   /* 設計稿 loading-1~6：32px / weight 300 / 無字距（字體用專案主字體 Noto Sans TC） */
   font-size: 32px;
   font-weight: 300;
-  color: #686868;
+  color: var(--color-gray);
   pointer-events: none;
   transition: opacity 0.4s ease;
 }

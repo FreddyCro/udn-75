@@ -5,6 +5,17 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
 
+  modules: ['@nuxt/fonts'],
+
+  // Figma 規格：Noto Sans TC 300 / 400 / 500。
+  // @nuxt/fonts 在 build 時把字體檔下載到本地自架，不依賴外部 CDN，
+  // 並自動產生帶 unicode-range 的分段 @font-face。
+  fonts: {
+    families: [
+      { name: 'Noto Sans TC', provider: 'google', weights: [300, 400, 500] },
+    ],
+  },
+
   // 讓區網設備可以使用，例如手機
   // devServer: {
   //   host: "0.0.0.0",

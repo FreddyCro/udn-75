@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// hero：第一屏影片區塊（含 SEO 文字、下滑提示、dev 狀態切換列）。
+// hero：第一屏影片區塊（含 SEO 文字、skip 按鈕、下滑提示）。
 // 影片四階段狀態自 useHeroVideo 全域共享；「各階段秒數」與「RWD 影片來源」集中在
 // ~/utils/hero-video-config，本元件只負責依設定驅動 <video>（seek / loop / 換狀態）。
 import str from '@/locales/section1.json';
@@ -32,7 +32,7 @@ const {
 
 // skip 按鈕的現身條件（設計稿 #BN skip）：正片播放 HERO_SKIP_APPEAR_AT 秒後淡入，
 // 正片播完進 loop 就淡出。
-// 綁「影片時間軸」而非 setTimeout：暫停 / 換 RWD 來源重載 / dev 控制列跳段 / 倒帶回 loop
+// 綁「影片時間軸」而非 setTimeout：暫停 / 換 RWD 來源重載 / 倒帶回 loop
 // 都自動一致，也沒有計時器要清。currentTime 由 onTimeUpdate 寫入（約每 250ms）。
 const showSkip = computed(
   () => heroState.value === 'main' && currentTime.value >= HERO_SKIP_APPEAR_AT,
@@ -156,7 +156,7 @@ function onError() {
   setState('gone');
 }
 
-// 狀態改變（dev 控制列 / SKIP / 自動推進）→ 對齊該段起點並續播；gone 則停住影片。
+// 狀態改變（SKIP / 手勢 / 自動推進）→ 對齊該段起點並續播；gone 則停住影片。
 // 已落在目標段內就不 seek，所以「段落相接」的自動推進不會有跳動。
 watch(heroState, (s) => {
   const v = videoEl.value;
@@ -340,17 +340,10 @@ onBeforeUnmount(() => {
       <span class="sec1__hero-scroll-text">{{ str.hero.scrollHint }}</span>
       <span class="sec1__hero-scroll-line" aria-hidden="true" />
     </div>
-
-    <!-- 影片狀態切換列（dev 用：狀態切換 + SKIP + 秒數讀數）；定位在 hero 內、水平置中 -->
-    <DevHeroVideoControls dev />
   </div>
 </template>
 
 <style lang="scss" scoped>
-// figma design tokens（與 AppHeader 一致）
-$gray: #686868;
-$light-gray: #898989;
-
 .sec1__hero {
   position: relative;
   width: 100%;
@@ -399,7 +392,7 @@ $light-gray: #898989;
   position: absolute;
   right: 22.67px; // 34 ÷ 1.5
   bottom: 20.67px; // 31 ÷ 1.5
-  z-index: 2; // 疊在影片層之上（dev 控制列 z-index 10 仍在最上）
+  z-index: 2; // 疊在影片層之上
   display: flex;
   align-items: center;
   // 尺寸／padding 照設計稿的固定外框（100×48、padding 11 10 9）÷1.5 —— 命中區與稿一致，
@@ -408,7 +401,7 @@ $light-gray: #898989;
   height: 32px;
   gap: 8px; // 12 ÷ 1.5
   padding: 7.33px 6.67px 6px;
-  color: $gray;
+  color: var(--color-gray);
   background: none;
   border: 0;
   // 未到 3s（或已離開正片）：全透明且完全不可點
@@ -469,7 +462,7 @@ $light-gray: #898989;
 }
 
 .sec1__hero-scroll-text {
-  color: $gray;
+  color: var(--color-gray);
   font-weight: 300; // Noto Sans TC Light
   font-size: 12px;
   line-height: 1;
@@ -481,7 +474,7 @@ $light-gray: #898989;
   width: 1px;
   height: 30px;
   margin-top: 8px;
-  background: $light-gray;
+  background: var(--color-gray-light);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -210,9 +210,6 @@ function scrollToTop(e?: Event) {
 </template>
 
 <style lang="scss" scoped>
-$orange: #ff7f00;
-$blue: #9fd6ff;
-$gray: #686868;
 $bar-bg: rgba(255, 255, 255, 0.7);
 $pc-min: 1024px;
 
@@ -256,12 +253,12 @@ $pc-min: 1024px;
   position: relative;
   width: 100%;
   height: 3px;
-  background-color: $blue;
+  background-color: var(--color-blue);
 }
 
 .app-header__progress-bar {
   height: 100%;
-  background-color: $orange;
+  background-color: var(--color-orange);
   transition: width 0.15s linear;
 }
 
@@ -324,7 +321,7 @@ $pc-min: 1024px;
   font-size: 15px;
   font-weight: 400;
   line-height: 1.4;
-  color: $gray;
+  color: var(--color-gray);
   text-decoration: none;
   white-space: nowrap;
 
@@ -335,7 +332,7 @@ $pc-min: 1024px;
     right: 0;
     bottom: 0;
     height: 2px;
-    background-color: $orange;
+    background-color: var(--color-orange);
     transform: scaleX(0);
     transition: transform 0.2s ease;
   }
@@ -346,7 +343,7 @@ $pc-min: 1024px;
   }
 
   &.is-active {
-    color: $orange;
+    color: var(--color-orange);
   }
 }
 

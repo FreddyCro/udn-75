@@ -9,6 +9,7 @@
   --color-gray: #686868; /* dark gray — 次要文字（單元名） */
   --color-gray-light: #898989; /* light gray — 輔助文字（撰文者） */
   --color-line: #d8d8d8; /* B5 — 分隔線／邊框 */
+  --color-white-light: #fafafa; /* light white — 面板／區塊淺底 */
 
   /* ── 字級（Noto Sans TC；--text-x--line-height 對齊 Figma text styles）── */
   --text-caption: 15px; /* 圖說、製作團隊 400/22 */

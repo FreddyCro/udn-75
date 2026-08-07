@@ -35,7 +35,8 @@ export function useHeroVideo() {
   //   ② 有聲播放必須綁在使用者手勢上（見 useAppSound）
   const heroStarted = useState('hero-started', () => false);
 
-  // 影片目前秒數（HeroVideo 於 timeupdate 寫入）：dev 控制列顯示，方便對照 / 調整 config 秒數。
+  // 影片目前秒數（HeroVideo 於 timeupdate 寫入，約每 250ms）：
+  // 供「綁影片時間軸」的判定使用 —— 目前是 skip 按鈕的現身時機（見 HERO_SKIP_APPEAR_AT）。
   const currentTime = useState('hero-video-time', () => 0);
 
   // 是否已經離開過 loop（進過 outro / gone）。一旦為 true 就「永不重新上鎖」。
@@ -53,13 +54,13 @@ export function useHeroVideo() {
   };
 
   /**
-   * SKIP：在 main / loop 時「跳過整支影片」— 直接進 gone，效果等同 dev 控制列的「4.消失」
-   * （影片淡出、orange core 於第一屏正中央淡入）。非 main / loop 時無作用。
-   * 使用者端的 skip 按鈕（HeroVideo 右下角，正片 3s 後淡入）與 dev 控制列共用這個行為。
+   * SKIP：在 main / loop 時「跳過整支影片」— 直接進 gone（影片淡出、orange core 於第一屏
+   * 正中央淡入）。非 main / loop 時無作用。
+   * 觸發者是 HeroVideo 右下角的 skip 按鈕（正片 3s 後淡入，見 HERO_SKIP_APPEAR_AT）。
    *
    * 刻意「不」先播退場段：outro 約 5.5 秒（見 hero-video-config 的 HERO_VIDEO_SEGMENTS），
    * 按了 SKIP 還要等它播完才看到結果，對開發與試看都是浪費。
-   * 要單獨預覽退場段請按 dev 控制列的「3.退場」。
+   * 要單獨預覽退場段，直接呼叫 setState('outro')。
    */
   const skip = () => {
     if (state.value !== 'main' && state.value !== 'loop') return;
