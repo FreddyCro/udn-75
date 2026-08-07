@@ -87,6 +87,7 @@ watch(() => symbolTarget.value.enter, (e) => (symbolLayerDone.value = e), {
     class="sec-symbol"
     :style="{ height: sceneHeight }"
     aria-hidden="true"
+    data-header-theme="dark"
   >
     <!-- symbol 序列進度（僅 dev）。fixed 定位，本 section 無 transform 故不受影響。 -->
     <DevOnly>

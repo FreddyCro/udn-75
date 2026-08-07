@@ -50,6 +50,7 @@ const introRunway = `${(0.5 + INTRO_FADE_VH) * 100}vh`;
 //   loaderDone — HeroLoader @done 時由本元件設 true → HeroVideo 才開始播 main（避免被載入層蓋住白播）。
 const {
   state: heroState,
+  setState,
   isGone,
   shouldLockScroll,
   videoReady,
@@ -83,6 +84,18 @@ onMounted(() => {
   // hero 影片體驗一律從頂端開始：停用瀏覽器捲動位置還原，
   // 避免重整後還原到內容區、卻因 main/loop 狀態把 body 鎖死在中途。
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+  // 帶 hash 進站（子頁漢堡選單的錨點會導到 /#forum 等）：略過開場閘門。
+  // 走既有的 gone 路徑而非新增旗標 —— setState('gone') 令 hasLeftLoop 為 true，
+  // shouldLockScroll 隨即 false，下面的 applyScrollLock() 這一輪就不會上鎖
+  // （必須搶在它之前，否則會先上鎖再解鎖、中間閃一下並被 scrollTo(0,0) 拉回頂端）。
+  const initialHash = window.location.hash.slice(1);
+  if (initialHash) {
+    loaderDone.value = true;
+    heroStarted.value = true;
+    setState('gone');
+  }
+
   // 捲動鎖由本元件「單一擁有」：載入層一掛上就上鎖（此時為 main），一路持有到
   // outro/gone 才解鎖。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
   // 先解鎖、本元件下一 tick 才重新上鎖，中間會出現「瞬間可捲動」的破口。
@@ -115,7 +128,41 @@ onMounted(() => {
       onLeaveBack: () => (introFade.value = 0),
     });
   }
+
+  if (initialHash) scrollToInitialHash(initialHash);
 });
+
+// 帶 hash 進站時的落點。必須等 pin 的 pin-spacer 撐開文件（ScrollTrigger.refresh()）
+// 之後才量位置，否則量到的是沒有 spacer 的舊高度、會落在段落上方數個視窗。
+// nextTick 等後續段落（Forum / Blessing / Media）掛載完成，它們的 ScrollTrigger 才在。
+function scrollToInitialHash(hash: string) {
+  nextTick(() => {
+    ScrollTrigger.refresh();
+
+    const target = document.getElementById(hash);
+    if (!target) return;
+
+    // 扣掉常駐 header 高度，落點才不會被 header 蓋住（同 AppHeader 的 getHeaderOffset）
+    const headerHeight =
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          '--header-height',
+        ),
+      ) || 0;
+
+    // ⚠️ 跨頁導航（子頁選單 → /#forum）時 Nuxt 的 scrollBehavior 會等頁面轉場結束後
+    //    「再捲一次」到 hash 元素，蓋掉下面這次捲動。它的偏移量取自元素的 scroll-margin-top
+    //    （見 nuxt/dist/pages/runtime/router.options 的 _getHashElementScrollMarginTop），
+    //    故一併寫上去讓兩邊落在同一點 —— 比賽誰後捲更可靠。
+    target.style.scrollMarginTop = `${headerHeight}px`;
+
+    // auto 而非 smooth：從別頁導進來時使用者預期「已經在那裡」，不是看著頁面自己捲。
+    window.scrollTo({
+      top: target.getBoundingClientRect().top + window.scrollY - headerHeight,
+      behavior: 'auto',
+    });
+  });
+}
 
 onBeforeUnmount(() => {
   document.documentElement.classList.remove('is-scroll-locked');

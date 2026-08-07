@@ -24,7 +24,7 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
 </script>
 
 <template>
-  <section id="forum" class="sec2">
+  <section id="forum" class="sec2" data-header-theme="light">
     <!-- 上半段（路徑段）：論壇一~三的內容 ＋ 核心沿設計線蛇行下行（見 temp/issue-05）。
          段落主標只在論壇一之前出現一次，故由本層渲染、不進 <ForumEvent>。
          設計線依錨點定位、核心沿驅動線移動（見 ForumCorePath）。 -->
