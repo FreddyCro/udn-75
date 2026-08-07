@@ -53,11 +53,20 @@ onMounted(() => {
     .filter((el): el is HTMLElement => !!el);
 
   if (sections.length) {
+    // 維護「目前與中央帶重疊的區塊」集合，再由它推導 activeTarget。
+    // 只在 isIntersecting 時設值（不處理離開）會讓錨點永遠停在第一個曾命中的區塊上：
+    // hero 期間 ScrollTrigger 還沒建立 pin spacer，文件較短、#forum 位置偏高會誤觸一次，
+    // 之後就再也清不掉 —— 表現就是 hero 時「論壇」已經是 active。
+    const visible = new Set<string>();
     observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) activeTarget.value = entry.target.id;
+          if (entry.isIntersecting) visible.add(entry.target.id);
+          else visible.delete(entry.target.id);
         });
+        // 同時命中兩區塊時取文件順序較前者（＝ anchors 的順序）。
+        activeTarget.value =
+          anchors.find((a) => visible.has(a.target))?.target ?? '';
       },
       { rootMargin: '-45% 0px -45% 0px', threshold: 0 },
     );
@@ -312,10 +321,22 @@ $pc-min: 1024px;
   gap: 32px;
 }
 
+/* NmdHeaderShare 的圖示顏色（設計稿：只有 fb／line／X 用 light gray，其餘用 dark gray）。
+   三顆社群圖示的 svg 內建深色 fill（#232323 / #0F1419）寫死在 path 上，只能 :deep 蓋掉；
+   同層的 <rect> 都是 fill="none"，故選 path 不會誤填背景。
+   toggler 的 share 圖示本來就吃 --color（預設 #222222），改給 dark gray 即可。 */
 .app-header__share {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+
+  :deep(.nmd-share-buttons__share-button .nmd-share-button__icon path) {
+    fill: var(--color-gray-light);
+  }
+
+  :deep(.nmd-share-buttons__toggler) {
+    --color: var(--color-gray);
+  }
 }
 
 /* 錨點連結（桌機 nav ＋ 手機 TOC 共用） */

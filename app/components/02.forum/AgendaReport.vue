@@ -24,10 +24,19 @@ const { heading, body, cta } = str.report;
 
 <style lang="scss" scoped>
 // 滿版灰底、內容置中；總高約 490（設計稿反推值 ≈473）由上下 padding 撐出。
+// pad／mob 沒有對應設計稿，僅按各斷點的內容寬度（608／26 邊界）等比收斂。
 .agenda-report {
   padding: 72px 0 80px;
   background: #ebebeb;
   text-align: center;
+
+  @include rwd-max('pc') {
+    padding: 64px 80px 72px;
+  }
+
+  @include rwd-max('tablet') {
+    padding: 48px 26px 56px;
+  }
 }
 
 // 兩行標題：設計稿字級 40、行進距 56。
@@ -38,6 +47,16 @@ const { heading, body, cta } = str.report;
   font-size: 40px;
   font-weight: 300;
   line-height: 56px;
+
+  @include rwd-max('pc') {
+    font-size: 32px;
+    line-height: 48px;
+  }
+
+  @include rwd-max('tablet') {
+    font-size: 24px;
+    line-height: 36px;
+  }
 }
 
 // 內文：設計稿欄寬 633 置中，剛好兩行。
@@ -48,6 +67,18 @@ const { heading, body, cta } = str.report;
   font-weight: 300;
   line-height: 38px;
   text-align: justify;
+
+  @include rwd-max('pc') {
+    width: auto;
+    margin-top: 32px;
+    font-size: 20px;
+    line-height: 36px;
+  }
+
+  @include rwd-max('tablet') {
+    font-size: 18px;
+    line-height: 32px;
+  }
 }
 
 // CTA：設計稿 422×74 深灰底白字（非橘色，與議程的 primary 按鈕區隔）。
@@ -64,5 +95,17 @@ const { heading, body, cta } = str.report;
   letter-spacing: 0.1em;
   text-decoration: none;
   text-indent: 0.05em;
+
+  @include rwd-max('pc') {
+    width: 296px;
+    height: 70px;
+    margin-top: 32px;
+    font-size: 18px;
+  }
+
+  @include rwd-max('tablet') {
+    width: 100%;
+    font-size: 20px;
+  }
 }
 </style>

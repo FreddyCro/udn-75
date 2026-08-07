@@ -97,9 +97,13 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
   &--revealed {
     opacity: 1;
   }
+
+  @include rwd-max('pc') {
+    padding-top: 120px;
+  }
 }
 
-// 段落主標：左右 108 ＝ 設計稿內容邊界，與 <ForumEvent> 對齊。
+// 段落主標：pc 左右 108 ＝ 設計稿內容邊界，與 <ForumEvent> 對齊；pad／mob 稿改置中。
 .sec2__heading {
   display: flex;
   flex-direction: column;
@@ -109,6 +113,21 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
   font-size: 56px;
   font-weight: 400;
   line-height: 1.22;
+
+  @include rwd-max('pc') {
+    align-items: center;
+    margin-bottom: 88px;
+    padding: 0 80px;
+    font-size: 54px;
+    line-height: 64px;
+  }
+
+  @include rwd-max('tablet') {
+    margin-bottom: 140px;
+    padding: 0 26px;
+    font-size: 40px;
+    line-height: 51px;
+  }
 }
 
 // 議程＋recap 整組：coreOut 前一律藏著，避免 SymbolFace↔橘核心 crossfade 期間
@@ -135,5 +154,24 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
   color: var(--accent);
   font-size: 32px;
   letter-spacing: 0.1em;
+
+  // pad／mob 版式同樣未定，僅按各斷點內容寬度等比收斂，避免佔位框本身爆版。
+  @include rwd-max('pc') {
+    max-width: 608px;
+    min-height: 600px;
+    margin: 60px auto;
+    font-size: 24px;
+  }
+
+  // justify-items 改回 stretch：place-items: center 會讓文字撐成 max-content 而不換行。
+  @include rwd-max('tablet') {
+    justify-items: stretch;
+    max-width: none;
+    min-height: 400px;
+    margin: 40px 26px;
+    padding: 0 16px;
+    font-size: 18px;
+    text-align: center;
+  }
 }
 </style>

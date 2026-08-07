@@ -78,6 +78,14 @@ const props = defineProps({
     type: Array as () => number[],
     default: () => [900, 520, 240],
   },
+  /** 匯聚成點時那顆點的螢幕邊長（CSS px）。
+   *  預設 ＝ CORE.dotSize（見 ~/utils/orange-core-config）：converge 終點要與 ForumCore 的
+   *  橘方塊 crossfade 交棒（FORUM_HANDOFF.coreIn），兩者同尺寸才不會在接棒那刻跳大小。
+   *  ⚠️ 這是「實心方塊」的邊長，不是字級 —— 收攏末段整個 sprite 會被補成不透明
+   *     （見 vertexShader 的 solid / fragmentShader 的 mix(a, 1.0, vSolid)）。
+   *     沒有那道實心化的話，sprite 邊長 26px 畫出來的可見墨水只有約 12px：
+   *     atlas 烘字只佔 cell 的 GLYPH_FONT_SCALE(0.78)，字身墨水又只有字級的 ~0.6。 */
+  convergeSize: { type: Number, default: CORE.dotSize },
 
   // ---------- 無互動時的整體漂浮 ----------
   /** 整體漂浮幅度（全部 symbol 同步隨機遊走，做出「整片在飄」） */
@@ -359,6 +367,13 @@ const CONFIG_SCHEMA = [
     key: 'disperseSpread',
     label: '散場範圍 xyz',
     kind: 'csvNum',
+    group: '場景 / 節奏',
+  },
+  {
+    key: 'convergeSize',
+    label: '收斂點邊長(px)',
+    kind: 'num',
+    step: 1,
     group: '場景 / 節奏',
   },
   {
@@ -806,6 +821,7 @@ onMounted(() => {
         uTime: { value: 0 },
         uDisperse: { value: 0 },
         uConverge: { value: 0 },
+        uConvergePx: { value: cfg.convergeSize },
         uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
         uMouseInfluence: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
@@ -845,6 +861,7 @@ onMounted(() => {
         uniform float uTime;
         uniform float uDisperse;
         uniform float uConverge;
+        uniform float uConvergePx;
         uniform vec3 uMouse;
         uniform float uMouseInfluence;
         uniform float uPixelRatio;
@@ -870,6 +887,7 @@ onMounted(() => {
         varying float vT;
         varying vec3 vGlitchColor;
         varying float vGlitchOn;
+        varying float vSolid;
 
         float hash(float n) { return fract(sin(n) * 43758.5453123); }
 
@@ -905,6 +923,13 @@ onMounted(() => {
           // 匯聚成點：所有粒子收攏到人像中心(原點)近乎完全重疊 → 收成一顆實心點。
           // 與 uDisperse 互斥（同一時間至多一個為 1），故直接再 mix 一層即可。
           pos = mix(pos, vec3(0.0), uConverge);
+
+          // 實心化係數：只在 uConverge 的最後 10% 補成不透明方塊（見下方 gl_PointSize 與 fragment）。
+          // ⚠️ 不能直接用 uConverge —— 收攏途中粒子還散在半個畫面，提早實心化會讓整片人臉
+          //    在那 2.2s 裡變成一堆半透明方塊。0.9 時殘餘半徑僅剩人像半寬的 10%（≈ 一顆點的量級），
+          //    且 power2.inOut 下這段只佔約 0.2s，看起來就是「那團符號收緊後凝成核心」。
+          float solid = smoothstep(0.9, 1.0, uConverge);
+          vSolid = solid;
 
           // 整體避讓：以游標到群中心(原點)的距離決定整群往反方向(遠離游標)的平移量，
           // uGroupNear 內(重疊)≈0 以保留中心環形真空、到 uGroupFar 達上限即停。
@@ -942,19 +967,30 @@ onMounted(() => {
               }
             }
           }
+          // 實心化後關掉 glitch：不然那顆方塊的顏色會隨「最後畫到的那顆有沒有中 glitch」
+          // 每幀在漸層色與 glitch 色之間亂跳。
+          vGlitchOn *= (1.0 - solid);
 
           float twinkle = (1.0 - uTwinkleAmp) + uTwinkleAmp * sin(uTime * 2.2 + aSeed * 40.0);
           // 不透明（gemini 邊緣銳利）；只保留 reveal(local) 與散場的淡入淡出
           vAlpha = local * twinkle * mix(1.0, 0.5, uDisperse);
           // 取色位置：tone=依亮度（亮→漸層右端＝高光色）/ random=每顆隨機
           vT = mix(aBright, hash(aSeed * 53.7), uColorRandom);
+          // 實心化後所有粒子必須同色：alpha=1 的疊畫是後畫的覆蓋前面，各顆顏色不同的話
+          // 那顆方塊會變成「buffer 裡最後一顆」的顏色（換 cols / 換圖就換色）。
+          // 取漸層最亮端（uT=1）＝收斂點的顏色；要指定別的顏色就改這個 1.0。
+          vT = mix(vT, 1.0, solid);
 
           vec4 mv = modelViewMatrix * vec4(pos, 1.0);
           gl_Position = projectionMatrix * mv;
           float breath = 1.0 + uBreathAmp * sin(uTime * 2.0 + aSeed * 9.0);
-          float size = aSize * mix(1.0, 0.65, uDisperse) * mix(1.0, 0.6, uConverge);
+          float size = aSize * mix(1.0, 0.65, uDisperse);
           // aSize 是 world 單位 → 乘 uWorldToPx 換成螢幕 px；(uCamZ/-mv.z) 保留透視深度差
-          gl_PointSize = size * uWorldToPx * (uCamZ / -mv.z) * breath * local * uPixelRatio;
+          float px = size * uWorldToPx * (uCamZ / -mv.z) * breath * local;
+          // 匯聚：邊長收成 uConvergePx（＝ core 的 26px）→ 那顆點與橘核心同尺寸交棒。
+          // 目標值不吃 breath（core 不呼吸）但保留 local，reveal 期間仍是從 0 長大。
+          // uPixelRatio 把 CSS px 換成 device px，故最終畫出來就是 uConvergePx 個 CSS px。
+          gl_PointSize = mix(px, uConvergePx * local, uConverge) * uPixelRatio;
         }
       `,
       fragmentShader: /* glsl */ `
@@ -967,6 +1003,7 @@ onMounted(() => {
         varying float vT;
         varying vec3 vGlitchColor;
         varying float vGlitchOn;
+        varying float vSolid;
         void main() {
           vec2 cell = vec2(mod(vGlyph, uAtlasGrid.x), floor(vGlyph / uAtlasGrid.x));
           vec2 uv = vec2(
@@ -976,6 +1013,9 @@ onMounted(() => {
           // atlas 縮放後筆劃被 mipmap 攤成半透明（實測總 alpha 只剩 0.746），
           // uInkGamma < 1 把部分覆蓋的像素拉回來，讓整片亮度回到 gemini 的水準
           float a = pow(texture2D(uAtlas, uv).a, uInkGamma) * vAlpha;
+          // 匯聚末段（vSolid）把整個 sprite 填成不透明 → 收斂點是精準 uConvergePx 的實心方塊，
+          // 與 ForumCore 的橘方塊像素對齊。順手蓋掉 twinkle，核心不該閃。
+          a = mix(a, 1.0, vSolid);
           if (a < 0.02) discard;
           vec3 ramp = texture2D(uColorRamp, vec2(clamp(vT, 0.0, 1.0), 0.5)).rgb;
           vec3 col = mix(ramp, vGlitchColor, vGlitchOn);

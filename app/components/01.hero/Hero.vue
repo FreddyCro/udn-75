@@ -174,8 +174,12 @@ function applyScrollLock() {
       （有聲播放必須綁在使用者手勢上，見 composables/useAppSound）。
       同樣掛在 .sec1__inner「外面」——它是 fixed 層，不能落進 pin 的 containing block。
       期間 heroState 仍為 main → body 保持捲動鎖，使用者不會先捲走。
+
+      轉場名稱刻意與載入層的 loader-fade 分開：本層只有 leave（按下 start 後「白底淡出 ＋
+      橘塊縮小淡掉」），而且要同時動到自己的內層元素 —— 那些規則住在 HeroStart 的 scoped
+      style（Hero 的 scoped CSS 選不到別人的子元素），故此處只負責取名。
     -->
-    <Transition name="loader-fade">
+    <Transition name="hero-start-exit">
       <HeroStart
         v-if="loaderDone && !heroStarted"
         @start="heroStarted = true"

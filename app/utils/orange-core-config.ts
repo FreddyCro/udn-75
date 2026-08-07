@@ -123,9 +123,27 @@ export const SYMBOL_STOPS: readonly {
 // 門檻（SYMBOL_STOPS / FORUM_HANDOFF）是比例值，故各拍的相對節奏不變、只是全部等比變慢。
 export const SYMBOL_VH = 3.2;
 
+// ── 進場方塊的邊長（px）──────────────────────────────────────────────
+// 「載入層橘塊 → HeroStart cube」是同一顆方塊在兩層之間交接：載入層淡出的那一刻，
+// 使用者看到的必須是「白底那層消失」，而不是「方塊換了個大小」。故兩邊尺寸不能各寫一份。
+//
+// 這個值同時是 **HeroLoader 整份網格的格子邊長**（tileSize 的預設）—— 收尾時中央那格
+// 就是交接橘塊，格子與橘塊本來就是同一個東西，一份數字管到底，中央那顆不可能比別人大。
+// 對稿 95px（設計稿 1774:61076 的 cube）。HeroStart 的 hover 目標 131 是相對此值的比例。
+// 註：設計稿 loading-1~7 的格子在 1280×720 稿上是 83.333px（比 cube 小 11.7px）——
+//     此處刻意讓網格跟著 cube 放大，換取「全程只有一個方塊尺寸」。
+//
+// ⚠️ 下限 ≈ 80px：方塊上會依序疊兩串字 —— 載入層的「100%」（32px/300，Noto Sans TC 實測
+//    80.07px 寬）與 cube 內的「start」（28px/400/ls 1.4，66.40px 寬）。**較寬的是「100%」**，
+//    故它才是尺寸下限的來源。調小到 80 以下，「100%」會從橘塊左右緣溢出到白色網格上；
+//    要更小就得同時調 HeroLoader 的 counterFontSize。
+//    （兩串字本身不必互相配合寬度：它們是先後兩個狀態，且都不在 flow 內、不會推動版面。）
+export const HANDOFF_CUBE = 95;
+
 // ── core dot 外觀 ────────────────────────────────────────────────────
 // dotSize：dot 邊長（px），亦為 HeroSymbolTransition 讀不到 core 時的退回尺寸。
 // 對稿 26px（2026-08-07）。ForumCore / ForumCorePath / HeroSymbolTransition 都讀這個常數，
+// SymbolFace 也讀它當 convergeSize 的預設（匯聚成點那顆＝同尺寸實心方塊，才接得上橘核心）。
 // 唯一的例外是 hero 段的 OrangeCore.vue —— 它的 SCSS 寫死同一個值，改這裡要一起改。
 export const CORE = {
   dotSize: 26,

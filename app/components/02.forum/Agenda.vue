@@ -206,6 +206,17 @@ const { groups, actions } = str.agenda;
   justify-content: center;
   gap: 14px;
   margin: 48px 0 32px;
+
+  // pad：兩顆各 296 剛好併滿 608 的內容寬；mob 轉直排滿版。
+  @include rwd-max('pc') {
+    gap: 16px;
+    margin: 40px 0 80px;
+  }
+
+  @include rwd-max('tablet') {
+    flex-direction: column;
+    margin-top: 32px;
+  }
 }
 
 // 字級比照 <ForumEvent> 的 .forum-event__cta；
@@ -224,11 +235,30 @@ const { groups, actions } = str.agenda;
   &--outline {
     border: 1px solid var(--accent);
     color: var(--accent);
+
+    // pad／mob 稿的「下載完整議程」是深灰細框、深灰字（與橘色的報名鈕拉開層級）。
+    @include rwd-max('pc') {
+      border-color: var(--color-gray);
+      color: var(--color-gray);
+      font-weight: 300;
+    }
   }
 
   &--primary {
     background: var(--accent);
     color: #fff;
+  }
+
+  @include rwd-max('pc') {
+    flex: 1 1 0;
+    width: auto;
+    height: 70px;
+    font-size: 18px;
+  }
+
+  @include rwd-max('tablet') {
+    flex: 0 0 auto;
+    font-size: 20px;
   }
 }
 </style>
