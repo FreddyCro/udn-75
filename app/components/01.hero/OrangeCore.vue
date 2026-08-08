@@ -2,8 +2,9 @@
   orange core：影片退場後淡入的橘方塊，沿驅動線移動到引言文首。
   位置與切線旋轉由 OrangeCorePath 以 GSAP 驅動（需要真實 DOM 元素 → 對外曝露 root el）。
   本元件只負責外觀（顏色 / 尺寸 / 淡入）。
-  🚧 舊稿的 stage 形變（stage 3 point→line 落在日期「/」、stage 4 橘→黑、stage 5 放大淡出）
-     已隨 date 段與星空轉場移除，故不再吃 stage / stageProgress —— 新稿的階段視覺待定案。
+  🚧 舊稿的 stage 形變（point→line 落在日期「/」、橘→黑、放大淡出）已隨 date 段與星空轉場
+     移除，連同驅動它的 STAGE_STOPS 一併刪掉，故本元件不吃任何進度值 —— 新稿的階段視覺待定案。
+     真要在 hero 段加 checkpoint，是在 orange-core-config 的 SEQUENCE 補 part（見 PRD 序列定址）。
 -->
 <script setup lang="ts">
 defineProps<{

@@ -27,8 +27,6 @@ const ALLOWED_PREFIXES = [
   'app/components/AiImageQuiz.vue',
   'app/pages/demo.vue',
   'app/components/01.hero/DevHeroVideoControls.vue',
-  'app/components/01.hero/DevOrangeCoreProgress.vue',
-  'app/components/01a.symbol/DevFaceProgress.vue',
 ];
 
 // C 類：WebGL / canvas 需要 hex 字串，CSS 變數取代不了。只有這兩支放行，

@@ -20,7 +20,9 @@
   遮罩形狀直接讀 core 元素的螢幕位置與旋轉角，故與橘色 core 線無縫接上（橘→黑→放大）。
 -->
 <script setup lang="ts">
-import type { CoreStage } from '~/composables/useOrangeCoreProgress';
+// 舊的 CoreStage 型別已隨 STAGE_STOPS 一併從 useOrangeCoreProgress 移除（2026-08-08），
+// 這裡就地補一份 —— 本檔本來就編不起來，留著只是備查用的原始碼。
+type CoreStage = 1 | 2 | 3 | 4 | 5 | 6;
 
 const props = defineProps<{
   /** 目前 stage（1..6）：只在 stage 5（放大）/ 6（已蓋滿）現身 */

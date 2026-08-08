@@ -26,15 +26,15 @@
 
 ### 元件命名慣例
 
-`pathPrefix: false` 下元件名＝檔名且**全域唯一**。orange core 相關的 runtime 元件用 `OrangeCore*` 家族名，與 `useOrangeCoreProgress` / `orange-core-config` 對齊；**僅開發環境**的除錯元件一律加 `Dev` 前綴（`DevOrangeCoreProgress` / `DevHeroVideoControls` / `DevFaceProgress`），掃檔案樹即可辨識「非 production UI」。
+`pathPrefix: false` 下元件名＝檔名且**全域唯一**。orange core 相關的 runtime 元件用 `OrangeCore*` 家族名，與 `useOrangeCoreProgress` / `orange-core-config` 對齊；除錯元件一律加 `Dev` 前綴（`DevHeroVideoControls` / `DevCoreProgress`），掃檔案樹即可辨識「非 production UI」。跨章節的除錯元件（`DevCoreProgress`）掛在 `pages/index.vue` 而非某個 section 底下 —— 跟著 section 走會在別段卸載。
 
 ### 元件目錄現況
 
 ```
 app/components/
   01.hero/      Hero, HeroVideo, HeroLoader, HeroStart, HeroSymbolTransition,
-                OrangeCore, OrangeCorePath, DevHeroVideoControls, DevOrangeCoreProgress
-  01a.symbol/   SymbolScene, SymbolFace, DevFaceProgress
+                OrangeCore, OrangeCorePath, DevHeroVideoControls
+  01a.symbol/   SymbolScene, SymbolFace
   02.forum/     Forum, ForumEvent, ForumCore, ForumCorePath, Agenda
   03.blessing/  Blessing, BlessingFace, BlessingStairs, BlessingPartners
   04.media/     Media, MediaTitle, MediaList, HeartMetaballPatch（現役底紋）,
@@ -82,8 +82,8 @@ app/components/
 | ----------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [useHeroVideo.ts](../app/composables/useHeroVideo.ts)                   | 狀態機        | hero 影片四階段 `main / loop / outro / gone`，衍生 `shouldLockScroll` / `isGone` / `hasLeftLoop`；與載入層的握手 `videoReady` / `loaderDone` / `heroStarted`；`currentTime`（dev 讀數）。狀態本身不含計時器，推進由 HeroVideo 依影片時間軸驅動 |
 | [hero-video-config.ts](../app/utils/hero-video-config.ts)               | 設定台        | `HERO_VIDEO_SRC` / `HERO_VIDEO_POSTER`（mob／pad／pc 三段，**RWD 預留**，目前三者共用 pc 版）、`HERO_VIDEO_SEGMENTS`（四階段的秒數區間，段落相接）、`HERO_VIDEO_SEGMENTS_BY_DEVICE`、`HERO_VIDEO_READY_TIMEOUT`、`HERO_GESTURE`（手勢門檻與冷卻） |
-| [useOrangeCoreProgress.ts](../app/composables/useOrangeCoreProgress.ts) | 狀態機        | 四條 progress 軌（見下表）＋ 由它們解出的 `stage` / `stageProgress` / `symbolTarget` / `symbolMode` / `symbolLayerDone` / `forumCoreActive` / `agendaRevealed` / `blessingFrame`，以及 `reduceMotion`                       |
-| [orange-core-config.ts](../app/utils/orange-core-config.ts)             | 設定台        | 門檻與距離：`STAGE_STOPS`、`MOVE_EASE`、`INTRO_FADE_VH`、`TRANSITION_VH`、`SYMBOL_TRANSITION`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`BLESSING_VH`、`BLESSING_HOLD`；幾何與外觀：`CORE`、`FORUM_PATH`。刻意**不含**子元件自身外觀參數（HeroLoader 的方塊／SymbolFace 的粒子物理），那些留在各元件 |
+| [useOrangeCoreProgress.ts](../app/composables/useOrangeCoreProgress.ts) | 狀態機        | 五條 progress 軌（見下表）＋ 由它們解出的 `symbolTarget` / `symbolMode` / `symbolLayerDone` / `forumCoreActive` / `agendaRevealed` / `blessingFrame`，以及 `reduceMotion` / `stairsDone`。**不含**「章節.part」定址（那在 `useCoreSequence`） |
+| [orange-core-config.ts](../app/utils/orange-core-config.ts)             | 設定台        | 門檻與距離：`MOVE_EASE`、`INTRO_FADE_VH`、`TRANSITION_VH`、`SYMBOL_TRANSITION`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`BLESSING_VH`、`BLESSING_HOLD`；序列定址表：`SEQUENCE` / `TRACK_VH`；幾何與外觀：`CORE`、`FORUM_PATH`。刻意**不含**子元件自身外觀參數（HeroLoader 的方塊／SymbolFace 的粒子物理），那些留在各元件 |
 | [blessing-face-frames.ts](../app/utils/blessing-face-frames.ts)         | 設定台        | 永續祝福逐格像素臉的格資料（`FACE_FRAME_COUNT` 17 格）                                                                                                                                                                   |
 | [hero-scroll-intent.ts](../app/utils/hero-scroll-intent.ts)             | 純函式        | loop ↔ outro 的方向手勢判定（body 鎖住時沒有 scroll 事件，故由 wheel／touchmove／方向鍵位移累積判定）。有 vitest 覆蓋                                                                                                     |
 
@@ -93,14 +93,32 @@ app/components/
 
 | 軌                    | 寫入者                   | 捲動尺                                                            | 距離                        | 解出                                                          |
 | --------------------- | ------------------------ | ----------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------- |
-| `pathProgress`        | `OrangeCorePath`（scrub）| `trigger: .sec1`、`start: 'top top'`、`endTrigger: .sec1__intro`、`end: 'bottom bottom'` | 由版面決定                  | core 沿線位置；`STAGE_STOPS` → `stage` 1–3                     |
+| `pathProgress`        | `OrangeCorePath`（scrub）| `trigger: .sec1`、`start: 'top top'`、`endTrigger: .sec1__intro`、`end: 'bottom bottom'` | 由版面決定                  | core 沿線位置（`SEQUENCE` 的 `hero.core`）                      |
 | `transitionProgress`  | `Hero.vue` 的 transition pin | `trigger: .sec1__intro`、`start: 'bottom bottom'`、`end: +=TRANSITION_VH×vh` | **120vh**（`TRANSITION_VH` 1.2） | `SYMBOL_TRANSITION` → 兩段軸向放大（見 Section 1 詳規）        |
 | `symbolProgress`      | `SymbolScene`            | `trigger: .sec-symbol`、`start: 'top bottom'`、`end: 'bottom bottom'` | **320vh**（`SYMBOL_VH` 3.2） | `SYMBOL_STOPS` → `symbolMode` / `symbolLayerDone`；`FORUM_HANDOFF` → `forumCoreActive` / `agendaRevealed` |
 | `blessingProgress`    | `Blessing.vue`           | `trigger: .section3__face-track`、`start: 'top top'`、`end: 'bottom bottom'` | **120vh**（`BLESSING_VH` 1.2） | `blessingFrame`（17 格逐格臉，尾端 `BLESSING_HOLD` 停在最後一格） |
 
 > 引言淡出**不在**這四條軌上：它由 `Hero.vue` 自己的一條 scrub ScrollTrigger 驅動（`trigger: .sec1__intro-body`、`start: 'bottom center'`、`end: +=INTRO_FADE_VH×vh`），起點是量出來的幾何（文字底緣升到視窗中央 ＝ core 剛穿出最後一行），不是 path 進度門檻。詳見 Section 1 的 ⑤。
 
-> 🚧 `stage` / `stageProgress`（stage 1–3）模型目前**無 production 消費者** —— 舊的 stage 4–6 視覺（橘→黑變色、星空撐大）已隨舊架構移除，core 在 1–3 全程都是等速移動的橘點。保留此模型作為新稿後續 checkpoint 的接點，目前只有 `DevOrangeCoreProgress` 在讀。
+> 🚧 舊的 `STAGE_STOPS` / `stage` / `stageProgress`（在 path 軌內部再切 stage 1–3）已於 2026-08-08 移除：自 date 段下架後就沒有 production 消費者，且「stage」一詞與下面的 `SEQUENCE` 定址撞名。
+
+### 序列定址：`章節.part.progress`
+
+上面那幾條軌是**實作單位**；跨章節溝通用的是 [`SEQUENCE`](../app/utils/orange-core-config.ts)（資料）＋ [`useCoreSequence`](../app/composables/useCoreSequence.ts)（解析）定義的座標系，寫法 `forum.face.59%`。
+
+- **part 的名字才是主鍵**，序號只是 dashboard 顯示用 —— 中間插入新 part 會讓序號整批位移，而地址已經寫進 issue 了。
+- **`drive` 決定那個地址能不能綁捲動**：`scrub`（綁捲動、可逆，才能在任意 % 掛門檻）／`time`（時間軸，只有 idle/done）／`none`（無軌區間，講得出位置但沒有 %）。混用會下出做不到的指令。
+- 章節切分依**設計稿**而非元件目錄：符號段（`01a.symbol`）在稿上是「智慧論壇05–08」，故歸在 `forum` 章節下。
+- media（04）暫不納入 —— 整段是時間軸驅動（`useMediaIntroMotion` 的 `gsap.timeline`），用捲動 % 定址會誤導。
+- 反算回 config：`forum.face.59%` → `symbolProgress = 0.15 + 0.59 × (0.58 − 0.15) = 0.404` → 距符號段起點 129.2vh。`DevCoreProgress` 直接印出 raw 值，不必手算。
+
+| 章節       | parts（依捲動順序）                                                                      |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| `hero`     | `video`(time) → `core`(scrub/path) → `transition`(scrub/transition)                        |
+| `forum`    | `disperse` → `face` → `converge` → `handoff`（皆 scrub/symbol）→ `hover`(none, 50vh) → `path`(scrub/forumPath) → `agenda`(none) |
+| `blessing` | `face`(scrub/blessing) → `stairs`(time) → `partners`(none)                                 |
+
+> ⚠️ `SEQUENCE` 中**不可出現相鄰的兩個 `none`**：無軌 part 的「結束了沒」是靠下一段有沒有開始反推的，兩個連在一起就推不出來（見 `useCoreSequence`）。
 
 ---
 
@@ -192,7 +210,7 @@ app/components/
 | core 移動路徑（[OrangeCorePath.vue](../app/components/01.hero/OrangeCorePath.vue)） | 驅動 core 的路徑 overlay                         | `.sec1` 級絕對定位 overlay（1:1 px、無 `viewBox`、`pointer-events:none`），內含一條不可見驅動線（`stroke:none`）：第一屏正中央 → 視窗正中央的**垂直線**。單一 scrub ScrollTrigger ＋ `getPointAtLength()` 逐幀定位 core（含切線角度，為之後的曲線路徑預留）。<br>**幾何全由量測推導、無寫死座標**：x ＝ section 水平中心（引言文字也置中，故一路穿過文字），終點 y ＝ `endEl` 底緣 − 50vh。`.sec1__intro` 的 `padding-bottom: 60vh` 是 runway，**必須 > 50vh**，否則終點落在文字之內、core 還沒穿出文字就停住。<br>⚠️ 起訖與 `endEl` 都刻意避開 `.sec1` 的 bottom：transition pin 會在 `.sec1` 內插入 pin-spacer 撐高 section，用 `.sec1` 的 bottom 當基準會是循環依賴。<br>重建時機：`refreshInit`、`document.fonts.ready`、resize。<br>🚧 未實作：沿途殘影 trail dots、手機版另畫直式 path、`prefers-reduced-motion` 直接定位起／終點 |
 | transition pin（`Hero.vue` `transitionST`）                                        | 釘住整組跑兩段軸向放大                           | ⚠️ **trigger 是 `.sec1__intro` 而非 `.sec1`** —— pin 會在 `.sec1` 內插入 pin-spacer 撐高 section，拿 `.sec1` 的 `bottom bottom` 當 start 會是循環依賴。`OrangeCorePath` 的 `endTrigger` 用同一元素 → 「core 抵達中央」與「pin 開始」必然同一刻。<br>⚠️ pin 會在 `.sec1__inner` 寫入 `transform`，使其成為 fixed 子孫的 containing block → HeroLoader / HeroStart / HeroSymbolTransition 都必須掛在 inner「**外面**」，否則改以 inner 為定位基準而跑位 |
 | 轉場層（[HeroSymbolTransition.vue](../app/components/01.hero/HeroSymbolTransition.vue)） | 色場 ＋ clip 開窗（fixed 滿版，z-index 10）  | 窗的起始尺寸／位置 ＝ core 的螢幕矩形 → p≈0 時本層與 core 像素重合，看起來就是「那個橘方塊自己長大」。先 `h → 100vh`（同時橘→黑），再 `w → 100vw`。逐幀直接寫 `el.style`，不觸發 Vue re-render。slot 內放真正的 `<SymbolFace>`，於展開段依 `faceIn` 淡入。<br>⚠️ **量的是 field 自己的框（`clientWidth/Height`），不是 `window.innerWidth/Height`** —— 本層是 fixed `inset:0` → 寬度不含捲軸，而 `innerWidth` 含捲軸；混用兩套座標會讓開窗少一整個捲軸寬、左偏半個捲軸寬，且 p=1 時右緣殘留一條沒蓋到，剛好在交棒瞬間透出 hero 白底。展開完成後直接寫死 `inset(0px)`，不靠算式剛好等於 0。<br>⚠️ anchor 量到真 rect 才快取：`watch` 是 immediate，第一次 `apply(0)` 常早於 `coreEl` 就緒，若連 fallback 一起鎖住，整段轉場都會用錯的錨點。<br>⚠️ 以 `visibility:hidden`（非 `display:none`、非單純 `opacity:0`）隱藏：`display:none` 會讓 three.js 量到 0 寬高；只設 `opacity:0` 則 fixed 滿版 canvas 仍參與 hit-test，會吞掉影片階段的所有點擊。<br>**生命週期**：因為 canvas 住在本層 slot，本層必須撐到**整段符號序列跑完**才能撤 → `done` 讀的是 `symbolLayerDone`（序列越過 `enter`），不是「放大完成」。撤場走固定時間 crossfade ＝ 決策「**crossfade 用時間、放大綁 scrub**」 |
-| dev 工具                                                                           | 開發輔助（僅 dev）                               | [DevHeroVideoControls](../app/components/01.hero/DevHeroVideoControls.vue)：影片四階段切換＋SKIP＋秒數讀數；[DevOrangeCoreProgress](../app/components/01.hero/DevOrangeCoreProgress.vue)：顯示 `stage` / `stageProgress` 與 path／transition 原始值。皆包在 `<DevOnly>`，production build 不進 bundle |
+| dev 工具                                                                           | 開發輔助（僅 dev）                               | [DevHeroVideoControls](../app/components/01.hero/DevHeroVideoControls.vue)：影片四階段切換＋SKIP＋秒數讀數；[DevCoreProgress](../app/components/DevCoreProgress.vue)：整條序列的定址 dashboard（掛在 `pages/index.vue`，`?pathdebug` 才顯示）。前者包在 `<DevOnly>`；後者**刻意不包** —— `?pathdebug` 本來就在 production 可用，deploy 出去的 preview 也要能開 |
 
 ---
 
@@ -219,7 +237,6 @@ app/components/
 | 元件 / 區塊                                                            | 功能                    | 說明                                                                                                                                                                                                                                                                                                                                                                                             |
 | ---------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [SymbolFace.vue](../app/components/01a.symbol/SymbolFace.vue)          | three.js 粒子人像星空   | **實際掛在 Hero 轉場層的 slot 內**，由本段依 `symbolProgress` 指派全域 `symbolMode`（Hero 端 `v-model:mode` 綁定）。三態互斥：`disperse` 分散漂浮／`face` 集合成人像／`converge` 匯聚成點；**mode 改變時由元件自身 2.2s GSAP 補間**，故 scroll 只需在門檻「指派」離散 mode、不必逐幀 scrub 進去。<br>**本元件完全不吃 scroll**：reveal 由 IntersectionObserver 一次性啟動（3s），漂浮／滑鼠斥力／慣性物理／彩蛋宮格都在 rAF 內。<br>粒子由符號字元集組成、取自 `face.png` 的 alpha 輪廓，含滑鼠斥力真空與慣性物理（動量 ＋ 指數 ease 回位，脫離「果凍感」）。元件自帶 dev config 面板（可匯出 JSON 參數） |
-| [DevFaceProgress.vue](../app/components/01a.symbol/DevFaceProgress.vue) | 序列進度顯示（僅 dev）  | 顯示 `symbolProgress` 與當前目標狀態。fixed 定位，本 section 無 transform 故不受影響                                                                                                                                                                                                                                                                                                              |
 
 ---
 
@@ -368,7 +385,6 @@ app/components/
 | 引言逐行淡出                  | 分鏡 ① 看起來是文字**由上而下**隨 core 經過而淡，目前是整段一起淡                                                        |
 | `CORE.dotSize`                | 程式 24px、設計稿 26px（`OrangeCore` / `ForumCore` 的 SCSS 亦寫死 24）。尺寸對稿待辦                                     |
 | `SYMBOL_STOPS` 四拍文案       | 目前三態無文案；設計稿的四拍各帶文案（含 06 半調點陣臉 / 07 符號字元臉兩種臉）                                           |
-| `stage` / `stageProgress`     | stage 1–3 模型保留為新稿 checkpoint 的接點，目前無 production 消費者，只有 dev 讀數在用                                  |
 | 論壇段核心移動                | 僅完成 `coreIn`/`coreOut` 的 handoff crossfade；沿 `path1`/`path2` 的移動未實作。設計線仍是 placeholder；需決定接成一條連續 path（維持「一條 path 一個 tween、接縫零頓挫」）或拆兩個 ScrollTrigger |
 | `ForumCorePath` 的 RWD        | `segs()` 寫死只回傳 `.pc`；`FORUM_PATH.pad` / `.mob` 為空陣列。補線稿時要同步改 `segs()` 依斷點判斷，否則填了不生效       |
 | `arrow` 分組軸                | timetable 左側 7 段橘色軸尚未實作；必須從 DOM 量分組高度回推，不能寫死                                                   |

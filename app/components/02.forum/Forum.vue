@@ -85,7 +85,8 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
     <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊）。fixed 滿版、由 SymbolScene 寫入的
          symbolProgress 隔空驅動，故放在議程整組之外。黑底在 coreOut 淡出，橘點則撐到論壇段
          路徑接手（見 ForumCore 與 useOrangeCoreProgress 的 forumCoreDotVisible）。
-         （DevFaceProgress 已隨序列搬到 <SymbolScene>，避免同頁出現兩個進度顯示。） -->
+         （進度除錯已整合成跨章節的 <DevCoreProgress>，掛在 pages/index.vue，?pathdebug 開啟 ——
+           就是本檔下方 pathDebug 用的同一個參數。） -->
     <ForumCore
       :active="forumCoreActive"
       :dot-visible="forumCoreDotVisible"

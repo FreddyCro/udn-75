@@ -7,16 +7,10 @@
 // 延伸做法：orange core 走到後續 section 時，在此新增該段的 *_STOPS / *_VH / 幾何，
 // 再於 useOrangeCoreProgress 加一條對應的 progress 軌 + resolver（照 path/pin/symbol 模式）。
 
-// ── stage 門檻：要調時間點，改這裡 ──────────────────────────────────
-// 單一 progress 軌（path，0..1；OrangeCorePath scrub 寫入）解出「目前 stage」
-// ＋該 stage 內 local progress（stageProgress）。
-// 🚧 舊的 stage 4–6（pin 軌：橘→黑變色 → 星空斜角撐大 → 蓋滿）已隨 date 段與 pinST 一併移除
-//    （新稿無此動作）。新稿的後續 checkpoint（引言 → 人臉 → 論壇 path）待定案後在此新增。
-export const STAGE_STOPS = [
-  { until: 0.41, stage: 1 },
-  { until: 0.71, stage: 2 },
-  { until: 1.0, stage: 3 },
-] as const;
+// 註：舊的 STAGE_STOPS（在 path 軌內部再切 stage 1–3）已於 2026-08-08 移除。
+// 它自 date 段下架後就沒有 production 消費者，且「stage」一詞與本檔末的 SEQUENCE
+// （章節 → part → progress 定址）撞名，留著只會讓溝通出錯。定址請一律用 SEQUENCE。
+// 取回：git show 33abe7a:app/utils/orange-core-config.ts
 
 // ── core 移動「速度曲線」（stage 1–3 沿 path 移動時套用）──────────────
 // scrub 本身等速綁定捲動；此 ease 重新分配「捲動 → path 進度」的節奏（不改整體距離）。
@@ -278,3 +272,114 @@ export const FORUM_PATH: Record<'pc' | 'pad' | 'mob', ForumPathSeg[]> = {
 // BLESSING_HOLD：捲動尺尾端「停在最後一格」的比例。臉畫完後定住一下再交棒給夥伴清單。
 export const BLESSING_VH = 1.2;
 export const BLESSING_HOLD = 0.15;
+
+// ── 序列定址表：章節 → part → progress ────────────────────────────────
+// 這張表是**溝通用的座標系**，不是新的驅動機制 —— 底下仍是既有那幾條 progress 軌，
+// 本表只是把它們切成有名字的段落，讓「在 forum.face.59% 加事件」這種話能對回程式碼。
+//
+// 地址寫法：`章節.part.progress`，例如 `forum.face.59%`。
+//   ⚠️ **part 的 key（名字）才是主鍵**，不是序號。序號會因為中間插入新 part 而整批位移，
+//      而地址已經寫進 issue／對話／commit 了。dashboard 顯示 `forum.2 face · 59%`
+//      （序號只是方便口頭念），正式書寫一律用 `forum.face.59%`。
+//
+// 反算回程式碼（dashboard 會直接印出來）：
+//   forum.face.59% → symbolProgress = 0.15 + 0.59 × (0.58 − 0.15) = 0.404
+//                  → 距符號段起點 129.2vh（SYMBOL_VH 3.2 ＝ 320vh）
+//
+// drive（驅動型）決定這個地址能不能拿來綁捲動事件 —— 混用會下出做不到的指令：
+//   'scrub' 綁捲動、可逆，progress ＝ 捲動比例。**只有這種能在任意 % 掛門檻。**
+//   'time'  時間軸（ScrollTrigger 起播後自己跑完，不隨捲動倒帶）。只有 idle / done 兩態，
+//           不追時間軸進度 —— 要在中間插事件得改那條 timeline 本身，不是改捲動門檻。
+//   'none'  無軌區間（純捲動距離，沒有任何 progress 寫入）。講得出位置，但沒有 %。
+//
+// ⚠️ 表中**不可出現相鄰的兩個 'none'**：無軌 part 的「是否結束」是靠下一段有沒有開始
+//    反推的（見 useCoreSequence），兩個連在一起就推不出來。
+// ⚠️ media（04）暫不納入：它整段是時間軸驅動（見 useMediaIntroMotion 的 gsap.timeline），
+//    用捲動 % 定址會誤導。要納入時照 'time' 的寫法加一章。
+export type PartDrive = 'scrub' | 'time' | 'none';
+
+/** 'scrub' part 吃的 progress 軌（皆來自 useOrangeCoreProgress） */
+export type SequenceTrack =
+  | 'path'
+  | 'transition'
+  | 'symbol'
+  | 'forumPath'
+  | 'blessing';
+
+/** 'time' part 吃的完成旗標 */
+export type SequenceFlag = 'heroVideo' | 'stairs';
+
+export type SequencePart = {
+  /** 地址主鍵（章節內唯一）。插入新 part 不會讓既有地址失效 —— 所以別用序號當主鍵。 */
+  key: string;
+  /** dashboard 顯示的一句話說明 */
+  label: string;
+  drive: PartDrive;
+  /** drive: 'scrub' 專用 */
+  track?: SequenceTrack;
+  /** 該 part 在軌上的起點（預設 0） */
+  from?: number;
+  /** 該 part 在軌上的終點（預設 1） */
+  until?: number;
+  /** drive: 'time' 專用 */
+  flag?: SequenceFlag;
+  /** drive: 'none' 且長度已知時的捲動距離（× 視窗高）。'scrub' 由 TRACK_VH 推導。 */
+  vh?: number;
+};
+
+export type SequenceChapter = {
+  key: string;
+  label: string;
+  parts: SequencePart[];
+};
+
+// 各軌吃掉的捲動距離（× 視窗高）。path / forumPath 是量出來的幾何（隨版面浮動），
+// 沒有常數長度 → dashboard 對那兩段只給 %，不給 vh。
+export const TRACK_VH: Partial<Record<SequenceTrack, number>> = {
+  transition: TRANSITION_VH,
+  symbol: SYMBOL_VH,
+  blessing: BLESSING_VH,
+};
+
+export const SEQUENCE: readonly SequenceChapter[] = [
+  {
+    key: 'hero',
+    label: '開場',
+    parts: [
+      { key: 'video', label: '影片四階段（捲動鎖住）', drive: 'time', flag: 'heroVideo' },
+      { key: 'core', label: 'core 沿垂直線下行', drive: 'scrub', track: 'path' },
+      {
+        key: 'transition',
+        label: '橘塊拉長 → 展開（pin）',
+        drive: 'scrub',
+        track: 'transition',
+      },
+    ],
+  },
+  {
+    // 符號星空段（01a.symbol）在設計稿上是「智慧論壇05–08」四拍，故歸在 forum 章節下 ——
+    // 它是獨立元件是實作分工，不是章節分界。
+    key: 'forum',
+    label: '智慧論壇',
+    parts: [
+      { key: 'disperse', label: '粒子分散', drive: 'scrub', track: 'symbol', from: 0, until: SYMBOL_STOPS[0]!.until },
+      { key: 'face', label: '集合人像（最長的一拍）', drive: 'scrub', track: 'symbol', from: SYMBOL_STOPS[0]!.until, until: SYMBOL_STOPS[1]!.until },
+      { key: 'converge', label: '匯聚成點', drive: 'scrub', track: 'symbol', from: SYMBOL_STOPS[1]!.until, until: FORUM_HANDOFF.coreIn },
+      { key: 'handoff', label: `交棒：白點→橘核心（agendaIn ${FORUM_HANDOFF.agendaIn}）`, drive: 'scrub', track: 'symbol', from: FORUM_HANDOFF.coreIn, until: 1 },
+      // 符號段捲完 → 黑白接縫再升 50vh 才到視窗中央，橘點在這段停著不動。
+      // 幾何下限，見 FORUM_HANDOFF 的註解。
+      { key: 'hover', label: '懸停期（橘點停在中央）', drive: 'none', vh: 0.5 },
+      { key: 'path', label: '核心沿設計線蛇行', drive: 'scrub', track: 'forumPath' },
+      { key: 'agenda', label: '議程／報導／論壇四', drive: 'none' },
+    ],
+  },
+  {
+    key: 'blessing',
+    label: '永續祝福',
+    parts: [
+      { key: 'face', label: `逐格臉（尾 ${BLESSING_HOLD * 100}% 停格）`, drive: 'scrub', track: 'blessing' },
+      { key: 'stairs', label: '階梯線逐格進場', drive: 'time', flag: 'stairs' },
+      { key: 'partners', label: '夥伴清單', drive: 'none' },
+    ],
+  },
+];

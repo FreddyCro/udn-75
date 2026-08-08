@@ -23,6 +23,10 @@ definePageMeta({
 
     <!-- 04 -->
     <Media />
+
+    <!-- 捲動序列除錯 dashboard（?pathdebug 才顯示）。掛在這裡而非各 section 內：
+         它顯示的是跨章節的整條序列，跟著某個 section 走就會在別段卸載。 -->
+    <DevCoreProgress />
   </div>
 </template>
 

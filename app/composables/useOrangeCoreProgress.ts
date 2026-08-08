@@ -2,22 +2,21 @@
 //
 // 純狀態 / 行為；所有可調數值（門檻、距離、幾何）集中在 ~/utils/orange-core-config。
 // progress 軌（0..1）：
-//   - path  ：core 沿驅動線移動（OrangeCorePath scrub 寫入）→ 依 STAGE_STOPS 解出 stage 1–3。
+//   - path  ：core 沿驅動線移動（OrangeCorePath scrub 寫入）。
+//   - transition：hero → SymbolScene 的轉場（Hero 的 pin scrub 寫入）。
 //   - symbol：符號人臉序列（SymbolScene 的捲動尺 scrub 寫入）→ 依 SYMBOL_STOPS 解出 mode。
 //   - forumPath：core 沿論壇段設計線移動（ForumCorePath scrub 寫入）。
+//   - blessing：永續祝福逐格臉（Blessing 的捲動尺寫入）。
+//
+// 這幾條軌怎麼對應到「章節.part.progress」那套定址，見 ~/utils/orange-core-config 的
+// SEQUENCE 與 ~/composables/useCoreSequence（本檔只管軌本身，不管定址）。
 //
 // 🚧 舊的 pin 軌（stage 4–6：橘→黑 → 星空撐大）已隨 date 段與 pinST 移除。
 // 延伸：orange core 走到後續 section 時，於 orange-core-config 新增該段門檻/距離，
-// 再在此加一條 useState progress 軌 + resolver + expose（照 path / symbol 模式）。
-import {
-  STAGE_STOPS,
-  SYMBOL_STOPS,
-  FORUM_HANDOFF,
-  BLESSING_HOLD,
-} from '~/utils/orange-core-config';
+// 再在此加一條 useState progress 軌 + resolver + expose（照 path / symbol 模式），
+// 並在 SEQUENCE 補上對應的 part。
+import { SYMBOL_STOPS, FORUM_HANDOFF, BLESSING_HOLD } from '~/utils/orange-core-config';
 import { FACE_FRAME_COUNT } from '~/utils/blessing-face-frames';
-
-export type CoreStage = 1 | 2 | 3;
 
 // SymbolFace 的三態（互斥）：集合成人像 / 分散漂浮 / 匯聚成點。
 // 提升為全域共享：<SymbolFace> 由 Hero 綁 v-model:mode（它住在 HeroSymbolTransition 的 slot），
@@ -37,25 +36,6 @@ function resolveSymbol(p: number): { mode: SymbolMode; enter: boolean } {
     if (s.mode !== 'enter') last = s.mode;
   }
   return { mode: last, enter: true }; // p ≥ 最後門檻（1.0）→ enter
-}
-
-type Stop = { until: number; stage: number };
-
-// 依 stops 找出 p（0..1）落在哪個 stage，並回傳該 stage 內的 local progress（0..1）。
-function resolveStage(stops: readonly Stop[], p: number) {
-  let prev = 0;
-  for (let i = 0; i < stops.length; i++) {
-    const s = stops[i]!;
-    const isLast = i === stops.length - 1;
-    if (p < s.until || isLast) {
-      const span = s.until - prev || 1;
-      const local = Math.min(1, Math.max(0, (p - prev) / span));
-      return { stage: s.stage as CoreStage, stageProgress: local };
-    }
-    prev = s.until;
-  }
-  const last = stops[stops.length - 1]!;
-  return { stage: last.stage as CoreStage, stageProgress: 1 };
 }
 
 const clamp01 = (p: number) => (p < 0 ? 0 : p > 1 ? 1 : p);
@@ -95,6 +75,11 @@ export function useOrangeCoreProgress() {
   const blessingProgress = useState<number>('blessing-progress', () => 0);
   const setBlessingProgress = (p: number) =>
     (blessingProgress.value = clamp01(p));
+
+  // 階梯線逐格是否已播完（<BlessingStairs> 以 v-model:done 雙向控制，播完才讓夥伴清單淡入）。
+  // 提升為全域而非 Blessing.vue 的區域 ref：SEQUENCE 的 blessing.stairs 是 'time' part，
+  // dev dashboard 要讀它才判得出 idle / done。雙向綁定照舊（useState 回傳的就是 ref）。
+  const stairsDone = useState<boolean>('blessing-stairs-done', () => false);
 
   // symbolProgress → 目標 mode / enter（供 SymbolScene watch 後指派 symbolMode；enter 目前僅 dev 顯示）。
   const symbolTarget = computed(() => resolveSymbol(symbolProgress.value));
@@ -156,14 +141,6 @@ export function useOrangeCoreProgress() {
     return Math.min(FACE_FRAME_COUNT - 1, i);
   });
 
-  // path 軌 → stage 1–3 ＋ 該 stage 內的 local progress。
-  // 🚧 目前無 production 消費者（stage 4–6 的變色／放大已隨 date 段移除，core 在 1–3 全程都是等速移動的橘點）；
-  //    保留此模型作為新稿後續 checkpoint 的接點，dev 端由 DevOrangeCoreProgress 顯示。
-  const resolved = computed(() => resolveStage(STAGE_STOPS, pathProgress.value));
-
-  const stage = computed(() => resolved.value.stage);
-  const stageProgress = computed(() => resolved.value.stageProgress);
-
   return {
     pathProgress,
     transitionProgress,
@@ -185,7 +162,7 @@ export function useOrangeCoreProgress() {
     blessingProgress,
     setBlessingProgress,
     blessingFrame,
-    stage,
-    stageProgress,
+    stairsDone,
+    reduceMotion,
   };
 }

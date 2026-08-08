@@ -81,19 +81,15 @@ watch(() => symbolTarget.value.enter, (e) => (symbolLayerDone.value = e), {
 </script>
 
 <template>
-  <!-- 純捲動尺：無內容。黑底是為了萬一轉場層還沒蓋滿時不露白。 -->
+  <!-- 純捲動尺：無內容。黑底是為了萬一轉場層還沒蓋滿時不露白。
+       （進度除錯已整合成跨章節的 <DevCoreProgress>，掛在 pages/index.vue，?pathdebug 開啟。） -->
   <section
     ref="sceneRef"
     class="sec-symbol"
     :style="{ height: sceneHeight }"
     aria-hidden="true"
     data-header-theme="dark"
-  >
-    <!-- symbol 序列進度（僅 dev）。fixed 定位，本 section 無 transform 故不受影響。 -->
-    <DevOnly>
-      <DevFaceProgress />
-    </DevOnly>
-  </section>
+  />
 </template>
 
 <style lang="scss" scoped>

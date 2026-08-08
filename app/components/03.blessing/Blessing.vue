@@ -13,12 +13,13 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section3.json';
 
 const { partner } = str;
-const { blessingFrame, setBlessingProgress } = useOrangeCoreProgress();
-
-// 階梯線的逐格進場是否已播完 —— 播完才讓夥伴清單面板淡入。
+// 階梯線的逐格進場是否已播完（stairsDone）—— 播完才讓夥伴清單面板淡入。
 // 由 <BlessingStairs> 以 v-model:done 雙向控制：使用者捲回階梯線上方時它會轉回 false，
 // 下次由上往下進入就重播（重置時面板在畫面外，淡出看不到）。詳見該元件檔頭。
-const stairsDone = ref(false);
+// 它住在 useOrangeCoreProgress 而非本檔的區域 ref：SEQUENCE 的 blessing.stairs 是
+// 'time' part，除錯 dashboard 要讀它才判得出 idle / done。雙向綁定行為不變。
+const { blessingFrame, setBlessingProgress, stairsDone } =
+  useOrangeCoreProgress();
 
 // 捲動尺高度。尺內的 sticky 畫面自己佔掉 100vh，sticky 只黏住「尺高 − 100vh」，
 // 所以要 +1，實際動畫距離才等於 BLESSING_VH × 100vh（見 ~/utils/orange-core-config）。

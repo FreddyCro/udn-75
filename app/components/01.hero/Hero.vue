@@ -308,11 +308,7 @@ function applyScrollLock() {
 
 <template>
   <section ref="sec1Ref" class="sec1">
-    <!-- core 沿線移動進度（fixed 右下角，直接讀 useOrangeCoreProgress）。
-         <DevOnly>：production build 會整個編譯掉、不進 bundle。 -->
-    <DevOnly>
-      <DevOrangeCoreProgress />
-    </DevOnly>
+    <!-- 進度除錯已整合成跨章節的 <DevCoreProgress>，掛在 pages/index.vue（?pathdebug 開啟）。 -->
 
     <!-- 載入層：必須掛在 .sec1__inner「外面」——pinST 會在 inner 寫入 transform，使其成為
          fixed 子孫的 containing block，loader 放進去會改以 inner 為基準而跑位。
