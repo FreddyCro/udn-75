@@ -11,60 +11,76 @@ import str from '@/locales/section2.json';
 
 const { groups, actions } = str.agenda;
 
+// 追上目標的節奏：跟不上時每組至少亮這麼久才走下一步。
+const STEP_MS = 100;
+
 const rootEl = ref<HTMLElement | null>(null);
-// 作用中的群組（＝被視窗中央那條線切到的那一組）。區域 state：沒有跨元件消費者，
-// 故不進 useOrangeCoreProgress。
+// 作用中的群組。區域 state：沒有跨元件消費者，故不進 useOrangeCoreProgress。
 const activeIndex = ref<number | null>(null);
 
-let triggers: ScrollTrigger[] = [];
+// 各組的累積邊界（相對議程頂端）與議程頂端抵達視窗中央時的 scrollY。
+// ⚠ 刻意不逐幀量測：這些值只隨版面（字體／斷點）變化，不隨捲動變化。
+let bounds: number[] = [];
+let startScroll = 0;
+// 播放頭當下該落在哪一組（可以跳號）。activeIndex 一次只走一步去追它，故不會跳號。
+let target: number | null = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
 
-// 判定線用 'center' 而非 IntersectionObserver 的 rootMargin：'center' 就是 <ForumCorePath>
-// 的 start / end 用的同一個視窗中央，頭尾對齊因此是構造上的、不是兩套機制湊巧同意。
-// 群組彼此相鄰無 margin → 區間天然互斥，同一時間只有一組作用中。
+// 邊界相對議程自身頂端，故不受上游 pin spacer 的絕對位移影響；startScroll 是絕對值，
+// 所以只在 refresh **之後**（GSAP 已把 pin spacer 算完）量，不在 refreshInit。
 // 用 querySelectorAll 而非 v-for 的 ref 陣列：Vue 不保證 ref 陣列順序與來源陣列一致，
 // 而這裡的索引必須精準對應群組（錯位會靜默點亮別組）。DOM 順序就是 v-for 順序。
-function buildTriggers() {
-  killTriggers();
+function measure() {
   const root = rootEl.value;
   if (!root) return;
-  root.querySelectorAll<HTMLElement>('.agenda__group').forEach((el, i) => {
-    triggers.push(
-      ScrollTrigger.create({
-        trigger: el,
-        start: 'top center',
-        end: 'bottom center',
-        // 只清掉自己，理由見 ~/utils/agenda-active
-        onToggle: (self) => {
-          activeIndex.value = nextActiveIndex(
-            activeIndex.value,
-            i,
-            self.isActive,
-          );
-        },
-      }),
-    );
+  const rootTop = root.getBoundingClientRect().top;
+  const next = [0];
+  root.querySelectorAll<HTMLElement>('.agenda__group').forEach((el) => {
+    next.push(el.getBoundingClientRect().bottom - rootTop);
   });
-  // 建立時若已經有一組在區間內（例如帶 #forum 直接進站），onToggle 不一定補發，故補一次。
-  triggers.forEach((t, i) => {
-    if (t.isActive) activeIndex.value = i;
-  });
+  bounds = next;
+  startScroll = rootTop + window.scrollY - window.innerHeight / 2;
+  sync();
 }
 
-function killTriggers() {
-  triggers.forEach((t) => t.kill());
-  triggers = [];
+// 播放頭在議程內的偏移 ＝ 已捲過議程頂端抵達視窗中央的距離。
+function sync() {
+  if (bounds.length < 2) return;
+  setTarget(targetIndexAt(bounds, window.scrollY - startScroll));
 }
 
+// 追上目標：立刻走一步，之後每 STEP_MS 走一步。正常捲速下 target 一次只變一格，
+// 第一步就到位、感覺不到延遲；只有快捲跳號時才會排隊逐組補上。
+function pump() {
+  timer = null;
+  if (activeIndex.value === target) return;
+  activeIndex.value = stepToward(activeIndex.value, target);
+  timer = setTimeout(pump, STEP_MS);
+}
+
+function setTarget(next: number | null) {
+  target = next;
+  if (!timer) pump();
+}
+
+// 用 scroll 事件而非 ScrollTrigger 的 onUpdate 當目標來源：onUpdate 只在 trigger 的
+// 作用區間內發火，若一次 tick 直接從議程上方飛到下方，區間內沒有任何一幀 → 完全不發火。
+// scroll 事件沒有這個死角。ScrollTrigger 仍負責 refresh 時機（resize / 字體 / 斷點）。
 onMounted(async () => {
   gsap.registerPlugin(ScrollTrigger);
   await nextTick();
-  buildTriggers();
-  // 字體載入會改變群組高度 → start / end 要重算。resize 由 ScrollTrigger 自己的
-  // autoRefreshEvents 涵蓋，且 trigger 是 DOM 元素（非固定 px），故斷點切換不必重建。
+  measure();
+  window.addEventListener('scroll', sync, { passive: true });
+  ScrollTrigger.addEventListener('refresh', measure);
   document.fonts?.ready.then(() => ScrollTrigger.refresh());
 });
 
-onBeforeUnmount(killTriggers);
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', sync);
+  ScrollTrigger.removeEventListener('refresh', measure);
+  if (timer) clearTimeout(timer);
+  timer = null;
+});
 </script>
 
 <template>

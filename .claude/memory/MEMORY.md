@@ -10,4 +10,4 @@
 - [Hero outro core handoff](hero-outro-core-handoff.md) — 影片裡的 core → DOM core 交棒：anchor 在 config、cover 換算與旋轉補償在 hero-core-handoff.ts
 - [Forum RWD](forum-rwd.md) — 動 02.forum 版面前先讀 architecture/forum-core-path.md；desktop-first 例外的理由、特異度陷阱
 - [Subpage hero 100vh](subpage-hero-100vh.md) — 子頁首屏滿版 100svh＋進場 fade-up（不做 sticky）；hero 須保留 position: relative
-- [Agenda core crossing](agenda-core-crossing.md) — 議程作用中判定線＝視窗中央、用 ScrollTrigger 不用 IO、箭頭幾何由單位 u 推導、群組留白刻意留 12
+- [Agenda core crossing](agenda-core-crossing.md) — 議程作用中判定為何不能每 tick 取樣（快捲跳號）、目標／當前分離＋一次走一步、箭頭幾何由單位 u 推導、群組留白刻意留 12

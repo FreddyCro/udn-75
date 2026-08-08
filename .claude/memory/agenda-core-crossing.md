@@ -1,22 +1,44 @@
 ---
 name: agenda-core-crossing
-description: 議程作用中群組的判定線是視窗中央、為何用 ScrollTrigger 而非 IntersectionObserver、箭頭幾何由單位 u 推導
+description: 議程作用中群組為何是「目標／當前分離＋一次走一步」而非每 tick 取樣、箭頭幾何由單位 u 推導
 metadata:
   type: project
 ---
 
-2026-08-07 完成議程的「orange core 穿透」互動與三斷點對稿校正。
+2026-08-07 完成議程的「orange core 穿透」互動與三斷點對稿校正；2026-08-08 因快捲跳號改寫判定機制。
 
-**判定線 ＝ 視窗中央**，每個 `.agenda__group` 一個 ScrollTrigger（`top center` → `bottom center`），
-寫入 `Agenda.vue` 的區域 `activeIndex`（沒有跨元件消費者，故不進 `useOrangeCoreProgress`）。
+**判定線 ＝ 視窗中央**，`activeIndex` 是 `Agenda.vue` 的區域 state（沒有跨元件消費者，
+故不進 `useOrangeCoreProgress`）。
 
-**刻意不用 IntersectionObserver**：`center` 就是 `ForumCorePath` 的 `start` / `end` 用的同一個
-視窗中央，頭尾對齊因此是構造上的、不是兩套機制湊巧同意；IO 要做 50vh 判定得用
-`rootMargin: '-50% 0px -50% 0px'`（零高度 root band），zero-area intersection 的回報行為
-跨瀏覽器不保證一致。
+⚠️ **「每 tick 取樣、報告播放頭底下那一組」這個做法在快捲時會跳號，已被換掉。**
+每組的作用區間長度**正好等於它自己的高度**（top 抵達中央 → bottom 抵達中央），而最短的
+一組只有 101px。任何一次 tick 間位移超過該高度的捲動，那一組就從沒有任何一幀被觀察到是
+作用中。實測（1440×900）：**200px/幀 得到 `0 1 2 4 5 6`（跳掉 3），30px/幀 才完整**。
+跳掉哪一組取決於步伐邊界落在哪裡，所以症狀看起來是隨機的。
 
-⚠ `onToggle` 的 else 分支必須是 `else if (activeIndex === i)`。無條件清成 `null` 會在群組邊界上
-出事 —— 離開事件的送達順序不保證，「新組先 enter、舊組後 leave」會把剛設好的新值清掉，閃一幀空白。
+**換成 IntersectionObserver 也一樣會跳** —— 它同樣是取樣式的。這是架構性質，不是某個 API 的缺陷。
+（原本選 ScrollTrigger 而非 IO 的理由是 `center` 與 `ForumCorePath` 同一個基準；那個理由仍然成立，
+但它不能解決跳號。）
+
+**現行機制：目標與當前分離。**
+- `target` 由播放頭直接算出（`targetIndexAt`，可以跳號）
+- `activeIndex` 一次只走一步（`stepToward`，`±1`），跟不上時每 100ms 補一步
+- 兩者都是 `~/utils/agenda-active` 的純函式，有 vitest 覆蓋
+
+反覆套用 `stepToward` 必然走訪每一個中間索引 → 「不跳號」與「每組都觸發一次」同時成立，
+上下兩個方向都成立。
+
+⚠️ **代價（無法兩全）**：快捲時 `activeIndex` 會**落後**於播放頭，不再逐幀等於視窗中央底下
+那一組。要嘛允許跳號、要嘛允許落後，不可能都要。
+
+⚠️ **目標來源用 `window` 的 scroll 事件，不是 ScrollTrigger 的 `onUpdate`。**
+`onUpdate` 只在 trigger 的作用區間內發火 —— 若一次 tick 直接從議程上方飛到下方，
+區間內沒有任何一幀，完全不發火。scroll 事件沒有這個死角（已實測：單次 tick 飛越整段仍完整補完 `0…6`）。
+ScrollTrigger 仍負責 refresh 時機（resize / 字體 / 斷點）。
+
+⚠️ `startScroll`（議程頂端抵達視窗中央時的 scrollY）是**絕對**座標，只能在 `refresh`
+**之後**量，不能在 `refreshInit` —— 上游 SymbolScene 的 pin spacer 那時還在重算。
+`bounds` 相對議程自身頂端，不受這個影響。
 
 **箭頭幾何全由單位 `u` 推導**（pc 9 / pad 6，pad 無稿取 2/3）：箭桿寬 `u`、上下滿撐
 `.agenda__rows`；箭尖飾片 `5u × 2u`、底緣距箭桿底 `1u`，四塊 `u × u` 在 `(0,0) (4u,0) (u,u) (3u,u)`。
