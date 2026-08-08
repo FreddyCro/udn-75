@@ -604,6 +604,42 @@ function resolveX(x: ForumPathX, w: number, amplitude: number): number {
   return w / 2 + (raw - w / 2) * amplitude;
 }
 
+/** 角度正規化到 (−180, 180] */
+const normDeg = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180;
+
+/**
+ * 楔形夾角保護：把一條切線夾進「相鄰段落容許的角度範圍」內，避免相鄰兩段相交。
+ *
+ * 為什麼需要：形狀參數（relIn / relOut）是**相對 chord** 的極座標，那是個相似變換模型，
+ * 只有等比縮放才保形。但節點的 x 是容器寬的比例、y 是量出來的 —— **兩軸各自縮放**，
+ * 而且 y 還會被文字換行改變。於是相鄰兩段各自旋轉不同的角度，原本安全的切線就會
+ * 掃過鄰段而相交（實測 mob：稿寬 414 安全，600 寬時 P8 的離開切線越界 30°，畫面上成圈）。
+ *
+ * 判準（以節點 B、前一點 A、chord B→C 為例）：
+ *   spread ＝ 射線 B→A 相對 chord 的夾角。
+ *   離開切線若**往 A 的方向轉、且轉過 spread**，就必定切過 A→B 那一段。
+ *   故同號時把 |rel| 夾到 |spread| × SAFETY。反向轉（異號）遠離鄰段，不必夾。
+ *
+ * 代價：極端版面下那個彎會變平一點（往 chord 靠），但不會相交。
+ * 稿寬附近完全不作用 —— 三個斷點在自己的稿寬下都有足夠餘裕。
+ */
+const WEDGE_SAFETY = 0.85;
+
+function clampToWedge(
+  rel: number,
+  chord: number,
+  at: [number, number],
+  neighbour: [number, number] | undefined
+): number {
+  if (!neighbour) return rel; // 首尾沒有鄰段可撞
+  const toNeighbour = Math.atan2(neighbour[1] - at[1], neighbour[0] - at[0]) / RAD;
+  const spread = normDeg(toNeighbour - chord);
+  // 異號 ＝ 往鄰段的反方向轉，不會撞
+  if (rel === 0 || spread === 0 || Math.sign(rel) !== Math.sign(spread)) return rel;
+  const limit = Math.abs(spread) * WEDGE_SAFETY;
+  return Math.abs(rel) <= limit ? rel : Math.sign(rel) * limit;
+}
+
 function resolveY(a: ForumPathAnchor, m: { top: number; height: number }): number {
   const dy = a.dy ?? 0;
   if (a.edge === 'top') return m.top + dy;
@@ -656,8 +692,16 @@ export function buildNodePathD(
     }
     const len = Math.hypot(x1 - x0, y1 - y0);
     const chord = Math.atan2(y1 - y0, x1 - x0) / RAD;
-    const aIn = (chord + join.relIn) * RAD;
-    const aOut = (chord + join.relOut) * RAD;
+
+    // 楔形夾角保護：把切線夾進「相鄰兩條 chord 圍出的角度範圍」內，見 clampToWedge。
+    // 出發側看前一點、到達側看後一點；沒有鄰居（首尾）就不夾。
+    const prev = live[i - 1]?.pt;
+    const after = live[i + 2]?.pt;
+    const relIn = clampToWedge(join.relIn, chord, [x0, y0], prev);
+    const relOut = clampToWedge(join.relOut, chord, [x1, y1], after);
+
+    const aIn = (chord + relIn) * RAD;
+    const aOut = (chord + relOut) * RAD;
     const c1x = x0 + join.hIn * len * Math.cos(aIn);
     const c1y = y0 + join.hIn * len * Math.sin(aIn);
     const c2x = x1 - join.hOut * len * Math.cos(aOut);
