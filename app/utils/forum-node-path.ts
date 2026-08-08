@@ -14,17 +14,18 @@
 // ⚠ 完整規則（每個點掛哪個 element、五個可調旋鈕、與稿的已知差異）見
 //   architecture/forum-node-path.md。改動前先讀。
 
-/** 橫向位置：釘左右緣／中心，或容器寬的比例（0–1） */
-export type ForumPathX = 'left' | 'center' | 'right' | number;
-
-/** 縱向錨點：掛哪個 element 的哪一邊 */
-export type ForumPathAnchor = {
+/** 錨點的查找方式（縱橫共用）：在哪一場的哪個 element 上 */
+export type ForumPathTarget = {
   /** 限定在哪一場之內（＝ data-forum-anchor 的值）。省略則在 .sec2__path 全域查。 */
   event?: string;
   /** 選擇器（在上述 scope 內） */
   sel: string;
   /** 同一選擇器命中多個時取第幾個（預設 0） */
   nth?: number;
+};
+
+/** 縱向錨點：掛哪個 element 的哪一邊 */
+export type ForumPathAnchor = ForumPathTarget & {
   /** top＝上緣、bottom＝下緣、fraction＝元素高度的 t 處 */
   edge: 'top' | 'bottom' | 'fraction';
   /** edge 為 'fraction' 時的比例（0–1） */
@@ -32,6 +33,29 @@ export type ForumPathAnchor = {
   /** 再往下偏移幾 px（可負） */
   dy?: number;
 };
+
+/**
+ * 橫向錨點：把 x 掛在某個 element 上，而不是容器寬的比例。
+ *
+ * 什麼時候需要：線要咬住的版面元素**不隨容器等比縮放**時。
+ * pad 的議程就是這種 —— `.agenda` 是定寬 608 置中，而 `.forum-path` 是流動的
+ * （`.sec2__path` 上限 1280），兩者的比例只在 768 稿寬那一刻相等，視窗一寬就分家
+ * （實測 1021 寬差 61px、1279 寬差 123px）。
+ *
+ * fallback 是量不到時的退路（容器寬的比例，語意同數字型的 x）—— 刻意不整條放棄：
+ * 橫向錯位只是線歪掉，比整條消失好；而且退路值就是原本寫死的稿比例，行為等同改動前。
+ */
+export type ForumPathXAnchor = ForumPathTarget & {
+  /** left＝左緣、center＝水平中心、right＝右緣（皆為 border box） */
+  edge: 'left' | 'center' | 'right';
+  /** 再往右偏移幾 px（可負） */
+  dx?: number;
+  /** 量不到時退回容器寬的比例（0–1） */
+  fallback: number;
+};
+
+/** 橫向位置：釘左右緣／中心、容器寬的比例（0–1），或掛在某個 element 上 */
+export type ForumPathX = 'left' | 'center' | 'right' | number | ForumPathXAnchor;
 
 /**
  * 到下一點的連法。
@@ -67,16 +91,38 @@ export type ForumPathNode = {
   note?: string;
 };
 
-/** 量測介面：吃錨點吐「相對容器的上緣 ＋ 高度」；量不到回 null */
+/** 量測介面：吃錨點吐「相對容器的 border box」；量不到回 null */
 export type ForumPathMeasure = (
-  a: ForumPathAnchor
-) => { top: number; height: number } | null;
+  t: ForumPathTarget
+) => { top: number; height: number; left: number; width: number } | null;
 
 /** 設計線線寬（三斷點的稿都是 4px 等寬 → 驅動線＝可見線） */
 export const FORUM_PATH_STROKE = 4;
 
 /** 釘邊時距容器邊緣的內縮（＝半個描邊，讓線齊邊又不被裁掉） */
 const EDGE_INSET = FORUM_PATH_STROKE / 2;
+
+/**
+ * 議程的箭頭欄 —— 線穿過議程時要落在這一欄上，核心才「剛好接到箭頭」。
+ *
+ * 掛 `.agenda__rows` 的左緣而非 `.agenda__arrow` 本身：那條 1px 的 border-left 就是箭頭的
+ * 中軸（箭頭是 absolute、left: −0.5px − u/2、寬 u，中心正好落在 border 中心），而箭頭
+ * 平常 opacity: 0、mob 更是 display: none —— 掛在會消失的東西上不穩。
+ * dx 0.5 ＝ 半個 border，把 border box 左緣推到 border 中心。
+ *
+ * 為什麼非量不可：pad 的 `.agenda` 是定寬 608 置中，`.forum-path` 卻是流動的 ——
+ * 稿寬 768 時箭頭在 202.5、比例 0.262 剛好對上（稿的頂點是 201.4，設計本來就畫在箭頭上），
+ * 但視窗一寬兩者就分家（實測 1021 寬差 61px、1279 寬差 123px）。見 ForumPathXAnchor。
+ *
+ * 只有 pad 掛它：pc 的 `.agenda`（1064）與 `.forum-path`（1280 上限）同樣置中於視窗，
+ * 相對位移是常數、不會隨寬度飄；mob 沒有豎線也沒有箭頭（見 Agenda.vue）。
+ */
+const AGENDA_ARROW_X: ForumPathXAnchor = {
+  sel: '.agenda__rows',
+  edge: 'left',
+  dx: 0.5,
+  fallback: 0.262, // ＝ 稿寬 768 下的箭頭位置，也是改動前寫死的值
+};
 
 // ── pad（768 稿，Figma Vector 276 / temp/pad.svg）─────────────────────
 // 換算：artboard 座標 ＝ asset 座標 ＋ (3.356, 189.0)
@@ -183,7 +229,9 @@ const PAD_NODES: ForumPathNode[] = [
   },
   {
     id: 'Q13', // 稿 (201.4, 4778)；論壇三日期組下緣 4753.02 +25。終點
-    x: 0.262,
+    // 稿的 201.4 就是議程箭頭欄（768 寬下箭頭在 202.5）→ 改掛箭頭，寬視窗才不會分家。
+    // Q13 → S0 是一條直線，兩點同 x ＝ 線垂直穿過議程、核心正好走在箭頭上。
+    x: AGENDA_ARROW_X,
     anchor: { event: '論壇三', sel: '.forum-event__meta', edge: 'bottom', dy: 25 },
   },
 ];
@@ -534,8 +582,10 @@ const PC_TAIL_NODES: ForumPathNode[] = [
 ];
 
 const PAD_TAIL_NODES: ForumPathNode[] = [
-  { id: 'S0', x: 0.262, anchor: AGENDA_END, join: 'line' },
-  { id: 'S1', x: 0.262, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top' },
+  // Q13 → S0 → S1 三點同 x：線從論壇三垂直穿過議程、續行到論壇四。
+  // 三個都掛箭頭欄，那條垂直線才會整段落在箭頭上（只改中間一點會變成斜線）。
+  { id: 'S0', x: AGENDA_ARROW_X, anchor: AGENDA_END, join: 'line' },
+  { id: 'S1', x: AGENDA_ARROW_X, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top' },
     join: { relIn: -46, relOut: 38.9, hIn: 0.2, hOut: 0.6 } },
   { id: 'S2', x: 0.764, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top', dy: -3 },
     join: { relIn: -68.5, relOut: 31.8, hIn: 0.39, hOut: 0.38 } },
@@ -591,7 +641,24 @@ export const FORUM_FRONT_NODES: Record<'pc' | 'pad' | 'mob', ForumPathNode[]> = 
 const RAD = Math.PI / 180;
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-function resolveX(x: ForumPathX, w: number, amplitude: number): number {
+function resolveX(
+  x: ForumPathX,
+  w: number,
+  amplitude: number,
+  measure: ForumPathMeasure
+): number {
+  // 掛在 element 上：直接回量到的值，**不過 amplitude** ——
+  // 這種點的存在意義就是咬住那個 element，往中心收就等於沒咬住。
+  if (typeof x === 'object') {
+    const m = measure(x);
+    if (m) {
+      const dx = x.dx ?? 0;
+      if (x.edge === 'left') return m.left + dx;
+      if (x.edge === 'right') return m.left + m.width + dx;
+      return m.left + m.width / 2 + dx; // center
+    }
+    return resolveX(x.fallback, w, amplitude, measure);
+  }
   const raw =
     x === 'left'
       ? EDGE_INSET
@@ -676,7 +743,7 @@ export function buildNodePathD(
     }
     live.push({
       node: n,
-      pt: [resolveX(n.x, width, amplitude), resolveY(n.anchor, m)],
+      pt: [resolveX(n.x, width, amplitude, measure), resolveY(n.anchor, m)],
     });
   }
   if (live.length < 2) return null;

@@ -6,7 +6,19 @@ import {
   type ForumPathAnchor,
   type ForumPathMeasure,
   type ForumPathNode,
+  type ForumPathTarget,
+  type ForumPathX,
 } from '../app/utils/forum-node-path';
+
+/** 量測值：黃金樣本只在乎縱向，橫向補 0（沒有節點掛在 element 的 x 上時用不到）。 */
+type Rect = { top: number; height: number; left: number; width: number };
+const rect = (r: Partial<Rect> = {}): Rect => ({
+  top: 0,
+  height: 0,
+  left: 0,
+  width: 0,
+  ...r,
+});
 
 // vitest 沒設 alias（見 vitest.config.ts），故一律相對路徑 import。
 
@@ -15,15 +27,17 @@ import {
 const MOB_NODES = FORUM_FRONT_NODES.mob;
 const PAD_NODES = FORUM_FRONT_NODES.pad;
 
-const rectKey = (a: ForumPathAnchor) => {
+const rectKey = (a: ForumPathTarget) => {
   const base = a.event ? `${a.event}/${a.sel.split(',')[0]!.trim()}` : a.sel;
   return a.nth != null ? `${base}#${a.nth}` : base;
 };
 
 const measureFrom =
   (rects: Record<string, { top: number; height: number }>): ForumPathMeasure =>
-  (a) =>
-    rects[rectKey(a)] ?? null;
+  (a) => {
+    const r = rects[rectKey(a)];
+    return r ? rect(r) : null;
+  };
 
 /** 從 d 取出每個指令的終點（＝ waypoint） */
 function endpoints(d: string): [number, number][] {
@@ -183,7 +197,7 @@ describe('錨點量不到時', () => {
       { id: 'C', x: 'right', anchor: { sel: 'c', edge: 'top', dy: 100 } },
     ];
     const m: ForumPathMeasure = (a) =>
-      a.sel === 'gone' ? null : { top: 0, height: 0 };
+      a.sel === 'gone' ? null : rect();
     const out = buildNodePathD(nodes, { width: 100, measure: m })!;
     expect(out).not.toBeNull();
     // A → C 直接相連（B 被跳過）
@@ -201,7 +215,7 @@ describe('錨點量不到時', () => {
     ];
     const out = buildNodePathD(nodes, {
       width: 100,
-      measure: () => ({ top: 0, height: 0 }),
+      measure: () => (rect()),
     })!;
     expect(endpoints(out.d)).toHaveLength(3);
   });
@@ -211,20 +225,20 @@ describe('錨點量不到時', () => {
       { id: 'A', x: 'left', anchor: { sel: 'a', edge: 'top' }, join: 'line' },
       { id: 'B', x: 'center', anchor: { sel: 'gone', edge: 'top' }, optional: true },
     ];
-    const m: ForumPathMeasure = (a) => (a.sel === 'gone' ? null : { top: 0, height: 0 });
+    const m: ForumPathMeasure = (a) => (a.sel === 'gone' ? null : rect());
     expect(buildNodePathD(nodes, { width: 100, measure: m })).toBeNull();
   });
 });
 
-describe('x 的四種來源', () => {
-  const at = (x: number | 'left' | 'center' | 'right', width = 414) =>
+describe('x 的來源', () => {
+  const at = (x: ForumPathX, width = 414, measure: ForumPathMeasure = () => rect()) =>
     endpoints(
       buildNodePathD(
         [
           { id: 'A', x, anchor: { sel: 's', edge: 'top' }, join: 'line' },
           { id: 'B', x: 'center', anchor: { sel: 's', edge: 'top', dy: 10 } },
         ],
-        { width, measure: () => ({ top: 0, height: 0 }) }
+        { width, measure }
       )!.d
     )[0]![0];
 
@@ -242,6 +256,68 @@ describe('x 的四種來源', () => {
     expect(at(0.5)).toBe(207);
     expect(at(0.781, 375)).toBe(292.88);
   });
+
+  // ── 掛在 element 上（ForumPathXAnchor）──────────────────────────────
+  // 用途見 AGENDA_ARROW_X：要咬住的元素不隨容器等比縮放時，比例算不出來。
+  const box = (o: Partial<Rect>): ForumPathMeasure => (t) =>
+    t.sel === 'box' ? rect({ left: 100, width: 60, ...o }) : rect();
+
+  it('left / center / right 取量到的 border box 三邊', () => {
+    expect(at({ sel: 'box', edge: 'left', fallback: 0 }, 414, box({}))).toBe(100);
+    expect(at({ sel: 'box', edge: 'center', fallback: 0 }, 414, box({}))).toBe(130);
+    expect(at({ sel: 'box', edge: 'right', fallback: 0 }, 414, box({}))).toBe(160);
+  });
+
+  it('dx 疊加在三邊之上（可負）', () => {
+    expect(at({ sel: 'box', edge: 'left', dx: 0.5, fallback: 0 }, 414, box({}))).toBe(100.5);
+    expect(at({ sel: 'box', edge: 'right', dx: -8, fallback: 0 }, 414, box({}))).toBe(152);
+  });
+
+  it('不吃 amplitude —— 掛住就是掛住，不會被往中心收', () => {
+    const x = endpoints(
+      buildNodePathD(
+        [
+          { id: 'A', x: { sel: 'box', edge: 'left', fallback: 0 }, anchor: { sel: 's', edge: 'top' }, join: 'line' },
+          { id: 'B', x: 'center', anchor: { sel: 's', edge: 'top', dy: 10 } },
+        ],
+        { width: 414, measure: box({}), amplitude: 0.5 }
+      )!.d
+    )[0]![0];
+    expect(x).toBe(100);
+  });
+
+  it('量不到 → 退回 fallback 比例，不整條放棄', () => {
+    const gone: ForumPathMeasure = (t) => (t.sel === 'box' ? null : rect());
+    expect(at({ sel: 'box', edge: 'left', fallback: 0.262 }, 768, gone)).toBeCloseTo(201.22, 2);
+  });
+});
+
+// pad 的 Q13 / S0 / S1 必須同 x 且掛在議程箭頭欄上 —— 那條垂直線整段落在箭頭上，
+// 核心穿過議程時才「接到箭頭」。只改其中一點會變成斜線（見 AGENDA_ARROW_X）。
+describe('pad 穿過議程的那條垂直線', () => {
+  const run = FORUM_PATH_NODES.pad.filter((n) => ['Q13', 'S0', 'S1'].includes(n.id));
+
+  it('三點都在，且都掛在 .agenda__rows 的左緣', () => {
+    expect(run.map((n) => n.id)).toEqual(['Q13', 'S0', 'S1']);
+    run.forEach((n) => {
+      expect(typeof n.x, n.id).toBe('object');
+      const x = n.x as Exclude<ForumPathX, string | number>;
+      expect(x.sel, n.id).toBe('.agenda__rows');
+      expect(x.edge, n.id).toBe('left');
+    });
+  });
+
+  it('三點同一個 x 設定 → 量出來必定等寬，線是垂直的', () => {
+    expect(new Set(run.map((n) => JSON.stringify(n.x))).size).toBe(1);
+  });
+
+  it('議程量不到時退回 0.262 ＝ 稿寬 768 下的箭頭位置', () => {
+    const measure: ForumPathMeasure = (t) =>
+      t.sel === '.agenda__rows' ? null : rect({ top: 0, height: 100 });
+    const xs = endpoints(buildNodePathD(FORUM_PATH_NODES.pad, { width: 768, measure })!.d);
+    const q13 = FORUM_PATH_NODES.pad.findIndex((n) => n.id === 'Q13');
+    expect(xs[q13]![0]).toBeCloseTo(201.22, 2); // 稿的頂點是 201.4
+  });
 });
 
 describe('edge 的三種模式', () => {
@@ -252,7 +328,7 @@ describe('edge 的三種模式', () => {
           { id: 'A', x: 'center', anchor, join: 'line' },
           { id: 'B', x: 'center', anchor: { sel: 's', edge: 'top', dy: 999 } },
         ],
-        { width: 414, measure: () => ({ top: 100, height: 200 }) }
+        { width: 414, measure: () => (rect({ top: 100, height: 200 })) }
       )!.d
     )[0]![1];
 
@@ -302,7 +378,7 @@ describe('join 的形狀不變量', () => {
         },
         { id: 'B', x: 1, anchor: { sel: 's', edge: 'top', dy: h } },
       ],
-      { width: 100, measure: () => ({ top: 0, height: 0 }) }
+      { width: 100, measure: () => (rect()) }
     )!.d;
     const n = d.match(/C([-\d.\s]+)/)![1]!.trim().split(/\s+/).map(Number);
     return { c1: [n[0]!, n[1]!], c2: [n[2]!, n[3]!], end: [n[4]!, n[5]!] };
@@ -331,7 +407,7 @@ describe('join 的形狀不變量', () => {
         },
         { id: 'B', x: 1, anchor: { sel: 's', edge: 'top', dy: 100 } },
       ],
-      { width: 100, measure: () => ({ top: 0, height: 0 }) }
+      { width: 100, measure: () => (rect()) }
     )!.d;
     const n = d.match(/C([-\d.\s]+)/)![1]!.trim().split(/\s+/).map(Number);
     expect([n[0], n[1]]).toEqual([0, 0]); // c1 ＝ 起點

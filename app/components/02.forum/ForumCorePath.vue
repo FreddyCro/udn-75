@@ -129,7 +129,14 @@ function buildNodesD(list: ForumPathNode[]) {
       : base.querySelectorAll<HTMLElement>(a.sel)[a.nth ?? 0];
     if (!el) return null;
     const r = el.getBoundingClientRect();
-    return { top: r.top - rootRect.top, height: r.height };
+    return {
+      top: r.top - rootRect.top,
+      height: r.height,
+      // 橫向也回：掛在 element 上的 x（ForumPathXAnchor）要用。以 .forum-path 為原點，
+      // 故議程那種「定寬置中於視窗、與本層不同寬」的元素也算得對。
+      left: r.left - rootRect.left,
+      width: r.width,
+    };
   };
 
   return buildNodePathD(list, { width: rootRect.width, measure });

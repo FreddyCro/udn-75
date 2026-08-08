@@ -57,15 +57,18 @@ pc 前半段原本是「手貼 Figma 匯出的 `d` ＋ 單點平移對位」（�
 點與點之間用「直線」或「彎」連起來。整條線是單一連續 `d`（只有一個 `M`）。
 
 ```ts
-/** 橫向位置：釘左右緣／中心，或容器寬的比例（0–1） */
-export type ForumPathX = 'left' | 'center' | 'right' | number;
-
-/** 縱向錨點：掛哪個 element 的哪一邊 */
-export type ForumPathAnchor = {
-  /** 在 .sec2__path 範圍內的選擇器 */
+/** 錨點的查找方式（縱橫共用） */
+export type ForumPathTarget = {
+  /** 限定在哪一場之內（＝ data-forum-anchor 的值）；省略則全域查 */
+  event?: string;
+  /** 在上述 scope 內的選擇器 */
   sel: string;
   /** 同一選擇器命中多個時取第幾個（預設 0） */
   nth?: number;
+};
+
+/** 縱向錨點：掛哪個 element 的哪一邊 */
+export type ForumPathAnchor = ForumPathTarget & {
   /** top＝上緣、bottom＝下緣、fraction＝元素高度的 t 處 */
   edge: 'top' | 'bottom' | 'fraction';
   /** edge 為 'fraction' 時的比例（0–1） */
@@ -73,6 +76,17 @@ export type ForumPathAnchor = {
   /** 再往下偏移幾 px（可負） */
   dy?: number;
 };
+
+/** 橫向錨點：把 x 也掛在某個 element 上（見下方「x 也可以掛 element」） */
+export type ForumPathXAnchor = ForumPathTarget & {
+  edge: 'left' | 'center' | 'right';
+  dx?: number;
+  /** 量不到時退回容器寬的比例（0–1） */
+  fallback: number;
+};
+
+/** 橫向位置：釘左右緣／中心、容器寬的比例（0–1），或掛在某個 element 上 */
+export type ForumPathX = 'left' | 'center' | 'right' | number | ForumPathXAnchor;
 
 /** 到下一點的連法 */
 export type ForumPathJoin =
@@ -118,10 +132,48 @@ edge 'fraction' → y = m.top + m.height × t + dy
 'center' → W / 2
 數字 t   → t × W
 
-最後一律再過 amplitude：x = W/2 + (x − W/2) × amplitude
+以上一律再過 amplitude：x = W/2 + (x − W/2) × amplitude
+
+ForumPathXAnchor（m ＝ 量到的元素矩形）：
+  edge 'left'   → m.left + dx
+  edge 'center' → m.left + m.width / 2 + dx
+  edge 'right'  → m.left + m.width + dx
+  量不到        → 退回 fallback × W
+  ⚠️ 這一種**不過 amplitude**
 ```
 
 `'left'` / `'right'` 取 ±2 而不是 0 / W，是為了讓 4px 描邊剛好齊邊不被裁掉。
+
+### x 也可以掛 element
+
+比例（`t × W`）的前提是「要咬住的東西隨容器等比縮放」。**不成立時就得量。**
+
+實例 —— pad 穿過議程的那條垂直線（`Q13` / `S0` / `S1`）：
+`.agenda` 是**定寬 608 置中**，`.forum-path` 卻是流動的（`.sec2__path` 上限 1280）。
+稿寬 768 時箭頭欄在 202.5、比例 0.262 剛好對上（稿的頂點就是 201.4 ——
+設計本來就把線畫在箭頭上），但視窗一寬兩者就分家：
+
+| 視窗寬 | 箭頭 x | `0.262 × W` | 差 |
+|---|---|---|---|
+| 768 | 194.8 | 197.2 | 2.4 |
+| 1021 | 321.5 | 263.6 | **57.9** |
+| 1279 | 450.5 | 331.2 | **119.3** |
+
+改掛 `AGENDA_ARROW_X`（`.agenda__rows` 左緣 ＋ 0.5）後三個寬度都是 **0**。
+
+兩個實作決定：
+
+- **掛 `.agenda__rows` 而非 `.agenda__arrow`。** 那條 1px 的 `border-left` 就是箭頭的中軸
+  （箭頭是 `absolute`、`left: −0.5px − u/2`、寬 `u`，中心正好落在 border 中心），
+  而箭頭平常 `opacity: 0`、mob 更是 `display: none` —— 掛在會消失的東西上不穩。
+- **量不到退回 `fallback`，不整條放棄。** 橫向錯位只是線歪掉，比整條消失好；
+  而且退路值就是原本寫死的稿比例，行為等同改動前。這與縱向錨點「大聲失敗」的規則
+  不同 —— 縱向少一個點會讓後面全部接到錯的鄰居身上（見下一節）。
+
+**三點要一起改。** `Q13 → S0 → S1` 是一條垂直線，只改中間一點會變成斜線。
+
+pc / mob 不需要：pc 的 `.agenda`（1064）與 `.forum-path`（1280 上限）同樣置中於視窗，
+相對位移是常數；mob 沒有豎線也沒有箭頭。
 
 **彎的重建**（`L` ＝ 兩點距離，`chord` ＝ 兩點連線的角度）：
 
@@ -140,11 +192,10 @@ c2 = p1 − hOut × L × unit(chord + relOut)
 這樣 vitest 可以直接餵假的量測值跑黃金樣本，不需要 jsdom。
 
 ```ts
-/** 量測介面：吃選擇器吐「相對容器的上緣 ＋ 高度」；量不到回 null */
+/** 量測介面：吃錨點吐「相對容器的 border box」；量不到回 null */
 export type ForumPathMeasure = (
-  sel: string,
-  nth: number
-) => { top: number; height: number } | null;
+  t: ForumPathTarget
+) => { top: number; height: number; left: number; width: number } | null;
 
 /**
  * 依 waypoint 與量測值算出整條線。
@@ -244,7 +295,11 @@ pad 稿是**真描邊**（`stroke-width 4`、單一 `M`、指令只有 `MVCL`）
 | **Q10** | `left` | 論壇二 `.forum-event__speakers` | fraction | **0.7294** | **硬轉角**（hIn 0）|
 | **Q11** | 0.160 | 論壇三 `.forum-event__tag` | top | −8 | 彎 |
 | **Q12** | 0.820 | 論壇三 `.forum-event__meta` | top | −5 | 彎 |
-| **Q13** | 0.262 | 論壇三 `.forum-event__meta` | bottom | +25 | —（終點）|
+| **Q13** | `AGENDA_ARROW_X` ⚠️ | 論壇三 `.forum-event__meta` | bottom | +25 | —（終點）|
+
+`Q13` 的 x 掛在議程箭頭欄上（不是比例）—— 稿的 201.4 就是箭頭位置，
+但 `.agenda` 定寬置中而容器流動，比例只在 768 稿寬對得上。見第二節「x 也可以掛 element」。
+`Q13 → S0 → S1` 三點共用同一個 x，那條垂直線整段落在箭頭上，核心穿過議程時正好接到箭頭。
 
 `Q5→Q6` 是一段 chord 1912 的大弧，橫跨論壇一整段長 bio —— 高度變動最大的區域
 交給它吸收，與 mob 用長直線吃掉同一段的作法同構。
@@ -379,7 +434,8 @@ handle 為 0 的那一側，控制點與端點重合 → 該側的角度不影�
 | 「線出來的方向不對」「太早往下轉」 | `relIn` / `relOut` |
 | 「這一段應該是直線」 | `join: 'line'` |
 | 「線要貼著〇〇跑」 | 換 `anchor.sel` |
-| 「整條線橫向擺幅太大」 | 全域 `amplitude`（把比例型 x 往中心收）|
+| 「線要**橫向**咬住某個 element」 | `x` 改成 `ForumPathXAnchor`（見第二節）|
+| 「整條線橫向擺幅太大」 | 全域 `amplitude`（把比例型 x 往中心收；掛 element 的 x 不受影響）|
 
 **編號永不重排。** 要插入新點就用 `P7a`，不重編號 —— 這樣「P4 往右一點」
 永遠指同一個點。理由同 `data-forum-anchor` 用具名而非索引。
@@ -446,8 +502,10 @@ handle 為 0 的那一側，控制點與端點重合 → 該側的角度不影�
 
 - 五個旋鈕各自的效果（改 `hOut` 只影響那一段、`amplitude` 等比收斂…）
 - 錨點量不到時回 `null`（不是回一條少一個點的線）
-- `'left'` / `'right'` / `'center'` / 數字四種 x 的解析
+- 五種 x 的解析：`'left'` / `'right'` / `'center'` / 數字 / `ForumPathXAnchor`
+  （含「不吃 amplitude」與「量不到退回 fallback」兩條）
 - `edge` 三種模式的 y 解析
+- pad 的 `Q13 / S0 / S1` 同 x 且都掛在 `.agenda__rows` 左緣（那條垂直線落在箭頭上）
 
 ### 瀏覽器實測
 
@@ -475,6 +533,18 @@ pad / mob 比 pc 準，是因為**驅動線 ＝ 可見線**（同一個 `d`）�
 同一份內容，pad 從 1279 縮到 768 時容器高 **4768 → 5164（+396px）**、
 mob 從 414 縮到 375 時 **5427 → 5777（+350px）**，線全程自己跟著長。
 這正是寫死 `d` 做不到的兩件事：窄視窗不溢出、文字變高不飄。
+
+**議程箭頭對位**（2026-08-09，`AGENDA_ARROW_X` 之後）——
+量「線穿過議程上／下緣時的 x」與「`.agenda__rows` 的 border 中心」之差：
+
+| 視窗 | 容器寬 | 箭頭 x | 進議程 Δ | 出議程 Δ | 舊比例 `0.262×W` 會落在 |
+| --- | --- | --- | --- | --- | --- |
+| pad 768 | 752.7 | 194.83 | **0** | **0** | 197.2 |
+| pad 1021 | 1006 | 321.50 | **0** | **0** | 263.6 |
+| pad 1279 | 1264 | 450.50 | **0** | **0** | 331.2 |
+
+核心自身（`.forum-path__core` 的中心）在 1021 寬實測也是 **Δ 0**。
+同批次的自交掃描（4000 取樣點）：pad 768 / 1021 / 1279、pc 1440、mob 414 皆 **0 次相交**。
 
 **待補的實測**：真機（無捲軸）、320 寬下限、字體 fallback 時的表現。
 
