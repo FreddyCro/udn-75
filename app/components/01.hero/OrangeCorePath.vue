@@ -35,6 +35,10 @@ const props = defineProps<{
 // core 沿線移動進度（0..1）→ 寫入全域共享 path 軌（stage 1–3 來源），供顯示與效果讀取。
 const { setPathProgress } = useOrangeCoreProgress();
 
+// 路徑的起訖都定義成「半個視窗高」，而 endEl 的 runway 是 CSS 的 --vh ——
+// 兩者必須是同一把尺，否則終點會落在文字之內或超出 runway。
+const { vhPx } = useViewportHeight();
+
 // 移動速度曲線：把 raw 捲動進度重新映射成 path 進度（見 ~/utils/orange-core-config 的 MOVE_EASE）。
 const easeMove = gsap.parseEase(MOVE_EASE) ?? ((v: number) => v);
 
@@ -56,9 +60,9 @@ function build() {
   const x = secRect.width / 2; // 垂直線：一路沿 section 水平中心（引言文字亦置中）
 
   // 起點：第一屏正中央（＝影片退場後 core 淡入的位置）。
-  const sy = window.innerHeight / 2;
+  const sy = vhPx(0.5);
   // 終點：endEl 底緣往上半個視窗高 → 該底緣貼齊視窗底時，core 正好在視窗正中央。
-  const ey = endRect.bottom - secRect.top - window.innerHeight / 2;
+  const ey = endRect.bottom - secRect.top - vhPx(0.5);
 
   motion.setAttribute(
     'd',

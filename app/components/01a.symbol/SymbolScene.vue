@@ -15,7 +15,8 @@ const { symbolMode, symbolTarget, setSymbolProgress, symbolLayerDone } =
   useOrangeCoreProgress();
 
 // 段落高度 ＝ SYMBOL_VH × 視窗高（見 ~/utils/orange-core-config）＝ 序列的捲動長度。
-const sceneHeight = `${SYMBOL_VH * 100}vh`;
+// 用 vhLength 而非字面 `320vh`：視窗高在本專案有單一來源（--vh），見 ~/utils/viewport-height。
+const sceneHeight = vhLength(SYMBOL_VH);
 
 // 捲動尺：本段頂端進入視窗底（＝ hero 轉場 pin 剛釋放的那一刻）起算，到本段捲完為止。
 //   ・start 'top bottom' 只看「sec1 底緣抵達視窗底」→ 與本段高度無關，故不論 SYMBOL_VH 調多少，

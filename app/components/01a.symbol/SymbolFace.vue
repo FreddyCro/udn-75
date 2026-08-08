@@ -1490,7 +1490,9 @@ onMounted(() => {
 .stage {
   position: relative;
   width: 100%;
-  height: 100vh;
+  /* ＝ mixins.scss 的 vh()，但本區塊是純 CSS（無 lang="scss"）→ 手寫展開式。
+     視窗高的單一來源見 app/utils/viewport-height.ts。 */
+  height: calc(var(--vh, 1vh) * 100);
   background: #fff;
   overflow: hidden;
   cursor: crosshair;

@@ -24,7 +24,8 @@ const { blessingFrame, setBlessingProgress, stairsDone } =
 // 捲動尺高度。尺內的 sticky 畫面自己佔掉 100vh，sticky 只黏住「尺高 − 100vh」，
 // 所以要 +1，實際動畫距離才等於 BLESSING_VH × 100vh（見 ~/utils/orange-core-config）。
 // 寫成 BLESSING_VH × 100vh 是錯的 —— 動畫只會剩 (BLESSING_VH − 1) 個視窗高可跑。
-const faceTrackHeight = `${(1 + BLESSING_VH) * 100}vh`;
+// 用 vhLength 而非字面 vh：視窗高有單一來源（--vh），見 ~/utils/viewport-height。
+const faceTrackHeight = vhLength(1 + BLESSING_VH);
 
 const trackRef = ref<HTMLElement | null>(null);
 let faceST: ScrollTrigger | null = null;
@@ -138,7 +139,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  height: vh();
   overflow: hidden;
 }
 

@@ -36,3 +36,18 @@ $breakpoints: (
     @content;
   }
 }
+
+// n 個視窗高。**取代所有字面的 `100vh`。**
+//
+// 為什麼不直接寫 vh：行動裝置上 CSS 的 `vh` 與 JS 的 `window.innerHeight` 不是同一個數
+// （前者是 large viewport、收合網址列不變；後者是 dynamic viewport、會變），本專案兩邊
+// 都在用 → 版面與捲動幾何各走各的尺。`--vh` 是量出來的單一來源，JS 側對應
+// `vhPx()`（見 app/composables/useViewportHeight.ts）。
+//
+// 也不用 dvh / svh / lvh：那些要 2022 年後的瀏覽器，本專案受眾的舊裝置比例高。
+//
+// fallback 的 `1vh` 是給 SSR 與 hydration 之前用的（此時 --vh 還沒寫入），
+// 兩者在載入當下本來就相等 → 不會有閃動。
+@function vh($n: 1) {
+  @return calc(var(--vh, 1vh) * #{$n * 100});
+}

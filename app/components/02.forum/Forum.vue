@@ -104,7 +104,7 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
 .sec2 {
   --accent: var(--color-orange);
 
-  min-height: 100vh;
+  min-height: vh();
   color: var(--color-gray);
   background-color: #fff;
 }

@@ -28,7 +28,7 @@
     // 下方 runway＝50vh（core 從文字底緣走到視窗正中央所需，OrangeCorePath 的終點
     // ＝ sectionHeight − 50vh）＋ 引言淡出窗口。值由 Hero.vue 依 INTRO_FADE_VH 算出後
     // 以 --intro-runway 餵進來（單一來源，見 orange-core-config）；fallback 對應 0.4。
-    padding-bottom: var(--intro-runway, 90vh);
+    padding-bottom: var(--intro-runway, #{vh(0.9)});
     // 透明度由 Hero.vue 依 path 進度寫 inline style（接近視窗中央時淡出讓位給轉場）。
     will-change: opacity;
   }
@@ -51,7 +51,7 @@
   }
 
   .sec1__intro {
-    padding-top: clamp(360px, 78vh, 560px);
+    padding-top: clamp(360px, #{vh(0.78)}, 560px);
   }
 }
 

@@ -56,7 +56,7 @@ const introOpacity = computed(() => String(1 - introFade.value));
 
 // 引言的 runway：50vh（core 從文字底緣走到視窗中央所需）＋ 淡出窗口，兩者都由
 // INTRO_FADE_VH 推出 → 淡出必然剛好在 pin 接手的同一刻結束（見 orange-core-config）。
-const introRunway = `${(0.5 + INTRO_FADE_VH) * 100}vh`;
+const introRunway = vhLength(0.5 + INTRO_FADE_VH);
 
 // hero 影片四階段（main/loop/outro/gone）全域共享，定義見 composables/useHeroVideo。
 // 此處只讀狀態驅動畫面與捲動鎖：main / loop / outro 鎖捲動、gone 起解鎖。
@@ -73,6 +73,9 @@ const {
   loaderDone,
   heroStarted,
 } = useHeroVideo();
+
+// 視窗高的單一來源（--vh）：轉場與引言淡出的尺長都吃它，不吃 window.innerHeight。
+const { vhPx } = useViewportHeight();
 
 watch(heroState, applyScrollLock);
 
@@ -134,7 +137,9 @@ onMounted(() => {
   transitionST = ScrollTrigger.create({
     trigger: introRef.value,
     start: 'bottom bottom', // 引言整段（含 runway）底緣抵達視窗底 ＝ core 剛好停在視窗正中央
-    end: () => `+=${window.innerHeight * TRANSITION_VH}`,
+    // vhPx 而非 window.innerHeight：後者在行動裝置上會隨網址列收合而變，
+    // 尺長跟著變 → pin-spacer 跟著變 → 其下整份文件位移（見 ~/composables/useViewportHeight）。
+    end: () => `+=${vhPx(TRANSITION_VH)}`,
     pin: innerRef.value,
     pinSpacing: true,
     invalidateOnRefresh: true,
@@ -147,7 +152,7 @@ onMounted(() => {
     introFadeST = ScrollTrigger.create({
       trigger: introBodyRef.value,
       start: 'bottom center',
-      end: () => `+=${window.innerHeight * INTRO_FADE_VH}`,
+      end: () => `+=${vhPx(INTRO_FADE_VH)}`, // 同上，且必須與 introRunway 同一把尺
       scrub: true,
       invalidateOnRefresh: true,
       onUpdate: (self) => (introFade.value = self.progress),

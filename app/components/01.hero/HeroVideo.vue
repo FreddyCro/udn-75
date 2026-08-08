@@ -405,7 +405,7 @@ onBeforeUnmount(() => {
 .sec1__hero {
   position: relative;
   width: 100%;
-  height: 100vh;
+  height: vh();
   overflow: hidden;
   background: #fff; // 影片淡出後露出的白底
 }

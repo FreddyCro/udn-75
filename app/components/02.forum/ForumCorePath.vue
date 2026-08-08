@@ -28,6 +28,9 @@ const genEl = ref<SVGPathElement | null>(null);
 const { setForumPathProgress, setForumPathActive, forumPathRiding } =
   useOrangeCoreProgress();
 
+// 回中節點的間距吃視窗高 —— 用單一來源，不讓它隨網址列收合而改變密度。
+const { vhPx } = useViewportHeight();
+
 // 移動速度曲線：把 raw 捲動進度重新映射成路徑進度（見 ~/utils/orange-core-config）。
 const easeMove = gsap.parseEase(FORUM_MOVE_EASE) ?? ((v: number) => v);
 
@@ -88,7 +91,7 @@ function syncKnots(motion: SVGPathElement) {
   knots = buildArcKnots(
     motionLen,
     tailEndY,
-    window.innerHeight * FORUM_CENTER_KNOT_VH,
+    vhPx(FORUM_CENTER_KNOT_VH),
     (len) => motion.getPointAtLength(len).y,
   );
 }
