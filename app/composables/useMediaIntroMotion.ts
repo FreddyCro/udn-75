@@ -45,6 +45,7 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   const RESUME_DELTA = 0.02;
   let tl: gsap.core.Timeline | null = null;
   let st: ScrollTrigger | null = null;
+  let resetSt: ScrollTrigger | null = null; // 歸零重播用（section 完全離開視窗才觸發）
 
   const buildMotion = () => {
     const section = targets.section.value;
@@ -73,6 +74,7 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
 
     // 重播（如 HMR）殘留的 inline 樣式會讓量測失準，先全部清掉
     st?.kill();
+    resetSt?.kill();
     tl?.kill();
     gsap.set(
       [title, titleFinal, titleMotion, ...all, heartBox, morph, barL, barR, lineL, lineR],
@@ -190,7 +192,14 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
         if (tl?.paused()) resumeFromPause();
       },
       onEnterBack: () => (leftPin = false),
-      // 回捲到 section 之前＝重來：歸零暫停，下次進場重播
+    });
+
+    // 回捲重來的歸零時機：不在 pin 起點（top top，section 此時還滿版在畫面上，
+    // 歸零會看到內容閃回分鏡 1 色塊），而是 section 頂回到視窗底（完全捲出畫面）
+    // 才歸零暫停 —— 歸零發生在畫面外，下次進場重播
+    resetSt = ScrollTrigger.create({
+      trigger: section,
+      start: 'top bottom',
       onLeaveBack: () => {
         leftPin = false;
         pausedAt = -1;
@@ -336,6 +345,8 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   onBeforeUnmount(() => {
     st?.kill();
     st = null;
+    resetSt?.kill();
+    resetSt = null;
     tl?.kill();
     tl = null;
   });
