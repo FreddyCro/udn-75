@@ -84,49 +84,51 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
 
 .media__row {
   display: flex;
-  gap: 16px;
+  gap: 4px;
   align-items: center;
-  padding: 20px 0;
+  padding: 20px 4px;
   color: var(--color-gray);
   text-decoration: none;
   pointer-events: auto;
+
+  @include rwd-min('tablet') {
+    gap: 16px;
+  }
 }
 
 // 文字塊：mob 稿直排
 .media__text {
   display: block;
-  padding-left: 4px;
-
-  @include rwd-min('tablet') {
-    display: contents;
-  }
 }
 
 // 編號藝術字：高度＝文字行高，hover 以尺寸放大（真實佔位）
 .media__num {
   display: inline-block;
-  height: 22px;
+  height: 18px;
   aspect-ratio: 16.9 / 12; // udn75_anchor_num_0x.svg 原始比例，寬度隨高自算
   background: currentColor;
   mask: var(--mask) no-repeat left center / contain;
   -webkit-mask: var(--mask) no-repeat left center / contain;
-  vertical-align: -2px;
-  margin-right: 8px;
+  vertical-align: -3px;
+  margin-right: 4px;
   transition: height 0.25s ease;
 
   .media__row:hover & {
     height: 30px; // ≈1.25 倍
   }
 
+  @include rwd-min('mobile') {
+    height: 22px;
+  }
+
   @include rwd-min('tablet') {
-    height: 24px;
-    margin-right: 0;
+    margin-right: 16px;
   }
 }
 
 .media__row-title {
-  font-size: 22px;
-  line-height: 36px;
+  font-size: var(--text-body); // 18
+  line-height: 30px;
   font-weight: 400;
   // hover 改 font-size 而非 transform：真實佔位，flex 會把作者列往右推
   transition: font-size 0.25s ease;
@@ -135,8 +137,12 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
     font-size: 30px; // 20 × 1.51（行高固定 46，列高不跳動）
   }
 
+  @include rwd-min('mobile') {
+    font-size: 22px;
+    line-height: 36px;
+  }
+
   @include rwd-min('tablet') {
-    font-size: var(--text-h5); // 20
     line-height: 46px;
   }
 }
@@ -162,7 +168,7 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
   }
 
   @include rwd-min('pc') {
-    white-space: nowrap;
+    display: none;
   }
 }
 
@@ -174,9 +180,14 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
   justify-self: end;
   margin-left: auto;
 
+  @include rwd-min('mobile') {
+    width: 80px;
+    height: 80px;
+  }
+
   @include rwd-min('tablet') {
-    width: 36px;
-    height: 36px;
+    width: 48px;
+    height: 48px;
   }
 }
 </style>

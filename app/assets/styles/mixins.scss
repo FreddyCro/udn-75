@@ -10,7 +10,6 @@
 //     @include rwd-min('tablet') { font-size: 20px; }  // pad 稿（768–1279）
 //     @include rwd-min('pc') { font-size: 24px; }      // pc 稿（≥1280）
 //   }
-// rwd-max／rwd-tablet／rwd-mobile 為 desktop-first 的舊寫法，僅存量檔案沿用。
 $breakpoints: (
   'mobile': 414px,  // MOBILE_BREAKPOINTS
   'tablet': 768px,  // TABLET_BREAKPOINTS
@@ -36,12 +35,4 @@ $breakpoints: (
   @media screen and (min-width: #{bp($name)}) {
     @content;
   }
-}
-
-// 語意別名（desktop-first，最常用）
-@mixin rwd-tablet {
-  @include rwd-max('tablet') { @content; } // ≤ 768px（平板以下）
-}
-@mixin rwd-mobile {
-  @include rwd-max('mobile') { @content; } // ≤ 414px（手機）
 }
