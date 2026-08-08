@@ -91,6 +91,8 @@ const props = withDefaults(
     parallaxAmp?: number;
     /** 由 prop 控制觸發：true 開始播放、false 重置（與 expose 的 start()/reset() 等效） */
     active?: boolean;
+    /** 直接顯示完成態，不跑 glitch（飄移／視差照常）；供「已播過一次」的觸發使用 */
+    instant?: boolean;
   }>(),
   {
     alt: () => [],
@@ -110,6 +112,7 @@ const props = withDefaults(
     floatAmp: 8,
     parallaxAmp: 14,
     active: false,
+    instant: false,
   },
 );
 
@@ -349,14 +352,16 @@ let tls: gsap.core.Timeline[] = [];
 let captionCall: gsap.core.Tween | null = null;
 
 const play = () => {
-  // 降級：直接顯示完整圖（影片直接播放）+ 陰影 + 文字，不跑動畫
-  if (reducedMotion()) {
+  // 降級／instant：直接顯示完整圖（影片直接播放）+ 陰影 + 文字，不跑 glitch；
+  // instant（已播過一次的重觸發）仍保留飄移與視差，reduced-motion 全靜止
+  if (reducedMotion() || props.instant) {
     cards.value.forEach((card, i) => {
       if (card.video) revealVideo(i);
       else if (imgEls[i]) gsap.set(imgEls[i], { autoAlpha: 1 });
       if (cardEls[i]) cardEls[i]!.style.boxShadow = props.shadow;
     });
     captionVisible.value = true;
+    if (!reducedMotion()) startFloat();
     return;
   }
 

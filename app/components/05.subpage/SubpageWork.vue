@@ -1,12 +1,14 @@
 <script lang="ts" setup>
 /** SubpageWork — 「得獎作品」清單的單一列；有 url 時整列為連結。
- *  active = 觸發中的列（pc hover／<1280 滾至畫面中央），<1280 據此展開說明與連結。 */
+ *  active = 觸發中的列（pc hover／<1280 滾至畫面中央），<1280 據此展開說明與連結。
+ *  dimmed = 其他列展開中 → 本列退為半透明，凸顯作用中的列。 */
 withDefaults(
   defineProps<{
     title?: string;
     desc?: string;
     url?: string;
     active?: boolean;
+    dimmed?: boolean;
   }>(),
   { url: '' },
 );
@@ -16,7 +18,7 @@ withDefaults(
   <component
     :is="url ? 'a' : 'div'"
     class="award-work"
-    :class="{ 'award-work--active': active }"
+    :class="{ 'award-work--active': active, 'award-work--dimmed': dimmed }"
     :href="url || undefined"
     :target="url ? '_blank' : undefined"
     :rel="url ? 'noopener noreferrer' : undefined"
@@ -51,6 +53,12 @@ withDefaults(
   padding: var(--sp-work-y) 0;
   color: inherit;
   text-decoration: none;
+  transition: opacity 0.3s ease;
+
+  // 其他列展開中 → 本列退為半透明（分隔線在 ::before/::after 上，跟著列一起淡）
+  &--dimmed {
+    opacity: 0.4;
+  }
 
   @include rwd-min('pc') {
     flex-direction: row;

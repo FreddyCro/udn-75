@@ -63,17 +63,31 @@ const INTRO_IN = 0.5;
 let tweens: gsap.core.Tween[] = [];
 let triggers: ScrollTrigger[] = [];
 
-/** 過線就播 0.4s 的淡入/淡出；overwrite 讓兩個方向對打時直接接手，不疊 tween */
+/** 過線就播 0.4s 的淡入/淡出；overwrite 讓兩個方向對打時直接接手，不疊 tween。
+ *  instant = 程式化跳捲（換頁回頂等）的狀態同步：直接 set 到位，不播過場。 */
 function makeFade(targets: HTMLElement[]) {
-  const show = () =>
+  const show = (instant = false) =>
+    instant
+      ? gsap.set(targets, { autoAlpha: 1, y: 0, overwrite: 'auto' })
+      : tweens.push(
+          gsap.to(targets, { autoAlpha: 1, y: 0, duration: 0.4, ease: 'power2.out', overwrite: 'auto' }),
+        );
+  const hide = (y: number, instant = false) =>
+    instant
+      ? gsap.set(targets, { autoAlpha: 0, y, overwrite: 'auto' })
+      : tweens.push(
+          gsap.to(targets, { autoAlpha: 0, y, duration: 0.4, ease: 'power2.in', overwrite: 'auto' }),
+        );
+  /** 跳捲回到 hero 時重播進場（由下往上淡入，與載入進場一致） */
+  const reveal = () =>
     tweens.push(
-      gsap.to(targets, { autoAlpha: 1, y: 0, duration: 0.4, ease: 'power2.out', overwrite: 'auto' }),
+      gsap.fromTo(
+        targets,
+        { autoAlpha: 0, y: REVEAL.y },
+        { autoAlpha: 1, y: 0, duration: REVEAL.duration, ease: REVEAL.ease, overwrite: 'auto' },
+      ),
     );
-  const hide = (y: number) =>
-    tweens.push(
-      gsap.to(targets, { autoAlpha: 0, y, duration: 0.4, ease: 'power2.in', overwrite: 'auto' }),
-    );
-  return { show, hide };
+  return { show, hide, reveal };
 }
 
 onMounted(async () => {
@@ -121,6 +135,9 @@ onMounted(async () => {
    */
   let heroShown = true;
   let introShown = false;
+  // ⚠️ 首頁 → 子頁換的是 layout，Nuxt 的 scrollBehavior 會等 layout 轉場結束才回捲到頂，
+  //    同步狀態（不播過場），跳回 hero 則重播進場 → 只留「hero 淡入」。
+  let lastScroll: number | null = null; // null = 尚未收到 update，初次一律視為跳捲
   if (stageRef.value) {
     triggers.push(
       ScrollTrigger.create({
@@ -130,20 +147,25 @@ onMounted(async () => {
         pin: true,
         anticipatePin: 1,
         onUpdate: (self) => {
+          const sc = self.scroll();
+          const jumped =
+            lastScroll === null || Math.abs(sc - lastScroll) > window.innerHeight;
+          lastScroll = sc;
           const p = self.progress;
           if (heroShown && p >= HERO_OUT) {
             heroShown = false;
-            heroFade.hide(-120);
+            heroFade.hide(-120, jumped);
           } else if (!heroShown && p < HERO_OUT) {
             heroShown = true;
-            heroFade.show();
+            if (jumped) heroFade.reveal();
+            else heroFade.show();
           }
           if (!introShown && p >= INTRO_IN) {
             introShown = true;
-            introFade.show();
+            introFade.show(jumped);
           } else if (introShown && p < INTRO_IN) {
             introShown = false;
-            introFade.hide(200);
+            introFade.hide(200, jumped);
           }
         },
         // pin 結束＝hero/引言演完 → 錨點列於視窗下緣滑入；回捲進 pin 段則收回

@@ -31,7 +31,8 @@ const thumbBox = ref<HTMLElement | null>(null);
 const thumb = reactive({
   visible: false,
   images: [] as string[],
-  key: 0, // 每次觸發 +1 → 強制 GlitchImage 重掛，換列 hover 也必定重播 glitch
+  key: 0, // 每次觸發 +1 → 強制 GlitchImage 重掛（首次觸發播 glitch，已播過的列走 instant）
+  instant: false, // 該列已播過 glitch → 重掛後直接顯示完成態
   top: 0,
   // per-work 版面（null = 走預設）
   w: null as number | null,
@@ -46,6 +47,8 @@ let hoverMode = false; // ≥1280 = hover 觸發；<1280 = 滾動觸發
 // 觸發中的列：避免重複觸發（滾動模式每 frame 進來）；
 // 同時傳給 SubpageWork，<1280 由它展開說明與「點擊看專題」
 const activeIdx = ref(-1);
+// 已播過 glitch 的列：每列只播一次，之後再觸發直接顯示完成態
+const playedIdx = new Set<number>();
 let onScroll: (() => void) | null = null;
 let mq: MediaQueryList | null = null;
 
@@ -64,7 +67,9 @@ async function activate(i: number, rowEl: HTMLElement) {
   thumb.w = w.thumbW ?? null;
   thumb.ratio = w.thumbRatio ?? null;
   thumb.layout = w.thumbLayout ?? null;
-  thumb.key++; // 重掛 → :active 於 onMounted 自動重播
+  thumb.instant = playedIdx.has(i); // 已播過 → 直接顯示完成態，不重播 glitch
+  playedIdx.add(i);
+  thumb.key++; // 重掛 → :active 於 onMounted 自動觸發（播 glitch 或 instant 顯示）
   thumb.visible = true;
 
   // 等 GlitchImage 掛載（stage 依 aspect-ratio 即有高度）再量測、決定上下位置
@@ -183,6 +188,7 @@ onBeforeUnmount(() => {
         :layout="thumb.layout ?? undefined"
         :aspect-ratio="thumb.ratio ?? undefined"
         :active="true"
+        :instant="thumb.instant"
         :duration="1.2"
         :pieces="16"
         :parallax-amp="0"
@@ -198,6 +204,7 @@ onBeforeUnmount(() => {
         :desc="w.desc"
         :url="w.url"
         :active="activeIdx === i"
+        :dimmed="activeIdx !== -1 && activeIdx !== i"
         @mouseenter="onEnter(i, $event)"
       />
     </div>
