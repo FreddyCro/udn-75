@@ -15,8 +15,7 @@ import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 export interface AiKeyword {
   term: string;
-  /** 展開摘要（段落陣列；相容單一字串） */
-  summary: string | string[];
+  summary: string;
 }
 
 const props = withDefaults(
@@ -64,10 +63,12 @@ function scheduleRefresh() {
   }, 250);
 }
 
-/** 面板正在顯示的關鍵字摘要段落（跟著 activeIndex，不跟輪播） */
+/** 面板正在顯示的關鍵字摘要段落（跟著 activeIndex，不跟輪播）：
+ *  以 <br/> 切段（連續多個視為一個分隔），每段各自渲染一個 <p>，
+ *  br 標記本身不進 totalChars，不會被逐字打出 */
 const paragraphs = computed(() => {
-  const s = props.keywords[activeIndex.value]?.summary ?? [];
-  return Array.isArray(s) ? s : [s];
+  const s = props.keywords[activeIndex.value]?.summary ?? '';
+  return s.split(/(?:<br\s*\/?>\s*)+/).filter((p) => p.length > 0);
 });
 
 const totalChars = computed(() =>
@@ -246,8 +247,7 @@ onBeforeUnmount(() => {
                 class="ai-search__spark ai-search__spark--note"
                 aria-hidden="true"
               />
-              以上摘要由 AI
-              依據資料來源自動產生，僅作為閱讀輔助參考，不構成完整新聞內容，實際資訊請以原報導為準。
+              以上摘要由 AI 依據資料來源自動產生，僅作為閱讀輔助參考，不構成完整新聞內容，實際資訊請以原報導為準。
             </p>
           </div>
         </div>
