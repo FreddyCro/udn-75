@@ -49,6 +49,7 @@ interface MediaIntroMotionTargets {
  * 分件位置全在 D／BAR／QUOTE／HOME 常數表（分鏡稿 px、777 基準），改稿改表。
  */
 export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
+  const route = useRoute();
   // hold 緩衝（px）：motion 期間 sticky 畫面定住的捲動距離上限——給「再捲動
   // 續播」與播放時間留餘裕，非分鏡長度；播完會縮到已捲量原地解除
   const HOLD_BUFFER = 1200;
@@ -375,6 +376,12 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     // 掛載即建置（量測只需 layout 完成，不需 section 進到視窗）；
     // 起播前 timeline 停在 0＝分鏡 1 色塊蓋版。
     buildMotion();
+
+    // url /#media 不會播放 motion
+    if (route.hash === '#media' && tl) {
+      tl.progress(1, true);
+      targets.buffer.value!.style.height = '0px';
+    }
   });
 
   onBeforeUnmount(() => {
