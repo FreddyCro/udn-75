@@ -45,15 +45,14 @@ const c = raw as NewsContent;
 
     <!-- Publish X 議題智囊包：置中導言 + 滿版四宮格分鏡 -->
     <div class="sp-col mt-16">
-      <h2 class="sp-h4 mb-4 sm:mb-2">{{ c.publishX.title }}</h2>
-      <p class="sp-lead">{{ c.publishX.lead }}</p>
+      <h2 class="sp-h4 mb-4 text-center sm:mb-2">{{ c.publishX.title }}</h2>
+      <p class="sp-lead" v-html="c.publishX.lead" />
     </div>
     <div class="sp-full">
       <FormulaBlocks v-bind="c.publishX.formula" />
     </div>
 
-    <!-- 智慧內容 Curate X：無小標，接在分鏡之下 -->
-    <div class="sp-col mt-8 sm:mt-4">
+    <div class="sp-col mt-8">
       <p class="sp-p" v-html="c.curateX" />
     </div>
 
@@ -72,15 +71,15 @@ const c = raw as NewsContent;
     <div class="sp-full mt-16">
       <AwardTimeline :items="c.awards.timeline">
         <template #title>
-          <div class="sp-col mb-4">
-            <h2 class="sp-h3">{{ c.awards.title }}</h2>
+          <div class="sp-col">
+            <h2 class="sp-h4">{{ c.awards.title }}</h2>
           </div>
         </template>
       </AwardTimeline>
     </div>
 
-    <!-- 結語：接在時間軸之下，與 SubpageNav 之間留 mb-16 -->
-    <div class="sp-col mt-16 mb-16">
+    <!-- 結語 -->
+    <div class="sp-col mt-8 mb-16 sm:mt-12 lg:mt-16">
       <p class="sp-p" v-html="c.closing" />
     </div>
   </Subpage>

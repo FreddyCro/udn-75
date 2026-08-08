@@ -183,13 +183,14 @@ onBeforeUnmount(() => {
 }
 
 .photo-panels__caption {
-  margin-top: 16px;
+  margin-top: 12px;
   font-size: var(--text-caption);
   line-height: var(--text-caption--line-height);
   color: var(--color-gray);
+  font-weight: 300;
 
   @include rwd-min('tablet') {
-    margin-top: 16px; // 此區為 16，非全站 --sp-img-caption
+    margin-top: 16px;
   }
 
   // 圖說內的外連結（v-html 輸出，scoped 樣式須 :deep）

@@ -90,7 +90,7 @@ function build() {
   itemEls.forEach((el, i) => {
     tl!.fromTo(
       el,
-      { opacity: 0.3 },
+      { opacity: 0.5 },
       { opacity: 1, duration: 0.12, ease: 'none' },
       (i / n) * 0.85 + 0.05, // 箭頭抵達該欄的近似時間點
     );
@@ -164,7 +164,11 @@ onBeforeUnmount(() => {
             class="award-timeline__item"
             :style="{ '--w': `${item.width ?? 277}px` }"
           >
-            <p class="award-timeline__year">{{ item.year }}</p>
+            <img
+              class="award-timeline__year"
+              :src="`/img/news/${item.year}.svg`"
+              :alt="item.year"
+            />
             <div
               v-for="(a, j) in item.awards"
               :key="j"
@@ -262,13 +266,11 @@ onBeforeUnmount(() => {
   width: var(--w, 277px);
 }
 
-// 年份數字：對稿為向量字，以活字近似
+// 年份數字：對稿向量字（/img/news/{year}.svg）
 .award-timeline__year {
+  display: block;
+  height: 23px;
   margin: 0 0 8px;
-  font-size: 32px;
-  line-height: 1;
-  font-weight: 300;
-  color: var(--color-gray);
 }
 
 .award-timeline__award {
@@ -311,12 +313,13 @@ onBeforeUnmount(() => {
 .award-timeline__dot {
   width: 6px;
   height: 6px;
-  background: #d9d9d9; // 對稿分頁點淺灰（非全站 token）
+  background: var(--color-gray-light);
+  opacity: 0.4;
 
   &--active {
     width: 10px;
     height: 10px;
-    background: var(--color-gray);
+    opacity: 1;
   }
 }
 

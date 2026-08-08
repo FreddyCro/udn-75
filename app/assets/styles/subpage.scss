@@ -3,7 +3,6 @@
 // 這裡只定義「長什麼樣」——欄寬、字級、顏色；
 // 不寫距離，由頁面上的 Tailwind mt-* 逐塊標註。
 @layer components {
-  // 內文窄欄：mob 滿寬留邊 26／pad 570／pc 630
   .sp-col {
     color: var(--color-gray);
     width: 100%;
@@ -11,8 +10,7 @@
     padding: 0 26px;
 
     @include rwd-min('tablet') {
-      max-width: 570px;
-      padding: 0 20px;
+      padding: 0 119px;
     }
     @include rwd-min('pc') {
       max-width: var(--subpage-content-w);
@@ -60,13 +58,12 @@
     }
   }
 
-  // 置中導言的 H4 標題
+  // H4 標題
   .sp-h4 {
     margin: 0;
     font-size: var(--text-h4);
     line-height: 40px;
     font-weight: 400;
-    text-align: center;
 
     @include rwd-min('pc') {
       line-height: var(--text-h4--line-height);
@@ -84,6 +81,21 @@
     @include rwd-min('tablet') {
       font-size: var(--text-h5);
       line-height: var(--text-h5--line-height);
+    }
+
+    // mob 才斷行且藏標點：JSON 內寫「前段<span>，</span><br/>後段」
+    // mob 藏 span 顯 br；pad 以上反過來
+    span {
+      display: none;
+
+      @include rwd-min('tablet') {
+        display: inline;
+      }
+    }
+    br {
+      @include rwd-min('tablet') {
+        display: none;
+      }
     }
   }
 

@@ -5,7 +5,7 @@
  * 連接線由像素元件（PixelBranch／PixelRail)生成。中央塊常駐，
  * 捲動 scrub 驅動（不 pin、回捲倒退）：
  *   pc/pad：四格自中央塊後方現身 → 經 2×2 堆疊散開到四角，分支黏著格子角於末段推出。
- *   mob：由上而下逐組「rail 往下畫 → 議題框滑入」。
+ *   mob：中央塊常駐，由上而下逐組「rail 往下畫完 → 議題框原地現身」。
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -54,10 +54,10 @@ const STOPS = {
   settle: 0.75,
 } as const;
 
-// mob 時序：由上而下逐組（先 rail 後議題框），四框最後才一起轉灰
+// mob 時序：由上而下逐組（rail 畫完 → 議題框原地現身），四框最後才一起轉灰
 const MOB_STOPS = {
-  step: { at: 0.12, span: 0.19 }, // 每組（rail + 議題框）佔的進度長度
-  rail: 0.12, // 組內 rail 畫線長度，其餘為議題框進場
+  step: { at: 0.12, span: 0.19 }, // 每組佔的進度長度（rail 畫完後留拍再進下一組）
+  rail: 0.12, // 組內 rail 畫線長度，畫到底議題框即現身
   settle: 0.94,
 } as const;
 
@@ -153,8 +153,15 @@ const branchOffset = computed(() => {
   };
 });
 
-/** 四格當前偏移（--p 缺省 0 → CSS transform 即 translate(--from)） */
+/**
+ * 四格當前樣式：mob＝該組 rail 畫完才原地現身（無位移）；
+ * pc/pad＝與定位點的偏移（--from-* 每幀帶入 → CSS transform translate）
+ */
 function boxStyle(i: number) {
+  if (isMob.value) {
+    // rail 長完前整框藏住（像素風不淡入 → visibility 直接切換，回捲會再藏回）
+    return { visibility: mobBoxOn.value[i] ? ('visible' as const) : ('hidden' as const) };
+  }
   const o = boxOffset.value;
   const sign = BRANCH[POS[i]!].push;
   return {
@@ -179,12 +186,11 @@ function branchStyle(p: (typeof POS)[number]) {
 const mobAt = (i: number) => MOB_STOPS.step.at + i * MOB_STOPS.step.span;
 // mob 四條 rail 的畫線進度（陣列序＝ RAILS 序，由上而下）；同樣不套 ease
 const railP = computed(() => RAILS.map((_, i) => local(mobAt(i), MOB_STOPS.rail)));
-// mob 四格議題框的進場進度（陣列序＝ POS 序），rail 畫到底才接著跑
-const mobBoxP = computed(() => {
-  const out = [0, 0, 0, 0];
-  const span = MOB_STOPS.step.span - MOB_STOPS.rail;
+// mob 四格議題框現身與否（陣列序＝ POS 序）：該組 rail 畫到底即原地現身
+const mobBoxOn = computed(() => {
+  const out = [false, false, false, false];
   MOB_ORDER.forEach((pos, i) => {
-    out[pos] = easeOut(local(mobAt(i) + MOB_STOPS.rail, span));
+    out[pos] = progress.value >= mobAt(i) + MOB_STOPS.rail;
   });
   return out;
 });
@@ -325,7 +331,7 @@ onBeforeUnmount(() => {
           :key="i"
           class="formula__box"
           :class="`formula__box--${POS[i]}`"
-          :style="isMob ? { '--p': mobBoxP[i] } : boxStyle(i)"
+          :style="boxStyle(i)"
         >
           <p class="formula__box-head">
             <img
@@ -368,8 +374,17 @@ onBeforeUnmount(() => {
 
 .formula {
   width: 100%;
-  padding: 32px 20px;
+  padding: 34px 27px;
   background: #fff;
+  @include rwd-min('tablet') {
+    padding: 26px 20px;
+  }
+  @include rwd-min('tablet') {
+    padding: 50px 20px;
+  }
+  @include rwd-min('pc') {
+    padding: 0;
+  }
 }
 
 .formula__viewport {
@@ -551,10 +566,7 @@ onBeforeUnmount(() => {
   width: 301px;
   height: 154px;
   padding-top: 68px; // 列點區距格子頂，三斷點一致
-  transform: translate(
-    calc(var(--from-x) * (1 - var(--p, 0))),
-    calc(var(--from-y) * (1 - var(--p, 0)))
-  );
+  transform: translate(var(--from-x, 0px), var(--from-y, 0px));
 
   @include rwd-min('tablet') {
     width: 273px;
@@ -571,12 +583,11 @@ onBeforeUnmount(() => {
     --box-c: var(--color-gray-light);
   }
 
-  // --from-*：mob 自左 16px 滑入；pc/pad 由 boxStyle() 每幀帶入（路徑見 BOX_PATH）
+  // --from-*：pc/pad 由 boxStyle() 每幀帶入（路徑見 BOX_PATH）；mob 無位移，
+  // rail 畫完由 visibility 原地現身
   &--tl {
     top: 197px;
     left: 44px;
-    --from-x: -16px;
-    --from-y: 0px;
 
     @include rwd-min('tablet') {
       top: 0;
@@ -586,8 +597,6 @@ onBeforeUnmount(() => {
   &--tr {
     top: 545px;
     left: 44px;
-    --from-x: -16px;
-    --from-y: 0px;
 
     @include rwd-min('tablet') {
       top: 0;
@@ -598,8 +607,6 @@ onBeforeUnmount(() => {
   &--bl {
     top: 371px;
     left: 44px;
-    --from-x: -16px;
-    --from-y: 0px;
 
     @include rwd-min('tablet') {
       top: auto;
@@ -610,8 +617,6 @@ onBeforeUnmount(() => {
   &--br {
     top: 728px;
     left: 44px;
-    --from-x: -16px;
-    --from-y: 0px;
 
     @include rwd-min('tablet') {
       top: auto;
