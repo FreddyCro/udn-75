@@ -15,6 +15,7 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { ForumPathSeg } from '~/utils/orange-core-config';
 import type { ForumPathMeasure, ForumPathNode } from '~/utils/forum-node-path';
+import type { ArcKnot } from '~/utils/forum-path-geometry';
 
 const rootEl = ref<HTMLElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
@@ -58,7 +59,7 @@ const coreStyle = {
 let st: ScrollTrigger | null = null;
 // 驅動線總長（含尾段）：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用。
 let motionLen = 0;
-// 追加尾段**之前**的長度。分段映射用它切「路徑段 / 尾段」，也用來換算 forumPathProgress。
+// 追加尾段**之前**的長度。切線只在這一段取樣，也用來換算 forumPathProgress。
 let pathLen = 0;
 // 設計線末端的容器 y（＝路徑段的終點）。
 let lineEndY = 0;
@@ -67,6 +68,9 @@ let tailEndY = 0;
 // 那一撇（＝直線連接段）在驅動線上的弧長區間，place() 用它算 dashoffset。len 為 0 表示沒有
 // 連接段（單段線稿，如 pad 的 Vector 276）→ 不畫斜線。
 let slash = { startLen: 0, len: 0 };
+// 回中節點表（容器 y ↔ 弧長）：place() 靠它把核心留在視窗中央附近，見 buildArcKnots。
+// 與 motionLen 同時在 build() 建立一次，scrub 每幀只做內插。
+let knots: ArcKnot[] = [];
 
 // 依錨點量測，算出每段 svg 的平移量（只平移、不縮放），並回傳給 build() 建驅動線。
 // ⚠ 只在 mount／字體就緒／refresh／斷點改變時量一次並鎖住：錨點捲離視窗後逐幀讀 rect
@@ -129,6 +133,7 @@ function reset() {
   pathLen = 0;
   lineEndY = 0;
   tailEndY = 0;
+  knots = [];
   slash = { startLen: 0, len: 0 };
   drawSlash(0);
   setForumPathActive(false);
@@ -142,6 +147,18 @@ function drawSlash(t: number) {
   if (!el) return;
   el.style.strokeDasharray = `${slash.len}`;
   el.style.strokeDashoffset = `${slash.len * (1 - t)}`;
+}
+
+// 重建回中節點表。必須在 motionLen / tailEndY 都定案之後呼叫（兩個分支各一次）。
+// 間距吃視窗高：畫面越矮，容許的偏移越小，節點就越密（見 FORUM_CENTER_KNOT_VH）。
+// 取樣 512 點 ＝ 每 ~26px 弧長一點（mob 最長 13429），只在 build() 跑，不在熱路徑上。
+function syncKnots(motion: SVGPathElement) {
+  knots = buildArcKnots(
+    motionLen,
+    tailEndY,
+    window.innerHeight * FORUM_CENTER_KNOT_VH,
+    (len) => motion.getPointAtLength(len).y,
+  );
 }
 
 // 依當前版面重建驅動線：各段中心線平移到本層座標系 → 段間補直線連接段 → 串成單一連續 path。
@@ -181,8 +198,9 @@ function build() {
   lineEndY = lastPoint(d)[1];
 
   if (after) {
-    // 後半段自己就走到底了 → 不需要尾段；tailEndY 等於 lineEndY，place() 的分段映射
-    // 會自動退化成單純的比例映射（見 ~/utils/forum-path-geometry 的 arcAtCenterY）。
+    // 後半段自己就走到底了 → 不需要尾段，tailEndY 等於 lineEndY。
+    // 舊的隱形尾段本來兼任「核心恆停在視窗中央」的保證，那件事現在由回中節點表接手
+    //（見 ~/utils/forum-path-geometry 的 buildArcKnots），且整條線都受保護、不只尾段。
     tailEndY = lineEndY;
     genEl.value?.setAttribute('d', after.d);
   } else {
@@ -196,6 +214,7 @@ function build() {
     );
   }
   motionLen = motion.getTotalLength();
+  syncKnots(motion);
 
   // 那一撇 ＝ seg1 末端 → seg2 起點 的直線連接段（不寫死幾何，故核心永遠沿著它走）。
   // 只有恰好兩段時才有單一連接段；單段線稿（pad 的 Vector 276）沒有 → 不畫。
@@ -272,10 +291,11 @@ function buildFromNodes(motion: SVGPathElement, list: ForumPathNode[]) {
   motionLen = pathLen;
   lineEndY = out.endY;
   // 後半段的 waypoint 已經走到段落底（.sec2__pin 的下緣），故不再需要隱形尾段；
-  // tailEndY 等於 lineEndY，place() 的分段映射自動退化成單純的比例映射。
+  // 「核心留在視窗中央」改由回中節點表保證（見 syncKnots / buildArcKnots）。
   // ⚠ tailEndY 不能留 0 —— ScrollTrigger 的 end 讀它，0 會被 GSAP 夾成 start + 0.01，
   //   捲動尺變零長度、核心一進場就跳到路徑末端。
   tailEndY = lineEndY;
+  syncKnots(motion);
 
   // 單段線稿沒有連接段 → 論壇二那一撇不畫（mob 稿的 09/15 斜線是靜態圖稿）。
   slash = { startLen: 0, len: 0 };
@@ -291,9 +311,10 @@ function buildFromNodes(motion: SVGPathElement, list: ForumPathNode[]) {
 function place(rawP: number) {
   const core = coreEl.value;
   const motion = motionEl.value;
-  if (!core || !motion || !motionLen) return;
+  if (!core || !motion || !motionLen || !knots.length) return;
   // rawP × tailEndY ＝ 此刻落在視窗中央的容器 y（start / end 都錨在 center，故線性）。
-  const len = arcAtCenterY(rawP * tailEndY, lineEndY, pathLen, easeMove);
+  // 節點表把它換算成弧長 —— 節點上核心精準落在視窗中央，節點之間才照弧長等比走。
+  const len = arcAtCenterY(rawP * tailEndY, knots, easeMove);
   const pt = motion.getPointAtLength(len);
   const d = 1; // 取樣間距（px）
   // 切線只在路徑段取樣：尾段是垂直的（90°），而設計線末端的切線是 112°，若讓尾段參與取樣，
