@@ -10,7 +10,8 @@
     padding: 0 26px;
 
     @include rwd-min('tablet') {
-      padding: 0 119px;
+      max-width: 570px;
+      padding: 0 20px;
     }
     @include rwd-min('pc') {
       max-width: var(--subpage-content-w);

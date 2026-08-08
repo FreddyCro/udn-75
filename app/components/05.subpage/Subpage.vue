@@ -267,14 +267,14 @@ onBeforeUnmount(() => {
 }
 
 .subpage__col--wide {
-  max-width: var(--subpage-wide-w);
   padding: 0 26px;
-
+  
   @include rwd-min('tablet') {
-    padding: 0 57px;
+    padding: 0 20px;
+    max-width: 694px;
   }
   @include rwd-min('pc') {
-    padding: 0 20px;
+    max-width: var(--subpage-wide-w);
   }
 }
 
@@ -388,7 +388,7 @@ onBeforeUnmount(() => {
   font-size: 18px;
   line-height: 36px;
   font-weight: 300;
-  letter-spacing: 0.1em;
+  letter-spacing: 2.4px;
   color: var(--color-gray);
 
   @include rwd-min('tablet') {
