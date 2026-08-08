@@ -43,7 +43,7 @@ const assetUrl = useAssetUrl();
 <style lang="scss" scoped>
 .subpage-anchor {
   position: fixed;
-  top: 50%;
+  top: 20%;
   right: 24px;
   z-index: var(--subpage-anchor-z, 1); // 滿版區塊 z-index ≥ 2 即蓋過 rail（底層）
   display: none; // <1280 改用 SubpageAnchorBar

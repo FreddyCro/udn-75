@@ -10,6 +10,13 @@ import MediaList from './MediaList.vue';
 const { newmedia } = str;
 
 const sectionRef = ref<HTMLElement | null>(null);
+// sticky 畫面組（hold）＋緩衝 spacer（buffer）：motion 期間整組內容（含摺疊
+// 線下的清單）由 CSS sticky 定住，定住的捲動距離＝buffer 高度，由
+// useMediaIntroMotion 寫入（no-JS／reduced-motion 不寫 → 無 hold，正常文件流）。
+// buffer 必須是 section 的「內容」——sticky 的活動範圍是父層 content box，
+// 用 padding 當緩衝 sticky 不會動
+const holdRef = ref<HTMLElement | null>(null);
+const bufferRef = ref<HTMLElement | null>(null);
 const bgRef = ref<HTMLElement | null>(null);
 const bodyRef = ref<HTMLElement | null>(null);
 // motion 舞台：morph 色塊、兩側 bar、分裂直線（分鏡 6）
@@ -31,7 +38,9 @@ const bgRoamArea = ref<
 >();
 onMounted(() => {
   if (!window.matchMedia('(max-width: 1279.98px)').matches) return;
-  const sec = sectionRef.value;
+  // 量測基準＝hold（＝底紋 .media__bg 的覆蓋範圍）；section 還含 track 的
+  // hold 緩衝 padding，拿它正規化會把帶子壓扁
+  const sec = holdRef.value;
   const roam = roamRef.value;
   if (!sec || !roam) return;
   const s = sec.getBoundingClientRect();
@@ -46,6 +55,8 @@ onMounted(() => {
 
 useMediaIntroMotion({
   section: sectionRef,
+  hold: holdRef,
+  buffer: bufferRef,
   bg: bgRef,
   body: bodyRef,
   morph: morphRef,
@@ -60,57 +71,76 @@ useMediaIntroMotion({
 
 <template>
   <section id="media" ref="sectionRef" class="media" data-metaball-scope>
-    <!-- 互動底紋 -->
-    <div ref="bgRef" class="media__bg" aria-hidden="true">
-      <!-- 章半徑/壽命一律吃元件預設：舊的 idle-blob-min/max 與 life 是為前一版
-           （legacy/HeartMetaballBlock，cellSize 14px）調的，換成 patch 版後
-           會讓尾巴大上一倍。尾巴大小改在 HeartMetaball 的 tailBlobMin/Max 調。 -->
-      <HeartMetaball :roam-area="bgRoamArea" />
-    </div>
+    <!-- sticky 畫面組：hold 期間整組（含摺疊線下的清單）定住不動 -->
+    <div ref="holdRef" class="media__hold">
+        <!-- 互動底紋 -->
+        <div ref="bgRef" class="media__bg" aria-hidden="true">
+          <!-- 章半徑/壽命一律吃元件預設：舊的 idle-blob-min/max 與 life 是為前一版
+               （legacy/HeartMetaballBlock，cellSize 14px）調的，換成 patch 版後
+               會讓尾巴大上一倍。尾巴大小改在 HeartMetaball 的 tailBlobMin/Max 調。 -->
+          <HeartMetaball :roam-area="bgRoamArea" />
+        </div>
 
-    <div class="media__inner">
-      <MediaTitle ref="titleRef" />
+        <div class="media__inner">
+          <MediaTitle ref="titleRef" />
 
-      <p ref="bodyRef" class="media__body">{{ newmedia.body }}</p>
+          <p ref="bodyRef" class="media__body">{{ newmedia.body }}</p>
 
-      <!-- 底紋活動帶：mob 固定高、pad 以上彈性撐開（同時把清單推到視窗底） -->
-      <div ref="roamRef" class="media__roam" aria-hidden="true" />
+          <!-- 底紋活動帶：mob 固定高、pad 以上彈性撐開（同時把清單推到視窗底） -->
+          <div ref="roamRef" class="media__roam" aria-hidden="true" />
 
-      <MediaList ref="listRef" />
-    </div>
+          <MediaList ref="listRef" />
+        </div>
 
-    <!-- 開場 motion 舞台：morph 色塊、兩側 bar 與分裂直線（絕對置中於 section） -->
-    <div class="media__stage" aria-hidden="true">
-      <div ref="morphRef" class="media__morph" />
-      <div ref="lineLRef" class="media__line" />
-      <div ref="lineRRef" class="media__line" />
-      <img
-        ref="barLRef"
-        class="media__bar"
-        src="/img/media/bar.svg"
-        width="12"
-        height="82"
-        alt=""
-      />
-      <img
-        ref="barRRef"
-        class="media__bar"
-        src="/img/media/bar.svg"
-        width="12"
-        height="82"
-        alt=""
-      />
-    </div>
+        <!-- 開場 motion 舞台：morph 色塊、兩側 bar 與分裂直線（絕對置中於第一屏） -->
+        <div class="media__stage" aria-hidden="true">
+          <div ref="morphRef" class="media__morph" />
+          <div ref="lineLRef" class="media__line" />
+          <div ref="lineRRef" class="media__line" />
+          <img
+            ref="barLRef"
+            class="media__bar"
+            src="/img/media/bar.svg"
+            width="12"
+            height="82"
+            alt=""
+          />
+          <img
+            ref="barRRef"
+            class="media__bar"
+            src="/img/media/bar.svg"
+            width="12"
+            height="82"
+            alt=""
+          />
+        </div>
+      </div>
+
+    <!-- hold 緩衝 spacer：高度由 useMediaIntroMotion 寫入（播完縮短＝原地解除
+         hold；回捲重播時還原）。必須是 section 的內容才算進 sticky 活動範圍 -->
+    <div ref="bufferRef" class="media__hold-buffer" aria-hidden="true" />
   </section>
 </template>
 
 <style lang="scss" scoped>
+// ⚠️ 不可設 overflow: hidden —— 會讓內層 sticky 改以本層為捲動基準而失效；
+// 水平裁切改由 .media__hold 承接
 .media {
   position: relative;
   min-height: 100vh;
-  overflow: hidden;
   background: #fff;
 }
+
+// sticky 畫面組：後方的 .media__hold-buffer 被捲完前，整組定在視窗頂（原生
+// sticky，無 GSAP pin 的 transform 追趕與 pin-spacer）；本體高於一屏時（mob）
+// 摺疊線下的清單在 hold 期間同樣不動，解除後隨捲動自然浮上來
+.media__hold {
+  position: sticky;
+  top: 0;
+  overflow: hidden; // 承接原本 section 的裁切（morph 滿版色塊、清單 100vw 分隔線）
+}
+
+// hold 緩衝 spacer：高度全由 JS 寫（無 JS＝0＝不 hold），這裡不定樣式
 
 // 底紋層：常駐顯示（開場 motion 結束後淡入）
 .media__bg {
@@ -150,39 +180,32 @@ useMediaIntroMotion({
 .media__body {
   max-width: 530px;
   margin: 16px 0 0;
-  color: var(--color-gray);
+  color: var(--color-gray-light);
   font-size: 18px;
   line-height: 36px;
-  font-weight: 300;
+  font-weight: 400;
   text-align: justify;
 
-  // pad 稿：欄寬 500 隨標題置中
   @include rwd-min('tablet') {
+    font-weight: 300;
     margin-inline: auto;
   }
 
-  // pc 稿（951-36596）：欄寬 518、18/36 Light、靠左（標題底 → 內文頂 16）
   @include rwd-min('pc') {
     max-width: 518px;
     margin: 16px 0 0;
   }
 }
 
-// 底紋活動帶：內文與清單之間讓給互動底紋的留白（mob 稿固定 384；pad 稿
-// flex 彈性撐開＝把清單推到視窗底的推擠來源），也是 JS 量測漂移範圍的依據。
-// pc 稿（951-36596）改固定 73：標題 80＋內容 247＋roam 73 → 清單頂＝400，
-// 清單不再貼視窗底，section 以 min-height 100vh 收尾
+// 底紋活動帶
 .media__roam {
-  height: 384px;
+  height: 30vh;
 
   @include rwd-min('tablet') {
-    flex: 1 1 0;
-    height: auto;
     min-height: 40px; // 視窗過矮時與清單的最小間距
   }
 
   @include rwd-min('pc') {
-    flex: 0 0 auto;
     height: 114px;
     min-height: 0;
   }
