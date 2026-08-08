@@ -1,27 +1,28 @@
 <!--
-  論壇段的可見設計線：每個斷點的線稿都存在 ~/utils/orange-core-config 的 FORUM_PATH[bp]，
-  一段一個 ForumPathSeg（line＝可見線的 d、motion＝驅動用中心線、kind 決定吃 fill 還是 stroke）。
-  template 是 v-for，故段數不固定 —— pc 是兩段，單一連續線稿也跑得動。
-  pc 的 motion 由 scripts/extract-centerline.mjs 從可見線抽出，可見線一旦重貼就必須重跑該腳本。
+  論壇段的設計線：三個斷點都由 ~/utils/forum-node-path 的 FORUM_PATH_NODES[bp]（waypoint）
+  ＋ 執行時的 DOM 量測算出，是**單一連續 path**（只有一個 M），可見線與驅動線吃同一個 d
+  （稿的線寬全程 4px 等寬 → 中心線就是可見線本身）。
 
-  驅動線（stroke:none）＝ 各段中心線平移到本層座標系、段間補動態直線連接段，串成單一連續 path，
   由單一 scrub ScrollTrigger 以 getPointAtLength 逐幀定位核心並依切線旋轉（引擎同
   01.hero/OrangeCorePath.vue）。起訖兩端都由路徑幾何推導，不掛 DOM endTrigger。
 
-  ⚠ 對位／改版的完整規則見 architecture/forum-core-path.md（改動前先讀）。
+  ⚠ 節點資料、每個點掛哪個 element、想調整時怎麼溝通 —— 完整規則見
+    architecture/forum-node-path.md（改動前先讀）。
+
+  註：2026-08-08 之前 pc 前半段是「手貼 Figma 匯出的 d ＋ 整段平移」（FORUM_PATH.pc ＋
+  layout()），與 pad / mob 的 waypoint 並存兩套機制。已統一為 waypoint，實測新舊線最大偏差
+  2.55px、平均 1.21px。取回舊實作：git show fbaa59e -- 本檔 app/utils/orange-core-config.ts
 -->
 <script setup lang="ts">
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import type { ForumPathSeg } from '~/utils/orange-core-config';
 import type { ForumPathMeasure, ForumPathNode } from '~/utils/forum-node-path';
 import type { ArcKnot } from '~/utils/forum-path-geometry';
 
 const rootEl = ref<HTMLElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
 const coreEl = ref<HTMLElement | null>(null);
-const slashEl = ref<SVGLineElement | null>(null);
-// pad / mob 專用：整條線由 waypoint 算出來，故只有一個 <path>（見下方 buildFromNodes）。
+// 可見線：整條由 waypoint 算出來，故只有一個 <path>。
 const genEl = ref<SVGPathElement | null>(null);
 
 const { setForumPathProgress, setForumPathActive, forumPathRiding } =
@@ -30,13 +31,9 @@ const { setForumPathProgress, setForumPathActive, forumPathRiding } =
 // 移動速度曲線：把 raw 捲動進度重新映射成路徑進度（見 ~/utils/orange-core-config）。
 const easeMove = gsap.parseEase(FORUM_MOVE_EASE) ?? ((v: number) => v);
 
-// 目前只有 pc 有線稿；pad / mob 是空陣列 → 什麼都不渲染（見 FORUM_PATH 的骨架註解）。
 // bp 初值刻意是 null：SSR 與 client 首次渲染都不產出任何線，掛載後才量測並渲染。
-// 這一層是純裝飾（aria-hidden）、位置全靠 JS 量測，SSR 產出沒有意義；而三個斷點的
-// 線段數不同（pc 兩段、pad 稿是單一連續線），SSR 猜錯斷點就會 hydration mismatch。
+// 這一層是純裝飾（aria-hidden）、位置全靠 JS 量測，SSR 產出沒有意義，猜錯斷點還會 hydration mismatch。
 const bp = ref<'pc' | 'pad' | 'mob' | null>(null);
-const segs = computed<ForumPathSeg[]>(() => (bp.value ? FORUM_PATH[bp.value] : []));
-// 該斷點有 waypoint 就走產生器（pad / mob），沒有就走 segs 的手貼線稿（pc）。
 const nodes = computed<ForumPathNode[] | null>(() =>
   bp.value ? (FORUM_PATH_NODES[bp.value] ?? null) : null
 );
@@ -59,69 +56,15 @@ const coreStyle = {
 let st: ScrollTrigger | null = null;
 // 驅動線總長（含尾段）：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用。
 let motionLen = 0;
-// 追加尾段**之前**的長度。切線只在這一段取樣，也用來換算 forumPathProgress。
+// 設計線的長度。切線只在這一段取樣，也用來換算 forumPathProgress。
 let pathLen = 0;
 // 設計線末端的容器 y（＝路徑段的終點）。
 let lineEndY = 0;
-// 尾段末端的容器 y（＝議程底緣）。ScrollTrigger 的 end 讀它。無尾段時等於 lineEndY。
+// ScrollTrigger 的 end 讀它。整條 waypoint 已走到段落底，故等於 lineEndY。
 let tailEndY = 0;
-// 那一撇（＝直線連接段）在驅動線上的弧長區間，place() 用它算 dashoffset。len 為 0 表示沒有
-// 連接段（單段線稿，如 pad 的 Vector 276）→ 不畫斜線。
-let slash = { startLen: 0, len: 0 };
 // 回中節點表（容器 y ↔ 弧長）：place() 靠它把核心留在視窗中央附近，見 buildArcKnots。
 // 與 motionLen 同時在 build() 建立一次，scrub 每幀只做內插。
 let knots: ArcKnot[] = [];
-
-// 依錨點量測，算出每段 svg 的平移量（只平移、不縮放），並回傳給 build() 建驅動線。
-// ⚠ 只在 mount／字體就緒／refresh／斷點改變時量一次並鎖住：錨點捲離視窗後逐幀讀 rect
-// 會讓圖層跟著跑掉。
-// 用 querySelectorAll 取各段 svg 而非 v-for 的 ref 陣列：Vue 明確不保證 ref 陣列的順序與來源
-// 陣列一致，而這裡的索引必須精準對應 segs[i]（錯位會靜默把別段的平移量套上去）。
-// DOM 順序就是 v-for 順序，所以 querySelectorAll 反而是可靠的那個。
-// 回傳定長陣列（長度恆等於 segs.length）：量不到錨點的段落填 null，而不是整段略過不 push——
-// 否則消費端會看到索引被壓縮，把「別段的平移量」誤當成這段的，造成靜默錯位。
-function layout(): ({ tx: number; ty: number } | null)[] {
-  const segments = segs.value;
-  const root = rootEl.value;
-  if (!root) return segments.map(() => null);
-  const rootRect = root.getBoundingClientRect();
-  // 用 closest 往上找 .sec2__path，而非假設 root.parentElement 剛好就是它——
-  // <ForumCorePath /> 若被多包一層 div，parentElement 會找錯目標而靜默失敗。
-  // 錨點在這個範圍內用 data-forum-anchor 具名選取（見下方 querySelector）。
-  const scope = root.closest('.sec2__path');
-  const els = root.querySelectorAll<SVGSVGElement>('.forum-path__raw');
-
-  // 先把每段錨點的 rect 讀完，再統一寫入 style：避免 read → write → read 交錯，觸發強制同步 reflow。
-  const placements = segments.map((seg, i) => {
-    const el = els[i];
-    const anchor = scope?.querySelector<HTMLElement>(
-      `[data-forum-anchor="${seg.anchor}"]`
-    );
-    if (!el || !anchor) return null;
-    const a = anchor.getBoundingClientRect();
-    return {
-      el,
-      tx: a.left - rootRect.left + seg.offset.x,
-      ty: a.top - rootRect.top + seg.offset.y,
-    };
-  });
-
-  placements.forEach((p) => {
-    if (!p) return;
-    p.el.style.left = `${p.tx}px`;
-    p.el.style.top = `${p.ty}px`;
-  });
-  return placements.map((p) => (p ? { tx: p.tx, ty: p.ty } : null));
-}
-
-// 尾段終點（容器 y）＝ 議程底緣。議程不在 .sec2__path 裡，但 rect 跨子樹可用；
-// 量不到就回 null → 不建尾段，行為退回改動前。
-function measureTailEndY(): number | null {
-  const root = rootEl.value;
-  const agenda = document.querySelector('[data-core-tail-end]');
-  if (!root || !agenda) return null;
-  return agenda.getBoundingClientRect().bottom - root.getBoundingClientRect().top;
-}
 
 // 沒有可跑的驅動線時清空：核心藏起來，橘點回到原本的 coreOut 淡出（見 forumCoreDotVisible）。
 // ⚠ progress 也要歸零，不能只清 active：從 pc 切到 pad/mob 時它會留著上一個斷點的殘值，
@@ -134,22 +77,11 @@ function reset() {
   lineEndY = 0;
   tailEndY = 0;
   knots = [];
-  slash = { startLen: 0, len: 0 };
-  drawSlash(0);
   setForumPathActive(false);
   setForumPathProgress(0);
 }
 
-// 那一撇的「畫出多少」：0 完全沒出現、1 整條畫完。用 dashoffset 而非改 x2/y2，
-// 幾何才只在 build() 算一次。
-function drawSlash(t: number) {
-  const el = slashEl.value;
-  if (!el) return;
-  el.style.strokeDasharray = `${slash.len}`;
-  el.style.strokeDashoffset = `${slash.len * (1 - t)}`;
-}
-
-// 重建回中節點表。必須在 motionLen / tailEndY 都定案之後呼叫（兩個分支各一次）。
+// 重建回中節點表。必須在 motionLen / tailEndY 都定案之後呼叫。
 // 間距吃視窗高：畫面越矮，容許的偏移越小，節點就越密（見 FORUM_CENTER_KNOT_VH）。
 // 取樣 512 點 ＝ 每 ~26px 弧長一點（mob 最長 13429），只在 build() 跑，不在熱路徑上。
 function syncKnots(motion: SVGPathElement) {
@@ -161,88 +93,13 @@ function syncKnots(motion: SVGPathElement) {
   );
 }
 
-// 依當前版面重建驅動線：各段中心線平移到本層座標系 → 段間補直線連接段 → 串成單一連續 path。
-// 曲線段只被平移、形狀尺寸不變，故尾端永遠精準咬住錨點；連接段長度隨錨點的實際距離變化。
-function build() {
-  const motion = motionEl.value;
-  if (!motion) return;
-
-  const list = segs.value;
-  // pad / mob 沒有手貼線稿，整條（前半段＋後半段）都由 waypoint 算出（見 buildFromNodes）。
-  if (!list.length) return buildFromNodes(motion, nodes.value ?? []);
-  // pc：前半段仍是手貼線稿，後半段才由 waypoint 算出，兩者用 joinSegments 串起來。
-
-  const placements = layout();
-  // motion 先過 normalizeD：Figma 匯出常有 V / H，它們只帶單一座標，會讓 translateD 的
-  // x/y 交替假設整條錯位而且不報錯（見 ~/utils/forum-path-geometry 的檔頭）。
-  const ds = list.map((seg, i) => {
-    const p = placements[i];
-    return p ? translateD(normalizeD(seg.motion), p.tx, p.ty) : null;
-  });
-  if (ds.some((d) => d === null)) return reset();
-
-  const list2 = ds as string[];
-  // 先只放第一段量弧長，再換成完整路徑 —— 為了知道「連接段從驅動線的哪個弧長開始」。
-  // 借用同一個 <path> 而不另開元素：build() 只在幾何重建時跑，三次 setAttribute 不在熱路徑上。
-  motion.setAttribute('d', list2[0]!);
-  const firstLen = motion.getTotalLength();
-
-  // 後半段（議程之後）：pc 的這一段沒有手貼線稿，由 waypoint 算出後直接接在後面。
-  // 它跨過議程一路走到段落底，所以取代了原本那條「直下到議程底緣」的隱形尾段。
-  const after = nodes.value ? buildNodesD(nodes.value) : null;
-  if (after) list2.push(after.d);
-
-  const d = joinSegments(list2);
-  motion.setAttribute('d', d);
-  pathLen = motion.getTotalLength();
-  lineEndY = lastPoint(d)[1];
-
-  if (after) {
-    // 後半段自己就走到底了 → 不需要尾段，tailEndY 等於 lineEndY。
-    // 舊的隱形尾段本來兼任「核心恆停在視窗中央」的保證，那件事現在由回中節點表接手
-    //（見 ~/utils/forum-path-geometry 的 buildArcKnots），且整條線都受保護、不只尾段。
-    tailEndY = lineEndY;
-    genEl.value?.setAttribute('d', after.d);
-  } else {
-    // 隱形尾段：從設計線末端直下到議程底緣。核心在這一段恆停在視窗中央，
-    // 由議程（.sec2__pin 的不透明白底）從上方咬住它 —— 全程看不見，故不需要淡出。
-    const tail = measureTailEndY();
-    tailEndY = tail !== null && tail > lineEndY ? tail : lineEndY;
-    motion.setAttribute(
-      'd',
-      tailEndY > lineEndY ? appendTail(d, lastPoint(d)[0], tailEndY) : d,
-    );
-  }
-  motionLen = motion.getTotalLength();
-  syncKnots(motion);
-
-  // 那一撇 ＝ seg1 末端 → seg2 起點 的直線連接段（不寫死幾何，故核心永遠沿著它走）。
-  // 只有恰好兩段時才有單一連接段；單段線稿（pad 的 Vector 276）沒有 → 不畫。
-  const line = slashEl.value;
-  if (line && list2.length === 2) {
-    const [ax, ay] = lastPoint(list2[0]!);
-    const [bx, by] = firstPoint(list2[1]!);
-    line.setAttribute('x1', `${ax}`);
-    line.setAttribute('y1', `${ay}`);
-    line.setAttribute('x2', `${bx}`);
-    line.setAttribute('y2', `${by}`);
-    slash = { startLen: firstLen, len: Math.hypot(bx - ax, by - ay) };
-  } else {
-    slash = { startLen: 0, len: 0 };
-  }
-
-  setForumPathActive(true);
-  place(st ? st.progress : 0);
-}
-
-// ── pad / mob：整條線由 waypoint 算出 ─────────────────────────────────
-// 這兩個斷點的稿是 768 / 414 寬、線本來就撞到左右緣，而 pc 那套「整段平移不縮放」
-// 在 320 寬會超出畫面 94px；加上兩者的版面都是流排版（.forum-event 退回 flex 直排），
-// 垂直位置隨字數／字體一起變。故不吃 FORUM_PATH，改由 FORUM_PATH_NODES[bp] ＋
-// 即時量測算出單一連續 path。
-// 線寬全程 4px 等寬 → **驅動線＝可見線**，同一個 d 餵兩邊，不必跑 extract-centerline.mjs。
+// ── 整條線由 waypoint 算出（三個斷點共用）─────────────────────────────
+// 稿的寬度只是一個點、斷點卻是一段區間，而 pad / mob 的版面是流排版（.forum-event 退回
+// flex 直排），垂直位置隨字數／字體一起變 —— 所以線必須依 FORUM_PATH_NODES[bp] ＋
+// 即時量測算出來，不能寫死。pc 版面雖是絕對定位、錨點很穩，仍走同一套：
+// 少一套機制，而且不必再為了「標題行數變了」去重算平移的 offset.y（歷史上改過兩次）。
+// 線寬全程 4px 等寬 → **驅動線＝可見線**，同一個 d 餵兩邊。
 // ⚠ 完整規則見 architecture/forum-node-path.md。
-// 量測 ＋ 產生：pc（只算後半段）與 pad／mob（整條）共用這一支。
 function buildNodesD(list: ForumPathNode[]) {
   const root = rootEl.value;
   // 錨點的搜尋範圍取 .sec2 而非 .sec2__path：後半段的錨點（論壇四、議程、精彩活動）
@@ -278,8 +135,13 @@ function buildNodesD(list: ForumPathNode[]) {
   return buildNodePathD(list, { width: rootRect.width, measure });
 }
 
-// pad / mob：整條線（前半段＋後半段）都由 waypoint 算出。
-function buildFromNodes(motion: SVGPathElement, list: ForumPathNode[]) {
+// 依當前版面重建整條線（前半段＋後半段）。可見線與驅動線吃同一個 d。
+function build() {
+  const motion = motionEl.value;
+  if (!motion) return;
+  const list = nodes.value;
+  if (!list?.length) return reset();
+
   const out = buildNodesD(list);
   // 必要錨點量不到就整條放棄 —— 少一個點會讓後面全部接到錯的鄰居身上，靜默變形。
   // （標了 optional 的點量不到不算，產生器會自己跳過並重接。）
@@ -296,10 +158,6 @@ function buildFromNodes(motion: SVGPathElement, list: ForumPathNode[]) {
   //   捲動尺變零長度、核心一進場就跳到路徑末端。
   tailEndY = lineEndY;
   syncKnots(motion);
-
-  // 單段線稿沒有連接段 → 論壇二那一撇不畫（mob 稿的 09/15 斜線是靜態圖稿）。
-  slash = { startLen: 0, len: 0 };
-  drawSlash(0);
 
   setForumPathActive(true);
   place(st ? st.progress : 0);
@@ -327,13 +185,7 @@ function place(rawP: number) {
     (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
   gsap.set(core, { x: pt.x, y: pt.y, rotation: angle });
 
-  // 那一撇隨核心推進逐段畫出：核心還沒走到連接段起點 → 0（完全沒出現）；
-  // 走完連接段 → 1（整條畫完），之後核心從尾端接上 seg2。往回捲自然收回。
-  if (slash.len) {
-    drawSlash(Math.min(1, Math.max(0, (len - slash.startLen) / slash.len)));
-  }
-
-  // 語意維持「設計線走完的比例」（尾段一律 1），下游的 forumPathRiding 因此不變。
+  // 語意維持「設計線走完的比例」，下游的 forumPathRiding 因此不變。
   setForumPathProgress(pathLen ? Math.min(1, len / pathLen) : 0);
 }
 
@@ -400,26 +252,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="rootEl" class="forum-path" aria-hidden="true">
-    <svg
-      v-for="(seg, i) in segs"
-      :key="i"
-      class="forum-path__raw"
-      :width="seg.w"
-      :height="seg.h"
-      :viewBox="`0 0 ${seg.w} ${seg.h}`"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        class="forum-path__line"
-        :class="`forum-path__line--${seg.kind}`"
-        :d="seg.line"
-        :stroke-width="seg.kind === 'stroke' ? seg.strokeWidth : undefined"
-      />
-    </svg>
-
-    <!-- pad / mob 的可見線：由 buildFromNodes() 寫入 d。座標已在本層座標系，
-         故不需要 left/top。描邊 4px（＝稿的線寬），驅動線吃同一個 d。 -->
+    <!-- 可見線：由 build() 寫入 d。座標已在本層座標系，故不需要 left/top。
+         描邊 4px（＝稿的線寬），驅動線吃同一個 d。 -->
     <svg v-if="nodes" class="forum-path__gen" xmlns="http://www.w3.org/2000/svg">
       <path ref="genEl" :stroke-width="FORUM_PATH_STROKE" />
     </svg>
@@ -437,12 +271,6 @@ onBeforeUnmount(() => {
       :class="{ 'is-riding': forumPathRiding }"
       :style="coreStyle"
     />
-
-    <!-- 論壇二 09/15 的那一撇：幾何就是驅動線的連接段（由 build() 寫入 x1/y1/x2/y2），
-         隨核心推進以 dashoffset 逐段畫出。放在核心之後 → 畫在核心之上。 -->
-    <svg class="forum-path__slash" xmlns="http://www.w3.org/2000/svg">
-      <line ref="slashEl" :stroke="FORUM_SLASH.color" :stroke-width="FORUM_SLASH.width" />
-    </svg>
   </div>
 </template>
 
@@ -453,32 +281,9 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-// 位置由 <script> 的 layout() 依錨點量測寫入 left/top（只平移、不縮放）。
-.forum-path__raw {
-  position: absolute;
-  display: block;
-}
-
 // 設計線本身是**開發用輔助線**：production 一律不畫，只有 ?pathdebug 才以高對比顯示
-// （見本檔最下方的 .sec2__path--debug）。核心不受影響 —— 它是產品功能，不是輔助線。
-//
-// Figma 匯出的描邊有兩種形態：outline（描邊被展開成填色路徑）吃 fill、stroke（真描邊）
-// 吃 stroke，故兩者都要各自透明化。
-// ⚠️ 稿上的水印值是 pc outline `rgba(#000, .03)`、pad／mob 描邊 `rgba(#000, .1)`；
-//    哪天要讓線在 production 現形，把 transparent 換回這兩個值即可。
-.forum-path__line {
-  &--outline {
-    fill: transparent;
-  }
-
-  &--stroke {
-    fill: none;
-    stroke: transparent;
-  }
-}
-
-// waypoint 產生的線（pc 只有後半段、pad / mob 是整條）：整條在同一個座標系，
-// 故 svg 直接鋪滿本層。與手貼線稿同樣是開發用輔助線 → 預設不畫。
+// （見下方的 .sec2__path--debug）。核心不受影響 —— 它是產品功能，不是輔助線。
+// ⚠️ 稿上的水印值是描邊 `rgba(#000, .1)`；哪天要讓線在 production 現形，把 transparent 換掉即可。
 .forum-path__gen {
   position: absolute;
   inset: 0;
@@ -491,37 +296,17 @@ onBeforeUnmount(() => {
 }
 
 // ── ?pathdebug：開發時把整條線畫出來 ──────────────────────────────────
-// 設計線平常完全不畫（見上方兩處的 transparent），只有帶參數時才以高對比橘現形。
-// 涵蓋**前半段與後半段、三個斷點**：
-//   .forum-path__line 是 pc / pad 手貼線稿的可見線（outline 吃 fill、stroke 吃 stroke）
-//   .forum-path__gen  是 waypoint 產生的線（pc 只有後半段、pad / mob 是整條）
+// 設計線平常完全不畫（見上方的 transparent），只有帶參數時才以高對比橘現形。
 // .sec2__path--debug 由 <Forum> 依 query 掛上（同一個 class 也負責把路徑層提到議程之上）。
 // 選擇器的祖先在本元件之外，但 scoped CSS 只會把 data 屬性加在最後一個選擇器上，故成立。
 .sec2__path--debug {
-  .forum-path__line--outline {
-    fill: rgba(255, 90, 0, 0.75);
-  }
-
-  .forum-path__line--stroke {
-    stroke: rgba(255, 90, 0, 0.75);
-  }
-
   .forum-path__gen path {
     stroke: rgba(255, 90, 0, 0.75);
   }
 }
 
-// 驅動線的座標可能超出 svg box（連接段與後段偏移量較大）→ overflow: visible 才不被裁掉。
+// 驅動線的座標可能超出 svg box → overflow: visible 才不被裁掉。
 .forum-path__motion {
-  position: absolute;
-  inset: 0;
-  overflow: visible;
-}
-
-// 那一撇：與驅動線同一個座標系（都是 .forum-path 的 inset: 0 子元素），故 build() 算出的
-// 連接段端點可以直接當 x1/y1/x2/y2 用。linecap 用預設的 butt —— 設計稿的端點切口正是
-// 垂直於脊線（見 FORUM_SLASH 註解的解析）。
-.forum-path__slash {
   position: absolute;
   inset: 0;
   overflow: visible;

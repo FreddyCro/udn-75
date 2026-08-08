@@ -1,3 +1,16 @@
+> ⚠️ **本文件已成歷史紀錄（2026-08-08）**
+>
+> 這裡描述的是 pc 前半段舊的「手貼 Figma 匯出的 `d` ＋ 整段平移對位」機制
+> （`FORUM_PATH` / `ForumPathSeg` / `layout()` / `scripts/extract-centerline.mjs`）。
+> 該機制已整組移除，三個斷點統一改用 waypoint 產生器 ——
+> **現行規則一律見 [`forum-node-path.md`](./forum-node-path.md)。**
+>
+> 保留本檔的理由：裡面的對位推導、錨點取捨與踩過的坑（循環依賴、pin-spacer、
+> 具名錨點而非索引）在新機制下仍然成立，是理解那些設計決定的來源。
+> 舊程式碼：`git show fbaa59e`
+
+---
+
 # 論壇段設計線（forum core path）對位規則
 
 橘核心在論壇段沿一條設計線蛇行下行。這份文件說明**線是怎麼被放到正確位置的**、

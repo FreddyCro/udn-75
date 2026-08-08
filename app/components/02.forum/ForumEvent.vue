@@ -1,7 +1,10 @@
 <!--
   單一論壇場次區塊（論壇一~三），純 props 驅動、無動態。
   版位一律以 pc 設計稿 1280 座標系標註（x 直接對應 CSS px，y 以本區標眉頂端為 0）。
-  .forum-event__date 是 ForumCorePath 可見線的錨點元素，改動其版位需同步 ForumPathSeg 的 anchor / offset。
+  本元件的子區塊（__tag / __title / __head / __date / __venue / __meta / __speakers / __cta …）
+  是 ForumCorePath 設計線的錨點，見 ~/utils/forum-node-path 的 FORUM_PATH_NODES。
+  ⚠️ 改 class 名或增刪這些區塊，線會量不到必要錨點而**整條消失**（刻意的 fail-loud）；
+     只是改內容長短則不必動它 —— 節點是量出來的，會自己跟著走。
 -->
 <script setup lang="ts">
 import type { ForumEvent } from '~/types/forum';

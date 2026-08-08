@@ -296,6 +296,207 @@ const MOB_NODES: ForumPathNode[] = [
   },
 ];
 
+// ── pc（1280 稿）─────────────────────────────────────────────────────
+// 2026-08-08：pc 前半段從「手貼 Figma 匯出的 d ＋ 整段平移」改成 waypoint，三個斷點自此
+// 共用同一套產生器（原本 pc 前半段走 segs 分支、後半段走 waypoint，一個斷點跑兩套機制）。
+//
+// 抽法與 pad / mob 不同 —— 不必回 Figma：舊的 `FORUM_PATH.pc[*].motion` 本來就是
+// scripts/extract-centerline.mjs 抽出來的中心線，直接拿它當來源即可（腳本也因此一併刪除）。
+//   1. 解析兩段 motion 的 cubic，剔除弧長 < 2px 的退化段（抽中心線留下的數值雜訊，seg2 有 15 段）
+//   2. 轉折點 ＝ cusp（前後段切線夾角 ≥ 25°）∪ 顯著的 y 局部極值（拱的肩點，同 pad 的 Q2）
+//   3. 對誤差 > 3px 的段落從弧長中點補一個節點，反覆到全部達標
+//   4. 每段擬合成單一 cubic，取 chord 相對的 relIn / relOut / hIn / hOut
+//   5. y 對回版面區塊（落在區塊內 → fraction；落在區塊之間的留白 → 最近邊 ＋ dy）
+//
+// **最大擬合偏差 2.36px**（對照 pad / mob 從稿抽的 1.9–2.5px）。29 個節點裡 21 個用 fraction
+// （隨內容伸縮），7 個落在區塊之間的留白只能用 dy（pad 是 14 取 9，比例更高），
+// W0 是交棒零跳點、釘 `.sec2__path` 頂端。
+//
+// ⚠ 容器座標註解是 1440 寬的實測值，只作對照用；實際位置一律由錨點即時量測。
+// ⚠ W13 → W14 的 'line' 就是原本 seg1 / seg2 之間那條動態連接段（＝ 09/15 的那一撇）。
+//   那一撇的「隨核心畫出」已隨本次改動移除（它在加了後半段 waypoint 之後就沒在跑了），
+//   之後要做會改成用 SEQUENCE 的地址表示觸發時機，見 architecture/forum-node-path.md。
+const PC_FRONT_NODES: ForumPathNode[] = [
+  // ── 論壇一 → 論壇二（原 FORUM_PATH.pc[0]）──
+  {
+    id: 'W0', // 容器 (640, 2)
+    x: 'center',
+    anchor: { sel: '.sec2__path', edge: 'top' },
+    note: '交棒零跳點：路徑起點必須落在視窗正中央（同 pad Q0 / mob P0）',
+    join: 'line',
+  },
+  {
+    id: 'W1', // 容器 (640, 466)
+    x: 'center',
+    anchor: { event: '論壇一', sel: '.forum-event__title', edge: 'fraction', t: 0.2292 },
+    join: { relIn: -32.1, relOut: 31.7, hIn: 0.28, hOut: 0.44 },
+  },
+  {
+    id: 'W2', // 容器 (719, 415)。拱的肩點（同 pad 的 Q2）
+    x: 0.562,
+    anchor: { event: '論壇一', sel: '.forum-event__tag', edge: 'fraction', t: 0.4866 },
+    join: { relIn: -64.4, relOut: 24.7, hIn: 0.14, hOut: 0.7 },
+  },
+  {
+    id: 'W3', // 容器 (930, 888)。髮夾彎（右側頂點）
+    x: 0.726,
+    anchor: { event: '論壇一', sel: '.forum-event__date', edge: 'top', dy: -80 },
+    join: { relIn: 29.3, relOut: -31.9, hIn: 0.34, hOut: 0.38 },
+  },
+  {
+    id: 'W4', // 容器 (839, 830)
+    x: 0.656,
+    anchor: { event: '論壇一', sel: '.forum-event__date', edge: 'top', dy: -138 },
+    join: { relIn: 63.8, relOut: -15.7, hIn: 0.22, hOut: 0.4 },
+  },
+  {
+    id: 'W5', // 容器 (535, 1509)。髮夾彎（左下）
+    x: 0.418,
+    anchor: { event: '論壇一', sel: '.forum-event__photo-slot', edge: 'top', dy: -87 },
+    join: { relIn: 32.7, relOut: -34.9, hIn: 0.34, hOut: 0.38 },
+  },
+  {
+    id: 'W6', // 容器 (434, 1437)
+    x: 0.339,
+    anchor: { event: '論壇一', sel: '.forum-event__venue', edge: 'bottom', dy: 90 },
+    join: { relIn: 69.2, relOut: -13.2, hIn: 0.2, hOut: 0.44 },
+  },
+  {
+    id: 'W7', // 容器 (194, 2155)。補點：原本 W6→W8 一段 chord 1516、偏差 4.82px
+    x: 0.152,
+    anchor: { event: '論壇一', sel: '.forum-event__speakers', edge: 'fraction', t: 0.5368 },
+    join: { relIn: 3.4, relOut: -3.9, hIn: 0.36, hOut: 0.26 },
+  },
+  {
+    id: 'W8', // 容器 (174, 2935)。撞左牆的硬轉角
+    x: 0.136,
+    anchor: { event: '論壇二', sel: '.forum-event__tag', edge: 'fraction', t: 0.4375 },
+    join: { relIn: -24.3, relOut: 32.7, hIn: 0.38, hOut: 0.36 },
+  },
+  {
+    id: 'W9', // 容器 (469, 2740)
+    x: 0.367,
+    anchor: { event: '論壇一', sel: '.forum-event__speakers', edge: 'bottom', dy: 102 },
+    join: { relIn: -40.5, relOut: 22.9, hIn: 0.4, hOut: 0.32 },
+  },
+  {
+    id: 'W10', // 容器 (868, 3094)。補點：原本 W9→W11 一段 chord 1046、偏差 3.76px
+    x: 0.678,
+    anchor: { event: '論壇二', sel: '.forum-event__title', edge: 'fraction', t: 0.2115 },
+    join: { relIn: -8.7, relOut: 8.4, hIn: 0.34, hOut: 0.34 },
+  },
+  {
+    id: 'W11', // 容器 (1026, 3629)。髮夾彎（右緣）
+    x: 0.801,
+    anchor: { event: '論壇二', sel: '.forum-event__venue', edge: 'fraction', t: 0.1109 },
+    join: { relIn: 31, relOut: -37.1, hIn: 0.34, hOut: 0.4 },
+  },
+  {
+    id: 'W12', // 容器 (902, 3532)
+    x: 0.705,
+    anchor: { event: '論壇二', sel: '.forum-event__cta', edge: 'fraction', t: 0.9062 },
+    join: { relIn: 40, relOut: -20.2, hIn: 0.4, hOut: 0.26 },
+  },
+  {
+    id: 'W13', // 容器 (735, 3680)＝原 seg1 末端
+    x: 0.574,
+    anchor: { event: '論壇二', sel: '.forum-event__venue', edge: 'fraction', t: 0.3844 },
+    note: '到 W14 的直線＝原本 seg1／seg2 之間的動態連接段（09/15 的那一撇）',
+    join: 'line',
+  },
+  // ── 論壇二 → 論壇三（原 FORUM_PATH.pc[1]）──
+  {
+    id: 'W14', // 容器 (569, 3994)＝原 seg2 起點
+    x: 0.444,
+    anchor: { event: '論壇二', sel: '.forum-event__date', edge: 'fraction', t: 0.8943 },
+    join: 'line',
+  },
+  {
+    id: 'W15', // 容器 (546, 4046)。髮夾彎
+    x: 0.426,
+    anchor: { event: '論壇二', sel: '.forum-event__date', edge: 'bottom', dy: 13 },
+    join: { relIn: 116.9, relOut: -29.7, hIn: 0.06, hOut: 0.52 },
+  },
+  {
+    id: 'W16', // 容器 (438, 3981)
+    x: 0.342,
+    anchor: { event: '論壇二', sel: '.forum-event__date', edge: 'fraction', t: 0.8569 },
+    join: { relIn: 47.3, relOut: -22.8, hIn: 0.18, hOut: 0.6 },
+  },
+  {
+    id: 'W17', // 容器 (212, 4236)。補點：原本 W16→W18 一段 chord 668、偏差 3.02px
+    x: 0.165,
+    anchor: { event: '論壇二', sel: '.forum-event__photo-slot', edge: 'fraction', t: 0.4674 },
+    join: { relIn: 7.5, relOut: -97.6, hIn: 0.5, hOut: 0.02 },
+  },
+  {
+    id: 'W18', // 容器 (152, 4588)。撞左牆
+    x: 0.119,
+    anchor: { event: '論壇三', sel: '.forum-event__tag', edge: 'top', dy: -37 },
+    join: { relIn: -25.5, relOut: 29.9, hIn: 0.38, hOut: 0.36 },
+  },
+  {
+    id: 'W19', // 容器 (306, 4499)
+    x: 0.239,
+    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'fraction', t: 0.9859 },
+    join: { relIn: -43.3, relOut: 23.6, hIn: 0.24, hOut: 0.54 },
+  },
+  {
+    id: 'W20', // 容器 (586, 4774)
+    x: 0.458,
+    anchor: { event: '論壇三', sel: '.forum-event__title', edge: 'fraction', t: 0.4187 },
+    join: { relIn: -20.7, relOut: 27.5, hIn: 0.36, hOut: 0.36 },
+  },
+  {
+    id: 'W21', // 容器 (711, 4707)
+    x: 0.556,
+    anchor: { event: '論壇三', sel: '.forum-event__title', edge: 'fraction', t: 0.1342 },
+    join: { relIn: -49.9, relOut: 26.8, hIn: 0.28, hOut: 0.46 },
+  },
+  {
+    id: 'W22', // 容器 (966, 5018)。髮夾彎（右）
+    x: 0.755,
+    anchor: { event: '論壇三', sel: '.forum-event__head', edge: 'fraction', t: 0.9051 },
+    join: { relIn: 34.1, relOut: -35.3, hIn: 0.36, hOut: 0.42 },
+  },
+  {
+    id: 'W23', // 容器 (906, 4974)
+    x: 0.708,
+    anchor: { event: '論壇三', sel: '.forum-event__head', edge: 'fraction', t: 0.804 },
+    join: { relIn: 49.2, relOut: -27.3, hIn: 0.28, hOut: 0.48 },
+  },
+  {
+    id: 'W24', // 容器 (771, 5134)。髮夾彎
+    x: 0.602,
+    anchor: { event: '論壇三', sel: '.forum-event__date', edge: 'fraction', t: 0.4114 },
+    join: { relIn: 28.9, relOut: -32, hIn: 0.34, hOut: 0.42 },
+  },
+  {
+    id: 'W25', // 容器 (707, 5093)
+    x: 0.552,
+    anchor: { event: '論壇三', sel: '.forum-event__date', edge: 'fraction', t: 0.2331 },
+    join: { relIn: 57.7, relOut: -22.6, hIn: 0.22, hOut: 0.56 },
+  },
+  {
+    id: 'W26', // 容器 (512, 5417)。髮夾彎
+    x: 0.4,
+    anchor: { event: '論壇三', sel: '.forum-event__venue', edge: 'fraction', t: 0.9879 },
+    join: { relIn: 27.1, relOut: -37.5, hIn: 0.42, hOut: 0.34 },
+  },
+  {
+    id: 'W27', // 容器 (412, 5338)
+    x: 0.322,
+    anchor: { event: '論壇三', sel: '.forum-event__venue', edge: 'fraction', t: 0.4223 },
+    join: { relIn: 35.8, relOut: -31, hIn: 0.44, hOut: 0.3 },
+  },
+  {
+    id: 'W28', // 容器 (327, 5400)＝前半段終點，其後接 PC_TAIL_NODES
+    x: 0.256,
+    anchor: { event: '論壇三', sel: '.forum-event__venue', edge: 'fraction', t: 0.8678 },
+    join: 'line',
+  },
+];
+
 // ── 後半段（議程之後：論壇四 ＋ 精彩活動）────────────────────────────
 // ⚠ 這三條線在 Figma 上是**頁面層的孤兒 vector**（pc 2584:35143、pad 2679:90235、
 //   mob 2584:35141），沒有 artboard 座標可對 —— **稿只給形狀、不給位置**。
@@ -365,13 +566,12 @@ const MOB_TAIL_NODES: ForumPathNode[] = [
 ];
 
 /**
- * 以斷點為 key。
- * pad / mob 是「前半段 ＋ 後半段」一整條 —— 兩段接在同一個陣列裡，中間那段
- * 直線（論壇三 → 議程底）正好就是原本的隱形尾段，故不必再 appendTail。
- * pc 的前半段仍是 FORUM_PATH.pc 的手貼線稿，這裡只放後半段（見 ForumCorePath 的 build）。
+ * 以斷點為 key。三個斷點都是「前半段 ＋ 後半段」一整條 —— 接在同一個陣列裡，
+ * 中間那段直線（論壇三 → 議程底）正好就是原本的隱形尾段，故不必再 appendTail。
+ * 2026-08-08 起 pc 也在此（原本前半段走 FORUM_PATH.pc 的手貼線稿，已移除）。
  */
-export const FORUM_PATH_NODES: Partial<Record<'pc' | 'pad' | 'mob', ForumPathNode[]>> = {
-  pc: PC_TAIL_NODES,
+export const FORUM_PATH_NODES: Record<'pc' | 'pad' | 'mob', ForumPathNode[]> = {
+  pc: [...PC_FRONT_NODES, ...PC_TAIL_NODES],
   pad: [...PAD_NODES, ...PAD_TAIL_NODES],
   mob: [...MOB_NODES, ...MOB_TAIL_NODES],
 };
@@ -381,7 +581,8 @@ export const FORUM_PATH_NODES: Partial<Record<'pc' | 'pad' | 'mob', ForumPathNod
  * 前半段對得到設計稿（線是 artboard 的子節點，每個頂點都能驗），後半段對不到
  * （孤兒 vector，位置是我們決定的），兩者不能放在同一組斷言裡。
  */
-export const FORUM_FRONT_NODES: Record<'pad' | 'mob', ForumPathNode[]> = {
+export const FORUM_FRONT_NODES: Record<'pc' | 'pad' | 'mob', ForumPathNode[]> = {
+  pc: PC_FRONT_NODES,
   pad: PAD_NODES,
   mob: MOB_NODES,
 };
