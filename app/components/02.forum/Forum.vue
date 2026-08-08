@@ -33,6 +33,12 @@ const forum = str.forum as {
 //   見 architecture/forum-node-path.md 的「大聲失敗的規則，與它的例外」。
 const route = useRoute();
 const highlightsVisible = computed(() => route.query.highlights === '1');
+
+// 設計線的後半段（議程之後）平常看不見 —— .sec2__pin 是 .sec2__path 的後續兄弟且有
+// 不透明白底，會整片蓋在路徑層上。那是刻意的：核心要「從議程背後穿過」。
+// 但開發時需要看得到那半條線才能對位，故用 ?pathdebug 把路徑層提到議程之上。
+// production 不帶參數 → 行為完全不變。
+const pathDebug = computed(() => route.query.pathdebug !== undefined);
 </script>
 
 <template>
@@ -42,7 +48,10 @@ const highlightsVisible = computed(() => route.query.highlights === '1');
          設計線依錨點定位、核心沿驅動線移動（見 ForumCorePath）。 -->
     <div
       class="sec2__path"
-      :class="{ 'sec2__path--revealed': agendaRevealed }"
+      :class="{
+        'sec2__path--revealed': agendaRevealed,
+        'sec2__path--debug': pathDebug,
+      }"
     >
       <h2 class="sec2__heading">
         <span v-for="(line, i) in forum.heading" :key="i">{{ line }}</span>
@@ -114,6 +123,16 @@ const highlightsVisible = computed(() => route.query.highlights === '1');
     opacity: 1;
   }
 
+  // 路徑層必須畫在 .sec2__pin 之上，否則橘核心走進後半段（議程／論壇四／精彩活動）
+  // 之後就被那層的不透明白底整段蓋住、完全看不見。
+  //
+  // ⚠️ 這是對原設計的**刻意反轉**：後半段還沒有路徑之前，核心在議程段只是短暫掠過，
+  //    「從議程背後穿過」是當時要的效果；現在核心要沿著後半段的線一路走到段落底，
+  //    藏在背後就等於不存在。
+  // 設計線本身不會因此露出來 —— 它預設是 transparent，只有 ?pathdebug 才上色
+  //（見 ForumCorePath 的 .forum-path__line / .forum-path__gen）。
+  z-index: 1;
+
   @include rwd-max('pc') {
     padding-top: 120px;
   }
@@ -150,10 +169,11 @@ const highlightsVisible = computed(() => route.query.highlights === '1');
 // （淡出的星空層與淡入的橘核心黑底皆未達全滿）從縫隙短暫露餡；
 // --revealed（agendaRevealed）時隨橘核心淡出而淡入，剛好接上。捲回自動反向。
 //
-// position + 白底是為了讓核心「從議程背後穿過」：.sec2__path 是 positioned（z-index auto）、
-// 本層原本是 static，positioned 會畫在 static 之上 → 核心會浮在議程上面。兩者同層之後由
-// DOM 順序決定，本層在後 → 在上；白底則是遮蔽本身（原本靠 .sec2 的白底，那是祖先遮不到）。
-// 不需要 z-index。AgendaReport 的灰底是子層，畫在這層白底之上，不受影響。
+// position + 白底原本是為了讓核心「從議程背後穿過」（本層在 DOM 後面 → 畫在上面）。
+// ⚠️ 那個效果已經**刻意取消**：後半段的設計線一路走到段落底，核心得看得見才有意義，
+//    故 .sec2__path 現在帶 z-index: 1、畫在本層之上（理由寫在那裡）。
+// 白底仍然需要 —— 它是本層自身的遮蔽（原本靠 .sec2 的白底，那是祖先遮不到），
+// crossfade 期間也靠它避免從縫隙露餡。AgendaReport 的灰底是子層，不受影響。
 .sec2__pin {
   position: relative;
   background: #fff;

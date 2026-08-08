@@ -150,12 +150,10 @@ function build() {
   const motion = motionEl.value;
   if (!motion) return;
 
-  // pad / mob 走產生器：整條線依 waypoint 即時算出，不吃 FORUM_PATH（見 buildFromNodes）。
-  if (nodes.value) return buildFromNodes(motion, nodes.value);
-
   const list = segs.value;
-  // 該斷點既沒有 waypoint 也沒有線稿 → 不建驅動線。
-  if (!list.length) return reset();
+  // pad / mob 沒有手貼線稿，整條（前半段＋後半段）都由 waypoint 算出（見 buildFromNodes）。
+  if (!list.length) return buildFromNodes(motion, nodes.value ?? []);
+  // pc：前半段仍是手貼線稿，後半段才由 waypoint 算出，兩者用 joinSegments 串起來。
 
   const placements = layout();
   // motion 先過 normalizeD：Figma 匯出常有 V / H，它們只帶單一座標，會讓 translateD 的
@@ -172,19 +170,31 @@ function build() {
   motion.setAttribute('d', list2[0]!);
   const firstLen = motion.getTotalLength();
 
+  // 後半段（議程之後）：pc 的這一段沒有手貼線稿，由 waypoint 算出後直接接在後面。
+  // 它跨過議程一路走到段落底，所以取代了原本那條「直下到議程底緣」的隱形尾段。
+  const after = nodes.value ? buildNodesD(nodes.value) : null;
+  if (after) list2.push(after.d);
+
   const d = joinSegments(list2);
   motion.setAttribute('d', d);
   pathLen = motion.getTotalLength();
   lineEndY = lastPoint(d)[1];
 
-  // 隱形尾段：從設計線末端直下到議程底緣。核心在這一段恆停在視窗中央，
-  // 由議程（.sec2__pin 的不透明白底）從上方咬住它 —— 全程看不見，故不需要淡出。
-  const tail = measureTailEndY();
-  tailEndY = tail !== null && tail > lineEndY ? tail : lineEndY;
-  motion.setAttribute(
-    'd',
-    tailEndY > lineEndY ? appendTail(d, lastPoint(d)[0], tailEndY) : d,
-  );
+  if (after) {
+    // 後半段自己就走到底了 → 不需要尾段；tailEndY 等於 lineEndY，place() 的分段映射
+    // 會自動退化成單純的比例映射（見 ~/utils/forum-path-geometry 的 arcAtCenterY）。
+    tailEndY = lineEndY;
+    genEl.value?.setAttribute('d', after.d);
+  } else {
+    // 隱形尾段：從設計線末端直下到議程底緣。核心在這一段恆停在視窗中央，
+    // 由議程（.sec2__pin 的不透明白底）從上方咬住它 —— 全程看不見，故不需要淡出。
+    const tail = measureTailEndY();
+    tailEndY = tail !== null && tail > lineEndY ? tail : lineEndY;
+    motion.setAttribute(
+      'd',
+      tailEndY > lineEndY ? appendTail(d, lastPoint(d)[0], tailEndY) : d,
+    );
+  }
   motionLen = motion.getTotalLength();
 
   // 那一撇 ＝ seg1 末端 → seg2 起點 的直線連接段（不寫死幾何，故核心永遠沿著它走）。
@@ -213,10 +223,14 @@ function build() {
 // 即時量測算出單一連續 path。
 // 線寬全程 4px 等寬 → **驅動線＝可見線**，同一個 d 餵兩邊，不必跑 extract-centerline.mjs。
 // ⚠ 完整規則見 architecture/forum-node-path.md。
-function buildFromNodes(motion: SVGPathElement, list: ForumPathNode[]) {
+// 量測 ＋ 產生：pc（只算後半段）與 pad／mob（整條）共用這一支。
+function buildNodesD(list: ForumPathNode[]) {
   const root = rootEl.value;
-  const scope = root?.closest('.sec2__path');
-  if (!root || !scope) return reset();
+  // 錨點的搜尋範圍取 .sec2 而非 .sec2__path：後半段的錨點（論壇四、議程、精彩活動）
+  // 都在 .sec2__pin 裡，而座標原點仍是 .forum-path（見 rootRect）。
+  // 兩者同屬 .sec2，故一個 querySelector 就涵蓋前後半段。
+  const scope = root?.closest('.sec2');
+  if (!root || !scope || !list.length) return null;
 
   // 座標原點取 .forum-path 自身（同 layout()）：它是 inset: 0 的絕對定位子元素，
   // 而 padding box 的上緣就是 .sec2__path 的 border box 上緣 ＝ 黑白接縫。
@@ -242,27 +256,26 @@ function buildFromNodes(motion: SVGPathElement, list: ForumPathNode[]) {
     return { top: r.top - rootRect.top, height: r.height };
   };
 
-  const out = buildNodePathD(list, { width: rootRect.width, measure });
-  // 任何一個錨點量不到就整條放棄 —— 少一個點會讓後面全部接到錯的鄰居身上，靜默變形。
+  return buildNodePathD(list, { width: rootRect.width, measure });
+}
+
+// pad / mob：整條線（前半段＋後半段）都由 waypoint 算出。
+function buildFromNodes(motion: SVGPathElement, list: ForumPathNode[]) {
+  const out = buildNodesD(list);
+  // 必要錨點量不到就整條放棄 —— 少一個點會讓後面全部接到錯的鄰居身上，靜默變形。
+  // （標了 optional 的點量不到不算，產生器會自己跳過並重接。）
   if (!out) return reset();
 
-  // 可見線只吃路徑段（尾段刻意不可見，見下）。
   genEl.value?.setAttribute('d', out.d);
-
   motion.setAttribute('d', out.d);
   pathLen = motion.getTotalLength();
+  motionLen = pathLen;
   lineEndY = out.endY;
-
-  // 隱形尾段：與 pc 分支同一套機制 —— 從設計線末端直下到議程底緣，核心在這段恆停在
-  // 視窗中央、由議程的不透明白底從上方咬住。ScrollTrigger 的 end 讀 tailEndY，
-  // ⚠ 沒設它的話 end 會解析成 `top+=0 center`，被 GSAP 夾成 start + 0.01
-  //   → 捲動尺零長度、核心一進場就跳到路徑末端。
-  const tail = measureTailEndY();
-  tailEndY = tail !== null && tail > lineEndY ? tail : lineEndY;
-  if (tailEndY > lineEndY) {
-    motion.setAttribute('d', appendTail(out.d, lastPoint(out.d)[0], tailEndY));
-  }
-  motionLen = motion.getTotalLength();
+  // 後半段的 waypoint 已經走到段落底（.sec2__pin 的下緣），故不再需要隱形尾段；
+  // tailEndY 等於 lineEndY，place() 的分段映射自動退化成單純的比例映射。
+  // ⚠ tailEndY 不能留 0 —— ScrollTrigger 的 end 讀它，0 會被 GSAP 夾成 start + 0.01，
+  //   捲動尺變零長度、核心一進場就跳到路徑末端。
+  tailEndY = lineEndY;
 
   // 單段線稿沒有連接段 → 論壇二那一撇不畫（mob 稿的 09/15 斜線是靜態圖稿）。
   slash = { startLen: 0, len: 0 };
@@ -425,21 +438,26 @@ onBeforeUnmount(() => {
   display: block;
 }
 
-// Figma 匯出的描邊有兩種形態：outline（描邊被展開成填色路徑）吃 fill、stroke（真描邊）吃 stroke。
-// 匯出自帶的 opacity 與 #898989 / black 一律不採用，統一吃這裡的顏色。
+// 設計線本身是**開發用輔助線**：production 一律不畫，只有 ?pathdebug 才以高對比顯示
+// （見本檔最下方的 .sec2__path--debug）。核心不受影響 —— 它是產品功能，不是輔助線。
+//
+// Figma 匯出的描邊有兩種形態：outline（描邊被展開成填色路徑）吃 fill、stroke（真描邊）
+// 吃 stroke，故兩者都要各自透明化。
+// ⚠️ 稿上的水印值是 pc outline `rgba(#000, .03)`、pad／mob 描邊 `rgba(#000, .1)`；
+//    哪天要讓線在 production 現形，把 transparent 換回這兩個值即可。
 .forum-path__line {
   &--outline {
-    fill: rgba(#000, 0.03);
+    fill: transparent;
   }
 
   &--stroke {
     fill: none;
-    stroke: var(--accent);
+    stroke: transparent;
   }
 }
 
-// pad / mob 的可見線：整條在同一個座標系，故 svg 直接鋪滿本層。線色取稿的「黑 10%」
-// （兩個斷點的稿都是 stroke-opacity 0.1 的 4px 描邊；pc 的 outline 是黑 3%）。
+// waypoint 產生的線（pc 只有後半段、pad / mob 是整條）：整條在同一個座標系，
+// 故 svg 直接鋪滿本層。與手貼線稿同樣是開發用輔助線 → 預設不畫。
 .forum-path__gen {
   position: absolute;
   inset: 0;
@@ -447,7 +465,28 @@ onBeforeUnmount(() => {
 
   path {
     fill: none;
-    stroke: rgba(#000, 0.1);
+    stroke: transparent;
+  }
+}
+
+// ── ?pathdebug：開發時把整條線畫出來 ──────────────────────────────────
+// 設計線平常完全不畫（見上方兩處的 transparent），只有帶參數時才以高對比橘現形。
+// 涵蓋**前半段與後半段、三個斷點**：
+//   .forum-path__line 是 pc / pad 手貼線稿的可見線（outline 吃 fill、stroke 吃 stroke）
+//   .forum-path__gen  是 waypoint 產生的線（pc 只有後半段、pad / mob 是整條）
+// .sec2__path--debug 由 <Forum> 依 query 掛上（同一個 class 也負責把路徑層提到議程之上）。
+// 選擇器的祖先在本元件之外，但 scoped CSS 只會把 data 屬性加在最後一個選擇器上，故成立。
+.sec2__path--debug {
+  .forum-path__line--outline {
+    fill: rgba(255, 90, 0, 0.75);
+  }
+
+  .forum-path__line--stroke {
+    stroke: rgba(255, 90, 0, 0.75);
+  }
+
+  .forum-path__gen path {
+    stroke: rgba(255, 90, 0, 0.75);
   }
 }
 

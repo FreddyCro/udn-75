@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildNodePathD,
+  FORUM_FRONT_NODES,
   FORUM_PATH_NODES,
   type ForumPathAnchor,
   type ForumPathMeasure,
@@ -9,8 +10,10 @@ import {
 
 // vitest 沒設 alias（見 vitest.config.ts），故一律相對路徑 import。
 
-const MOB_NODES = FORUM_PATH_NODES.mob!;
-const PAD_NODES = FORUM_PATH_NODES.pad!;
+// 黃金樣本只驗前半段 —— 後半段的線在 Figma 上是孤兒 vector、位置是我們決定的，
+// 沒有稿座標可斷言（見 architecture/forum-node-path.md 第十節）。
+const MOB_NODES = FORUM_FRONT_NODES.mob;
+const PAD_NODES = FORUM_FRONT_NODES.pad;
 
 const rectKey = (a: ForumPathAnchor) => {
   const base = a.event ? `${a.event}/${a.sel.split(',')[0]!.trim()}` : a.sel;
@@ -129,6 +132,38 @@ describe.each([
 
   it(`起點釘在容器水平中心（${bp} 的交棒零跳點）`, () => {
     expect(endpoints(built!.d)[0]![0]).toBe(width / 2);
+  });
+});
+
+describe('完整路徑（前半段 ＋ 後半段）', () => {
+  it.each(['pc', 'pad', 'mob'] as const)('%s 的 waypoint 編號不重複', (bp) => {
+    const ids = FORUM_PATH_NODES[bp]!.map((n) => n.id);
+    expect(new Set(ids).size, ids.join(',')).toBe(ids.length);
+  });
+
+  it.each(['pad', 'mob'] as const)('%s ＝ 前半段接後半段，且前半段在前', (bp) => {
+    const full = FORUM_PATH_NODES[bp]!;
+    const front = FORUM_FRONT_NODES[bp];
+    expect(full.slice(0, front.length)).toEqual(front);
+    expect(full.length).toBeGreaterThan(front.length);
+  });
+
+  it('前半段的末點沒有 join → 預設直線，正好接成原本的隱形尾段', () => {
+    expect(FORUM_FRONT_NODES.mob.at(-1)!.join).toBeUndefined();
+    expect(FORUM_FRONT_NODES.pad.at(-1)!.join).toBeUndefined();
+  });
+
+  it.each(['pc', 'pad', 'mob'] as const)('%s 只有精彩活動那一點是 optional', (bp) => {
+    const opt = FORUM_PATH_NODES[bp]!.filter((n) => n.optional);
+    expect(opt).toHaveLength(1);
+    expect(opt[0]!.anchor.sel).toBe('.highlights__item');
+  });
+
+  it.each(['pc', 'pad', 'mob'] as const)('%s 的最後一點掛在段落底（不受開關影響）', (bp) => {
+    const last = FORUM_PATH_NODES[bp]!.at(-1)!;
+    expect(last.anchor.sel).toBe('.sec2__pin');
+    expect(last.anchor.edge).toBe('bottom');
+    expect(last.optional).toBeUndefined();
   });
 });
 

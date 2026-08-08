@@ -296,8 +296,92 @@ const MOB_NODES: ForumPathNode[] = [
   },
 ];
 
-/** 以斷點為 key。pc 仍走 FORUM_PATH 的手貼線稿，故不在此。 */
+// ── 後半段（議程之後：論壇四 ＋ 精彩活動）────────────────────────────
+// ⚠ 這三條線在 Figma 上是**頁面層的孤兒 vector**（pc 2584:35143、pad 2679:90235、
+//   mob 2584:35141），沒有 artboard 座標可對 —— **稿只給形狀、不給位置**。
+//   所以「哪個頂點掛哪個區塊」是我們決定的，不是量出來的；請用編號協定微調
+//   （見 architecture/forum-node-path.md 第六節）。
+//
+// 決定位置的兩條原則：
+//   1. 橫向：垂直進場點接在**前半段末端的 x** 上，核心才連得起來。套下去三個斷點的
+//      線都剛好落在內容欄內（pc 265–1051 / 內容 108–1172；pad 86–679 / 80–688；
+//      mob 70–382 / 26–389）。其餘各點按線稿的相對 x 換算成容器寬比例。
+//   2. 縱向：把線稿頂點的相對高度對到後半段的區塊邊界（議程底 → 論壇四 → 精彩活動）。
+//
+// 形狀不變量（relIn/relOut/hIn/hOut）則是**從稿抽的**，誤差 1.9–2.5px ——
+// 那個 ~2px 是中心線與 outline 單側的固定偏移，不是模型誤差（同前半段 mob）。
+//
+// 精彩活動可被 ?highlights=1 關掉 → 掛在它身上的點標 optional，關掉時整條會自己重接。
+const AGENDA_END: ForumPathAnchor = { sel: '.agenda', edge: 'bottom' };
+const PIN_END: ForumPathAnchor = { sel: '.sec2__pin', edge: 'bottom' };
+/** 精彩活動的第二則（關掉時不存在 → optional） */
+const HL_ITEM: ForumPathAnchor = { sel: '.highlights__item', nth: 1, edge: 'top' };
+
+const PC_TAIL_NODES: ForumPathNode[] = [
+  { id: 'R0', x: 0.256, anchor: AGENDA_END, join: 'line' },
+  { id: 'R1', x: 0.256, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top' },
+    join: { relIn: -35.2, relOut: 27, hIn: 0.13, hOut: 0.54 } },
+  { id: 'R2', x: 0.59, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top', dy: -110 },
+    join: { relIn: -50.8, relOut: 47.2, hIn: 0.4, hOut: 0.44 } },
+  { id: 'R3', x: 0.794, anchor: { event: '論壇四', sel: '.forum-event__cta', edge: 'top' },
+    join: { relIn: -25.3, relOut: -5.8, hIn: 0.39, hOut: 0.29 } },
+  { id: 'R4', x: 0.349, anchor: { event: '論壇四', sel: '.forum-event__speakers', edge: 'top', dy: 140 },
+    join: { relIn: 31.2, relOut: -21.6, hIn: 0.27, hOut: 0.45 } },
+  { id: 'R5', x: 0.23, anchor: HL_ITEM, optional: true,
+    join: { relIn: -8, relOut: 20.7, hIn: 0.53, hOut: 0.22 } },
+  { id: 'R6', x: 0.261, anchor: PIN_END },
+];
+
+const PAD_TAIL_NODES: ForumPathNode[] = [
+  { id: 'S0', x: 0.262, anchor: AGENDA_END, join: 'line' },
+  { id: 'S1', x: 0.262, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top' },
+    join: { relIn: -46, relOut: 38.9, hIn: 0.2, hOut: 0.6 } },
+  { id: 'S2', x: 0.764, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top', dy: -3 },
+    join: { relIn: -68.5, relOut: 31.8, hIn: 0.39, hOut: 0.38 } },
+  { id: 'S3', x: 0.461, anchor: { event: '論壇四', sel: '.forum-event__cta', edge: 'top' },
+    join: { relIn: 48.3, relOut: -55.4, hIn: 0.33, hOut: 0.51 } },
+  { id: 'S4', x: 0.401, anchor: { event: '論壇四', sel: '.forum-event__speakers', edge: 'top', dy: 120 },
+    join: { relIn: -44.8, relOut: 52.3, hIn: 0.43, hOut: 0.4 } },
+  { id: 'S5', x: 0.593, anchor: HL_ITEM, optional: true,
+    join: { relIn: 40.4, relOut: -6.1, hIn: 0.46, hOut: 0.38 } },
+  { id: 'S6', x: 0.472, anchor: PIN_END },
+];
+
+const MOB_TAIL_NODES: ForumPathNode[] = [
+  { id: 'T0', x: 'center', anchor: AGENDA_END, join: 'line' },
+  { id: 'T1', x: 'center', anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top' },
+    join: { relIn: -42.6, relOut: 54.4, hIn: 0.59, hOut: 0.21 } },
+  { id: 'T2', x: 0.814, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top', dy: -59 },
+    join: { relIn: -72, relOut: 43.3, hIn: 0.41, hOut: 0.39 } },
+  { id: 'T3', x: 0.655, anchor: { event: '論壇四', sel: '.forum-event__body', edge: 'top' },
+    join: { relIn: 44.1, relOut: -37.3, hIn: 0.25, hOut: 0.51 } },
+  { id: 'T4', x: 0.337, anchor: { event: '論壇四', sel: '.forum-event__speakers', edge: 'top' },
+    join: { relIn: -6.2, relOut: 29.6, hIn: 0.36, hOut: 0.48 } },
+  { id: 'T5', x: 0.772, anchor: { event: '論壇四', sel: '.forum-event__speakers', edge: 'bottom' },
+    join: { relIn: 9.3, relOut: -33.3, hIn: 0.29, hOut: 0.49 } },
+  { id: 'T6', x: 0.413, anchor: HL_ITEM, optional: true,
+    join: { relIn: -24, relOut: 4.9, hIn: 0.64, hOut: 0.22 } },
+  { id: 'T7', x: 0.495, anchor: PIN_END },
+];
+
+/**
+ * 以斷點為 key。
+ * pad / mob 是「前半段 ＋ 後半段」一整條 —— 兩段接在同一個陣列裡，中間那段
+ * 直線（論壇三 → 議程底）正好就是原本的隱形尾段，故不必再 appendTail。
+ * pc 的前半段仍是 FORUM_PATH.pc 的手貼線稿，這裡只放後半段（見 ForumCorePath 的 build）。
+ */
 export const FORUM_PATH_NODES: Partial<Record<'pc' | 'pad' | 'mob', ForumPathNode[]>> = {
+  pc: PC_TAIL_NODES,
+  pad: [...PAD_NODES, ...PAD_TAIL_NODES],
+  mob: [...MOB_NODES, ...MOB_TAIL_NODES],
+};
+
+/**
+ * 只有前半段 —— **黃金樣本測試用**。
+ * 前半段對得到設計稿（線是 artboard 的子節點，每個頂點都能驗），後半段對不到
+ * （孤兒 vector，位置是我們決定的），兩者不能放在同一組斷言裡。
+ */
+export const FORUM_FRONT_NODES: Record<'pad' | 'mob', ForumPathNode[]> = {
   pad: PAD_NODES,
   mob: MOB_NODES,
 };
