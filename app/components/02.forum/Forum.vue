@@ -20,7 +20,19 @@ const {
   agendaRevealed,
 } = useOrangeCoreProgress();
 
-const forum = str.forum as { heading: string[]; events: ForumEvent[] };
+const forum = str.forum as {
+  heading: string[];
+  events: ForumEvent[];
+  event4: ForumEvent;
+};
+
+// 現場精彩活動：活動尚未發生，**預設不顯示**，帶 ?highlights=1 才出現。
+// 用 useRoute().query 而非直接讀 location：SSR 與 client 拿到同一個值，不會 hydration mismatch。
+// 活動結束後把預設改成顯示即可（把條件反過來）。
+// ⚠ 這一段的顯隱會改變後半段設計線的可用錨點 —— 掛在它身上的 waypoint 必須標 optional，
+//   見 architecture/forum-node-path.md 的「大聲失敗的規則，與它的例外」。
+const route = useRoute();
+const highlightsVisible = computed(() => route.query.highlights === '1');
 </script>
 
 <template>
@@ -48,13 +60,17 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
       <Agenda />
       <AgendaReport />
 
-      <!-- TODO 論壇四（青年永續築夢論壇，青年對話（二）／台積電文教基金會）：
-           設計稿版式未定，先以虛線框佔位。定案後把這一塊換成正式版式或抽成元件即可，
-           不必動 <Agenda>／<AgendaReport>／<ForumHighlights>。
-           注意它位在 agenda 之後，不屬於 .sec2__path，故拿不到 <ForumCorePath> 的錨點。 -->
-      <div class="sec2__forum4">論壇四・青年永續築夢論壇（版式待補）</div>
+      <!-- 論壇四（青年永續築夢論壇）：結構與前三場相同，故直接用 <ForumEvent>，
+           版式是它專屬的 layout: 'youth'（見 types/forum.ts）。
+           它在議程之後、不屬於 .sec2__path，而 <ForumEvent> 的 pc 版位是絕對定位到
+           1280 設計稿座標 —— .sec2__pin 沒有 max-width，故外面補一層同寬的容器。
+           ⚠️ 也因為不在 .sec2__path 內，<ForumCorePath> 的錨點查找範圍必須涵蓋這一塊
+           （後半段路徑會掛在它身上）。 -->
+      <div class="sec2__forum4">
+        <ForumEvent :event="forum.event4" />
+      </div>
 
-      <ForumHighlights />
+      <ForumHighlights v-if="highlightsVisible" />
     </div>
 
     <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊）。fixed 滿版、由 SymbolScene 寫入的
@@ -149,36 +165,12 @@ const forum = str.forum as { heading: string[]; events: ForumEvent[] };
   }
 }
 
-// 論壇四佔位框：虛線語彙沿用 <ForumEvent> 的講者照片 placeholder，一眼可辨為待補。
-// 寬度取設計稿內容邊界（1280 − 左右各 108 ＝ 1064），高度為目測佔位值。
+// 論壇四的容器：<ForumEvent> 的 pc 版位是絕對定位到 1280 設計稿座標，
+// 而 .sec2__pin 沒有限寬（它要讓 <AgendaReport> 的灰底滿版）→ 這層補上與
+// .sec2__path 相同的 1280 置中，論壇四的座標才對得上。
+// pad／mob 不需要限寬：那兩個斷點的 <ForumEvent> 已退回流排版、自帶左右 padding。
 .sec2__forum4 {
-  display: grid;
-  place-items: center;
-  max-width: 1064px;
-  min-height: 1000px;
-  margin: 80px auto;
-  border: 1px dashed var(--accent);
-  color: var(--accent);
-  font-size: 32px;
-  letter-spacing: 0.1em;
-
-  // pad／mob 版式同樣未定，僅按各斷點內容寬度等比收斂，避免佔位框本身爆版。
-  @include rwd-max('pc') {
-    max-width: 608px;
-    min-height: 600px;
-    margin: 60px auto;
-    font-size: 24px;
-  }
-
-  // justify-items 改回 stretch：place-items: center 會讓文字撐成 max-content 而不換行。
-  @include rwd-max('tablet') {
-    justify-items: stretch;
-    max-width: none;
-    min-height: 400px;
-    margin: 40px 26px;
-    padding: 0 16px;
-    font-size: 18px;
-    text-align: center;
-  }
+  max-width: 1280px;
+  margin: 0 auto;
 }
 </style>

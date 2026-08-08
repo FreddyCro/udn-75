@@ -15,9 +15,11 @@ export type ForumSpeaker = {
 /**
  * 日期／地點／引言那一落的設計稿版式：
  * quote＝日期靠左＋右側英文引言（論壇一）；stair＝三行階梯式日期、地點在右上（論壇二）；
- * right＝日期與地點整組切齊右緣（論壇三）。
+ * right＝日期與地點整組切齊右緣（論壇三）；
+ * youth＝論壇四，是前兩者的混合 —— 日期兩行（第二行往右錯開）＋時間＋地點整組切齊右緣，
+ *        講者卡則與 stair 完全相同（故 SCSS 以選擇器共用，不重寫一份）。
  */
-export type ForumLayout = 'quote' | 'stair' | 'right';
+export type ForumLayout = 'quote' | 'stair' | 'right' | 'youth';
 
 export type ForumEvent = {
   /** 「論壇一」 */
@@ -38,8 +40,14 @@ export type ForumEvent = {
   /** CTA 按鈕文字（僅論壇二有） */
   cta?: string;
   year: string;
-  /** 「09/09」 —— 中間的「/」是核心停靠點（stair 版式不畫斜線） */
+  /** 「09/09」 —— 中間的「/」平常照畫 */
   date: string;
+  /**
+   * 是否畫實體斜線。省略時的預設是「stair 版式不畫」——
+   * 論壇二的斜線由橘核心經過時補上（設計稿把 09 與 15 之間的對角空隙留給它）。
+   * 論壇四同樣是階梯式但**有**實體斜線，故明寫 true。
+   */
+  slash?: boolean;
   /** 星期單字（「三」），渲染時外面套設計稿的圓框 */
   weekday: string;
   /** 地點，可多行 */

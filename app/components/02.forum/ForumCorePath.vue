@@ -14,13 +14,13 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { ForumPathSeg } from '~/utils/orange-core-config';
-import type { MobPathMeasure } from '~/utils/forum-mob-path';
+import type { ForumPathMeasure, ForumPathNode } from '~/utils/forum-node-path';
 
 const rootEl = ref<HTMLElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
 const coreEl = ref<HTMLElement | null>(null);
 const slashEl = ref<SVGLineElement | null>(null);
-// mob 專用：整條線由 waypoint 算出來，故只有一個 <path>（見下方 buildMob）。
+// pad / mob 專用：整條線由 waypoint 算出來，故只有一個 <path>（見下方 buildFromNodes）。
 const genEl = ref<SVGPathElement | null>(null);
 
 const { setForumPathProgress, setForumPathActive, forumPathRiding } =
@@ -35,6 +35,10 @@ const easeMove = gsap.parseEase(FORUM_MOVE_EASE) ?? ((v: number) => v);
 // 線段數不同（pc 兩段、pad 稿是單一連續線），SSR 猜錯斷點就會 hydration mismatch。
 const bp = ref<'pc' | 'pad' | 'mob' | null>(null);
 const segs = computed<ForumPathSeg[]>(() => (bp.value ? FORUM_PATH[bp.value] : []));
+// 該斷點有 waypoint 就走產生器（pad / mob），沒有就走 segs 的手貼線稿（pc）。
+const nodes = computed<ForumPathNode[] | null>(() =>
+  bp.value ? (FORUM_PATH_NODES[bp.value] ?? null) : null
+);
 
 // 用 constants 的斷點值，不用 ~/utils/get-device 的 getDeviceTypeByResolution()——
 // 後者的 pad/pc 界線是 1023，與本專案設計稿的 1280 不合。
@@ -146,11 +150,11 @@ function build() {
   const motion = motionEl.value;
   if (!motion) return;
 
-  // mob 走產生器：整條線依 waypoint 即時算出，不吃 FORUM_PATH（見 buildMob）。
-  if (bp.value === 'mob') return buildMob(motion);
+  // pad / mob 走產生器：整條線依 waypoint 即時算出，不吃 FORUM_PATH（見 buildFromNodes）。
+  if (nodes.value) return buildFromNodes(motion, nodes.value);
 
   const list = segs.value;
-  // 該斷點沒有線稿（pad 目前是空陣列）→ 不建驅動線。
+  // 該斷點既沒有 waypoint 也沒有線稿 → 不建驅動線。
   if (!list.length) return reset();
 
   const placements = layout();
@@ -202,13 +206,14 @@ function build() {
   place(st ? st.progress : 0);
 }
 
-// ── mob：整條線由 waypoint 算出 ───────────────────────────────────────
-// 稿是 414 寬、線本來就撞到左右緣，而 pc 那套「整段平移不縮放」在 320 寬會超出畫面 94px；
-// 加上 mob 版面是流排版（.forum-event 退回 flex 直排），垂直位置隨字數／字體一起變。
-// 故 mob 不吃 FORUM_PATH，改由 FORUM_MOB_NODES ＋ 即時量測算出單一連續 path。
+// ── pad / mob：整條線由 waypoint 算出 ─────────────────────────────────
+// 這兩個斷點的稿是 768 / 414 寬、線本來就撞到左右緣，而 pc 那套「整段平移不縮放」
+// 在 320 寬會超出畫面 94px；加上兩者的版面都是流排版（.forum-event 退回 flex 直排），
+// 垂直位置隨字數／字體一起變。故不吃 FORUM_PATH，改由 FORUM_PATH_NODES[bp] ＋
+// 即時量測算出單一連續 path。
 // 線寬全程 4px 等寬 → **驅動線＝可見線**，同一個 d 餵兩邊，不必跑 extract-centerline.mjs。
-// ⚠ 完整規則見 architecture/forum-mob-path.md。
-function buildMob(motion: SVGPathElement) {
+// ⚠ 完整規則見 architecture/forum-node-path.md。
+function buildFromNodes(motion: SVGPathElement, list: ForumPathNode[]) {
   const root = rootEl.value;
   const scope = root?.closest('.sec2__path');
   if (!root || !scope) return reset();
@@ -218,7 +223,7 @@ function buildMob(motion: SVGPathElement) {
   const rootRect = root.getBoundingClientRect();
 
   // 先把所有錨點量完再算，不在中途寫任何 style → 不會觸發強制同步 reflow。
-  const measure: MobPathMeasure = (a) => {
+  const measure: ForumPathMeasure = (a) => {
     // 限定在某一場之內時，以該場的日期錨點往上找 .forum-event 當 scope ——
     // 用具名的 data-forum-anchor 而非 querySelectorAll 索引，增刪／重排場次都不會錯位
     // （理由同 forum-core-path.md「錨點是具名的，不是索引」）。
@@ -237,10 +242,7 @@ function buildMob(motion: SVGPathElement) {
     return { top: r.top - rootRect.top, height: r.height };
   };
 
-  const out = buildNodePathD(FORUM_MOB_NODES, {
-    width: rootRect.width,
-    measure,
-  });
+  const out = buildNodePathD(list, { width: rootRect.width, measure });
   // 任何一個錨點量不到就整條放棄 —— 少一個點會讓後面全部接到錯的鄰居身上，靜默變形。
   if (!out) return reset();
 
@@ -382,14 +384,10 @@ onBeforeUnmount(() => {
       />
     </svg>
 
-    <!-- mob 的可見線：由 buildMob() 寫入 d。座標已在本層座標系，故不需要 left/top。
-         描邊 4px（＝稿的 outline 帶寬），驅動線吃同一個 d。 -->
-    <svg
-      v-if="bp === 'mob'"
-      class="forum-path__gen"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path ref="genEl" :stroke-width="FORUM_MOB_STROKE" />
+    <!-- pad / mob 的可見線：由 buildFromNodes() 寫入 d。座標已在本層座標系，
+         故不需要 left/top。描邊 4px（＝稿的線寬），驅動線吃同一個 d。 -->
+    <svg v-if="nodes" class="forum-path__gen" xmlns="http://www.w3.org/2000/svg">
+      <path ref="genEl" :stroke-width="FORUM_PATH_STROKE" />
     </svg>
 
     <!-- 驅動線：stroke:none，只給 getPointAtLength 取樣用，不呈現。 -->
@@ -440,8 +438,8 @@ onBeforeUnmount(() => {
   }
 }
 
-// mob 的可見線：整條在同一個座標系，故 svg 直接鋪滿本層。線色取稿的「黑 10%」
-// （pc 的 outline 是黑 3%；mob 是 4px 描邊，較細故較深）。
+// pad / mob 的可見線：整條在同一個座標系，故 svg 直接鋪滿本層。線色取稿的「黑 10%」
+// （兩個斷點的稿都是 stroke-opacity 0.1 的 4px 描邊；pc 的 outline 是黑 3%）。
 .forum-path__gen {
   position: absolute;
   inset: 0;

@@ -1,43 +1,48 @@
-# 論壇段設計線 · mob 路徑產生器
+# 論壇段設計線 · waypoint 路徑產生器（pad / mob）
 
 pc 的線是**手貼 Figma 匯出的 `d` ＋ 單點平移對位**（規則見
-[`forum-core-path.md`](./forum-core-path.md)）。mob 不能這樣做，所以這條線改成
-**由程式依版面即時算出來**。
+[`forum-core-path.md`](./forum-core-path.md)）。**pad 與 mob 不能這樣做**，所以這兩個
+斷點的線改成**由程式依版面即時算出來**。
 
 這份文件管三件事：**線是怎麼算出來的**、**每個點掛在哪個 element 上**、
 以及**你想調整時要怎麼跟我說**。
 
-| | pc / pad | mob |
+| | pc | pad / mob |
 | --- | --- | --- |
-| 幾何來源 | `FORUM_PATH[bp]` 的手貼 `d` | `FORUM_MOB_NODES` 的 waypoint ＋ 產生器 |
+| 幾何來源 | `FORUM_PATH.pc` 的手貼 `d` | `FORUM_PATH_NODES[bp]` 的 waypoint ＋ 產生器 |
 | 對位方式 | 整段 svg 平移到錨點（只平移不縮放） | 每個點各自量測，逐點定位 |
 | 隨視窗寬 | 不變（容器固定 1280 置中） | 橫向按容器寬比例縮放 |
 | 隨文字高度 | 段內寫死，段間補直線連接段 | 全部跟著量測值走 |
+| 編號 | — | pad `Q0–Q13` / mob `P0–P13` |
 | 管理文件 | `forum-core-path.md` | 本文件 |
 
 相關檔案：
 
 | 檔案 | 角色 |
 | --- | --- |
-| `app/utils/forum-mob-path.ts` | 型別 ＋ `FORUM_MOB_NODES`（waypoint 資料）＋ `FORUM_MOB_STROKE` |
-| `app/utils/forum-path-geometry.ts` → `buildNodePathD()` | 純函式產生器（吃量測值吐 `d`） |
-| `app/components/02.forum/ForumCorePath.vue` | `bp === 'mob'` 走產生器分支；pc / pad 走既有 `segs` 分支 |
-| `test/forum-mob-path.spec.ts` | 黃金樣本 ＋ 各旋鈕的單元測試 |
-| `scripts/extract-centerline.mjs` | 抽黃金樣本用（來源路徑目前寫死，要加參數，見第八節）|
-| Figma `2584:35109`（file `HOt7xNcSTpina7WqNv9MVn`）| 設計稿原線，黃金樣本的來源 |
+| `app/utils/forum-node-path.ts` | 型別 ＋ `FORUM_PATH_NODES`（waypoint 資料）＋ `FORUM_PATH_STROKE` ＋ `buildNodePathD()` |
+| `app/components/02.forum/ForumCorePath.vue` | 該斷點有 waypoint 就走 `buildFromNodes()`，否則走既有 `segs` 分支 |
+| `test/forum-node-path.spec.ts` | 兩個斷點的黃金樣本 ＋ 各旋鈕的單元測試 |
+| `temp/pad.svg` | pad 稿的中心線（真描邊，`stroke-width 4` / `stroke-opacity 0.1`）|
+| Figma（file `HOt7xNcSTpina7WqNv9MVn`）| 線稿：pad `2679:90235`＋`Vector 276`、mob `2584:35109`；<br>版面：pad `2652:53307`、mob `2566:84799` |
 
 ---
 
-## 一、為什麼 mob 不能寫死
+## 一、為什麼 pad / mob 不能寫死
 
-1. **稿是 414 寬，斷點是 ≤767。** 稿的線本來就撞到左右緣（P5 / P6 / P7），
-   而現有機制**只平移不縮放** —— 在 320 寬的視窗會超出畫面約 94px。
-2. **mob 的版面是流排版。** `.forum-event` 在 pad / mob 被整組退回 flex 直排
+1. **稿的寬度只是一個點，斷點是一段區間。** mob 稿 414、斷點 ≤767；pad 稿 768、
+   斷點 768–1279。兩張稿的線本來就撞到左右緣（mob P5/P6/P7、pad Q10），
+   而現有機制**只平移不縮放** —— mob 實測在 320 寬會超出畫面約 94px。
+2. **這兩個斷點的版面是流排版。** `.forum-event` 在 pad / mob 被整組退回 flex 直排
    （`position: static` ＋ `display: flex`），只有 pc 是絕對定位釘死在 1280 座標。
-   所以 mob 的垂直位置隨字數、字體 fallback、視窗寬一起變 —— 寫死的 y 一定會飄。
-3. **稿本身就是照版面拉的。** 14 個轉折點的 y 有 11 個落在某個版面區塊的上緣或下緣，
-   誤差 1–6px（見第四節）。既然設計意圖是「貼著區塊」，就該直接量那個區塊，
-   而不是把量測結果的快照抄成常數。
+   所以垂直位置隨字數、字體 fallback、視窗寬一起變 —— 寫死的 y 一定會飄。
+   實測：同一份內容在 pad 1279 寬時容器高 4768，768 寬時 5164（差 396px）。
+3. **稿本身就是照版面拉的。** 兩張稿各 14 個轉折點，y 幾乎都落在某個版面區塊的
+   上緣或下緣（mob 誤差 1–6px、pad 2–34px，見第四節）。既然設計意圖是「貼著區塊」，
+   就該直接量那個區塊，而不是把量測結果的快照抄成常數。
+4. **pad 的線更是非做不可。** `Vector 276` 是一條跨越三場的連續線，**必須同時咬住
+   多個位置**；單點平移只能釘住一個點，其餘會慢慢飄掉
+   （`forum-core-path.md:217` 早已預告過這件事）。
 
 ---
 
@@ -48,10 +53,10 @@ pc 的線是**手貼 Figma 匯出的 `d` ＋ 單點平移對位**（規則見
 
 ```ts
 /** 橫向位置：釘左右緣／中心，或容器寬的比例（0–1） */
-export type MobPathX = 'left' | 'center' | 'right' | number;
+export type ForumPathX = 'left' | 'center' | 'right' | number;
 
 /** 縱向錨點：掛哪個 element 的哪一邊 */
-export type MobPathAnchor = {
+export type ForumPathAnchor = {
   /** 在 .sec2__path 範圍內的選擇器 */
   sel: string;
   /** 同一選擇器命中多個時取第幾個（預設 0） */
@@ -65,7 +70,7 @@ export type MobPathAnchor = {
 };
 
 /** 到下一點的連法 */
-export type MobPathJoin =
+export type ForumPathJoin =
   | 'line'
   | {
       /** 出發角：相對兩點連線的夾角（度） */
@@ -78,13 +83,13 @@ export type MobPathJoin =
       hOut: number;
     };
 
-export type MobPathNode = {
+export type ForumPathNode = {
   /** 穩定編號，永不重排（要插入就用 P7a）。溝通時直接喊這個。 */
   id: string;
-  x: MobPathX;
-  anchor: MobPathAnchor;
+  x: ForumPathX;
+  anchor: ForumPathAnchor;
   /** 到下一點的連法；最後一點省略 */
-  join?: MobPathJoin;
+  join?: ForumPathJoin;
   /** 刻意偏離設計稿時寫理由（同步記到第七節） */
   note?: string;
 };
@@ -131,7 +136,7 @@ c2 = p1 − hOut × L × unit(chord + relOut)
 
 ```ts
 /** 量測介面：吃選擇器吐「相對容器的上緣 ＋ 高度」；量不到回 null */
-export type MobPathMeasure = (
+export type ForumPathMeasure = (
   sel: string,
   nth: number
 ) => { top: number; height: number } | null;
@@ -143,20 +148,29 @@ export type MobPathMeasure = (
  * 任何一個錨點量不到 → 回 null（見下）。
  */
 export function buildNodePathD(
-  nodes: MobPathNode[],
-  ctx: { width: number; measure: MobPathMeasure; amplitude?: number }
+  nodes: ForumPathNode[],
+  ctx: { width: number; measure: ForumPathMeasure; amplitude?: number }
 ): { d: string; endY: number } | null;
 ```
 
 `endY` ＝ 最後一點的 y，給 `ScrollTrigger` 的 `end` 用（取代 `lastPoint(d)`）。
 
-### 一個必須「大聲失敗」的規則
+### 一個必須「大聲失敗」的規則，與它的例外
 
 **任何一個錨點量不到（`measure` 回 `null`）→ 整條線放棄，不要跳過那個點。**
 
 跳過一個 waypoint 會讓後面所有點的連法接到錯的鄰居身上，線會靜默變形。
 這與 `forum-core-path.md` 裡 `layout()` 回傳定長陣列的理由相同：
 寧可什麼都不畫（走 `reset()`），也不要畫一條錯的。
+
+**例外：標了 `optional: true` 的點。** 那是「可能整塊不存在」的區域 ——
+例如 `?highlights=1` 沒帶時整個精彩活動段落不渲染。這種點量不到就跳過，
+由前一個存活點直接連到下一個存活點；因為角度是 chord 相對的，chord 變長時
+彎會自然拉開、不變形。
+
+判準很簡單：**這個 element 有沒有可能合法地不存在？**
+有 → `optional`；沒有 → 不標，量不到就是 bug，該讓它整條停掉。
+（存活點少於 2 個時一樣回 `null` —— 兩點才成線。）
 
 ---
 
@@ -205,7 +219,35 @@ motionLen= 追加尾段後的總弧長
 
 `dy` 由設計稿反推（換算方式見第九節）。⚠️ 標記的項目見第七節。
 
-錨點已於 2026-08-07 在瀏覽器實測校正過（見第八節的實測結果）。
+### pad（`Q0–Q13`，768 稿）
+
+pad 稿是**真描邊**（`stroke-width 4`、單一 `M`、指令只有 `MVCL`），中心線就是 `d` 本身，
+控制點直接讀得到 —— 不必像 mob 那樣做 outline 擬合。
+
+| id | x | 錨點 element | 邊 | dy / t | 到下一點 |
+| --- | --- | --- | --- | --- | --- |
+| **Q0** | `center` | `.sec2__path` | top | **0** ⚠️ | 直線（垂直）|
+| **Q1** | `center` | 論壇一 `.forum-event__tag` | bottom | +17 | 彎 |
+| **Q2** | 0.744 | 論壇一 `.forum-event__tag` | top | −9 | 彎 |
+| **Q3** | 0.867 | 論壇一 `.forum-event__head` | bottom | +64 | 彎（髮夾）|
+| **Q4** | 0.303 | 論壇一 `.forum-event__meta` | bottom | −34 | 彎 |
+| **Q5** | 0.716 | 論壇一 `.forum-event__photo(-slot)` | top | +208 | 大弧（跨整段 bio）|
+| **Q6** | 0.807 | 論壇二 `.forum-event__meta` | top | −7 | 彎 |
+| **Q7** | 0.496 | 論壇二 `.forum-event__meta` | top | +86 | 直線 |
+| **Q8** | 0.320 | 論壇二 `.forum-event__speakers` | top | +2 | 彎 |
+| **Q9** | 0.142 | 論壇二 `.forum-event__speakers` | top | +34 | **硬轉角**（hOut 0）|
+| **Q10** | `left` | 論壇二 `.forum-event__speakers` | fraction | **0.7294** | **硬轉角**（hIn 0）|
+| **Q11** | 0.160 | 論壇三 `.forum-event__tag` | top | −8 | 彎 |
+| **Q12** | 0.820 | 論壇三 `.forum-event__meta` | top | −5 | 彎 |
+| **Q13** | 0.262 | 論壇三 `.forum-event__meta` | bottom | +25 | —（終點）|
+
+`Q5→Q6` 是一段 chord 1912 的大弧，橫跨論壇一整段長 bio —— 高度變動最大的區域
+交給它吸收，與 mob 用長直線吃掉同一段的作法同構。
+
+`Q9→Q10→Q11` 是**撞左牆的尖角**：兩側 handle 各為 0，退化成硬轉角。
+這是 pad 稿特有的語彙（mob 的 P6 是平滑通過）。
+
+### mob（`P0–P13`，414 稿）
 
 | id | x | 錨點 element | 邊 | dy / t | 到下一點 |
 | --- | --- | --- | --- | --- | --- |
@@ -260,6 +302,28 @@ P6 落在論壇一那段長 bio 裡（稿上是上緣 +457）。bio 是整段裡
 ## 五、join 參數表
 
 這些數字是**從設計稿抽出來的形狀不變量**，不是量測到的座標 —— 換視窗寬不必重算。
+
+### pad
+
+| join | 長度（稿）| chord° | relIn° | relOut° | hIn | hOut |
+| --- | --- | --- | --- | --- | --- | --- |
+| Q0→Q1 | 208 | 90.0 | — | — | — | — |
+| Q1→Q2 | 194 | −17.9 | −47.8 | +58.8 | 0.300 | 0.516 |
+| Q2→Q3 | 463 | 78.2 | −37.3 | +11.8 | 0.257 | 0.229 |
+| Q3→Q4 | 513 | 147.7 | **+95.2** | −47.2 | 0.347 | 0.661 |
+| Q4→Q5 | 399 | 37.3 | −76.8 | +42.2 | 0.359 | 0.672 |
+| Q5→Q6 | 1912 | 87.9 | −8.4 | +2.1 | 0.194 | 0.225 |
+| Q6→Q7 | 256 | 158.8 | **+90.9** | −44.5 | 0.395 | 0.936 |
+| Q7→Q8 | 314 | 115.5 | — | — | — | — |
+| Q8→Q9 | 141 | 166.9 | +68.2 | −47.4 | 0.434 | 0.632 |
+| Q9→Q10 | 271 | 112.4 | +7.0 | （無意義）| 0.487 | **0** |
+| Q10→Q11 | 240 | 60.7 | （無意義）| −0.6 | **0** | 0.668 |
+| Q11→Q12 | 666 | 40.5 | −81.8 | +40.1 | 0.476 | 0.453 |
+| Q12→Q13 | 500 | 148.9 | +78.1 | −47.2 | 0.283 | 0.688 |
+
+handle 為 0 的那一側，控制點與端點重合 → 該側的角度不影響結果，填 0 即可。
+
+### mob
 
 | join | 長度（稿）| chord° | relIn° | relOut° | hIn | hOut |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -360,7 +424,7 @@ P6 落在論壇一那段長 bio 裡（稿上是上緣 +457）。bio 是整段裡
 
 ## 八、驗證
 
-### 黃金樣本（`test/forum-mob-path.spec.ts`）
+### 黃金樣本（`test/forum-node-path.spec.ts`）
 
 1. 把 Figma `2584:35109` 的 outline 用 `extract-centerline.mjs` 抽成真中心線
    （腳本目前把來源寫死成 `ForumCorePath.vue`，要加一個路徑參數），存成 fixture
@@ -380,28 +444,34 @@ P6 落在論壇一那段長 bio 裡（稿上是上緣 +457）。bio 是整段裡
 - `'left'` / `'right'` / `'center'` / 數字四種 x 的解析
 - `edge` 三種模式的 y 解析
 
-### 瀏覽器實測（2026-08-07 prototype 結果）
+### 瀏覽器實測
 
 沿用 `forum-core-path.md` 的驗證方式，於 dev server 實測：
 
-| 項目 | mob 實測 | pc 參考值 |
-| --- | --- | --- |
-| 核心到可見線 中位 | **0.415px** | 0.59px |
-| 核心到可見線 最大 | **0.815px** | 2.05px |
-| 往回捲 drift | **0px** | 0px |
-| 線寬／線色 | 4px / `rgba(0,0,0,.1)` | outline / `rgba(0,0,0,.03)` |
+| 項目 | pad（1024）| mob（414）| pc 參考值 |
+| --- | --- | --- | --- |
+| 核心到可見線 中位 | **0.629px** | **0.415px** | 0.59px |
+| 核心到可見線 最大 | **0.975px** | **0.815px** | 2.05px |
+| 往回捲 drift | **0px** | **0px** | 0px |
+| 線寬／線色 | 4px / `rgba(0,0,0,.1)` | 同左 | outline / `rgba(0,0,0,.03)` |
 
-mob 比 pc 準是因為**驅動線 ＝ 可見線**（同一個 `d`），沒有中心線抽取的誤差。
+pad / mob 比 pc 準，是因為**驅動線 ＝ 可見線**（同一個 `d`），沒有中心線抽取的誤差。
 
-**x 縮放實測**（414 → 375 視窗，容器 398.67 → 360）：
+**寬度掃描**（每一格都是 14 點、零溢出、起點落在容器水平中心）：
 
-- 釘邊點：左 2 / 右 358（零溢出，`最左 2`、`最右 358`）
-- 中心點：180（＝ 360/2）
-- 容器高 5427 → 5777（文字 reflow 變高 350px），**線自己跟著長**
+| 視窗 | 容器寬 | 容器高 | 線的最左／最右 |
+| --- | --- | --- | --- |
+| pad 768（下限）| 752.7 | 5164 | 2 / 652.6 |
+| pad 1024 | 1009 | 4912 | 2 / 874.5 |
+| pad 1279（上限）| 1264 | 4768 | 2 / 1095.9 |
+| mob 414 | 398.7 | 5427 | 2 / 396.7 |
+| mob 375 | 360 | 5777 | 2 / 358 |
 
+同一份內容，pad 從 1279 縮到 768 時容器高 **4768 → 5164（+396px）**、
+mob 從 414 縮到 375 時 **5427 → 5777（+350px）**，線全程自己跟著長。
 這正是寫死 `d` 做不到的兩件事：窄視窗不溢出、文字變高不飄。
 
-**待補的實測**：真機（無捲軸，容器 ＝ 414）、320 寬下限、以及字體 fallback 時的表現。
+**待補的實測**：真機（無捲軸）、320 寬下限、字體 fallback 時的表現。
 
 ---
 
@@ -433,14 +503,13 @@ mob 比 pc 準是因為**驅動線 ＝ 可見線**（同一個 `d`），沒有�
 
 ---
 
-## 十、mob 之外
-
-**pad 遲早會需要同一套。** pad 的容器不是固定的 —— `.forum-event` 在 pad 同樣退回
-flex 直排，而 768–1279 這 512px 區間內文字會 reflow。`forum-core-path.md:217`
-也已預告過：pad 的 `Vector 276` 是一條跨越三場、必須同時咬住多個位置的連續 stroke path。
-
-真的要做的時候，換一組 `FORUM_MOB_NODES` 就好，產生器不必動 ——
-但要記得把 `FORUM_MOB_*` 這組名字一併正名。
+## 十、pad / mob 之外
 
 **pc 不需要，也不要動。** 它是絕對定位釘死在 1280 座標，且現有的 `d` 已手工校正到
-中位誤差 0.59px。
+中位誤差 0.59px。加新斷點時，只要在 `FORUM_PATH_NODES` 填一組 waypoint 陣列就會生效，
+產生器與元件都不必動。
+
+**論壇段後半段（論壇四／議程／精彩活動）另有一條線**，三個斷點的稿分別是
+pad `2679:90235`、mob `2584:35141`、pc `2584:35143`。⚠️ 那三條在 Figma 上是**頁面層的
+孤兒 vector**，沒有 artboard 座標可對 —— 稿只給形狀、不給位置，頂點掛哪個區塊必須自己決定
+（做的時候用第六節那套 P 編號協定微調）。前半段這兩條則都對得到稿，別把兩者混為一談。

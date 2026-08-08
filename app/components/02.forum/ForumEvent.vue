@@ -11,7 +11,8 @@ const props = defineProps<{ event: ForumEvent }>();
 const dateParts = computed(() => props.event.date.split('/'));
 
 // 階梯式日期（論壇二）不畫實體斜線：設計稿把 09 與 15 之間的對角空隙留給橘核心當那一撇。
-const hasSlash = computed(() => props.event.layout !== 'stair');
+// 論壇四同樣是階梯式卻**有**實體斜線，故改由資料明寫、layout 只當預設值。
+const hasSlash = computed(() => props.event.slash ?? props.event.layout !== 'stair');
 
 // 設計稿的講者版式分兩種：單人是「照片左／文字右」，多人（論壇二）是並排卡片。
 const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
@@ -59,7 +60,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
       <p class="forum-event__venue">
         <span v-for="(line, i) in event.venue" :key="i">{{ line }}</span>
-        <span v-if="event.time">{{ event.time }}</span>
+        <!-- 時間預設排在地點之後；論壇四的稿相反（時間在上），由 SCSS 用 order 換位。 -->
+        <span v-if="event.time" class="forum-event__time">{{ event.time }}</span>
       </p>
     </div>
 
@@ -195,6 +197,33 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
       padding: 32px 26px 32px;
     }
   }
+
+  // 論壇四：日期只有兩行（2026／09-30，第二行往右錯開 --stair-x1），時間與地點接在下面，
+  // 整組切齊右緣；講者卡與論壇二完全相同，故那幾條規則用選擇器共用、不重寫。
+  // --date-size / --date-lh 由稿反推：pc 的 2026 與 09/30 兩行間距 98.7 → lh 98（與論壇一同值）。
+  &--youth {
+    --date-size: 105px;
+    --date-lh: 98px;
+    --stair-x1: 115px;
+
+    padding: 816px 0 120px;
+
+    @include rwd-max('pc') {
+      --date-size: 82px;
+      --date-lh: 79px;
+      --stair-x1: 92px;
+
+      padding: 200px 80px 80px;
+    }
+
+    @include rwd-max('tablet') {
+      --date-size: 58px;
+      --date-lh: 56px;
+      --stair-x1: 66px;
+
+      padding: 112px 26px 100px;
+    }
+  }
 }
 
 // 標眉～CTA 整落：設計稿都靠左 x=108，抽離文件流後底下的講者組不受其行數影響。
@@ -207,10 +236,16 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     position: static;
   }
 
-  // mob 的論壇二把「立即報名」排到講者組之後（pad 稿仍緊接在內文下方）。
+  // 論壇四的標眉落在設計稿 y=200（不是 0），故 pc 要往下推；pad／mob 由 padding-top 負責。
+  .forum-event--youth & {
+    top: 200px;
+  }
+
+  // mob 的論壇二／論壇四把「立即報名」排到講者組之後（pad 稿仍緊接在內文下方）。
   // display: contents 讓標眉～CTA 直接成為 .forum-event 的 flex 子項，CTA 才能用 order 移到最後。
   @include rwd-max('tablet') {
-    .forum-event--stair & {
+    .forum-event--stair &,
+    .forum-event--youth & {
       display: contents;
     }
   }
@@ -314,7 +349,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     }
   }
 
-  .forum-event--stair & {
+  .forum-event--stair &,
+  .forum-event--youth & {
     margin-top: 0;
   }
 
@@ -371,6 +407,18 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     max-width: none;
     font-size: 18px;
   }
+
+  // 論壇四的內文比論壇二寬：pc 785（稿）、pad／mob 則是內容欄滿寬。
+  // ⚠ pad／mob 一定要把 width 寫回 auto —— 這一層的特異度（0,2,0）比基底的 rwd 區塊
+  //   （0,1,0）高，不覆寫的話 pc 的 785px 會一路帶到窄斷點去爆版。
+  .forum-event--youth & {
+    width: 785px;
+
+    @include rwd-max('pc') {
+      width: auto;
+      max-width: none;
+    }
+  }
 }
 
 // CTA：設計稿 y=542。
@@ -400,6 +448,20 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     width: 100%;
     font-size: 20px;
   }
+
+  // 論壇四的按鈕在 pc 稿是 440 寬；pad／mob 與論壇二同尺寸，但仍要明寫回去
+  // （同 __body 的理由：這一層特異度較高，會蓋掉基底 rwd 區塊的值）。
+  .forum-event--youth & {
+    width: 440px;
+
+    @include rwd-max('pc') {
+      width: 296px;
+    }
+
+    @include rwd-max('tablet') {
+      width: 100%;
+    }
+  }
 }
 
 // 定位層本身不佔高度，內部三組各自吃設計稿座標。
@@ -423,6 +485,18 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
     @include rwd-max('tablet') {
       margin-top: 80px;
+    }
+  }
+
+  // 論壇四：日期／時間／地點是一整落右切齊的直排，pad／mob 接在 CTA 之後。
+  .forum-event--youth & {
+    @include rwd-max('pc') {
+      position: relative;
+      margin-top: 111px;
+    }
+
+    @include rwd-max('tablet') {
+      margin-top: 76px;
     }
   }
 
@@ -528,6 +602,18 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
       margin: 92px 0 0;
     }
   }
+
+  // 論壇四：維持基底的兩行格線（2026 ／ 09-30 三），只是第二行往右錯開（見 __date-mm）。
+  // 刻意不走 --stair 那組規則 —— 那會把「09」與「30」拆成兩行。
+  .forum-event--youth & {
+    top: 702px;
+    left: 714px;
+
+    // pad／mob：整組切齊右緣（稿的日期組右緣 ＝ 內容欄右界）。
+    @include rwd-max('pc') {
+      margin-left: auto;
+    }
+  }
 }
 
 .forum-event__date-year {
@@ -550,6 +636,12 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
 .forum-event__date-mm {
   grid-area: 2 / 1;
+
+  // 論壇四：第二行（09/30 三）整行往右錯開；因為 mm 是該行的第一格，
+  // 給它 margin-left 就會把同列的斜線／日／星期一起推過去。
+  .forum-event--youth & {
+    margin-left: var(--stair-x1);
+  }
 
   .forum-event--stair & {
     grid-area: 2 / 1 / 3 / -1;
@@ -684,6 +776,37 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
       line-height: 39px;
     }
   }
+
+  // 論壇四：接在日期兩行之下，整組切齊右緣。字級由稿反推 —— pc 的地點 10 個字寬 438.85
+  // → 43.9/字；行距取兩行的實際間距（pc 70、pad 56、mob 35）。
+  .forum-event--youth & {
+    top: 904px;
+    right: 108px;
+    align-items: flex-end;
+    font-size: 44px;
+    line-height: 70px;
+    text-align: right;
+
+    @include rwd-max('pc') {
+      position: static;
+      margin: 12px 0 0 auto;
+      font-size: 35px;
+      line-height: 56px;
+    }
+
+    @include rwd-max('tablet') {
+      font-size: 28px;
+      line-height: 35px;
+    }
+  }
+}
+
+// 論壇四的稿把時間排在地點之上（其餘三場都在之下）。__venue 是 flex column，
+// 故用 order 換位即可，不必為此改 template 的順序。
+.forum-event__time {
+  .forum-event--youth & {
+    order: -1;
+  }
 }
 
 // 講者組：論壇一設計稿 x=463 寬 709，論壇二 x=455 寬 528（兩張 250 卡片 ＋ 28 欄距）。
@@ -707,7 +830,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     }
   }
 
-  .forum-event--stair & {
+  .forum-event--stair &,
+  .forum-event--youth & {
     display: flex;
     gap: 28px;
     width: 528px;
@@ -728,6 +852,22 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     @include rwd-max('tablet') {
       grid-template-columns: 1fr;
       gap: 16px;
+      margin: 60px 0 0;
+    }
+  }
+
+  // 論壇四的講者卡尺寸與論壇二一模一樣（pc 250、pad 210），差別只有水平位置：
+  // 論壇二切齊右緣、論壇四靠左（pc 稿 x=114、pad 稿 x=80 ＝ 版面左邊界）。
+  // 必須寫在上面那組之後才蓋得過去（兩者特異度同為 0,2,0）。
+  .forum-event--youth & {
+    margin-left: 114px;
+
+    @include rwd-max('pc') {
+      justify-content: start;
+      margin: 32px auto 0 0;
+    }
+
+    @include rwd-max('tablet') {
       margin: 60px 0 0;
     }
   }
@@ -762,7 +902,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     }
   }
 
-  .forum-event--stair & {
+  .forum-event--stair &,
+  .forum-event--youth & {
     @include rwd-max('pc') {
       grid-column: 1 / -1;
     }
