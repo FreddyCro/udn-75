@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { nearestArcLength, slashDrawAt } from '../app/utils/forum-slash';
+import section2 from '../app/locales/section2.json';
+import { FORUM_SLASH_AT } from '../app/utils/orange-core-config';
 
 // vitest 沒設 alias（見 vitest.config.ts），故一律相對路徑 import。
 
@@ -64,5 +66,33 @@ describe('nearestArcLength', () => {
 
   it('totalLen 為 0（尚未建線）→ 回 0，不會無限迴圈', () => {
     expect(nearestArcLength({ x: 5, y: 5 }, horizontal, 0)).toBe(0);
+  });
+});
+
+// section2.json 的結構：論壇一~三在 forum.events[]，論壇四單獨掛在 forum.event4
+//（它在版面上與前三場分離 —— 在議程之後）。兩處都要驗，才守得住「只有論壇二交給核心」。
+describe('資料層', () => {
+  const events = section2.forum.events as { no: string; layout: string; slash?: boolean | string }[];
+  const event4 = section2.forum.event4 as { no: string; layout: string; slash?: boolean | string };
+
+  it('論壇一~三之中只有論壇二把那一撇交給核心畫', () => {
+    const core = events.filter((e) => e.slash === 'core').map((e) => e.no);
+    expect(core).toEqual(['論壇二']);
+  });
+
+  it('論壇四是階梯式但自己畫實體斜線（不受本次改動影響）', () => {
+    expect(event4.no).toBe('論壇四');
+    expect(event4.layout).toBe('youth');
+    expect(event4.slash).toBe(true);
+  });
+
+  it('三個斷點各有一組窗口設定（null ＝ 由幾何推導）', () => {
+    expect(Object.keys(FORUM_SLASH_AT).sort()).toEqual(['mob', 'pad', 'pc']);
+    for (const w of Object.values(FORUM_SLASH_AT)) {
+      if (w === null) continue;
+      expect(w[0]).toBeGreaterThanOrEqual(0);
+      expect(w[1]).toBeLessThanOrEqual(1);
+      expect(w[0]).toBeLessThanOrEqual(w[1]);
+    }
   });
 });

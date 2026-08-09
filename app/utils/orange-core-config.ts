@@ -53,6 +53,25 @@ export const SYMBOL_TRANSITION = {
 //   CROSSFADE — stage 5 星空淡入所占比例（避免大片半透明星空透出白底而 washy）
 //   TRANSITION— 星空遮罩起點尺寸（由 CORE.dotSize × lineScaleX 推導，永遠對齊那條 core 線）
 
+// ── 論壇二 09/15 那一撇的觸發窗口 ────────────────────────────────────
+// 值是 forumPath 軌的 0..1，也就是 SEQUENCE 的 `forum.path.40%` 那個地址 ——
+// dashboard（?pathdebug）顯示的窗口可以直接貼回這裡。
+//
+// null ＝ 由 ForumCorePath.build() 依幾何推導（撇的兩端在驅動線上的最近弧長）。
+// 推導是預設值，因為版面一動（標題行數、講者照片、字體 fallback）百分比就會變 ——
+// 寫死等於把量測快照抄成常數，正是 architecture/forum-node-path.md 第七節警告的事。
+//
+// 填數字則以填的為準，給「設計到切版有落差、要手動對」用。三個斷點各自獨立：
+// 初值都填 pc 實測的 [0.40, 0.41]，pad / mob 切版對完再各自調（或改回 null 讓它自己算）。
+//
+// ⚠ 這裡**不放**那一撇的外觀（長寬比、傾角）—— 那是排版數字，由 --date-size 推導，
+//   跟 --stair-x1 一起住在 ForumEvent.vue 的 SCSS 裡。改字級只該動一個檔案。
+export const FORUM_SLASH_AT: Record<'pc' | 'pad' | 'mob', [number, number] | null> = {
+  pc: [0.4, 0.41],
+  pad: [0.4, 0.41],
+  mob: [0.4, 0.41],
+};
+
 // ── 論壇段核心的移動速度曲線 ──────────────────────────────────────────
 // 同 hero 的 MOVE_EASE 語意：scrub 本身等速綁定捲動，此 ease 只重新分配「捲動 → 路徑進度」
 // 的節奏，不改總距離。'none' 等速 / 'power2.inOut' 兩端慢中間快。
