@@ -52,7 +52,9 @@ const groups: AssetGroup[] = [
   {
     title: '/img',
     items: [
-      ...seq('/img/udn75_pic01_', 18),
+      // 論壇講者照：編號跳號（_04~_09 設計端保留未用），故拆成兩段連號。
+      ...seq('/img/udn75_pic01_', 3),
+      ...seq('/img/udn75_pic01_', 2, 10),
       ...seq('/img/udn75_pic02_', 2),
       // 子頁上／下一頁按鈕（SubpageNav）
       logo('/img/udn75_nav_prev'),

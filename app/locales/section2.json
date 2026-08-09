@@ -28,9 +28,9 @@
           {
             "role": "",
             "name": "Dr. Mario García",
-            "nameZh": "馬立歐・賈西亞博士",
+            "nameZh": "馬力歐・賈西亞博士",
             "photoNo": "01",
-            "photo": "",
+            "photo": "/img/udn75_pic01_01",
             "bio": [
               "美國哥倫比亞大學新聞研究所（Columbia University's Graduate School of Journalism）新聞設計資深顧問和兼職教授，創辦顧問公司García Media，該公司專注於新聞編輯室轉型、設計策略和行動優先敘事。",
               "加西亞博士被公認為世界頂尖的媒體設計師之一，他領導了遍布122個國家的750多個重新設計和創新項目。他的客戶包括《華爾街日報》、《華盛頓郵報》、《南華早報》、挪威《Aftenposten》、德國《Handelsblatt》以及許多其他主流媒體機構。除了新聞領域，他的企業合作計畫涵蓋了與 Facebook、WalMart、聯合國、Hapag Lloyd 航運和 JetBlue 航空等公司的合作。他目前的計畫包括德國《Handelsblatt》和德國《Tagesspiegel》，並為包括英國《泰晤士報》、新加坡《海峽時報》和南非 Media 24 集團在內的多家媒體機構提供培訓研討會。",
@@ -60,14 +60,14 @@
             "role": "台積電董事長暨總裁",
             "name": "魏哲家",
             "photoNo": "02",
-            "photo": "",
+            "photo": "/img/udn75_pic01_02",
             "bio": []
           },
           {
             "role": "台積電執行副總經理 暨共同營運長",
             "name": "秦永沛",
             "photoNo": "03",
-            "photo": "",
+            "photo": "/img/udn75_pic01_03",
             "bio": []
           }
         ]
@@ -105,14 +105,14 @@
           "role": "台積電文教基金會 董事長",
           "name": "曾繁城",
           "photoNo": "04",
-          "photo": "",
+          "photo": "/img/udn75_pic01_10",
           "bio": []
         },
         {
           "role": "台積電文教基金會 執行長",
           "name": "許峻郎",
           "photoNo": "05",
-          "photo": "",
+          "photo": "/img/udn75_pic01_11",
           "bio": []
         }
       ]

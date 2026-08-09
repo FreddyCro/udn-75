@@ -78,11 +78,13 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
         class="forum-event__speaker"
         :class="{ 'forum-event__speaker--card': isSpeakerCards }"
       >
-        <!-- photo 未填時顯示帶編號的 placeholder；填了路徑就自動換成實圖，不需改程式碼。 -->
+        <!-- photo 未填時顯示帶編號的 placeholder；填了路徑就自動換成實圖，不需改程式碼。
+             講者照只有一張正方圖（無 _pc/_pad/_mob 後綴）→ srcset 收成單一組、use-prefix 關掉。 -->
         <UPic
           v-if="sp.photo"
           :src="sp.photo"
           :use-prefix="false"
+          :srcset="['mob']"
           :alt="sp.name"
           classname="forum-event__photo"
         />
