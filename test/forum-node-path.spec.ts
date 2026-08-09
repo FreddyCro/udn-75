@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildNodePathD,
   FORUM_FRONT_NODES,
@@ -184,10 +184,17 @@ describe('完整路徑（前半段 ＋ 後半段）', () => {
 describe('錨點量不到時', () => {
   const measure = measureFrom(MOB_RECTS);
 
-  it('必要錨點量不到 → 整條放棄，不吐一條少一個點的線', () => {
+  it('必要錨點量不到 → 整條放棄，不吐一條少一個點的線；且大聲警告哪個節點量不到', () => {
+    // buildNodePathD 在這條「整條放棄」的路徑上會 console.warn 一行，把靜默失敗變大聲失敗
+    // （見 architecture/forum-node-path.md 大聲失敗的規則、以及 forum-path bugfix 事故報告）。
+    // 這裡攔截掉，斷言「有警告」而非讓它污染測試輸出。
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const partial: ForumPathMeasure = (a) =>
       a.sel === '.forum-event__venue' ? null : measure(a);
     expect(buildNodePathD(MOB_NODES, { width: 414, measure: partial })).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain('.forum-event__venue');
+    warn.mockRestore();
   });
 
   it('optional 錨點量不到 → 跳過該點，其餘照畫', () => {
@@ -412,4 +419,31 @@ describe('join 的形狀不變量', () => {
     const n = d.match(/C([-\d.\s]+)/)![1]!.trim().split(/\s+/).map(Number);
     expect([n[0], n[1]]).toEqual([0, 0]); // c1 ＝ 起點
   });
+});
+
+// ── 事故回歸：必要錨點不能只靠會消失的 placeholder ──────────────────────
+// 起因（見 forum-path bugfix 事故報告）：ForumEvent.vue 的講者照片未填時顯示
+// `.forum-event__photo-slot` 佔位符，填了照片後改渲染 `.forum-event__photo`、
+// slot 整個從 DOM 消失。fa67c1b 補完講者照片後，pc 的 W5／W17 兩個必要節點
+// 卻只寫死 `.forum-event__photo-slot`，量不到 → buildNodePathD 整條放棄 →
+// ForumCorePath reset → 橘核心 dot 在 symbolProgress=1.0 就消失，後續設計線也不見。
+// 佔位符是資料驅動、隨時可能消失，任何必要（非 optional）錨點都不可以只靠它，
+// 必須同時涵蓋 `.forum-event__photo`（pad／mob 的寫法本來就是對的，只有 pc 這兩點漏改）。
+describe('必要錨點不可只靠會消失的 placeholder（回歸：pc W5／W17 事故）', () => {
+  // `.forum-event__photo-slot` 這個字串本身就以 `.forum-event__photo` 開頭，
+  // 天真的 .includes('.forum-event__photo') 對它永遠是 true、測不出任何東西 ——
+  // 必須用「後面不能接著字母／連字號」的規則，排除掉它只是 -slot 的前綴。
+  const mentionsSlot = /\.forum-event__photo-slot\b/;
+  const hasStandalonePhoto = /\.forum-event__photo(?![-\w])/;
+
+  it.each(['pc', 'pad', 'mob'] as const)(
+    '%s：非 optional 節點若選擇器提到 photo-slot，必須同時涵蓋獨立的 .forum-event__photo',
+    (bp) => {
+      const offenders = FORUM_PATH_NODES[bp]!
+        .filter((n) => !n.optional && mentionsSlot.test(n.anchor.sel))
+        .filter((n) => !hasStandalonePhoto.test(n.anchor.sel))
+        .map((n) => n.id);
+      expect(offenders, `以下節點只靠會消失的 .forum-event__photo-slot：${offenders.join(', ')}`).toEqual([]);
+    }
+  );
 });

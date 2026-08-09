@@ -400,7 +400,7 @@ const PC_FRONT_NODES: ForumPathNode[] = [
   {
     id: 'W5', // 容器 (535, 1509)。髮夾彎（左下）
     x: 0.418,
-    anchor: { event: '論壇一', sel: '.forum-event__photo-slot', edge: 'top', dy: -87 },
+    anchor: { event: '論壇一', sel: '.forum-event__photo, .forum-event__photo-slot', edge: 'top', dy: -87 },
     join: { relIn: 32.7, relOut: -34.9, hIn: 0.34, hOut: 0.38 },
   },
   {
@@ -474,7 +474,7 @@ const PC_FRONT_NODES: ForumPathNode[] = [
   {
     id: 'W17', // 容器 (212, 4236)。補點：原本 W16→W18 一段 chord 668、偏差 3.02px
     x: 0.165,
-    anchor: { event: '論壇二', sel: '.forum-event__photo-slot', edge: 'fraction', t: 0.4674 },
+    anchor: { event: '論壇二', sel: '.forum-event__photo, .forum-event__photo-slot', edge: 'fraction', t: 0.4674 },
     join: { relIn: 7.5, relOut: -97.6, hIn: 0.5, hOut: 0.02 },
   },
   {
@@ -739,6 +739,7 @@ export function buildNodePathD(
     const m = measure(n.anchor);
     if (!m) {
       if (n.optional) continue;
+      console.warn(`[forum-node-path] 必要錨點量不到，整條線放棄：node="${n.id}" sel="${n.anchor.sel}"`);
       return null;
     }
     live.push({
