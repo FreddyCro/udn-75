@@ -137,9 +137,10 @@ export const SYMBOL_STOPS: readonly {
 
 // 這段序列吃掉的捲動距離（× 視窗高）＝ 速度旋鈕（越大每個狀態停留越久）。
 // 2026-08-04：1.6 → 3.2（整段距離拉長一倍），讓 disperse / face / converge 各拍都有更長的停留。
-// 2026-08-09：3.2 → 4.0。新增的 80vh 給第一拍疊上的開場三行文案（見 SYMBOL_INTRO）——
-//             文案要有「浮現 → 讀完 → 淡出」的完整節奏，48vh 太趕。
-//             同時重算 SYMBOL_STOPS 的門檻，讓 face 的絕對長度幾乎不變（137.6 → 136vh）。
+// 2026-08-09：3.2 → 4.0。+80vh 裡 64vh 落在第一拍，疊上開場三行文案（見 SYMBOL_INTRO，
+//             disperse 48 → 112vh）——文案要有「浮現 → 讀完 → 淡出」的完整節奏，48vh 太趕。
+//             同時重算 SYMBOL_STOPS 的門檻：face 幾乎不變（137.6 → 136vh），converge 拉長
+//             （54.4 → 88vh，+33.6vh），handoff 縮短（80 → 64vh，−16vh）——見 FORUM_HANDOFF。
 export const SYMBOL_VH = 4.0;
 
 // ── 進場方塊的邊長（px）──────────────────────────────────────────────
@@ -196,8 +197,8 @@ export const BLESSING_HOLD = 0.15;
 //      （序號只是方便口頭念），正式書寫一律用 `forum.face.59%`。
 //
 // 反算回程式碼（dashboard 會直接印出來）：
-//   forum.face.59% → symbolProgress = 0.15 + 0.59 × (0.58 − 0.15) = 0.404
-//                  → 距符號段起點 129.2vh（SYMBOL_VH 3.2 ＝ 320vh）
+//   forum.face.59% → symbolProgress = 0.28 + 0.59 × (0.62 − 0.28) = 0.4806
+//                  → 距符號段起點 192.24vh（SYMBOL_VH 4.0 ＝ 400vh）
 //
 // drive（驅動型）決定這個地址能不能拿來綁捲動事件 —— 混用會下出做不到的指令：
 //   'scrub' 綁捲動、可逆，progress ＝ 捲動比例。**只有這種能在任意 % 掛門檻。**
