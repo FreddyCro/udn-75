@@ -130,11 +130,28 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
+// 核心穿過議程時要藏在議程背後 —— 線從論壇三垂直落下、經過議程這一段看不見，
+// 到議程底緣才續行到論壇四（見 forum-node-path 的 Q13 → S0 → S1 三點同 x）。
+//
+// 為什麼要議程自己出底：核心住在 .sec2__path，而那層帶 z-index: 1、刻意畫在 .sec2__pin
+// 之上，好讓核心在後半段的論壇四／精彩活動看得見（見 Forum.vue）。所以 .sec2__pin 的白底
+// 遮不到它，得由議程再高一層並自備不透明底。z-index 2 仍遠低於 ForumCore 的 20，
+// 交棒的 fixed 黑底照樣蓋得住議程。
+//
+// 底只鋪到欄寬（pc 1064）就夠：線在議程段固定落在箭頭欄 —— 距欄左緣 208px（pad 126px，
+// ＝ .agenda__category 的 192／110 加 16 的 gap），26px 的核心 ±13px 進不到欄外。
+//
+// ⚠️ 這個 z-index 能與 .sec2__path 相比，前提是 .sec2__pin 不自成堆疊脈絡
+//    （它 opacity: 1、position: relative、z-index: auto → 不會）。議程淡入的那 0.4s
+//    內 opacity < 1 會暫時成脈絡、議程被關在裡面，但那時核心還在段落上方，看不到差別。
 .agenda {
   --agenda-line: var(--color-gray-light);
 
+  position: relative;
+  z-index: 2;
   max-width: 1064px;
   margin: 0 auto;
+  background: #fff;
 
   @include rwd-max('pc') {
     max-width: 608px;
