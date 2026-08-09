@@ -460,6 +460,13 @@ function applyScrollLock() {
           :float-amp="18"
           :float-micro="0.5"
         />
+
+        <!--
+          開場三行文案：疊在粒子場之上的純視覺層（見 01a.symbol/SymbolIntro.vue）。
+          與 <SymbolFace> 同一個 slot ＝ 同生共死；顯隱由它自己讀 symbolProgress 決定，
+          不吃 slot 的 active（那是「要不要跑 rAF」的訊號，文字層沒有 rAF）。
+        -->
+        <SymbolIntro />
       </template>
     </HeroSymbolTransition>
   </section>
