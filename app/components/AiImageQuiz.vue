@@ -104,7 +104,7 @@ function pick(i: number) {
       </button>
     </div>
 
-    <div class="ai-quiz__panel">
+    <div class="ai-quiz__panel" :class="{ 'ai-quiz__panel--open': answered }">
       <p class="ai-quiz__hint">說明：</p>
       <div class="ai-quiz__body" :class="{ 'ai-quiz__body--open': answered }">
         <div class="ai-quiz__body-inner">
@@ -264,11 +264,17 @@ function pick(i: number) {
   }
 }
 
-// 說明面板：「說明：」常駐，作答後 body 以 grid-rows 0fr ↔ 1fr 下展
+// 說明面板：「說明：」常駐，作答後 body 以 grid-rows 0fr ↔ 1fr 下展。
+// 未展開時底線收邊（面板僅一行「說明：」）；展開後內容自己撐出範圍，底線移除
 .ai-quiz__panel {
   margin-top: 28px;
   padding: 16px 24px;
   background: #f7f7f7; // 面板專用底色，非全站 token
+  border-bottom: 1px solid #d9d9d9; // 面板收邊線，非全站 token
+
+  &--open {
+    border-bottom-color: transparent; // 保留 1px 佔位，展開時不位移
+  }
 }
 
 .ai-quiz__hint {

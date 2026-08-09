@@ -18,16 +18,10 @@
     }
   }
 
-  // hero／引言／得獎作品寬欄
+  // 得獎作品寬欄
   .sp-col--wide {
-    @include rwd-min('tablet') {
-      max-width: var(--subpage-wide-w);
-      padding: 0 57px;
-    }
-    @include rwd-min('pc') {
-      max-width: var(--subpage-wide-w);
-      padding: 0 20px;
-    }
+    max-width: 1104px;
+    padding: 0 20px;
   }
 
   // 滿版嵌入元件（分鏡、時間軸…）：須 relative + z-index 2 + 不透明底才蓋得過

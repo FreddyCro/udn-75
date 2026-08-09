@@ -27,9 +27,7 @@
   --text-intro: 32px; /* 引言 lead（Figma 四部門引言 32/60 Light；mob 22/40） */
   --text-intro--line-height: 60px;
 
-  /* ── 子頁版型間距（section 內：title→desc→img；section 之間）──
-     共用旋鈕，四頁一致；SCSS 內以 var(--sp-*) 取用。 */
-  --subpage-wide-w: 1064px; /* hero／引言／得獎作品寬欄 */
+  --subpage-wide-w: 1080px; /* hero／引言／得獎作品寬欄 */
   --subpage-content-w: 670px; /* 內文窄欄（可讀行長） */
   --sp-img-caption: 12px; /* 圖 → 圖說 */
   --sp-work-y: 16px; /* 得獎作品每列上下內距 */

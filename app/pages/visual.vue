@@ -35,8 +35,8 @@ const c = raw as VisualContent;
       <AiImageQuiz :options="c.quiz.options" />
     </div>
 
-    <!-- 資訊超載的時代：無小標，接在測驗之下 -->
-    <div class="sp-col mt-16">
+    <!-- 資訊超載的時代 -->
+    <div class="sp-col mt-8 sm:mt-7">
       <p class="sp-p" v-html="c.aiEra" />
     </div>
 

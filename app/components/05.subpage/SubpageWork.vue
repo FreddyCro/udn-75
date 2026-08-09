@@ -51,7 +51,6 @@ withDefaults(
   justify-content: space-between;
   gap: 8px;
   padding: var(--sp-work-y) 0;
-  color: inherit;
   text-decoration: none;
   transition: opacity 0.3s ease;
 
@@ -106,15 +105,9 @@ withDefaults(
   color: var(--color-gray);
   transition: color 0.2s ease;
 
-  .award-work:hover & {
-    color: var(--color-orange);
-  }
-
   @include rwd-min('pc') {
     font-size: var(--text-h5);
     line-height: var(--text-h5--line-height);
-    font-weight: 500;
-    color: var(--color-body);
   }
 }
 
