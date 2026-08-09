@@ -228,6 +228,41 @@ export function buildNodePathD(
 有 → `optional`；沒有 → 不標，量不到就是 bug，該讓它整條停掉。
 （存活點少於 2 個時一樣回 `null` —— 兩點才成線。）
 
+### ⚠️ 事故回顧：必要錨點不可只靠會消失的 placeholder（2026-08-09，`280e727`）
+
+上面那條「大聲失敗」規則曾經**不夠大聲** —— 量不到時是靜默 `return null`，直到下面這個事故
+發生才補上 `console.warn`。
+
+**起因**：`ForumEvent.vue` 的講者照片欄位在講者**沒有**照片時渲染
+`.forum-event__photo-slot` 佔位符；補上真實照片後改渲染 `.forum-event__photo`，
+`-slot` 那個節點整個從 DOM 消失。pc 前半段的節點 `W5`／`W17`（`PC_FRONT_NODES`）當初卻只寫死
+`.forum-event__photo-slot` 一種選擇器當**必要**（非 `optional`）錨點。pad／mob 的對應節點
+一開始就寫成 `'.forum-event__photo, .forum-event__photo-slot'`（兩者其一存在即可），只有
+pc 這兩點漏改。
+
+**症狀**：講者照片補齊之後，`.forum-event__photo-slot` 不再出現 → `measure()` 回 `null`
+→ `buildNodePathD` 依規則整條放棄 → `ForumCorePath.build()` 呼叫 `reset()` →
+`forumPathActive` 變 false → `forumCoreDotVisible` 退化成 `symbolProgress < coreOut`
+這條備援判斷 —— 結果是橘核心 dot 在 `symbolProgress = 1.0` 精準消失、之後永遠不回來，
+論壇段設計線整段空白。因為失敗是靜默的，定位耗了不少時間。
+
+**修法（`280e727`）**：
+
+1. 把 pc 的 `W5`／`W17` 改成與 pad／mob 同構的 `'.forum-event__photo, .forum-event__photo-slot'`，
+   兩種寫法在 pc 版式下量到的方框一致，講者有沒有照片都能量到。
+2. 在 `buildNodePathD` 的必要錨點量不到分支補一行 `console.warn`（點名節點 id 與選擇器），
+   把本節開頭那條規則的「大聲失敗」名符其實。
+3. `test/forum-node-path.spec.ts` 新增回歸測試：三個斷點的 `FORUM_PATH_NODES` 中，任何
+   **非 `optional`** 節點若選擇器提到 `.forum-event__photo-slot`，必須同時涵蓋獨立的
+   `.forum-event__photo`（正則排除掉 `-slot` 這個前綴本身，避免天真的字串比對測不出東西）。
+
+**要記住的不變量**：**必要錨點不可以只綁定一個「有可能合法消失」的 DOM 節點** ——
+`.forum-event__photo-slot` 是不是存在完全是資料驅動的（有沒有講者照片），這與 `optional`
+節點「整塊可能不存在」是同一類風險，差別只在於這裡有備援選擇器可以涵蓋兩種情況，不必整段標
+`optional`。新增節點、或稿改版要換錨點時，先問一句：**這個 class 會不會因為資料變了就從 DOM
+消失？** 會 → 要嘛涵蓋所有可能渲染出來的變體（像這次的修法），要嘛老實標 `optional`；
+絕對不要賭它「現在都有值」。
+
 ---
 
 ## 三、渲染
