@@ -85,8 +85,8 @@ export function useOrangeCoreProgress() {
   const symbolTarget = computed(() => resolveSymbol(symbolProgress.value));
 
   // forum 接棒視窗：symbolProgress ∈ [coreIn, coreOut) → 橘核心（ForumCore）現身。
-  //   進入（≥coreIn）→ SymbolFace 收斂點淡出、橘核心淡入（crossfade，見 FORUM_HANDOFF）；
-  //   離開（≥coreOut）→ 橘核心淡出、露出議程。捲回會自動反向。
+  //   進入（≥coreIn）→ SymbolFace 收斂點交棒給橘核心（硬切，兩顆已同色同尺寸，見 FORUM_HANDOFF）；
+  //   離開（≥coreOut）→ 黑底淡出、露出議程。捲回會自動反向。
   // 越過整段 pin（onLeave → symbolProgress=1）時 ≥coreOut，故 forum 之後橘核心不會殘留蓋住畫面。
   const forumCoreActive = computed(
     () =>

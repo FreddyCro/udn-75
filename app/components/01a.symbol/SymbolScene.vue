@@ -34,7 +34,7 @@ const sceneHeight = vhLength(SYMBOL_VH);
 //         └ 文案 8vh 淡入起／32vh 全亮／80vh 淡出起／104vh 淡完（SYMBOL_INTRO，見 SymbolIntro.vue）
 //   ②     face 集合（人像）＝最長的一拍              28% → 62%   112  → 248vh   (1210→2678px)  136vh
 //   ③     converge 匯聚成點                         62% → 84%   248  → 336vh   (2678→3629px)  88vh
-//   ④     coreIn 交棒：本層淡出＋ForumCore 淡入      84%         336vh          (3629px)        —
+//   ④     coreIn 交棒：本層淡出＋ForumCore 硬切上場  84%         336vh          (3629px)        —
 //   ⑤     enter 橘核心停在黑畫面（原地停住）          84% → 92%   336  → 368vh   (3629→3974px)  32vh
 //   ⑥     agendaIn 議程 reveal（仍在畫面外）         92%         368vh          (3974px)        —
 //   ⑦     coreOut 黑底淡出、段落捲完（onLeave→鎖 1） 100%        400vh          (4320px)        32vh

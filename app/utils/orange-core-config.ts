@@ -75,9 +75,11 @@ export const FORUM_MOVE_EASE = 'none';
 //   —— 900 高的半屏只有 450，等比那組會整顆滑出畫面，這就是本設定要解決的問題。
 export const FORUM_CENTER_KNOT_VH = 0.5;
 
-// ── forum 接棒門檻：converge 之後「白點 → 橘核心」的 crossfade（symbolProgress 0..1）──
-// coreIn ：SymbolFace 收斂點淡出、同時 ForumCore 橘方塊淡入（crossfade）。＝ converge 段終點，
-//          也是 enter 段的起點。
+// ── forum 接棒門檻：converge 之後「白點 → 橘核心」的交接（symbolProgress 0..1）──
+// coreIn ：SymbolFace 收斂點交棒給 ForumCore 橘方塊。＝ converge 段終點，也是 enter 段的起點。
+//          **硬切、不是 crossfade** —— 收斂點在收攏末段（vSolid）已由白轉橘（SymbolFace 的
+//          convergeColor ＝ CORE.orange），到這裡兩顆同色同尺寸同位置，直接換人畫。
+//          白→橘那一段跟著 converge 的 2.2s 補間走，不吃捲動，故與本門檻的位置無關。
 // coreOut：橘核心的**黑底**淡出。coreIn~coreOut 之間橘核心停在黑畫面。
 // agendaIn：`.sec2__path` 與議程整組淡入。刻意**早於** coreOut，讓那 0.4s 發生在畫面外
 //          （此時符號段底緣還在視窗底下方，見 SymbolScene 的時序表），否則會在畫面底緣看到淡入。

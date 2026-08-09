@@ -80,12 +80,20 @@ const props = defineProps({
   },
   /** 匯聚成點時那顆點的螢幕邊長（CSS px）。
    *  預設 ＝ CORE.dotSize（見 ~/utils/orange-core-config）：converge 終點要與 ForumCore 的
-   *  橘方塊 crossfade 交棒（FORUM_HANDOFF.coreIn），兩者同尺寸才不會在接棒那刻跳大小。
+   *  橘方塊硬切交棒（FORUM_HANDOFF.coreIn），兩者同尺寸才不會在接棒那刻跳大小。
    *  ⚠️ 這是「實心方塊」的邊長，不是字級 —— 收攏末段整個 sprite 會被補成不透明
    *     （見 vertexShader 的 solid / fragmentShader 的 mix(a, 1.0, vSolid)）。
    *     沒有那道實心化的話，sprite 邊長 26px 畫出來的可見墨水只有約 12px：
    *     atlas 烘字只佔 cell 的 GLYPH_FONT_SCALE(0.78)，字身墨水又只有字級的 ~0.6。 */
   convergeSize: { type: Number, default: CORE.dotSize },
+  /** 匯聚成點時那顆點的顏色。預設 ＝ CORE.orange（同 ForumCore 的橘方塊）。
+   *  ⚠️ 只作用在**實心化之後**（vSolid，＝ uConverge 的最後 10%）—— 收攏途中粒子仍走
+   *     原本的 color ramp，故看起來是「那團符號收緊、凝成核心的同時由白轉橘」。
+   *     這一段白→橘讓接棒不再需要 crossfade：兩顆同色同尺寸同位置，直接硬切。 */
+  convergeColor: {
+    type: String,
+    default: `#${CORE.orange.map((v) => v.toString(16).padStart(2, '0')).join('')}`,
+  },
 
   // ---------- 無互動時的整體漂浮 ----------
   /** 整體漂浮幅度（全部 symbol 同步隨機遊走，做出「整片在飄」） */
@@ -170,6 +178,16 @@ const props = defineProps({
   /** 開發用：顯示右上角可收合的參數面板（預設 false；demo 頁設 true） */
   dev: { type: Boolean, default: false },
 });
+
+// 色票字串 → uniform 用的 vec3，**不做色彩空間轉換**。
+// ⚠️ 不能寫 new THREE.Color(hex)：r152 起 ColorManagement 預設開啟，setStyle 會把 sRGB
+//    轉成 linear-sRGB。而本元件是 raw ShaderMaterial —— gl_FragColor 直接寫進 framebuffer，
+//    沒有 three 的 output 轉換鏈把它轉回來；漸層那張 CanvasTexture 也沒設 colorSpace
+//    （＝原樣取樣）。整份是一致的「naive sRGB」，這裡若多轉一次，同一個色號會比 ramp
+//    暗一階：#ff7f00 會畫成偏紅的 rgb(255, 55, 0)。
+//    第二個參數指定 working space ＝ 告訴 three「輸入已在目標空間」→ 不轉換。
+const srgbColor = (style: string) =>
+  new THREE.Color().setStyle(style, THREE.LinearSRGBColorSpace);
 
 const wrapRef = ref<HTMLDivElement | null>(null);
 const eggRef = ref<HTMLDivElement | null>(null);
@@ -374,6 +392,12 @@ const CONFIG_SCHEMA = [
     label: '收斂點邊長(px)',
     kind: 'num',
     step: 1,
+    group: '場景 / 節奏',
+  },
+  {
+    key: 'convergeColor',
+    label: '收斂點顏色',
+    kind: 'color',
     group: '場景 / 節奏',
   },
   {
@@ -641,9 +665,8 @@ onMounted(() => {
   // 格距是 world」兩套單位 —— 墨水/格距的填充率會隨視窗高度在 58%(1440px) 到
   // 105%(800px) 之間漂移，調不出一組能定案的值。改成 aSize 直接是 world 單位，
   // 這裡算轉換係數，resize 時一併更新 uWorldToPx。
-  const worldToPx = () =>
-    wrap.clientHeight /
-    (2 * camera.position.z * Math.tan((camera.fov * Math.PI) / 360));
+  const worldToPx = (h = wrap.clientHeight) =>
+    h / (2 * camera.position.z * Math.tan((camera.fov * Math.PI) / 360));
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -822,6 +845,7 @@ onMounted(() => {
         uDisperse: { value: 0 },
         uConverge: { value: 0 },
         uConvergePx: { value: cfg.convergeSize },
+        uSolidColor: { value: srgbColor(cfg.convergeColor) },
         uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
         uMouseInfluence: { value: 0 },
         uPixelRatio: { value: renderer.getPixelRatio() },
@@ -978,7 +1002,8 @@ onMounted(() => {
           vT = mix(aBright, hash(aSeed * 53.7), uColorRandom);
           // 實心化後所有粒子必須同色：alpha=1 的疊畫是後畫的覆蓋前面，各顆顏色不同的話
           // 那顆方塊會變成「buffer 裡最後一顆」的顏色（換 cols / 換圖就換色）。
-          // 取漸層最亮端（uT=1）＝收斂點的顏色；要指定別的顏色就改這個 1.0。
+          // 這裡先把取色位置收斂到漸層最亮端，最終顏色再由 fragment 的 uSolidColor 蓋掉
+          // （收斂點要什麼顏色改 convergeColor prop，不是改這個 1.0）。
           vT = mix(vT, 1.0, solid);
 
           vec4 mv = modelViewMatrix * vec4(pos, 1.0);
@@ -998,6 +1023,7 @@ onMounted(() => {
         uniform vec2 uAtlasGrid;
         uniform sampler2D uColorRamp;
         uniform float uInkGamma;
+        uniform vec3 uSolidColor;
         varying float vAlpha;
         varying float vGlyph;
         varying float vT;
@@ -1019,6 +1045,9 @@ onMounted(() => {
           if (a < 0.02) discard;
           vec3 ramp = texture2D(uColorRamp, vec2(clamp(vT, 0.0, 1.0), 0.5)).rgb;
           vec3 col = mix(ramp, vGlitchColor, vGlitchOn);
+          // 實心化的同時把顏色收斂到 uSolidColor（＝ CORE.orange）：那顆點在收攏最後
+          // 約 0.2s 由白轉橘，交棒給 ForumCore 時兩邊同色 → 不需要 crossfade，直接硬切。
+          col = mix(col, uSolidColor, vSolid);
           gl_FragColor = vec4(col, a);
         }
       `,
@@ -1362,25 +1391,38 @@ onMounted(() => {
   docVisible = document.visibilityState === 'visible';
   // 迴圈由 observer 的首次回呼（下一幀）啟動，此處不必先跑 —— inView 尚為 false。
 
-  const onResize = () => {
-    const w = wrap.clientWidth;
-    const h = wrap.clientHeight;
+  // 尺寸同步：觀察 .stage 本身，而不是聽 window 的 resize。
+  // ⚠️ 捲軸出現／消失**不會**觸發 window resize —— 而 hero 期間 body 是鎖住的（無捲軸），
+  //    解鎖那一刻視窗可用寬度縮掉一個捲軸寬，所有 fixed 圖層（含本層的祖先）跟著往左移
+  //    半個捲軸。canvas 若沿用 mount 時量到的舊寬，投影中心就留在舊位置 →
+  //    converge 收斂點會比 ForumCore 的橘方塊偏右半個捲軸（1388 視窗、捲軸 15.33px
+  //    實測 7.67px），交棒那一刻看得出來。改用 RO 後捲軸、--vh 變動、任何祖先版面
+  //    改變都會重量。
+  // ⚠️ 不會回授循環：.stage 的寬高來自父層與 --vh（見下方 SCSS），與 canvas 尺寸無關。
+  // 用 contentRect 而非 clientWidth：後者是四捨五入的整數，1372.67 會變 1373，
+  // 投影中心與 DOM 中心又差 0.17px —— 這段修正本來就是在追像素對位，不該自己再引入誤差。
+  const applySize = (w: number, h: number) => {
+    if (w <= 0 || h <= 0) return;
     viewW = w;
     viewH = h;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
     // world 單位的字級要跟著視窗高度重算，否則縮放視窗時字與格距的比例會跑掉
-    if (mat) mat.uniforms.uWorldToPx!.value = worldToPx();
+    if (mat) mat.uniforms.uWorldToPx!.value = worldToPx(h);
   };
-  window.addEventListener('resize', onResize);
+  const resizeObs = new ResizeObserver((entries) => {
+    const box = entries[0]?.contentRect;
+    if (box) applySize(box.width, box.height);
+  });
+  resizeObs.observe(wrap);
 
   onBeforeUnmount(() => {
     unmounted = true;
     observer.disconnect();
     cancelAnimationFrame(raf);
     document.removeEventListener('visibilitychange', onDocVisibility);
-    window.removeEventListener('resize', onResize);
+    resizeObs.disconnect();
     renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('pointerleave', onLeave);
     renderer.dispose();
