@@ -5,6 +5,9 @@
   是 ForumCorePath 設計線的錨點，見 ~/utils/forum-node-path 的 FORUM_PATH_NODES。
   ⚠️ 改 class 名或增刪這些區塊，線會量不到必要錨點而**整條消失**（刻意的 fail-loud）；
      只是改內容長短則不必動它 —— 節點是量出來的，會自己跟著走。
+  ⚠️ 但**改版位**（某個區塊相對它的錨點元素移動了）就要回頭校 `forum-node-path.ts` ——
+     那邊的 `dy` / `t` 是對著「當時渲染出來的位置」量的常數，版位一動就同步偏掉。
+     2026-08-10 修講者組的 margin collapse（照片上移 102）時，W5／W7 就是這樣被帶偏的。
 -->
 <script setup lang="ts">
 import type { ForumEvent } from '~/types/forum';
@@ -140,21 +143,21 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   --date-lh: 98px;
   --stair-x1: 154px;
   --stair-x2: 324px;
-  --stair-row1: 127.3px;
-  --stair-row2: 114.5px;
+  --stair-row1: 127px;
+  --stair-row2: 114px;
 
   // 論壇二那一撇的外框（見 .forum-event__date-coreslash）。與 --stair-* 同類：
   // 稿的絕對值、逐斷點各一組 —— 它**不是** --date-size 的固定倍率
   // （實測 h ÷ --date-size：pc 1.963、pad 1.623、mob 1.247，設計師逐斷點手調）。
   // 角度倒是三個斷點一致（w/h ＝ 0.502 / 0.497 / 0.499 → 26.6°），故 rotate 寫死。
   // x / y 是外框左上角相對 .forum-event__date 左上角的位移。
-  --coreslash-w: 103.5px;
-  --coreslash-h: 206.1px;
+  --coreslash-w: 103px;
+  --coreslash-h: 175px;
   // x/y 的 pc 起手值（257/139）是從 pad 等比推的估計值（無 pc 稿 node id 可查）；
   // 目視微調到 255/195：貼近放大檢查才看得出的細節 —— 上端要清開「9」的墨跡
   // （肉眼平視看起來已經很接近，但貼緊放大會看到蹭到筆畫），下端落在「15」左方偏下。
-  --coreslash-x: 255px;
-  --coreslash-y: 195px;
+  --coreslash-x: 248px;
+  --coreslash-y: 166px;
 
   position: relative;
 
@@ -994,17 +997,26 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
 // 單人（論壇一）：照片絕對定位在左，文字欄從 x=312 起（設計稿 268 ＋ 44 欄距）。
 // --card（多人）：照片在上、文字在下的並排卡片。
+//
+// ⚠ padding-top 102 ＝ 姓名相對講者組頂端的設計稿位移，**刻意寫成本層的 padding、
+//   不是姓名的 margin-top**：這一層與 .forum-event__speakers 都沒有上邊框／上內距，
+//   姓名又是唯一的頭一個流內子項（<picture> 內的 img 絕對定位後不產生行框），
+//   margin-top 會一路 collapse 到 .forum-event 的 padding-top 才停 ——
+//   結果是整個講者組下沉 102，連帶把絕對定位的照片與「講者介紹」標籤一起推下去
+//   （姓名與 bio 反而剛好落在對的位置，所以看起來只有照片與標籤跑版）。
+//   換成 padding 就同時擋掉 collapse、又不影響照片／標籤（絕對定位以 padding box 為基準，
+//   top: 0 仍是本層上緣）。
 .forum-event__speaker {
   position: relative;
   min-height: 268px;
-  padding-left: 312px;
+  padding: 102px 0 0 312px;
 
   &--card {
     display: flex;
     flex-direction: column;
     width: 250px;
     min-height: 0;
-    padding-left: 0;
+    padding: 0;
 
     @include rwd-max('pc') {
       width: 210px;
@@ -1115,11 +1127,12 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   }
 }
 
-// 論壇一：姓名字面落在講者組頂端下方 112.7。卡片版式改排在頭銜之後（設計稿是頭銜在上）。
+// 論壇一：姓名字面落在講者組頂端下方 112.7（那 102 的位移在 .forum-event__speaker 的
+// padding-top，見該處說明）。卡片版式改排在頭銜之後（設計稿是頭銜在上）。
 .forum-event__speaker-name {
   display: flex;
   flex-direction: column;
-  margin: 102px 0 0;
+  margin: 0;
   font-size: 42px;
   font-weight: 300;
   line-height: 56px;
@@ -1127,7 +1140,6 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   .forum-event--quote & {
     @include rwd-max('pc') {
       order: 3;
-      margin: 0;
       font-size: 32px;
       line-height: 48px;
     }
@@ -1140,7 +1152,6 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
   .forum-event__speaker--card & {
     order: 2;
-    margin: 0;
 
     @include rwd-max('tablet') {
       grid-area: 3 / 2;

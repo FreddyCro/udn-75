@@ -398,9 +398,12 @@ const PC_FRONT_NODES: ForumPathNode[] = [
     join: { relIn: 63.8, relOut: -15.7, hIn: 0.22, hOut: 0.4 },
   },
   {
-    id: 'W5', // 容器 (535, 1509)。髮夾彎（左下）
+    id: 'W5', // 容器 (535, 1509)。髮夾彎（左下）—— 稿上這個彎頂**進到照片裡**（碰到講者照）
     x: 0.418,
-    anchor: { event: '論壇一', sel: '.forum-event__photo, .forum-event__photo-slot', edge: 'top', dy: -87 },
+    // dy 原為 -87：那是照片還被 margin collapse 壓低 102 時量出來的（見 ForumEvent.vue
+    // .forum-event__speaker 的說明）。照片歸位後同一個容器 y 對應的 dy ＝ -87 + 102 ＝ 15，
+    // 也就是彎頂落在照片上緣下方 15 —— 與稿一致（稿：彎頂 1581.75、照片上緣 1566.9）。
+    anchor: { event: '論壇一', sel: '.forum-event__photo, .forum-event__photo-slot', edge: 'top', dy: 15 },
     join: { relIn: 32.7, relOut: -34.9, hIn: 0.34, hOut: 0.38 },
   },
   {
@@ -412,7 +415,9 @@ const PC_FRONT_NODES: ForumPathNode[] = [
   {
     id: 'W7', // 容器 (194, 2155)。補點：原本 W6→W8 一段 chord 1516、偏差 4.82px
     x: 0.152,
-    anchor: { event: '論壇一', sel: '.forum-event__speakers', edge: 'fraction', t: 0.5368 },
+    // t 原為 0.5368：同 W5，是講者組還被壓低 102（頂端 1199、高 1042）時的比例。
+    // 歸位後頂端 1097、高 1144（下緣 2241 不變），同一個容器 y ⇒ (1758.3-1097)/1144 ＝ 0.5781。
+    anchor: { event: '論壇一', sel: '.forum-event__speakers', edge: 'fraction', t: 0.5781 },
     join: { relIn: 3.4, relOut: -3.9, hIn: 0.36, hOut: 0.26 },
   },
   {

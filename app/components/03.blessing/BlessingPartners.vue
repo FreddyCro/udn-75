@@ -5,9 +5,12 @@
 // 白底面板、內部垂直捲動、自訂捲軸（軌 #bcbcbc / 把手 #686868、寬 8）。
 // 列的排列：pc / pad 是「logo 左 ＋ 語錄右對齊」，mob 改成「logo 上 / 語錄下」並置中。
 //
-// 🚧 夥伴 logo 與文案尚未提供 —— 目前全為 placeholder：logo 畫灰底空框，
-//    文字讀 section3.json 的「待補」字串。資料到齊後只需換 JSON ＋ 把空框換成 <img>。
+// 🚧 各夥伴的正式 logo 檔尚未提供 —— section3.json 的 logo 欄位目前一律指向同一支
+//    udn75_logo03_01.svg（設計稿原生尺寸 232×64，與 pc 的 logo 框等寬高）。
+//    檔案到齊後只要逐列改 JSON 的 logo 路徑即可，元件不需再動。
 import str from '@/locales/section3.json';
+
+const assetUrl = useAssetUrl();
 
 const { partner } = str;
 </script>
@@ -27,8 +30,13 @@ const { partner } = str;
           :key="`${tierIndex}-${i}`"
           class="blessing-partners__row"
         >
-          <!-- logo placeholder：尺寸即設計稿的 logo 框 -->
-          <span class="blessing-partners__logo" aria-hidden="true" />
+          <!-- 外框尺寸固定為設計稿的 logo 框，圖以 contain 內縮，換不同比例的 logo 也不變形 -->
+          <img
+            class="blessing-partners__logo"
+            :src="assetUrl(item.logo)"
+            :alt="item.name"
+            loading="lazy"
+          />
 
           <div class="blessing-partners__text">
             <p class="blessing-partners__quote">「{{ item.quote }}」</p>
@@ -139,7 +147,7 @@ const { partner } = str;
   flex-shrink: 0;
   width: 232px;
   height: 64px;
-  background: #f1f1f1; // placeholder 灰底空框（logo 尚未提供時）
+  object-fit: contain;
 
   @include rwd-max('pc') {
     width: 160px;

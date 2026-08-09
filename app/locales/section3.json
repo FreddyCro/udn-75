@@ -1,40 +1,96 @@
 {
   "partner": {
     "title": "永續祝福",
-    "body": "世代更迭，初心不變。聯合報系致力於永續共好，願做影響世代的關鍵力量。站在趨勢浪尖，我們與企業盟友、讀者並肩，以堅定決心共同開創未來。",
+    "body": "聯合報系攜手企業盟友，許下永續未來，用科技賦能百工百業，以人文關懷全齡社會，在動盪的變局中，續做引領世代的關鍵力量。",
     "tiers": [
       {
         "label": "策略夥伴",
         "partners": [
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" },
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" },
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" },
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" }
+          {
+            "name": "遠東集團",
+            "quote": "和聯合報一起，創造永續價值",
+            "logo": "/img/udn75_logo03_01.svg"
+          },
+          {
+            "name": "長榮集團",
+            "quote": "智德義文臻至善，聯合七十續風華",
+            "logo": "/img/udn75_logo03_01.svg"
+          },
+          {
+            "name": "中國信託金控",
+            "quote": "相挺70，邁向未來健康美好生活",
+            "logo": "/img/udn75_logo03_01.svg"
+          },
+          {
+            "name": "Panasonic",
+            "quote": "A Better Life, A Better World",
+            "logo": "/img/udn75_logo03_01.svg"
+          }
         ]
       },
       {
         "label": "共創夥伴",
         "partners": [
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" },
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" },
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" },
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" },
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" }
+          {
+            "name": "中國信託金控",
+            "quote": "相挺70，邁向未來健康美好生活",
+            "logo": "/img/udn75_logo03_01.svg"
+          },
+          {
+            "name": "Panasonic",
+            "quote": "A Better Life, A Better World",
+            "logo": "/img/udn75_logo03_01.svg"
+          },
+          {
+            "name": "國泰金控",
+            "quote": "信任，帶來新幸福 永續好生活",
+            "logo": "/img/udn75_logo03_01.svg"
+          },
+          {
+            "name": "永齡基金會",
+            "quote": "聯合永續生機 躍然世界脈動",
+            "logo": "/img/udn75_logo03_01.svg"
+          },
+          {
+            "name": "遠東集團",
+            "quote": "和聯合報一起，創造永續價值",
+            "logo": "/img/udn75_logo03_01.svg"
+          }
         ]
       },
       {
         "label": "倡議夥伴",
         "partners": [
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" },
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" }
+          {
+            "name": "長榮集團",
+            "quote": "智德義文臻至善，聯合七十續風華",
+            "logo": "/img/udn75_logo03_01.svg"
+          },
+          {
+            "name": "中國信託金控",
+            "quote": "相挺70，邁向未來健康美好生活",
+            "logo": "/img/udn75_logo03_01.svg"
+          }
         ]
       },
       {
         "label": "響應夥伴",
         "partners": [
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" },
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" },
-          { "name": "（夥伴名稱待補）", "quote": "（祝福文案待補）" }
+          {
+            "name": "Panasonic",
+            "quote": "A Better Life, A Better World",
+            "logo": "/img/udn75_logo03_01.svg"
+          },
+          {
+            "name": "國泰金控",
+            "quote": "信任，帶來新幸福 永續好生活",
+            "logo": "/img/udn75_logo03_01.svg"
+          },
+          {
+            "name": "永齡基金會",
+            "quote": "聯合永續生機 躍然世界脈動",
+            "logo": "/img/udn75_logo03_01.svg"
+          }
         ]
       }
     ]

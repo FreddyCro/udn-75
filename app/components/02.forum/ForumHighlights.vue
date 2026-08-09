@@ -16,10 +16,14 @@ const { heading, items } = str.highlights;
 
     <ul class="highlights__list">
       <li v-for="(item, i) in items" :key="i" class="highlights__item">
+        <!-- 縮圖只有一張橫幅（無 _pc/_pad/_mob 後綴，僅 @2x ＋ WebP 密度變體）
+             → srcset 收成單一組、use-prefix 關掉，同 <ForumEvent> 的講者照。
+             不收的話三個斷點會各產一組指向同一個檔的 <source>（6 個，全同源）。 -->
         <UPic
           v-if="item.img"
           :src="item.img"
           :use-prefix="false"
+          :srcset="['mob']"
           :alt="item.title"
           classname="highlights__thumb"
         />

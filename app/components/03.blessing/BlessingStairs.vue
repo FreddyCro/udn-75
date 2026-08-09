@@ -33,10 +33,17 @@ const PLAY_MARGIN = '0px 0px -25% 0px';
 // 避免在觸發線附近微幅捲動就反覆重播。
 const RESET_MARGIN = '0px 0px 40% 0px';
 
+// 是否已「上膛」—— 由 <Blessing> 傳入（＝夥伴清單整塊已貼齊臉的下緣並淡入）。
+// 進視窗**且**上膛才開始播：本元件在版面上比它淡入的時機更早捲進視窗，
+// 只看 IntersectionObserver 會在還是透明的時候就把 11 格跑完，使用者等於沒看到。
+const props = withDefaults(defineProps<{ armed?: boolean }>(), { armed: true });
+
 // 逐格是否已播完 —— 由 <Blessing> 綁 v-model:done，控制夥伴清單面板的淡入。
 const done = defineModel<boolean>('done', { default: false });
 
 const rootRef = ref<HTMLElement | null>(null);
+// 目前是否落在觸發區內（由 playObserver 寫入）。與 armed 兩者皆備才起跑。
+const inView = ref(false);
 // 目前格號（0-based）。SSR 與首次 render 都是第 0 格＝只有直列第一塊。
 const frame = ref(0);
 
@@ -80,7 +87,7 @@ const finish = () => {
 
 // 以經過時間換算格號（而非每幀 +1）→ 與螢幕更新率無關，分頁切回也不會補跑一大段
 const play = () => {
-  if (playing || done.value) return;
+  if (playing || done.value || !props.armed || !inView.value) return;
   playing = true;
   const startT = performance.now();
   const tick = (now: number) => {
@@ -94,6 +101,10 @@ const play = () => {
   };
   raf = requestAnimationFrame(tick);
 };
+
+// 實務上的順序是「先捲進觸發區、才被上膛」（上膛＝清單整塊貼齊臉的下緣淡入），
+// 所以 IntersectionObserver 那一次的 play() 會被擋掉，要在上膛時補跑。
+watch(() => props.armed, play);
 
 // 回到起點，讓下次由上往下進入時重播（面板同時淡出；此時它已在畫面外，看不到）
 const reset = () => {
@@ -111,13 +122,17 @@ onMounted(() => {
   }
   // 無 IntersectionObserver 可用時直接播，避免清單永遠不出現
   if (!rootRef.value || typeof IntersectionObserver === 'undefined') {
+    inView.value = true;
     play();
     return;
   }
 
   playObserver = new IntersectionObserver(
     (entries) => {
-      if (entries.some((e) => e.isIntersecting)) play();
+      const e = entries[entries.length - 1];
+      if (!e) return;
+      inView.value = e.isIntersecting;
+      if (inView.value) play();
     },
     { threshold: 0.6, rootMargin: PLAY_MARGIN },
   );
