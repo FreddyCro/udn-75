@@ -25,24 +25,25 @@ const sceneHeight = vhLength(SYMBOL_VH);
 //   ・scrub 特性 → 往回捲自動倒退（converge→…→disperse）。
 //
 // ── symbolProgress 時序表 ────────────────────────────────────────────────
-// ⚠️ 這是換算結果、不是資料來源：門檻在 SYMBOL_STOPS / FORUM_HANDOFF，距離＝門檻 × SYMBOL_VH。
-//    改動那三個常數後要回來手動同步這張表。下表為 SYMBOL_VH = 3.2（總長 320vh），
-//    括號內 px 是視窗高 1080 的換算。
+// ⚠️ 這是換算結果、不是資料來源：門檻在 SYMBOL_STOPS / SYMBOL_INTRO / FORUM_HANDOFF，
+//    距離＝門檻 × SYMBOL_VH。改動那些常數後要回來手動同步這張表。
+//    下表為 SYMBOL_VH = 4.0（總長 400vh），括號內 px 是視窗高 1080 的換算。
 //
 //   step  mode / 事件                              progress    累計距離（起→迄）        該段距離
-//   ①     disperse 分散（預設）                     0 → 15%     0    → 48vh    (0→518px)      48vh
-//   ②     face 集合（人像）＝最長的一拍              15% → 58%   48   → 185.6vh (518→2004px)   137.6vh
-//   ③     converge 匯聚成點                         58% → 75%   185.6→ 240vh   (2004→2592px)  54.4vh
-//   ④     coreIn 交棒：本層淡出＋ForumCore 淡入      75%         240vh          (2592px)        —
-//   ⑤     enter 橘核心停在黑畫面（原地停住）          75% → 90%   240  → 288vh   (2592→3110px)  48vh
-//   ⑥     agendaIn 議程 reveal（仍在畫面外）         90%         288vh          (3110px)        —
-//   ⑦     coreOut 黑底淡出、段落捲完（onLeave→鎖 1） 100%        320vh          (3456px)        32vh
+//   ①     disperse 分散（前段疊開場三行文案）        0 → 28%     0    → 112vh   (0→1210px)     112vh
+//         └ 文案 8vh 淡入起／32vh 全亮／80vh 淡出起／104vh 淡完（SYMBOL_INTRO，見 SymbolIntro.vue）
+//   ②     face 集合（人像）＝最長的一拍              28% → 62%   112  → 248vh   (1210→2678px)  136vh
+//   ③     converge 匯聚成點                         62% → 84%   248  → 336vh   (2678→3629px)  88vh
+//   ④     coreIn 交棒：本層淡出＋ForumCore 淡入      84%         336vh          (3629px)        —
+//   ⑤     enter 橘核心停在黑畫面（原地停住）          84% → 92%   336  → 368vh   (3629→3974px)  32vh
+//   ⑥     agendaIn 議程 reveal（仍在畫面外）         92%         368vh          (3974px)        —
+//   ⑦     coreOut 黑底淡出、段落捲完（onLeave→鎖 1） 100%        400vh          (4320px)        32vh
 //
 // ⑦ 之後還有一段「懸停期」不在本尺內：黑白接縫要再升 50vh 才抵達視窗中央，橘點在那段期間
 // 停在中央不動，然後由論壇段路徑接手（見 ForumCorePath 的 start: 'top center'）。
 // 那 50vh 是零跳點幾何的下限，見 FORUM_HANDOFF 的註解。
 //
-// 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本段合計 440vh。
+// 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本段合計 520vh。
 //
 // ⚠️ SymbolFace 內部並不吃 scroll：上表的 mode 切換只是「觸發」它 2.2s 的 gsap 補間
 //    （disperseDuration）。本表只管門檻位置。

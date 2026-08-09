@@ -91,9 +91,15 @@ export const FORUM_CENTER_KNOT_VH = 0.5;
 //   視窗正中央」的零跳點幾何鎖死（見 ForumCorePath 的 start: 'top center'）。要更短就得動
 //   交棒幾何、犧牲零跳點保證，或改成「懸停期間橘點跟著接縫往下漂」的另一種設計。
 export const FORUM_HANDOFF = {
-  coreIn: 0.75,
+  // 2026-08-09：0.75 → 0.84。converge（匯聚成點）那一拍的停留太短、交棒段又佔太多，
+  // 把 coreIn 往後推 ＝ converge 吃進 handoff 的距離。
+  // 400vh 下：converge 54.4 → 88vh（+62%）、handoff 80 → 64vh（−20%）。
+  coreIn: 0.84,
   coreOut: 1.0,
-  agendaIn: 0.9,
+  // 2026-08-09：0.9 → 0.92。這個門檻用**絕對距離**定錨、不隨 SYMBOL_VH 等比縮放：
+  // 它的作用是「讓那 0.4s 的淡入發生在畫面外」，判準是符號段底緣距視窗底多遠。
+  // 0.92 × 400vh ＝ 368vh，距段尾 32vh —— 與 SYMBOL_VH 3.2 時代的 0.9 等距。
+  agendaIn: 0.92,
 } as const;
 
 // ── 星空 SymbolFace 序列（獨立黑底段落自己的捲動尺，見 01a.symbol/SymbolScene.vue）──
@@ -103,20 +109,38 @@ export const FORUM_HANDOFF = {
 // 只改 until 即可調每個狀態起點；converge 終點對齊 FORUM_HANDOFF.coreIn（＝交棒時機）。
 // ⚠️ 改這裡（或 FORUM_HANDOFF / SYMBOL_VH）之後，要同步 SymbolScene.vue 內的「symbolProgress
 //    時序表」註解 —— 那張表是本檔門檻 × SYMBOL_VH 的 vh 換算結果，不會自己更新。
+// ── 開場三行文案（Figma 智慧論壇05：pc 2065:139731 / pad 2065:124199 / mob 2065:120221）──
+// 疊在第一拍（disperse）上的一層純文字，見 01a.symbol/SymbolIntro.vue。
+// 四個門檻都是 symbolProgress，opacity 由 symbolIntroOpacity() 換算（scrub，往回捲自動倒退）。
+//
+// ⚠️ out 必須早於 SYMBOL_STOPS[0].until（＝ disperse→face 的交界）——
+//    文字要在粒子開始集合成人像之前淡乾淨，兩件事同時發生會互相搶焦點。
+//    test/symbol-sequence.spec.ts 守著這條。
+//
+// 換算成捲動距離（SYMBOL_VH = 4.0 ⇒ 400vh）：8vh 淡入起、32vh 全亮、80vh 淡出起、104vh 淡完。
+export const SYMBOL_INTRO = {
+  in: 0.02,
+  full: 0.08,
+  fadeOut: 0.2,
+  out: 0.26,
+} as const;
+
 export const SYMBOL_STOPS: readonly {
   until: number;
   mode: 'disperse' | 'face' | 'converge' | 'enter';
 }[] = [
-  { until: 0.15, mode: 'disperse' }, //                0.00–0.15 分散（預設）
-  { until: 0.58, mode: 'face' }, //                    0.15–0.58 集合（人像）＝最長的一拍
-  { until: FORUM_HANDOFF.coreIn, mode: 'converge' }, // 0.58–coreIn 匯聚成點
+  { until: 0.28, mode: 'disperse' }, //                0.00–0.28 分散（前段疊開場文案，見 SYMBOL_INTRO）
+  { until: 0.62, mode: 'face' }, //                    0.28–0.62 集合（人像）＝最長的一拍
+  { until: FORUM_HANDOFF.coreIn, mode: 'converge' }, // 0.62–coreIn 匯聚成點
   { until: 1.0, mode: 'enter' }, //                    coreIn–1.00 enter → 收斂點淡出、橘核心接棒
 ];
 
 // 這段序列吃掉的捲動距離（× 視窗高）＝ 速度旋鈕（越大每個狀態停留越久）。
 // 2026-08-04：1.6 → 3.2（整段距離拉長一倍），讓 disperse / face / converge 各拍都有更長的停留。
-// 門檻（SYMBOL_STOPS / FORUM_HANDOFF）是比例值，故各拍的相對節奏不變、只是全部等比變慢。
-export const SYMBOL_VH = 3.2;
+// 2026-08-09：3.2 → 4.0。新增的 80vh 給第一拍疊上的開場三行文案（見 SYMBOL_INTRO）——
+//             文案要有「浮現 → 讀完 → 淡出」的完整節奏，48vh 太趕。
+//             同時重算 SYMBOL_STOPS 的門檻，讓 face 的絕對長度幾乎不變（137.6 → 136vh）。
+export const SYMBOL_VH = 4.0;
 
 // ── 進場方塊的邊長（px）──────────────────────────────────────────────
 // 「載入層橘塊 → HeroStart cube」是同一顆方塊在兩層之間交接：載入層淡出的那一刻，
@@ -251,12 +275,20 @@ export const SEQUENCE: readonly SequenceChapter[] = [
     key: 'forum',
     label: '智慧論壇',
     parts: [
-      { key: 'disperse', label: '粒子分散', drive: 'scrub', track: 'symbol', from: 0, until: SYMBOL_STOPS[0]!.until },
+      { key: 'disperse', label: '粒子分散（前段疊開場三行文案）', drive: 'scrub', track: 'symbol', from: 0, until: SYMBOL_STOPS[0]!.until },
       { key: 'face', label: '集合人像（最長的一拍）', drive: 'scrub', track: 'symbol', from: SYMBOL_STOPS[0]!.until, until: SYMBOL_STOPS[1]!.until },
       { key: 'converge', label: '匯聚成點', drive: 'scrub', track: 'symbol', from: SYMBOL_STOPS[1]!.until, until: FORUM_HANDOFF.coreIn },
       { key: 'handoff', label: `交棒：白點→橘核心（agendaIn ${FORUM_HANDOFF.agendaIn}）`, drive: 'scrub', track: 'symbol', from: FORUM_HANDOFF.coreIn, until: 1 },
       // 符號段捲完 → 黑白接縫再升 50vh 才到視窗中央，橘點在這段停著不動。
       // 幾何下限，見 FORUM_HANDOFF 的註解。
+      //
+      // 【延伸點】未來要在這一段做「符號段黑底 → 論壇段白底」的換色（取代現在的硬接縫），
+      // 得先給它一條軌 —— 目前是 drive: 'none'，沒有任何 progress 可以綁。建軌方法：
+      //   以 .sec2__path 為 trigger、start: 'top bottom' / end: 'top center' 的 scrub，
+      //   寫入 useOrangeCoreProgress 的新軌 hoverProgress。
+      // 那兩個端點正好框住這 50vh，且與 ForumCorePath 的 start: 'top center' 首尾相接、不重疊。
+      // 換色的落點是 ForumCore 的 .forum-core__bg（fixed 滿版 z-index 20，已與橘點分層）。
+      // 下面的 vh: 0.5 就是建軌時的尺長單一來源，不要拿掉。
       { key: 'hover', label: '懸停期（橘點停在中央）', drive: 'none', vh: 0.5 },
       { key: 'path', label: '核心沿設計線蛇行', drive: 'scrub', track: 'forumPath' },
       { key: 'agenda', label: '議程／報導／論壇四', drive: 'none' },
