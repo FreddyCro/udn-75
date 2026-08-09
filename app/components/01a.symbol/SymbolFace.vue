@@ -1528,13 +1528,13 @@ onMounted(() => {
   </div>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
 .stage {
   position: relative;
   width: 100%;
-  /* ＝ mixins.scss 的 vh()，但本區塊是純 CSS（無 lang="scss"）→ 手寫展開式。
-     視窗高的單一來源見 app/utils/viewport-height.ts。 */
-  height: calc(var(--vh, 1vh) * 100);
+  // 視窗高的單一來源見 app/utils/viewport-height.ts；mixins.scss 由 nuxt.config
+  // 的 additionalData 自動注入，不必在此 @use。
+  height: vh(1);
   background: #fff;
   overflow: hidden;
   cursor: crosshair;
