@@ -12,6 +12,7 @@ import {
   type GlyphAtlas,
 } from '~/utils/symbol-atlas';
 import { sampleImageToGridWithLimit } from '~/utils/symbol-sampler';
+import { FACE_HOVER_INFLUENCE, faceUv } from '~/utils/symbol-hint';
 
 const props = defineProps({
   /** 人像圖片（需含透明背景，alpha 即輪廓遮罩） */
@@ -174,6 +175,11 @@ const props = defineProps({
    *     故由做出隱藏決定的那一層把「本層在場嗎」傳進來。
    *  預設 true：demo 等一般 in-flow 用法不必傳，交給下方 IntersectionObserver 判斷即可。 */
   active: { type: Boolean, default: true },
+
+  /** PC 互動提示文字（空字串＝不顯示）。換行用 \n，樣式端以 white-space: pre-line 呈現。
+   *  設計稿 Figma 2065:139734：圓環圖示 + 兩行說明，錨在人像右下角。
+   *  只在 ≥1280px 出現（樣式端擋），且游標真的碰到人像後永久收起。 */
+  hint: { type: String, default: '' },
 
   /** 開發用：顯示右上角可收合的參數面板（預設 false；demo 頁設 true） */
   dev: { type: Boolean, default: false },
@@ -615,6 +621,47 @@ const applyRefresh = () => {
   Object.assign(cfg, next);
   rebuildParticles?.();
 };
+
+// ---------- PC 互動提示 ----------
+// 顯示條件三個都要成立：mode 是 face（且粒子已集合完）、尚未 dismiss、視窗 ≥1280（樣式端擋）。
+// 位置由 onMounted 內把人像 bbox 右下角投影到螢幕算出，null ＝ 人像還沒建好、先不渲染。
+const hintVisible = ref(false);
+const hintPos = ref<{ x: number; y: number } | null>(null);
+// 非 reactive：只有 animate() 熱迴圈讀寫，不需要觸發 re-render（真正驅動畫面的是 hintVisible）。
+let hintDismissed = false;
+let hintTimer: ReturnType<typeof setTimeout> | null = null;
+
+const clearHintTimer = () => {
+  if (hintTimer) {
+    clearTimeout(hintTimer);
+    hintTimer = null;
+  }
+};
+
+/** 游標真的碰到人像 → 永久收起（離開、捲回、resize 都不復原：提示是教學，學會就不該再打擾）。 */
+const dismissHint = () => {
+  hintDismissed = true;
+  clearHintTimer();
+  hintVisible.value = false;
+};
+
+// ⚠️ 延遲 cfg.disperseDuration 才淡入：mode 翻成 face 的當下，粒子還要 2.2s 才聚成人臉，
+//    提早出現等於指著一團散沙說「移動游標」。離開 face（捲回或前進 converge）立即隱藏。
+watch(
+  mode,
+  (m) => {
+    clearHintTimer();
+    if (hintDismissed || !props.hint || m !== 'face') {
+      hintVisible.value = false;
+      return;
+    }
+    hintTimer = setTimeout(() => {
+      hintVisible.value = true;
+    }, cfg.disperseDuration * 1000);
+  },
+  { immediate: true },
+);
+onBeforeUnmount(clearHintTimer);
 
 // 匯出目前面板所有設定成 JSON：下載成檔案並順手複製到剪貼簿。
 // 值取自 draft（面板當下值）並轉回正確型別（數字/陣列），再附上目前 mode。
@@ -1075,6 +1122,7 @@ onMounted(() => {
       }
     };
     disperseFn(false); // 套用初始預設狀態（不動畫）
+    updateHintAnchor(); // 人像尺寸剛算出來（halfW/halfH），hint 的錨點跟著定位
   };
 
   // ---------- 執行閘門：三個訊號皆為真才跑 rAF（迴圈啟停見下方 syncRunning）----------
@@ -1176,6 +1224,19 @@ onMounted(() => {
   let viewW = width;
   let viewH = height;
   if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
+
+  // hint 錨點：人像 bbox 右下角 (halfW, -halfH) 投影到螢幕 px。
+  // ⚠️ 與 .egg 的差別 —— .egg 跟著游標跑、必須每幀寫 DOM；hint 的錨點在 world 裡是不動的，
+  //    只有 resize 與粒子重建會改變它的螢幕位置，故不進 animate() 的熱迴圈。
+  const hintAnchor = new THREE.Vector3();
+  const updateHintAnchor = () => {
+    if (halfW <= 0 || halfH <= 0) return;
+    hintAnchor.set(halfW, -halfH, 0).project(camera);
+    hintPos.value = {
+      x: (hintAnchor.x * 0.5 + 0.5) * viewW,
+      y: (-hintAnchor.y * 0.5 + 0.5) * viewH,
+    };
+  };
 
   const animate = () => {
     const nowT = clock.getElapsedTime();
@@ -1301,19 +1362,27 @@ onMounted(() => {
       dispAttr.needsUpdate = true;
     }
 
-    // 彩蛋：算游標所在宮格 → 顯示對應句子（只在集合狀態、influence 夠高時）
+    // 游標在人像 bbox 內的正規化座標（只在集合狀態、influence 夠高時才算）。
+    // 宮格彩蛋與 PC 提示共用這一份判定，見 ~/utils/symbol-hint。
+    const onFace =
+      mode.value === 'face' && influence > FACE_HOVER_INFLUENCE
+        ? faceUv(smoothMouse.x, smoothMouse.y, halfW, halfH)
+        : null;
+
+    // PC 提示：游標真的碰到人像 → 永久收起。
+    // ⚠️ 判定用 bbox 而非「真的撞散粒子」（holeRadius 命中）—— 後者在臉的空白處移動不會觸發，
+    //    提示會賴著不走。autoMouse 是無 hover 環境用的虛擬游標，會自己戳到，不算使用者互動。
+    if (onFace && !hintDismissed && !cfg.autoMouse) dismissHint();
+
+    // 彩蛋：算游標所在宮格 → 顯示對應句子
     const eggEl = eggRef.value;
     if (eggEl && halfW > 0) {
       let idx = -1;
-      if (mode.value === 'face' && influence > 0.4 && cfg.phrases.length) {
-        const nx = (smoothMouse.x + halfW) / (2 * halfW); // 0..1 左→右
-        const ny = (halfH - smoothMouse.y) / (2 * halfH); // 0..1 上→下
-        if (nx >= 0 && nx < 1 && ny >= 0 && ny < 1) {
-          const col = Math.min(cfg.gridCols - 1, Math.floor(nx * cfg.gridCols));
-          const row = Math.min(cfg.gridRows - 1, Math.floor(ny * cfg.gridRows));
-          const i = row * cfg.gridCols + col;
-          if (i < cfg.phrases.length && cfg.phrases[i]) idx = i;
-        }
+      if (onFace && cfg.phrases.length) {
+        const col = Math.min(cfg.gridCols - 1, Math.floor(onFace.u * cfg.gridCols));
+        const row = Math.min(cfg.gridRows - 1, Math.floor(onFace.v * cfg.gridRows));
+        const i = row * cfg.gridCols + col;
+        if (i < cfg.phrases.length && cfg.phrases[i]) idx = i;
       }
       if (idx !== activeEgg.value) activeEgg.value = idx; // 僅換格才觸發 re-render
       if (idx >= 0) {
@@ -1410,6 +1479,7 @@ onMounted(() => {
     renderer.setSize(w, h);
     // world 單位的字級要跟著視窗高度重算，否則縮放視窗時字與格距的比例會跑掉
     if (mat) mat.uniforms.uWorldToPx!.value = worldToPx(h);
+    updateHintAnchor(); // 視窗尺寸變了 → 投影出來的螢幕位置要跟著重算
   };
   const resizeObs = new ResizeObserver((entries) => {
     const box = entries[0]?.contentRect;
@@ -1442,6 +1512,45 @@ onMounted(() => {
       <slot name="phrase" :index="activeEgg" :text="displayText">
         {{ displayText }}
       </slot>
+    </div>
+
+    <!-- PC 互動提示：錨在人像右下角（位置由 JS 投影寫進 transform），
+         游標真的碰到人像後永久收起。圖示照 Figma 2065:139734 的三個同心圓。 -->
+    <div
+      v-if="hint && hintPos"
+      class="hint"
+      :class="{ 'hint--on': hintVisible }"
+      :style="{
+        transform: `translate(${hintPos.x}px, ${hintPos.y}px) translate(-50%, -50%)`,
+      }"
+      aria-hidden="true"
+    >
+      <svg
+        class="hint__icon"
+        width="88"
+        height="88"
+        viewBox="0 0 88 88"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle
+          cx="44"
+          cy="44"
+          r="43.75"
+          stroke="white"
+          stroke-opacity="0.5"
+          stroke-width="0.5"
+        />
+        <circle
+          cx="44"
+          cy="44"
+          r="23.5"
+          stroke="white"
+          stroke-opacity="0.75"
+        />
+        <circle cx="44" cy="44" r="8" fill="white" fill-opacity="0.85" />
+      </svg>
+      <p class="hint__text">{{ hint }}</p>
     </div>
 
     <!-- dev config 面板（右上角、可收合）：改值不即時套用，按 Refresh 才重建 -->
@@ -1556,6 +1665,48 @@ onMounted(() => {
   opacity: 0;
   transition: opacity 0.25s ease;
   will-change: transform, opacity;
+}
+
+// PC 互動提示：位置由 JS 把人像 bbox 右下角投影成螢幕 px 寫進 transform。
+// <1280 不出現（觸控裝置跑 autoMouse，粒子自己在動，不需要教學）。
+.hint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  gap: 16px;
+  pointer-events: none; // 不能擋住 canvas 的 pointermove，否則整個斥力互動會死
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  will-change: opacity;
+
+  @include rwd-min('pc') {
+    display: flex;
+  }
+}
+
+.hint--on {
+  opacity: 1;
+}
+
+// 設計稿 Figma 2065:139734：88×88 三個同心圓
+.hint__icon {
+  flex: 0 0 auto;
+  width: 88px;
+  height: 88px;
+}
+
+// 設計稿：Noto Sans TC Light 13 / 26、字距 1.3、白色（主字體由 base.scss 全域指定）
+.hint__text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 26px;
+  letter-spacing: 1.3px;
+  color: #fff;
+  white-space: pre-line; // 吃文案裡的 \n
 }
 
 /* ---------- dev config 面板 ---------- */
