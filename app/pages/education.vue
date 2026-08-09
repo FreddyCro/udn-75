@@ -24,7 +24,7 @@ const c = raw as EducationContent;
     </div>
 
     <!-- 頒獎典禮照片 -->
-    <div class="sp-col mt-8">
+    <div class="sp-col mt-16">
       <figure>
         <UPic :src="c.figure.src" :use-prefix="false" :srcset="['mob']" :alt="c.figure.alt" />
         <figcaption class="sp-caption mt-2">{{ c.figure.caption }}</figcaption>
@@ -37,7 +37,7 @@ const c = raw as EducationContent;
     </div>
 
     <!-- 線上特輯按鈕 -->
-    <div class="mt-8 mb-8">
+    <div class="mt-8 mb-16 md:mb-8">
       <SubpageCta :label="c.cta.label" :url="c.cta.url" />
     </div>
   </Subpage>

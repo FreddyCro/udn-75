@@ -33,7 +33,7 @@ const assetUrl = useAssetUrl();
 
     <!-- 縮短社會鴻溝 凝聚行動力 -->
     <div class="sp-col mt-16">
-      <h2 class="sp-h3 mb-8">{{ c.gap.title }}</h2>
+      <h2 class="sp-h3 mb-4">{{ c.gap.title }}</h2>
       <p class="sp-p" v-html="c.gap.body" />
     </div>
 
@@ -44,21 +44,21 @@ const assetUrl = useAssetUrl();
 
     <!-- 媒體不只報導 更提供解方 -->
     <div class="sp-col mt-16">
-      <h2 class="sp-h3 mb-8">{{ c.solution.title }}</h2>
+      <h2 class="sp-h3 mb-4">{{ c.solution.title }}</h2>
       <p class="sp-p" v-html="c.solution.body" />
     </div>
 
     <!-- 近年得獎獎項 -->
-    <div class="sp-col mt-16">
-      <h2 class="sp-h3 sm:text-center">{{ c.awards.title }}</h2>
-      <div class="mt-5 flex flex-col gap-6">
+    <div class="max-w-152 lg:max-w-157.5 mt-16 mx-auto">
+      <h2 class="sp-subtitle text-center">{{ c.awards.title }}</h2>
+      <div class="mt-4 gap-8 flex flex-col sm:mt-8 lg:mt-5 lg:gap-6">
         <div
           v-for="(a, i) in c.awards.items"
           :key="i"
           class="flex flex-col items-center gap-4 sm:flex-row sm:gap-6"
         >
-          <img class="w-[186px] shrink-0" :src="assetUrl(a.img)" :alt="a.alt" loading="lazy" />
-          <p class="m-0 text-[15px] leading-6 font-light text-(--color-gray)">{{ a.body }}</p>
+          <img class="w-46.5 shrink-0" :src="assetUrl(a.img)" :alt="a.alt" loading="lazy" />
+          <p class="m-0 text-[15px] leading-6 font-light text-gray">{{ a.body }}</p>
         </div>
       </div>
     </div>
@@ -74,7 +74,7 @@ const assetUrl = useAssetUrl();
     </div>
 
     <!-- 共享按鈕 -->
-    <div class="mt-15 mb-8">
+    <div class="mt-16 mb-16">
       <SubpageCta :lead="c.finalCta.lead" :label="c.finalCta.label" :url="c.finalCta.url" />
     </div>
   </Subpage>

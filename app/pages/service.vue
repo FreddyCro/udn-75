@@ -7,6 +7,7 @@ definePageMeta({ layout: 'subpage' });
 
 /** service 專屬文案結構：Subpage 外殼所需的 hero/intro/nav + 各內文區塊 */
 interface ServiceContent extends SubpageContent {
+  video: { src: string; alt: string };
   context: {
     title: string;
     body: string;
@@ -23,12 +24,22 @@ const c = raw as ServiceContent;
 
 <template>
   <Subpage :content="c">
-    <!-- 在演算法時代守住脈絡：小標 + 內文 + 兩圖並排 -->
+    <!-- 單一檔案無裝置變體 → 三個斷點同一支；純裝飾循環影片 -->
+    <div class="sp-full mt-16">
+      <UVid
+        :src="{ mob: c.video.src, pad: c.video.src, pc: c.video.src }"
+        :muted="true"
+        preload="metadata"
+        :aria-label="c.video.alt"
+      />
+    </div>
+
+    <!-- 在演算法時代守住脈絡 -->
     <div class="sp-col mt-16">
       <h2 class="sp-h3 mb-4">{{ c.context.title }}</h2>
       <p class="sp-p" v-html="c.context.body" />
       <!-- 多圖並排：mob 直排，pad 以上窄欄內均分兩欄 -->
-      <div class="mt-10 flex flex-col gap-8 sm:flex-row lg:gap-10">
+      <div class="mt-16 flex flex-col gap-8 sm:flex-row lg:gap-10">
         <figure v-for="(f, i) in c.context.figures" :key="i" class="min-w-0 flex-1">
           <UPic :src="f.src" :use-prefix="false" :srcset="['mob']" :alt="f.alt ?? f.caption ?? ''" />
           <figcaption v-if="f.caption" class="sp-caption mt-2">{{ f.caption }}</figcaption>
@@ -50,9 +61,9 @@ const c = raw as ServiceContent;
 
     <!-- 近年得獎獎項：寬欄；小標 mob 靠左、pad 以上置中 -->
     <div class="sp-col sp-col--wide mt-16 mb-16">
-      <h2 class="sp-h3 sm:text-center">{{ c.awards.title }}</h2>
+      <h2 class="sp-subtitle text-center">{{ c.awards.title }}</h2>
       <!-- 桂冠圖表 svg 自帶上下留白 32 → pad 以上貼著小標排即為對稿間距；mob 版 svg 無留白，補 32 -->
-      <figure class="mx-auto mt-8 max-w-(--subpage-content-w) sm:mt-0">
+      <figure class="mx-auto mt-8 max-w-140.75 sm:mt-0">
         <UPic
           :src="c.awards.chart"
           ext="svg"
