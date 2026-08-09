@@ -647,6 +647,8 @@ const dismissHint = () => {
 
 // ⚠️ 延遲 cfg.disperseDuration 才淡入：mode 翻成 face 的當下，粒子還要 2.2s 才聚成人臉，
 //    提早出現等於指著一團散沙說「移動游標」。離開 face（捲回或前進 converge）立即隱藏。
+// props.hint 是從 section1.json 靜態 import 的常數，故不納入 watch source；
+// 若之後改成動態文案（例如 CMS/可切換語系），需一併把 props.hint 加進來追蹤。
 watch(
   mode,
   (m) => {
@@ -655,9 +657,14 @@ watch(
       hintVisible.value = false;
       return;
     }
-    hintTimer = setTimeout(() => {
-      hintVisible.value = true;
-    }, cfg.disperseDuration * 1000);
+    // { immediate: true } 的 watch 在 SSR 也會同步執行這個 callback（Vue 只跳過非 immediate 的），
+    // 但 SSR 沒有 onBeforeUnmount 可以清 timer，排下去的 setTimeout 會連同整個元件 scope 活過整個 request，
+    // 所以排計時器這一步只在 client 做。
+    if (import.meta.client) {
+      hintTimer = setTimeout(() => {
+        hintVisible.value = true;
+      }, cfg.disperseDuration * 1000);
+    }
   },
   { immediate: true },
 );
@@ -1672,7 +1679,9 @@ onMounted(() => {
 }
 
 // PC 互動提示：位置由 JS 把人像 bbox 右下角投影成螢幕 px 寫進 transform。
-// <1280 不出現（觸控裝置跑 autoMouse，粒子自己在動，不需要教學）。
+// ≥1280 才顯示：這是「用滑鼠玩粒子」的教學，窄視窗的版面也放不下這 203px 寬的一組。
+// ⚠️ 已知取捨：寬度 ≥1280 的觸控裝置（iPad Pro 橫向、Surface）也會看到這句「游標移動」，
+//    但那台機器沒有游標。改用 (hover: hover) 能擋掉，此處依專案決定一律走 pc 斷點。
 .hint {
   position: absolute;
   left: 0;

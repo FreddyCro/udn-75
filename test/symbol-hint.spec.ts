@@ -26,6 +26,7 @@ describe('faceUv', () => {
   it('右／下邊界是開區間（落在角上算框外）', () => {
     expect(faceUv(100, 0, 100, 200)).toBeNull();
     expect(faceUv(0, -200, 100, 200)).toBeNull();
+    expect(faceUv(100, -200, 100, 200)).toBeNull(); // 真正的角點（右下角）
   });
 
   it('框外回 null', () => {
