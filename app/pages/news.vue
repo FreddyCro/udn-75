@@ -72,7 +72,7 @@ const c = raw as NewsContent;
       <AwardTimeline :items="c.awards.timeline">
         <template #title>
           <div class="sp-col">
-            <h2 class="sp-h4">{{ c.awards.title }}</h2>
+            <h2 class="sp-subtitle">{{ c.awards.title }}</h2>
           </div>
         </template>
       </AwardTimeline>

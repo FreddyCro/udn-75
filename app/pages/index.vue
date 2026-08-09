@@ -10,13 +10,13 @@ definePageMeta({
 <template>
   <div>
     <!-- 01 -->
-    <Hero />
+    <!-- <Hero /> -->
 
     <!-- 01a：符號星空 / 人臉序列（黑底，獨立段落；粒子場本體渲染在 Hero 的轉場層 slot 內） -->
-    <SymbolScene />
+    <!-- <SymbolScene /> -->
 
     <!-- 02 -->
-    <Forum />
+    <!-- <Forum /> -->
 
     <!-- 03 -->
     <Blessing />

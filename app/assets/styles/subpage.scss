@@ -65,6 +65,16 @@
     }
   }
 
+  .sp-subtitle {
+    font-size: 22px;
+    line-height: 36px;
+    font-weight: 400;
+    @include rwd-min('tablet') {
+      font-size: 28px;
+      line-height: 46px;
+    }
+  }
+
   // 置中引導句（跟在 .sp-h4 之後）
   .sp-lead {
     margin: 0;

@@ -54,7 +54,7 @@ const c = raw as VisualContent;
 
     <!-- 近年得獎獎項：寬欄；小標 mob 靠左、pad 以上置中 -->
     <div class="sp-col sp-col--wide mt-16 mb-16">
-      <h2 class="sp-h3 sm:text-center">{{ c.awards.title }}</h2>
+      <h2 class="sp-subtitle text-center">{{ c.awards.title }}</h2>
       <!-- 桂冠圖表 svg 自帶上下留白 32 → pad 以上貼著小標排即為對稿間距；mob 版 svg 無留白，補 32 -->
       <figure class="mx-auto mt-8 max-w-(--subpage-content-w) sm:mt-0">
         <UPic
