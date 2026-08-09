@@ -125,6 +125,22 @@ export const SYMBOL_INTRO = {
   out: 0.26,
 } as const;
 
+// GLSL 的 smoothstep：兩端一階導數為 0，淡入淡出的頭尾不會有硬轉折。
+// 本檔僅此一處用到，不外掛工具檔。
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+/** 開場三行文案在 symbolProgress = p 時的 opacity（0..1）。
+ *  淡入段 × (1 − 淡出段)：full–fadeOut 之間恆為 1，區間外恆為 0。
+ *  純函式、不依賴 DOM —— 曲線由 test/symbol-sequence.spec.ts 守著。 */
+export function symbolIntroOpacity(p: number): number {
+  const fadeIn = smoothstep(SYMBOL_INTRO.in, SYMBOL_INTRO.full, p);
+  const fadeOut = smoothstep(SYMBOL_INTRO.fadeOut, SYMBOL_INTRO.out, p);
+  return fadeIn * (1 - fadeOut);
+}
+
 export const SYMBOL_STOPS: readonly {
   until: number;
   mode: 'disperse' | 'face' | 'converge' | 'enter';
