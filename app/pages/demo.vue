@@ -20,6 +20,9 @@ const startGlitch = () => glitchRef.value?.start();
 
 // 彩蛋句子（row-major 對應宮格）：與正式站共用同一份文案，見 locales/section1.json
 const symbolPhrases = section1.symbol.phrases;
+
+// PC 互動提示文案（與正式站共用同一份，見 locales/section1.json）
+const symbolHint = section1.symbol.hint;
 </script>
 
 <template>
@@ -53,6 +56,7 @@ const symbolPhrases = section1.symbol.phrases;
         v-model:mode="symbolMode"
         :dev="true"
         :phrases="symbolPhrases"
+        :hint="symbolHint"
         :hole-radius="25"
         :hole-spread="50"
         :return-ease="1.5"

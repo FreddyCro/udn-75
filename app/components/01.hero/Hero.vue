@@ -427,6 +427,7 @@ function applyScrollLock() {
           v-model:mode="symbolMode"
           :dev="false"
           :phrases="str.symbol.phrases"
+          :hint="str.symbol.hint"
           :hole-radius="25"
           :hole-spread="50"
           :return-ease="1.5"
