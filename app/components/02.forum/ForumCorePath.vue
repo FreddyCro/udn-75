@@ -18,6 +18,7 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { ForumPathMeasure, ForumPathNode } from '~/utils/forum-node-path';
 import type { ArcKnot } from '~/utils/forum-path-geometry';
+import { nearestArcLength, type SlashWindow } from '~/utils/forum-slash';
 
 const rootEl = ref<HTMLElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
@@ -25,7 +26,7 @@ const coreEl = ref<HTMLElement | null>(null);
 // 可見線：整條由 waypoint 算出來，故只有一個 <path>。
 const genEl = ref<SVGPathElement | null>(null);
 
-const { setForumPathProgress, setForumPathActive, forumPathRiding } =
+const { setForumPathProgress, setForumPathActive, setForumSlashWindow, forumPathRiding } =
   useOrangeCoreProgress();
 
 // 回中節點的間距吃視窗高 —— 用單一來源，不讓它隨網址列收合而改變密度。
@@ -82,6 +83,7 @@ function reset() {
   knots = [];
   setForumPathActive(false);
   setForumPathProgress(0);
+  setForumSlashWindow(null);
 }
 
 // 重建回中節點表。必須在 motionLen / tailEndY 都定案之後呼叫。
@@ -94,6 +96,44 @@ function syncKnots(motion: SVGPathElement) {
     vhPx(FORUM_CENTER_KNOT_VH),
     (len) => motion.getPointAtLength(len).y,
   );
+}
+
+// 算出那一撇的觸發窗口（forumPath 軌的 0..1）並寫進共享軌。
+//
+// 撇是 "/"，核心在這一帶是往左下走 → 進入端是外框的**右上角**、結束端是**左下角**。
+// 那不是近似值：外框的尺寸就是脊線旋轉後的軸對齊外框（見 ForumEvent 的 SCSS），
+// 兩個對角正好是脊線的兩端。外框刻意不套 transform，故畫出比例是 0 時 rect 也不會塌。
+//
+// 為什麼用算的而不是寫死百分比：版面一動（標題行數、講者照片、字體 fallback）弧長比例
+// 就會變。config 的 FORUM_SLASH_AT 只是「設計到切版有落差時」的手動覆寫，預設 null。
+//
+// 只在 build() 幾何重建時跑一次（512 + 64 次 getPointAtLength），不在逐幀熱路徑上。
+function syncSlashWindow(motion: SVGPathElement) {
+  const b = bp.value;
+  if (!b || !pathLen) return setForumSlashWindow(null);
+
+  const override = FORUM_SLASH_AT[b];
+  if (override) return setForumSlashWindow(override);
+
+  const root = rootEl.value;
+  // 搜尋範圍同 buildNodesD：取 .sec2 而非 .sec2__path，座標原點則仍是 .forum-path。
+  const scope = root?.closest('.sec2');
+  const el = scope?.querySelector<HTMLElement>('.forum-event__date-coreslash');
+  // 量不到就不畫那一撇（可能是資料沒標 'core'）—— 這裡**不**走 reset()：
+  // 少一撇只是少一個裝飾，整條線與核心都還是對的，不該把整段停掉。
+  if (!root || !el) return setForumSlashWindow(null);
+
+  const rootRect = root.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const enter = { x: r.right - rootRect.left, y: r.top - rootRect.top };
+  const exit = { x: r.left - rootRect.left, y: r.bottom - rootRect.top };
+
+  const sample = (len: number) => motion.getPointAtLength(len);
+  const a = nearestArcLength(enter, sample, pathLen) / pathLen;
+  const z = nearestArcLength(exit, sample, pathLen) / pathLen;
+  // 排序而非假設 enter 在前：萬一日後線的走向反過來，這裡不該靜默畫成負向。
+  const w: SlashWindow = a <= z ? [a, z] : [z, a];
+  setForumSlashWindow(w);
 }
 
 // ── 整條線由 waypoint 算出（三個斷點共用）─────────────────────────────
@@ -168,6 +208,7 @@ function build() {
   //   捲動尺變零長度、核心一進場就跳到路徑末端。
   tailEndY = lineEndY;
   syncKnots(motion);
+  syncSlashWindow(motion);
 
   setForumPathActive(true);
   place(st ? st.progress : 0);
