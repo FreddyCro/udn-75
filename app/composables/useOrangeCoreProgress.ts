@@ -17,6 +17,7 @@
 // 並在 SEQUENCE 補上對應的 part。
 import { SYMBOL_STOPS, FORUM_HANDOFF, BLESSING_HOLD } from '~/utils/orange-core-config';
 import { FACE_FRAME_COUNT } from '~/utils/blessing-face-frames';
+import { slashDrawAt, type SlashWindow } from '~/utils/forum-slash';
 
 // SymbolFace 的三態（互斥）：集合成人像 / 分散漂浮 / 匯聚成點。
 // 提升為全域共享：<SymbolFace> 由 Hero 綁 v-model:mode（它住在 HeroSymbolTransition 的 slot），
@@ -62,6 +63,14 @@ export function useOrangeCoreProgress() {
   // 寫入，決定橘點是「撐到路徑接手」還是「照舊在 coreOut 淡出」—— 見下方 forumCoreDotVisible。
   const forumPathActive = useState<boolean>('forum-path-active', () => false);
 
+  // 論壇二 09/15 那一撇的觸發窗口（forumPath 軌的 0..1）。
+  // 由 ForumCorePath.build() 寫入 —— 它是唯一量得到幾何的人；ForumEvent 只是消費者。
+  // 兩者是兄弟元件，這條軌是它們唯一的共享通道（同 forumPathProgress 的角色）。
+  //
+  // ⚠ reset() 一定要寫回 null。留著上一個斷點的窗口會讓撇在錯的時機長出來 ——
+  //   與 ForumCorePath 那次「progress 沒歸零，橘方塊卡在論壇段不動」是同一類事故。
+  const forumSlashWindow = useState<SlashWindow | null>('forum-slash-window', () => null);
+
   const setPathProgress = (p: number) => (pathProgress.value = clamp01(p));
   const setTransitionProgress = (p: number) =>
     (transitionProgress.value = clamp01(p));
@@ -69,6 +78,7 @@ export function useOrangeCoreProgress() {
   const setForumPathProgress = (p: number) =>
     (forumPathProgress.value = clamp01(p));
   const setForumPathActive = (v: boolean) => (forumPathActive.value = v);
+  const setForumSlashWindow = (w: SlashWindow | null) => (forumSlashWindow.value = w);
 
   // 永續祝福逐格臉的捲動進度（0..1）：由 Blessing.vue 的 ScrollTrigger 於每次
   // update 讀 self.progress 寫入（無 scrub），故往回捲會自動倒帶。
@@ -108,6 +118,13 @@ export function useOrangeCoreProgress() {
   // 兩個消費端：ForumCorePath 用它決定路徑核心的顯隱（p=0 時必須藏著，否則段落進場到
   // 交棒點之間畫面上會同時有兩顆方塊）；ForumCore 用它讓固定橘點的消失變成瞬間的。
   const forumPathRiding = computed(() => forumPathProgress.value > 0);
+
+  // 那一撇畫出多少（0..1）。ForumEvent 綁成 CSS var --slash-draw。
+  // 逐幀會變，但消費端只有一個 style binding、不是 class 條件，故不必像 forumPathRiding
+  // 那樣收成 boolean。
+  const forumSlashDraw = computed(() =>
+    slashDrawAt(forumPathProgress.value, forumSlashWindow.value),
+  );
 
   // 橘核心那顆方塊的顯隱（與 ForumCore 的黑底分開）。
   // 黑底只在 [coreIn, coreOut) 現身，但橘點必須從 coreIn 一路撐到論壇段路徑接手為止 ——
@@ -156,6 +173,9 @@ export function useOrangeCoreProgress() {
     setForumPathProgress,
     forumPathActive,
     setForumPathActive,
+    forumSlashWindow,
+    setForumSlashWindow,
+    forumSlashDraw,
     forumPathRiding,
     setPathProgress,
     setSymbolProgress,

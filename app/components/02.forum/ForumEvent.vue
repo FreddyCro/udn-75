@@ -25,6 +25,10 @@ const hasSlash = computed(() => {
   return s ?? props.event.layout !== 'stair';
 });
 
+// 那一撇的畫出比例由論壇段路徑的進度驅動（窗口由 ForumCorePath 依幾何算出）。
+// 四場都會呼叫這個 composable，但只有 isCoreSlash 那一場真的把值綁到 DOM 上。
+const { forumSlashDraw } = useOrangeCoreProgress();
+
 // 設計稿的講者版式分兩種：單人是「照片左／文字右」，多人（論壇二）是並排卡片。
 const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 </script>
@@ -71,7 +75,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
              若把 scaleY 掛在外框上，畫出前 rect 會塌成一點、窗口就算不出來。
              內層 <i> 才是那一撇本身。--slash-draw 於 Task 4 綁上，此步先留預設 0。 -->
         <span v-if="isCoreSlash" class="forum-event__date-coreslash" aria-hidden="true">
-          <i />
+          <i :style="{ '--slash-draw': forumSlashDraw }" />
         </span>
         <span class="forum-event__date-weekday">{{ event.weekday }}</span>
       </div>
