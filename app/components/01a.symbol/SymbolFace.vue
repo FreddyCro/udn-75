@@ -1231,6 +1231,10 @@ onMounted(() => {
   const hintAnchor = new THREE.Vector3();
   const updateHintAnchor = () => {
     if (halfW <= 0 || halfH <= 0) return;
+    // ⚠️ buildFromImage 會在第一幀 render 之前呼叫這裡（img.onload 早於 IntersectionObserver
+    //    啟動 rAF），此時 camera.matrixWorldInverse 仍是單位矩陣、position.z 還沒烘進去，
+    //    project() 的透視除法會除以 0 → Infinity。先手動更新矩陣，補上 renderer 尚未做的那一步。
+    camera.updateMatrixWorld();
     hintAnchor.set(halfW, -halfH, 0).project(camera);
     hintPos.value = {
       x: (hintAnchor.x * 0.5 + 0.5) * viewW,
