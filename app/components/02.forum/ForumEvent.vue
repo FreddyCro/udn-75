@@ -13,9 +13,17 @@ const props = defineProps<{ event: ForumEvent }>();
 
 const dateParts = computed(() => props.event.date.split('/'));
 
-// 階梯式日期（論壇二）不畫實體斜線：設計稿把 09 與 15 之間的對角空隙留給橘核心當那一撇。
-// 論壇四同樣是階梯式卻**有**實體斜線，故改由資料明寫、layout 只當預設值。
-const hasSlash = computed(() => props.event.slash ?? props.event.layout !== 'stair');
+// 那一撇有三種狀態，全部由資料決定（見 ForumEvent type 的 slash）：
+//   'core'          → 不畫字元，改由橘核心經過時逐段補上（論壇二）
+//   true            → 畫實體 `/`（論壇四是階梯式卻有斜線，故明寫）
+//   省略            → 階梯式不畫、其餘畫
+// 兩個 computed 而非一個三元判斷：template 有兩個互斥的節點要掛，各讀各的才不會看漏。
+const isCoreSlash = computed(() => props.event.slash === 'core');
+const hasSlash = computed(() => {
+  const s = props.event.slash;
+  if (s === 'core') return false;
+  return s ?? props.event.layout !== 'stair';
+});
 
 // 設計稿的講者版式分兩種：單人是「照片左／文字右」，多人（論壇二）是並排卡片。
 const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
@@ -58,6 +66,13 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
         <span class="forum-event__date-mm">{{ dateParts[0] }}</span>
         <span v-if="hasSlash" class="forum-event__date-slash">/</span>
         <span class="forum-event__date-dd">{{ dateParts[1] }}</span>
+        <!-- 那一撇（論壇二）：不是字元，是一筆橫跨兩階的直線，由橘核心經過時逐段畫出。
+             外框不套 transform —— ForumCorePath 讀它的右上／左下對角當脊線兩端；
+             若把 scaleY 掛在外框上，畫出前 rect 會塌成一點、窗口就算不出來。
+             內層 <i> 才是那一撇本身。--slash-draw 於 Task 4 綁上，此步先留預設 0。 -->
+        <span v-if="isCoreSlash" class="forum-event__date-coreslash" aria-hidden="true">
+          <i />
+        </span>
         <span class="forum-event__date-weekday">{{ event.weekday }}</span>
       </div>
 
@@ -124,6 +139,19 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   --stair-row1: 127.3px;
   --stair-row2: 114.5px;
 
+  // 論壇二那一撇的外框（見 .forum-event__date-coreslash）。與 --stair-* 同類：
+  // 稿的絕對值、逐斷點各一組 —— 它**不是** --date-size 的固定倍率
+  // （實測 h ÷ --date-size：pc 1.963、pad 1.623、mob 1.247，設計師逐斷點手調）。
+  // 角度倒是三個斷點一致（w/h ＝ 0.502 / 0.497 / 0.499 → 26.6°），故 rotate 寫死。
+  // x / y 是外框左上角相對 .forum-event__date 左上角的位移。
+  --coreslash-w: 103.5px;
+  --coreslash-h: 206.1px;
+  // x/y 的 pc 起手值（257/139）是從 pad 等比推的估計值（無 pc 稿 node id 可查）；
+  // 目視微調到 255/195：貼近放大檢查才看得出的細節 —— 上端要清開「9」的墨跡
+  // （肉眼平視看起來已經很接近，但貼緊放大會看到蹭到筆畫），下端落在「15」左方偏下。
+  --coreslash-x: 255px;
+  --coreslash-y: 195px;
+
   position: relative;
 
   // pad／mob：pc 那套「整段絕對定位到設計稿座標」的模型整組退回一般流排版，改由 flex 直排。
@@ -166,6 +194,11 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
       --stair-x2: 215px;
       --stair-row1: 80px;
       --stair-row2: 80px;
+      --coreslash-w: 69.3px;
+      --coreslash-h: 139.6px;
+      // 目視微調（同上）：170/87 → 190/96，理由同 mob 那行。
+      --coreslash-x: 190px;
+      --coreslash-y: 96px;
 
       padding: 32px 80px 80px;
     }
@@ -177,6 +210,11 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
       --stair-x2: 163px;
       --stair-row1: 73px;
       --stair-row2: 73px;
+      --coreslash-w: 48.6px;
+      --coreslash-h: 97.3px;
+      // 目視微調（同上）：118/62 → 132/68，把上端從壓到「9」的筆畫移到它右下的空隙。
+      --coreslash-x: 132px;
+      --coreslash-y: 68px;
 
       padding: 32px 26px 140px;
     }
@@ -563,8 +601,11 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   font-weight: 300;
   line-height: var(--date-lh);
 
+  // pad／mob 退回流排版，但仍要當那一撇的定位基準 → relative 而非 static。
+  // relative 且不給位移時的排版結果與 static 完全相同（本身已是 grid，不影響子項）。
+  // __venue 是它的**兄弟**、不是子項，故它的絕對定位基準不受影響。
   @include rwd-max('pc') {
-    position: static;
+    position: relative;
   }
 
   .forum-event--quote & {
@@ -667,6 +708,38 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   grid-area: 2 / 2;
   margin: 0 0.1em 0 0.05em;
   color: inherit;
+}
+
+// 論壇二 09/15 的那一撇：不是字元 —— 稿上 206.1 高，是 --date-size（105）的兩倍。
+// 稿的 Vector 是等寬直線（四角端邊與長邊內積 ≈ 0 → 端點切口垂直於脊線，即 butt cap），
+// 與垂直軸夾角 26.7°；三個斷點的 w/h 都是 0.50，故角度寫死、尺寸吃逐斷點的 --coreslash-*。
+//
+// 外框（本層）：**刻意不套任何 transform** —— 它的右上／左下兩角正好是脊線的兩端，
+// ForumCorePath 讀它的 rect 推導觸發窗口（見該檔的 syncSlashWindow）。
+// transform 掛在外框上會讓 rect 隨畫出比例塌掉，窗口就算不出來。
+.forum-event__date-coreslash {
+  position: absolute;
+  top: var(--coreslash-y);
+  left: var(--coreslash-x);
+  width: var(--coreslash-w);
+  height: var(--coreslash-h);
+  pointer-events: none;
+
+  // 那一撇本身＝外框的對角線（長 ＝ √(w² + h²)，由 hypot 算不出來，故用 h / cos26.7° 表示）。
+  // transform-origin 釘在**右上**（核心是往左下走的，那裡是進入端）→ scaleY 讓它往左下長出來，
+  // 往回捲自然收回。顏色吃 currentcolor：畫完之後它與 09 / 15 同色，就是日期的一部分。
+  // 脊寬取稿的 7.637 ÷ 105（pc）＝ --date-size 的 0.0727 —— 這一項確實隨字級走。
+  i {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: block;
+    width: calc(var(--date-size) * 0.0727);
+    height: calc(var(--coreslash-h) / 0.8934); // 0.8934 ＝ cos(26.7°)
+    background: currentcolor;
+    transform: translateX(50%) rotate(26.7deg) scaleY(var(--slash-draw, 0));
+    transform-origin: 50% 0;
+  }
 }
 
 .forum-event__date-dd {
