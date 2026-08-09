@@ -77,6 +77,19 @@ const {
 // 視窗高的單一來源（--vh）：轉場與引言淡出的尺長都吃它，不吃 window.innerHeight。
 const { vhPx } = useViewportHeight();
 
+// ── 開場捲動鎖的「預設值」：SSR 就先鎖住 ──────────────────────────────
+// 下方 applyScrollLock() 掛在 onMounted，**要等 hydration**。SSR 吐出的 HTML 到
+// hydration 之間頁面是能自由捲的，手機上這段好幾百 ms，正好是使用者拿到畫面就往下
+// 甩的時機。這裡在 SSR 階段就把 .is-boot-locked 掛上 <html>，讓「鎖住」是首次繪製
+// 就成立的狀態；規則本體與 .is-scroll-locked 並排住在 assets/styles/base.scss。
+//
+// 為什麼用 useHead 掛 class 而不是把規則寫死在全域 CSS：規則必須**只在首頁生效**，
+// 而 dev 的 Vite 不做 per-route CSS 分割（子頁一樣會載到 Hero 的樣式）—— 靠打包行為
+// 判斷路由並不可靠。掛在 Hero 上則是構造上正確的：Hero 只出現在首頁。
+// 換頁離開時 unhead 會自行把這個 class 收掉（它只管自己加的 token，不會動到下方
+// 直接操作的 .is-scroll-locked 與 data-scroll-lock）。
+useHead({ htmlAttrs: { class: 'is-boot-locked' } });
+
 watch(heroState, applyScrollLock);
 
 // gone ＝ core 的進場時機。fromOutro 只用來回答「影片畫面裡有沒有一顆 core 可以交棒」——
@@ -200,6 +213,7 @@ function scrollToInitialHash(hash: string) {
 onBeforeUnmount(() => {
   document.documentElement.classList.remove('is-scroll-locked');
   document.body.classList.remove('is-scroll-locked');
+  // data-scroll-lock 刻意留著（理由見本檔最下方的 <style>）
   transitionST?.kill();
   transitionST = null;
   introFadeST?.kill();
@@ -296,8 +310,13 @@ function resetCoreEntrance() {
 // ⚠️ class 必須同時掛在 <html> 與 <body>：html 有 overflow-x: clip，根元素不再是
 //    overflow: visible → body 的 overflow 不會傳播到視窗，只掛 body 完全鎖不住
 //    （見 base.scss 的說明）。
+//
+// 鎖在 hydration 之前就成立了 —— 見上方 useHead 掛的 .is-boot-locked。
+// 蓋上 data-scroll-lock 就是向那條 CSS 宣告「JS 接手了」，其後一律由 class 決定；
+// 兩者在同一個同步區塊內完成，中間不會重繪 → 交接沒有破口。
 function applyScrollLock() {
   const root = document.documentElement;
+  root.dataset.scrollLock = 'hero';
   if (shouldLockScroll.value) {
     // 上鎖前先回頂端：否則重整後瀏覽器把位置還原到內容區、又處於 main/loop，
     // 會被 overflow:hidden 永久鎖死在中途。

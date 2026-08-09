@@ -8,6 +8,13 @@
   // 用途：需要「扣掉捲軸寬」的地方一律用 calc(... - var(--scrollbar-width))，
   // 避免捲軸出現／消失導致可用寬變動而撐出水平捲軸。
   --scrollbar-width: 0px;
+
+  // 行動裝置的網址列／底部工具列此刻吃掉的高度：預設 0（桌機恆為 0），
+  // 由 ~/plugins/viewport-height.client.ts 量測後覆寫。
+  // 用途：滿版區塊的高是 --vh（＝ large viewport，工具列展開時比可視範圍高一截），
+  // 底部錨定的 UI 要靠這個補回來 → bottom: calc(<設計稿的值> + var(--chrome-inset))。
+  // 完整理由見 ~/utils/viewport-height 的 chromeInset()。
+  --chrome-inset: 0px;
 }
 
 html,
@@ -53,6 +60,28 @@ html.is-scroll-locked {
 body.is-scroll-locked {
   overflow: hidden;
   padding-right: var(--scrollbar-width);
+}
+
+// 同一把鎖的「hydration 之前」版本。上面那組由 Hero.vue 的 applyScrollLock() 操作，
+// 而它掛在 onMounted —— SSR 吐出的 HTML 到 hydration 之間頁面是能自由捲的，手機上
+// 這段好幾百 ms，使用者一進站往下甩就跑掉了。故 Hero 以 useHead 在 SSR 就把
+// .is-boot-locked 掛上 <html>（只有首頁有 Hero，子頁不受影響）。
+//
+// 交棒寫在選擇器裡：applyScrollLock() 第一件事就是蓋上 data-scroll-lock="hero"，
+// 這條隨即失效，其後一律由上面的 .is-scroll-locked 說了算。兩者在同一個同步區塊內
+// 完成，中間不會重繪 → 沒有「瞬間可捲動」的破口。
+//
+// 沒有 JS（或 bundle 掛掉）時會維持鎖住 —— 可接受：SSR 同時吐出的 HeroLoader 是
+// fixed inset:0 的白色不透明滿版層，那種情境下捲得動也只是在白畫面底下捲。
+// 同理，此時 --scrollbar-width 還是預設的 0（要 client 量），桌機會在 hydration
+// 那一刻補上 padding 而位移一個捲軸寬 —— 那也發生在載入層底下，看不到。
+html.is-boot-locked:not([data-scroll-lock]) {
+  overflow: hidden;
+
+  body {
+    overflow: hidden;
+    padding-right: var(--scrollbar-width);
+  }
 }
 
 // 換頁轉場 fade through（搭配 nuxt.config 的 app.pageTransition，mode: out-in）。

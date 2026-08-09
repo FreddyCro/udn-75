@@ -6,8 +6,8 @@
 //   2. 四階段（main / loop / outro / gone）在影片時間軸上的秒數
 // 要換片或調時間點只改這裡，元件不必動。
 //
-// 目前只有 pc 版一支剪輯（實測 40.02s，main / loop / outro 都在同一支裡），
-// pad / mob 尚未提供 → 先指向同一支、段落秒數共用。
+// 目前只有一支剪輯（實測 40.02s，main / loop / outro 都在同一支裡），mob 版是同一支的
+// 低碼率轉檔（40.03s）→ 段落秒數三個裝置共用；pad 版尚未提供，先沿用 pc。
 
 import type { HeroCoreAnchor } from './hero-core-handoff';
 
@@ -27,10 +27,16 @@ export type HeroVideoSegments = Record<HeroVideoPhase, HeroVideoSegment>;
 // ── 影片來源（RWD 預留）─────────────────────────────────────────────
 // 路徑相對 public/；實際載入時會補上 runtimeConfig.public.APP_ASSETS_PATH 前綴（同 UVid / UPic）。
 // 裝置判定沿用 ~/utils/get-device 的 getDeviceTypeByResolution（單一來源，與 UVid 一致）。
+//
+// ⚠️ 檔案大小差兩個量級（pc 70MB / mob 2.8MB），這條表直接決定開場要等多久 —— 手機若指到
+//    pc 那支，光是把影片拉到「可播放」就會把載入層卡在 99% 直到 HERO_VIDEO_READY_TIMEOUT。
+//    SSR 期間 device 一律先當 pc（見 HeroVideo 的 hydration mismatch 註解），故 mob 裝置一定
+//    會經歷「先掛 pc src → 掛載後換成 mob src」；HeroVideo 刻意把 preload 壓在 metadata、
+//    等掛載後才升級成 auto，就是為了讓那段「掛錯來源」的期間不要真的去拉 70MB。
 export const HERO_VIDEO_SRC: Record<HeroVideoDevice, string> = {
   pc: '/img/udn75_bg_video_opening_pc.mp4',
-  pad: '/img/udn75_bg_video_opening_pc.mp4', // TODO: 換成 pad 版剪輯
-  mob: '/img/udn75_bg_video_opening_pc.mp4', // TODO: 換成 mob 版剪輯
+  pad: '/img/udn75_bg_video_opening_pc.mp4', // TODO: 換成 pad 版剪輯（目前沿用 pc，70MB）
+  mob: '/img/udn75_bg_video_opening_mob.mp4',
 };
 
 // poster 首幀（RWD 預留）：空字串 ＝ 不設 poster。

@@ -30,11 +30,27 @@ hero 開場的 **body 捲動鎖規則**（2026-08-04 與使用者逐拍確認；
 
 曾經寫錯的理由，別再拿來當論據：「重新上鎖會造成版面位移」**不成立** —— `body.is-scroll-locked` 本來就用 `padding-right: var(--scrollbar-width)` 補回捲軸寬，鎖／解鎖的內容寬是等寬的。
 
+**鎖在 hydration 之前就先上，而且是純 CSS（2026-08-09 加）**：`applyScrollLock()` 掛在 `onMounted`，**要等 hydration**。SSR 吐出的 HTML 到 hydration 之間頁面是能自由捲的 —— 手機上這段好幾百 ms，正好是使用者拿到畫面就往下甩的時機。
+
+作法（兩個地方，各一行半）：
+
+1. `Hero.vue` 用 `useHead({ htmlAttrs: { class: 'is-boot-locked' } })` 在 **SSR** 就把標記掛上 `<html>`。
+2. `base.scss` 與 `.is-scroll-locked` 並排一條 `html.is-boot-locked:not([data-scroll-lock])`。
+
+**交棒寫在選擇器裡**：`applyScrollLock()` 第一件事是蓋上 `data-scroll-lock="hero"`，boot 規則隨即失效，其後一律由 `.is-scroll-locked` 說了算。屬性與 class 在同一個同步區塊內設定，中間不會重繪 → 沒有破口。
+
+踩過的兩個坑，別再走回去：
+
+- **不要用 inline script**（曾經寫在 `nuxt.config.ts` 的 `app.head.script`）：一大串 JS 塞在 config 裡沒人 trace 得到，而且它為了「量捲軸寬」「12 秒保險絲」越長越大 —— 這兩件事後來確認都**不需要**：SSR 同時吐出的 `HeroLoader` 是 `fixed inset:0` 的白色不透明滿版層，捲軸寬那 15px 位移發生在它底下看不到；bundle 掛掉時使用者本來就只看得到那片白，能不能捲毫無差別。
+- **不要靠「CSS 隨元件 code-split，所以只有首頁載得到」**：dev 的 Vite 不做 per-route CSS 分割，子頁一樣會載到 Hero 的樣式 → 子頁被永久鎖死（`data-scroll-lock` 永遠不會出現）。必須靠 SSR 掛的 class 判斷，那才是構造上正確的（`Hero` 只出現在首頁）。
+- `data-scroll-lock` **不在卸載時清掉**：語意是「JS 已接手」，一旦成立就不再變。SPA 換到子頁時 `is-boot-locked` 由 unhead 自行收掉，兩道保險都在。
+
 其他不變的邊界規則：
 
-1. **鎖的單一擁有者是 `01.hero/Hero.vue`**；`HeroLoader` 不自行改 `body.overflow`（否則它卸載解鎖、父層下一 tick 才重鎖，中間有「瞬間可捲動」破口）。
+1. **鎖的單一擁有者是 `01.hero/Hero.vue`**（開機腳本只是它 hydration 之前的代班）；`HeroLoader` 不自行改 `body.overflow`（否則它卸載解鎖、父層下一 tick 才重鎖，中間有「瞬間可捲動」破口）。
 2. 上鎖前先 `window.scrollTo(0, 0)` ＋ `history.scrollRestoration = 'manual'`：否則重整後還原到內容區又處於 `main`，會被 `overflow:hidden` 永久鎖死在中途。
 3. 影片載入失敗或自動播放被封鎖 → 直接進 `gone` → 解鎖，避免整頁鎖死。
 4. **鎖住期間沒有 scroll 事件**，所以離開 `loop` 只能靠 wheel／touchmove／方向鍵手勢（見 `app/utils/hero-scroll-intent.ts`）。
+5. **鎖住期間手機網址列永遠不會收合** → 滿版區塊（高 `--vh` ＝ large viewport）的底部 60–115px 全程在可視範圍外。開場期間任何 `bottom` 錨定的 UI（skip 按鈕、「下滑看更多」）都必須加 `var(--chrome-inset)` 補回來，否則手機上**完全看不到**（2026-08-09 修）。理由與算式見 `architecture/viewport-height.md`。
 
 相關：[[hero-core-screen-locked]]、[[hero-outro-core-handoff]]

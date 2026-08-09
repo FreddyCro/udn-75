@@ -2,6 +2,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { chromeInset } from '../app/utils/viewport-height';
+
 // 視窗高在本專案有**單一來源** `--vh`（CSS 用 vh() / vhLength()、JS 用 vhPx()）。
 // 這支守住「別處不要再直接寫 100vh 或讀 window.innerHeight」。
 //
@@ -47,6 +49,8 @@ const VH_LINE_EXCEPTIONS = [
 // 這些地方問的是「使用者此刻看得到什麼」，本來就該用會變動的值。
 const INNER_HEIGHT_ALLOWED: Record<string, string> = {
   'app/composables/useViewportHeight.ts': '單一來源自己的 fallback',
+  'app/plugins/viewport-height.client.ts':
+    '--chrome-inset ＝ large viewport − 此刻可視高，後者本來就得是活值',
   'app/components/01.hero/Hero.vue': 'isVerticallyOnScreen：影片現在在不在畫面上',
   'app/components/01.hero/HeroLoader.vue': '磁磚格數，且元素框優先、innerHeight 只是 fallback',
   'app/components/AppHeader.vue': '捲動進度條分母＝真實最大可捲距離',
@@ -127,6 +131,27 @@ describe('視窗高只有一個來源', () => {
       }
     });
     expect(missing).toEqual([]);
+  });
+
+  // --chrome-inset 是這套機制的「活值」對照：--vh 凍結成 large viewport，
+  // 底部錨定的 UI 要靠它補回工具列吃掉的那一段（見 chromeInset() 的說明）。
+  describe('chromeInset（--chrome-inset 的算式）', () => {
+    it('工具列展開時 ＝ 兩者的差', () => {
+      expect(chromeInset(745, 659)).toBe(86); // iPhone Safari 實測量級
+    });
+
+    it('桌機（兩者相等）＝ 0', () => {
+      expect(chromeInset(900, 900)).toBe(0);
+    });
+
+    // 負值會把元素推到容器外 —— 比沒補償更糟，故一律夾在 0 以上。
+    it('innerHeight 反而較大時夾成 0，不吐負值', () => {
+      expect(chromeInset(745, 800)).toBe(0);
+    });
+
+    it('--vh 還沒量到（0）時回 0，不把整個視窗高當成 inset', () => {
+      expect(chromeInset(0, 659)).toBe(0);
+    });
   });
 
   // 逐行例外最容易腐爛：那一行被改掉時例外就對不上，規則會**變嚴**而非變鬆

@@ -282,6 +282,28 @@ function onResize() {
   device.value = next;
 }
 
+// ── preload 升級：metadata → auto ────────────────────────────────────
+// template 上刻意只給 preload="metadata"。<video> 是 SSR 就吐出來的，preload="auto" 會讓
+// 瀏覽器在 **HTML 解析階段**（bundle 都還沒下載完）就開始拉整支影片 —— pc 版 70MB，直接跟
+// Nuxt bundle 搶頻寬與連線 → hydration 被推遲。而載入層在 hydration 之前是「SSR 吐出的
+// 靜態 0%」（沒有方塊、沒有 JS 在跑，見 HeroLoader），影片拖多久、那個 0% 就定格多久。
+//
+// 故把緩衝挪到掛載之後才開始：此時 bundle 早已下載完，讓影片去搶已經無所謂，而載入層
+// 至少要跑 duration 秒、外加 HERO_VIDEO_READY_TIMEOUT 的 99% 等待，時間綽綽有餘。
+//
+// nextTick：上面的 onMounted 會先呼叫 onResize() 校正 device，src 要等 DOM 更新才寫進去；
+// 立刻 load() 會去拉舊的（SSR 預設的 pc）來源，手機上就是白拉 70MB —— 正好是要避免的事。
+function promotePreload() {
+  void nextTick(() => {
+    const v = videoEl.value;
+    if (!v || v.readyState >= 3) return;
+    v.preload = 'auto';
+    // 只改 preload 屬性不保證瀏覽器立刻續拉（各家實作不一），load() 才確定重啟緩衝。
+    // 此刻 currentTime 必為 0（還沒播過），load() 的重置沒有東西可丟。
+    v.load();
+  });
+}
+
 onMounted(() => {
   onResize();
   window.addEventListener('resize', onResize);
@@ -303,13 +325,15 @@ onMounted(() => {
     heroIO.observe(heroEl.value);
   }
 
-  // ⚠️ <video> 是 SSR 就吐出來的（帶 src + preload="auto"），瀏覽器在 HTML 解析階段就開始載入，
-  // canplay 很可能在 hydration 掛上 @canplay 之前就已經觸發 → 事件永遠等不到，
-  // 載入層會一路卡在 99% 直到 HERO_VIDEO_READY_TIMEOUT 才放行。
-  // 故掛載時先補查 readyState（HAVE_FUTURE_DATA 以上＝已可播放），把漏掉的事件補回來。
+  // ⚠️ <video> 是 SSR 就吐出來的，canplay 有可能在 hydration 掛上 @canplay 之前就已經觸發
+  // （來源在快取裡時）→ 事件永遠等不到，載入層會一路卡在 99% 直到 HERO_VIDEO_READY_TIMEOUT
+  // 才放行。故掛載時先補查 readyState（HAVE_FUTURE_DATA 以上＝已可播放），把漏掉的事件補回來。
   const v = videoEl.value;
   if (v && v.readyState >= 3) markReady();
-  else readyTimer = setTimeout(markReady, HERO_VIDEO_READY_TIMEOUT); // 遲遲無法播放時的保險
+  else {
+    readyTimer = setTimeout(markReady, HERO_VIDEO_READY_TIMEOUT); // 遲遲無法播放時的保險
+    promotePreload();
+  }
 
   if (heroStarted.value) void play(); // HMR / 重新掛載時可能已按過 start
 });
@@ -331,7 +355,9 @@ onBeforeUnmount(() => {
   <!-- id 供 AppHeader 以 IntersectionObserver 監看 hero（捲離後才顯示 header）；
        本元件自己也監看同一個元素 —— 捲出視窗就直接收尾（見上方 heroIO） -->
   <div ref="heroEl" class="sec1__hero" id="app-hero">
-    <!-- 影片層：滿版；退場消失（gone）時淡出，露出 hero 白底 -->
+    <!-- 影片層：滿版；退場消失（gone）時淡出，露出 hero 白底。
+         ⚠️ preload 是 "metadata" 而非 "auto"：這裡是 SSR 吐出的標記，auto 會在 HTML 解析階段
+         就開始拉整支影片、拖慢 hydration（理由與升級時機見 script 的 promotePreload）。 -->
     <div
       class="sec1__hero-video"
       :class="{ 'is-ended': isGone }"
@@ -344,7 +370,7 @@ onBeforeUnmount(() => {
         :poster="videoPoster"
         muted
         playsinline
-        preload="auto"
+        preload="metadata"
         disablepictureinpicture
         @canplay="onCanPlay"
         @loadedmetadata="onLoadedMetadata"
@@ -450,10 +476,14 @@ onBeforeUnmount(() => {
 // 83.333）都是 1280×720 稿 —— 兩者剛好 1.5 倍。影片以 object-fit: cover 鋪滿視窗，1920 稿上的
 // 20px 在 1280 寬的視窗只佔 13.33px，故此處一律 ÷1.5 落回 1280 稿，才與影片內容、其餘 UI 同比例。
 // 若要改成照 1920 稿的絕對字級，把下面的 13.33px / 8px / 16px 乘回 1.5 即可。
+// ⚠️ bottom 要加 --chrome-inset：本容器高 vh() ＝ large viewport，手機剛進站時
+// 網址列／底部工具列是展開的，容器底部那 60–115px 在可視範圍之外。開場期間頁面
+// 又鎖著、工具列永遠不會收合 → 不補這一段，這顆按鈕在手機上全程看不到。
+// （見 ~/utils/viewport-height 的 chromeInset()；下方「下滑看更多」同理。）
 .sec1__hero-skip {
   position: absolute;
   right: 22.67px; // 34 ÷ 1.5
-  bottom: 20.67px; // 31 ÷ 1.5
+  bottom: calc(20.67px + var(--chrome-inset)); // 31 ÷ 1.5
   z-index: 2; // 疊在影片層之上
   display: flex;
   align-items: center;
@@ -512,11 +542,12 @@ onBeforeUnmount(() => {
   fill: currentColor;
 }
 
-// 下滑看更多：文字置中、下方一條細線垂直延伸至 hero 底緣
+// 下滑看更多：文字置中、下方一條細線垂直延伸至「看得到的」hero 底緣
+// （bottom 吃 --chrome-inset 的理由同上方 skip）
 .sec1__hero-scroll {
   position: absolute;
   left: 50%;
-  bottom: 0;
+  bottom: var(--chrome-inset);
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;

@@ -23,7 +23,13 @@
 //
 // 這與 GSAP 的 ignoreMobileResize 同一套判準（見 plugins/gsap-config.client.ts），
 // 兩者刻意保持一致 —— 否則會出現「尺重算了但 --vh 沒跟上」的半套狀態。
+//
+// ── 順便量的另一件事：--chrome-inset ─────────────────────────────────
+// 上面那套「凍結」讓滿版區塊比此刻看得到的範圍高一截（網址列展開時）。底部錨定的
+// UI 要的是相反的東西 —— 工具列吃掉多少。理由與用法見 ~/utils/viewport-height 的
+// chromeInset()。它是**活值**，故刻意繞過上面的重量門檻，每次 resize 都跟上。
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { chromeInset } from '~/utils/viewport-height';
 
 /** 高度變動超過這個比例才視為真實版面改變（網址列收合遠低於此）。 */
 const RESIZE_EPS = 0.25;
@@ -48,7 +54,15 @@ export default defineNuxtPlugin(() => {
     document.documentElement.style.setProperty('--vh', `${h / 100}px`);
   };
 
+  // 工具列吃掉的高度。跟著 --vh 一起更新（--vh 變了、差值當然要重算），
+  // 但**也**在 --vh 被門檻擋掉時單獨更新 —— 網址列收合正是它該跟上的事。
+  const commitInset = () => {
+    const inset = chromeInset(vh.value, window.innerHeight);
+    document.documentElement.style.setProperty('--chrome-inset', `${inset}px`);
+  };
+
   commit(measure());
+  commitInset();
   let lastWidth = window.innerWidth;
 
   window.addEventListener('resize', () => {
@@ -56,11 +70,23 @@ export default defineNuxtPlugin(() => {
     lastWidth = window.innerWidth;
     const next = measure();
     const jumped = vh.value > 0 && Math.abs(next - vh.value) / vh.value > RESIZE_EPS;
-    if (!widthChanged && !jumped) return;
-    if (next === vh.value) return; // 寬度變了但高度沒變 → 不必驚動 ScrollTrigger
+    if (!widthChanged && !jumped) {
+      commitInset(); // 網址列收合／展開：--vh 不動，但可視高變了
+      return;
+    }
+    if (next === vh.value) {
+      commitInset();
+      return; // 寬度變了但高度沒變 → 不必驚動 ScrollTrigger
+    }
     commit(next);
+    commitInset();
     // 尺長吃 --vh 的元素剛換了高度 → 主動重算，不等 GSAP 自己的 resize 處理，
     // 免得它先用舊值刷一次（ignoreMobileResize 也可能讓它整個跳過）。
     ScrollTrigger.refresh();
   });
+
+  // iOS Safari 的網址列收合有時只發 visualViewport 的事件、不發 window resize
+  // （尤其在頁面鎖住、只有工具列自己在動的時候）。有就一起聽，沒有（舊瀏覽器）
+  // 也不影響 —— 那些瀏覽器的 vh 本來就跟著動態視窗跑，inset 恆為 0。
+  window.visualViewport?.addEventListener('resize', commitInset);
 });

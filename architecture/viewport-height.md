@@ -86,6 +86,37 @@ SSR 與 hydration 之前 `--vh` 還不存在，退回原生單位才不會塌成
 與 `plugins/gsap-config.client.ts` 的 `ignoreMobileResize` **刻意同一套判準** ——
 否則會出現「尺重算了但 `--vh` 沒跟上」的半套狀態。
 
+### 底部錨定要的是反過來的東西：`--chrome-inset`
+
+（2026-08-09 補。起因：手機上 hero 的 skip 按鈕與「下滑看更多」全程看不到。）
+
+凍結是有代價的：滿版區塊高 `--vh` ＝ large viewport，而手機**剛進站時網址列／底部
+工具列是展開的**，可視高比它少 60–115px（iPhone Safari 實測 ~86px）。任何 `bottom`
+錨定的元素都落在工具列底下。
+
+hero 開場期間頁面又是鎖住的（見 `.claude/memory/hero-body-lock-rules.md`）→
+**網址列永遠不會收合** → 那塊區域永遠露不出來。這不是 `--vh` 改版造成的：
+改版前寫死的 `height: 100vh` 一樣是 large viewport（`git show 99c9fac` 可驗）。
+
+所以底部錨定不是問「一個視窗高是多少」，而是問「工具列此刻吃掉多少」——
+依上面「凍結／活值」的分類，它是**活值**：
+
+```scss
+bottom: calc(20.67px + var(--chrome-inset)); // 設計稿的值 ＋ 補償
+```
+
+| | 定義 | 更新時機 |
+| --- | --- | --- |
+| `--vh` | large viewport ÷ 100 | 吃重量門檻（寬度變 or 高度劇變） |
+| `--chrome-inset` | `max(0, 100vh − innerHeight)` | **每次 resize 都跟上**（含 `visualViewport`） |
+
+算式是純函式 `chromeInset()`（`app/utils/viewport-height.ts`，有單元測試），
+兩個變數由同一支 `plugins/viewport-height.client.ts` 寫入 —— 它是**唯一**
+獲准直接讀 `window.innerHeight` 的尺長相關檔案（已列入回歸測試白名單）。
+
+目前使用者：`HeroVideo.vue` 的 `.sec1__hero-skip` 與 `.sec1__hero-scroll`。
+之後任何「絕對定位在滿版區塊底部」的 UI 都該吃它。
+
 ## 四、什麼該換、什麼不該換
 
 | 類別 | 定義 | 處置 |
@@ -178,6 +209,11 @@ SSR 與 hydration 之前 `--vh` 還不存在，退回原生單位才不會塌成
 - **真機**。iOS Safari / Android Chrome 上下捲動、網址列收合展開時，
   hero 轉場與祝福段臉屏是否還會跳；以及舊裝置（`vh` 可能跟著動態視窗跑的那種）
   是否如假設般被「重量時機」擋住。
+- **`--chrome-inset` 的真機值**。桌機恆為 0，開發環境量不到真的工具列高度。
+  合成驗證做過（強制 86px → skip 按鈕的下緣由 715.33 移到 629.33，
+  正好落回「可視下緣 650」之內）；真機要確認的是 iOS Safari 在**頁面鎖住**時
+  是否仍發得出 resize／`visualViewport` 事件（若完全不發，進站當下量到的
+  那一次就已經是對的值，也還是能用）。
 - **GSAP 內部的視窗高來源**。實測蓋掉 `window.innerHeight`（連
   `documentElement.clientHeight` 一起蓋再 `refresh()`）都不影響 GSAP 解析
   `'bottom bottom'` 的結果 —— 它另有來源，沒有追下去。
