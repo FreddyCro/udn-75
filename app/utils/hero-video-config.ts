@@ -1,7 +1,7 @@
 // hero 影片（section 1 第一屏）的「設定台」。
 //
-// 純資料模組（無 Vue runtime），Nuxt auto-import；由 useHeroVideo / HeroVideo /
-// DevHeroVideoControls 共用同一份。這裡集中兩件事：
+// 純資料模組（無 Vue runtime），Nuxt auto-import；由 useHeroVideo / HeroVideo
+// 共用同一份。這裡集中兩件事：
 //   1. 影片來源（mob / pad / pc 三段，RWD 預留）
 //   2. 四階段（main / loop / outro / gone）在影片時間軸上的秒數
 // 要換片或調時間點只改這裡，元件不必動。
@@ -104,9 +104,9 @@ export const HERO_VIDEO_READY_TIMEOUT = 8000;
 // 座標是**影片畫面**的正規化比例，不是螢幕比例 —— object-fit: cover 會等比放大並裁掉溢出
 // 部分，換算交給 coverAnchorToScreen，故換視窗尺寸 / 換斷點都不必重量。
 //
-// 怎麼量：帶 ?pathdebug 開站（HeroVideo 會掛出 DevHeroVideoControls），切到「3.退場」，
-// 把影片停在交棒的那一幀（＝ outro.end），
-// 截圖量那顆橘塊的中心與邊長，各除以影片畫面尺寸（pc 版 1920×1080）：
+// 怎麼量（pad / mob 剪輯到位後要重量）：直接從影片檔抽出 outro.end 那一幀，例如
+//   ffmpeg -ss 38.5 -i public/img/udn75_bg_video_opening_pc.mp4 -frames:v 1 outro-end.png
+// 量那顆橘塊的中心與邊長，各除以影片畫面尺寸（pc 版 1920×1080）：
 //   x = 中心x ÷ 1920   y = 中心y ÷ 1080   size = 邊長 ÷ 1920
 //
 // 預設值＝畫面正中心、邊長換算後在 1280 寬視窗上剛好 26px（＝ orange-core-config 的

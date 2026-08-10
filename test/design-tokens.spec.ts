@@ -26,15 +26,11 @@ const ALLOWED_PREFIXES = [
   'app/components/PixelBranch.vue',
   'app/components/AiImageQuiz.vue',
   'app/pages/demo.vue',
-  'app/components/01.hero/DevHeroVideoControls.vue',
 ];
 
-// C 類：WebGL / canvas 需要 hex 字串，CSS 變數取代不了。只有這兩支放行，
+// C 類：WebGL / canvas 需要 hex 字串，CSS 變數取代不了。只有這一支放行，
 // 且僅限單引號包住的字串；其餘位置（含 inline style binding）一律視為違規。
-const QUOTED_HEX_ALLOWED = [
-  'app/components/01.hero/HeroLoader.vue',
-  'app/components/04.media/HeartMetaball.vue',
-];
+const QUOTED_HEX_ALLOWED = ['app/components/04.media/HeartMetaball.vue'];
 
 const SCAN_EXT = ['.vue', '.ts', '.scss', '.css'];
 

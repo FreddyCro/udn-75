@@ -43,12 +43,6 @@ const showSkip = computed(
 // 全站音效開關：開啟時本影片不 muted（見 composables/useAppSound）。
 const { soundOn } = useAppSound();
 
-// 階段切換列（見下方 template 的 <DevHeroVideoControls>）：沿用 ?pathdebug 這個既有開關，
-// 不另開一個 —— 會用到它的情境（把影片停在交棒那一幀去量 HERO_OUTRO_CORE_ANCHOR）
-// 本來就是核心軌對位工作的一部分，同 <DevCoreProgress> / Forum 的設計線。
-const route = useRoute();
-const videoDebug = computed(() => route.query.pathdebug !== undefined);
-
 // 資源路徑前綴同 UVid / UPic（dev/prod 為空字串）
 const runtime = useRuntimeConfig();
 const ASSETS_PATH = runtime.public.APP_ASSETS_PATH;
@@ -437,11 +431,6 @@ onBeforeUnmount(() => {
         <use href="#sec1-hero-skip-chevron" x="12" />
       </svg>
     </button>
-
-    <!-- 影片階段切換列（?pathdebug 才顯示）：切 main/loop/outro/gone、SKIP、讀秒數。
-         掛在 .sec1__hero 內而非 pages/index.vue —— 它是 position: absolute，要以本區塊
-         為定位基準；而且它調的就是本區塊那支影片。 -->
-    <DevHeroVideoControls :dev="videoDebug" />
 
     <!-- 下滑看更多：僅 loop 狀態顯示（提示使用者向下滾動以觸發退場） -->
     <div v-if="heroState === 'loop'" class="sec1__hero-scroll">
