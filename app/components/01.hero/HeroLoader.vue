@@ -23,16 +23,6 @@ const props = defineProps({
   tileSize: { type: Number, default: HANDOFF_CUBE },
   /** 橘色「處理中」前緣的方塊數（同時有幾顆橘）。設計稿 loading-6（96%）為 1 顆橘＋2 顆藍 */
   orangeTiles: { type: Number, default: 1 },
-  /** 底色（未載入） */
-  blue: { type: String, default: '#9FD6FF' },
-  /** 前緣「處理中」色 / 收尾中央色 */
-  orange: { type: String, default: '#FF7F00' },
-  /** 載入完成色（=背景） */
-  white: { type: String, default: '#ffffff' },
-  /** 計數文字色 */
-  textColor: { type: String, default: '#686868' },
-  /** 計數文字大小（CSS 長度，可含 clamp()）；微調數字大小用。設計稿 32px */
-  counterFontSize: { type: String, default: '32px' },
   /** 進站後延遲幾秒才開始 */
   startDelay: { type: Number, default: 0.2 },
   /** 進度到達此比例（0~1，對應數字百分比）時，中央格就提早翻橘，與後續「100%」數字重疊一段時間 */
@@ -51,10 +41,13 @@ const rootRef = ref<HTMLDivElement | null>(null);
 const counterRef = ref<HTMLDivElement | null>(null);
 const tileRefs = ref<HTMLDivElement[]>([]);
 
-// 網格欄列數與總格數（resize 時重算）；cols/rows 強制為奇數，保證有「正中間一格」
-const cols = ref(0);
+// 三種狀態的顏色（0=藍 1=橘 2=白）。色值的單一來源是 tailwind.css 的 CSS 變數 ——
+// 原本是三個 props，但呼叫端從未傳過，等於在元件裡又抄一份色碼、改主色時會漏掉這裡。
+const TILE_COLOR = ['var(--color-blue)', 'var(--color-orange)', '#fff'] as const;
+
+// 總格數（resize 時重算）；欄列數各自強制為奇數，保證有「正中間一格」。
+// 欄數只寫進 --cols 給 CSS grid 用，列數只用來算 centerIndex，兩者都不必留在 JS 這側。
 const count = ref(0);
-let rows = 0;
 // 正中央那格的 index：最先翻白、最後翻橘，且中心對齊視窗正中心。
 // 收尾時它就是「交接橘塊」——邊長＝tileSize＝HANDOFF_CUBE＝HeroStart 的 cube，
 // 置中方式也與 cube 等效（奇數網格置中 ⇔ flex 置中），故兩層的方塊完全重合。
@@ -87,8 +80,6 @@ const computeGrid = () => {
   const tile = props.tileSize;
   const c = oddCover(vw, tile);
   const r = oddCover(vh, tile);
-  cols.value = c;
-  rows = r;
   count.value = c * r;
   // 奇數網格的正中間格：中心即整個網格中心；網格置中後 = 視窗正中心
   centerIndex = Math.floor(r / 2) * c + Math.floor(c / 2);
@@ -115,12 +106,12 @@ const buildOrder = (n: number) => {
   band = Math.max(1, Math.round(props.orangeTiles)); // 橘色前緣寬度
 };
 
-// 0=藍 1=橘 2=白
+// 0=藍 1=橘 2=白（見 TILE_COLOR）
 const paint = (idx: number, state: number) => {
   const el = tileRefs.value[idx];
   if (!el || prevState[idx] === state) return;
   prevState[idx] = state;
-  el.style.backgroundColor = state === 2 ? props.white : state === 1 ? props.orange : props.blue;
+  el.style.backgroundColor = TILE_COLOR[state] ?? TILE_COLOR[0];
 };
 
 const finish = () => {
@@ -186,17 +177,21 @@ const start = () => {
   raf = requestAnimationFrame(frame);
 };
 
+// resize 只重排網格，**不重跑計時** —— start() 會把 elapsed 歸零，載入中途轉向、
+// 軟鍵盤彈出、桌機拖幾 px 視窗都會讓進度從 85% 倒回 0% 再跑滿一次 duration。
+// 格數沒變（多數 resize 都是）連翻白順序都不必重建：order 依格子 index 排，格數相同即仍有效。
 const onResize = () => {
   if (finished) return; // 播完不再重排
+  const prevCount = count.value;
   computeGrid();
-  nextTick(() => start());
+  if (count.value === prevCount) return;
+  // 格數真的變了 → 重抽順序（含新的 centerIndex）。elapsed 不動，進度從原處接著跑；
+  // 代價是已翻白的格子會重洗一次，但只發生在網格確實換尺寸的時候。
+  buildOrder(count.value);
 };
 
 onMounted(() => {
-  if (counterRef.value) {
-    counterRef.value.style.color = props.textColor;
-    counterRef.value.style.fontSize = props.counterFontSize;
-  }
+  // 計數的字級／顏色只寫在下方 <style>（原本 JS 這裡又設一次，同一件事兩份來源）。
   // 捲動鎖統一由父層 Hero 擁有（載入期間即已上鎖），本元件不碰 body.overflow，
   // 避免卸載解鎖與父層重新上鎖之間出現「瞬間可捲動」的破口。
   computeGrid();

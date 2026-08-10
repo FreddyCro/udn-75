@@ -139,17 +139,18 @@ fonts: {
 - [x] `app/components/02.forum/ForumHighlights.vue:116` — `color: #898989`
 - [x] `app/pages/resources.vue:393` — `background-color: #fafafa`
 
-**C 類：JS / props default / WebGL 材質參數 — 不改。** 這兩支都是 client-only canvas / WebGL，技術上可在 mount 時讀 `getComputedStyle` 取 CSS 變數，但為 5 個值引入 composable 與 SSR fallback 分支不划算。改 token 值時需連帶改這裡：
+**C 類：JS / props default / WebGL 材質參數 — 不改。** client-only canvas / WebGL，技術上可在 mount 時讀 `getComputedStyle` 取 CSS 變數，但為這幾個值引入 composable 與 SSR fallback 分支不划算。改 token 值時需連帶改這裡：
 
-- `app/components/01.hero/HeroLoader.vue:20,22,26` — `blue` / `orange` / `textColor` props default
 - `app/components/04.media/HeartMetaball.vue:177-178` — `color` / `accentColor`
+- ~~`app/components/01.hero/HeroLoader.vue:20,22,26` — `blue` / `orange` / `textColor` props default~~
+  2026-08-10 解除：那三個 props 呼叫端從未傳過（等於在元件裡又抄一份色碼），已刪除並改用 `var(--color-*)` 字串；`design-tokens.spec.ts` 的 `QUOTED_HEX_ALLOWED` 同步移除該檔，該支現在也受測試把關。
 
 > 也曾考慮抽一份 `design-tokens.ts` 常數檔，但 CSS 無法 import TS，hex 真值仍留在 `tailwind.css` 的 `@theme` → 變成兩份真值並存。那是把重複從 5 處收攏到 1 處，不是消除重複，不值得新增一個要維護的檔案。
 
 **不動的其餘位置**：
 
 - `app/components/AiSearch.vue:335` — `background: #fafafa`，落在「不改的範圍」。（附記：該行原註解寫「面板專用底色，非全站 token」，此說法已不成立——同色另有兩處各自硬編碼，Figma 也把它列為 variable。註解留著不動。）
-- `app/components/01.hero/DevHeroVideoControls.vue:68-69`、`app/pages/demo.vue:108,237` — dev 工具與 dev 頁
+- `app/pages/demo.vue:108,237` — dev 頁（同列的 `DevHeroVideoControls.vue` 已於 2026-08-10 刪除）
 - `app/components/legacy/HeartMetaballBlock.vue:140-141` — legacy
 - 純註解提及 token 值的 9 處：`ForumCorePath.vue:317`、`BlessingPartners.vue:5,55`、`MediaTitle.vue:181`、`Subpage.vue:131`、`useMediaIntroMotion.ts:251`、`blessing-face-frames.ts:11,24`、`orange-core-config.ts:57` — 不是程式碼
 

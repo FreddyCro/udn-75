@@ -37,16 +37,12 @@ const introBodyRef = ref<HTMLElement | null>(null);
 // OrangeCore 元件曝露的 root el，交給 OrangeCorePath 以 GSAP 驅動。
 const orangeCoreEl = computed(() => orangeCoreRef.value?.root ?? null);
 
-// core 移動進度（path 軌）＋ 轉場進度：全域共享（單一來源，見 useOrangeCoreProgress）。
+// 轉場進度：全域共享（單一來源，見 useOrangeCoreProgress）。core 在 path 軌上的進度
+// 由 OrangeCorePath 自己寫入，本元件不必讀（引言淡出改吃下方 introFade 的量測結果）。
 // symbolMode / symbolLayerDone 是給轉場層內那顆 <SymbolFace> 用的：
 // 本元件只負責「讓它在場」，序列與撤場時機都由 01a.symbol/SymbolScene 依捲動寫入。
-const {
-  pathProgress,
-  transitionProgress,
-  setTransitionProgress,
-  symbolMode,
-  symbolLayerDone,
-} = useOrangeCoreProgress();
+const { transitionProgress, setTransitionProgress, symbolMode, symbolLayerDone } =
+  useOrangeCoreProgress();
 
 // 引言淡出進度（0..1）：由下方 introFadeST 的 scrub 寫入。
 // 刻意不掛在 pathProgress 的門檻上 —— 那條軌的進度換算成「文字還剩幾行沒被穿過」會隨
@@ -76,6 +72,30 @@ const {
 
 // 視窗高的單一來源（--vh）：轉場與引言淡出的尺長都吃它，不吃 window.innerHeight。
 const { vhPx } = useViewportHeight();
+
+// ── 帶 hash 進站：略過開場閘門 ────────────────────────────────────────
+// （子頁漢堡選單的錨點會導到 /#forum 等；子頁的「返回」也是 /#media 這類連結。）
+// 走既有的 gone 路徑而非新增旗標 —— setState('gone') 令 hasLeftLoop 為 true，
+// shouldLockScroll 隨即 false，onMounted 的 applyScrollLock() 那一輪就不會上鎖
+// （必須搶在它之前，否則會先上鎖再解鎖、中間閃一下並被 scrollTo(0,0) 拉回頂端）。
+//
+// ⚠️ 判定必須在 **render 之前**，不能等 onMounted —— 晚一個 render，HeroLoader 就會先
+//    掛上一輪，再在使用者正要看的那一段上蓋一次 0.6s 的白色全螢幕淡出。
+//    fragment 不會送到伺服器，故只有 client 讀得到 hash，分兩種情形：
+//      client-side 導航（子頁 → /#media）：沒有 SSR 那一輪，在此就擋掉，載入層完全不進 DOM。
+//      首次載入（hydration）：SSR 必然已經吐出載入層，此刻改值會 hydration mismatch →
+//        留到 onMounted，改以 loaderBypass 把淡出換成瞬間移除（見 template 的 :name）。
+const initialHash = import.meta.client ? window.location.hash.slice(1) : '';
+const loaderBypass = ref(false);
+
+function bypassLoader() {
+  loaderBypass.value = true;
+  loaderDone.value = true;
+  heroStarted.value = true;
+  setState('gone');
+}
+
+if (initialHash && !useNuxtApp().isHydrating) bypassLoader();
 
 // ── 開場捲動鎖的「預設值」：SSR 就先鎖住 ──────────────────────────────
 // 下方 applyScrollLock() 掛在 onMounted，**要等 hydration**。SSR 吐出的 HTML 到
@@ -129,16 +149,8 @@ onMounted(() => {
   // 避免重整後還原到內容區、卻因 main/loop 狀態把 body 鎖死在中途。
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
-  // 帶 hash 進站（子頁漢堡選單的錨點會導到 /#forum 等）：略過開場閘門。
-  // 走既有的 gone 路徑而非新增旗標 —— setState('gone') 令 hasLeftLoop 為 true，
-  // shouldLockScroll 隨即 false，下面的 applyScrollLock() 這一輪就不會上鎖
-  // （必須搶在它之前，否則會先上鎖再解鎖、中間閃一下並被 scrollTo(0,0) 拉回頂端）。
-  const initialHash = window.location.hash.slice(1);
-  if (initialHash) {
-    loaderDone.value = true;
-    heroStarted.value = true;
-    setState('gone');
-  }
+  // hydration 那一輪擋不掉（理由見上方 bypassLoader）：補在這裡，仍搶在 applyScrollLock 之前。
+  if (initialHash && !loaderBypass.value) bypassLoader();
 
   // 捲動鎖由本元件「單一擁有」：載入層一掛上就上鎖（此時為 main），一路持有到
   // gone 才解鎖（退場段也鎖，見 useHeroVideo）。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
@@ -213,7 +225,13 @@ function scrollToInitialHash(hash: string) {
 onBeforeUnmount(() => {
   document.documentElement.classList.remove('is-scroll-locked');
   document.body.classList.remove('is-scroll-locked');
-  // data-scroll-lock 刻意留著（理由見本檔最下方的 <style>）
+  // data-scroll-lock 刻意留著（理由見 assets/styles/base.scss 的 .is-boot-locked 那段）
+  //
+  // 轉場進度是全域共享的，必須歸零：header 在轉場期間刻意保持可點（疊在 z-10 的轉場層
+  // 之上），使用者真的會在轉場進行到一半時離開。不歸零，下次回到首頁的第一個 render
+  // 就會讓 HeroSymbolTransition 處於 active —— 在 ScrollTrigger refresh 之前蓋一層近乎
+  // 滿版的黑色 clip。
+  setTransitionProgress(0);
   transitionST?.kill();
   transitionST = null;
   introFadeST?.kill();
@@ -336,8 +354,13 @@ function applyScrollLock() {
 
     <!-- 載入層：必須掛在 .sec1__inner「外面」——pinST 會在 inner 寫入 transform，使其成為
          fixed 子孫的 containing block，loader 放進去會改以 inner 為基準而跑位。
-         @after-leave 再確認捲動鎖；HeroLoader 不碰 body.overflow，故無需等它卸載。 -->
-    <Transition name="loader-fade" @after-leave="applyScrollLock">
+         @after-leave 再確認捲動鎖；HeroLoader 不碰 body.overflow，故無需等它卸載。
+         轉場名稱在「帶 hash 進站」時換掉：loader-cut 沒有對應的 CSS（見 Hero.scss），
+         Vue 量到零時長就立刻移除 —— 使用者要去的是某個段落，不該先看 0.6s 白色淡出。 -->
+    <Transition
+      :name="loaderBypass ? 'loader-cut' : 'loader-fade'"
+      @after-leave="applyScrollLock"
+    >
       <HeroLoader
         v-if="!loaderDone"
         :duration="2"

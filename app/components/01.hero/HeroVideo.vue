@@ -88,9 +88,13 @@ async function play() {
   v.muted = !soundOn.value;
   try {
     await v.play();
-  } catch {
-    // 自動播放被封鎖（muted 影片極少發生）：直接進 gone。
-    // 否則 main / loop 的捲動鎖會把使用者永久鎖在第一屏。
+  } catch (err) {
+    // ⚠️ 只有「自動播放被封鎖」才放棄整段 hero —— 那時非放棄不可，否則 main / loop 的
+    // 捲動鎖會把使用者永久鎖在第一屏。其餘 rejection 幾乎都是 AbortError：
+    // promotePreload() 的 load() 撞上掛載時這次 play()、或 RWD 換 :src 造成的中斷。
+    // 影片本身沒問題，loadedmetadata / watch(heroState) 會再播一次；
+    // 一律當成被封鎖就會讓正常使用者莫名其妙看不到開場。
+    if ((err as DOMException | undefined)?.name !== 'NotAllowedError') return;
     markReady();
     setState('gone');
   }
@@ -135,7 +139,7 @@ function onTimeUpdate() {
       if (v.currentTime >= seg.loop.end) v.currentTime = seg.loop.start; // loop 段循環
       break;
     case 'outro':
-      // 退場段一路播到影片結束 → gone（影片淡出、orange core 淡入）
+      // 退場段播到 outro.end（38.5s，非影片結尾）→ gone（影片淡出、orange core 淡入）
       if (v.currentTime >= segEnd(v, seg.outro)) setState('gone');
       break;
   }
@@ -196,7 +200,8 @@ function armOutroTimer(v: HTMLVideoElement) {
 }
 
 // 狀態改變（SKIP / 手勢 / 自動推進）→ 對齊該段起點並續播；gone 則停住影片。
-// 已落在目標段內就不 seek，所以「段落相接」的自動推進不會有跳動。
+// 已落在目標段內就不 seek：main → loop 是相接的，自動推進不會有跳動。
+// loop → outro 則必定 seek（33 → 36 中間刻意留白，見 hero-video-config 的段落表）。
 watch(heroState, (s) => {
   clearOutroTimer(); // 離開 outro（正常播完或倒帶）都要拆掉保險絲
   const v = videoEl.value;
@@ -234,13 +239,21 @@ watch(soundOn, (on) => {
 let gesture = createHeroGestureAccum();
 
 function feedGesture(delta: number) {
+  // 兩個出口都只在 loop / gone 開著，main 與 outro 怎麼滑都不會有意圖 —— 這幾支監聽
+  // 掛在 window 上、整頁生命週期都在，不必陪著跑。
+  // ⚠️ **不要**再加上 atTop 的早退把 gone 也擋掉：gone 期間即使還沒回到頂端也必須持續
+  //    累積，回滑時的第一個負值才有東西可以反向清掉、立刻算數 —— 那正是 heroGestureStep
+  //    的 reversed 分支在處理的手感（見 hero-scroll-intent 的註解 ②）。
+  const inLoop = heroState.value === 'loop';
+  if (!inLoop && !isGone.value) return;
+
   const { intent, accum } = heroGestureStep(
     gesture,
     {
       delta,
       now: performance.now(),
-      inLoop: heroState.value === 'loop',
-      isGone: heroState.value === 'gone',
+      inLoop,
+      isGone: isGone.value,
       atTop: window.scrollY <= 0,
     },
     HERO_GESTURE,
