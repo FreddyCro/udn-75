@@ -207,6 +207,24 @@ export const CORE = {
   orange: [255, 127, 0] as [number, number, number],
 };
 
+// ── 論壇段紙飛機 ─────────────────────────────────────────────────────
+// node：變身節點（後半段的節點編號逐斷點不同）。morphLen：九格走完的弧長。
+// tailLen：彗星尾長度（稿上尾跡的弧長）。dash：稿值，線寬吃 FORUM_PATH_STROKE。
+// rearOffset：機尾相對路徑點的後退量。取 dotSize/2 是為了讓第 1 格（26×26）的中心
+// 正好落在路徑點上 ＝ 與交棒那顆方塊完全重合；改 dotSize 要一起改 sprite 第 1 格。
+export const FORUM_PLANE = {
+  node: { pc: 'R1', pad: 'S1', mob: 'T1' } as Record<'pc' | 'pad' | 'mob', string>,
+  morphLen: 240,
+  tailLen: 130,
+  dash: [16, 16] as [number, number],
+  rearOffset: CORE.dotSize / 2,
+  // ⚠ 三個斷點都不可小於 1：CORE.dotSize（第 0 格）不隨斷點縮小，第 1 格 24×28 是
+  // 設計者刻意貼近 26×26 讓變形起手無縫接軌 —— scale < 1 會讓交棒瞬間「縮一下」，
+  // 違反本專案「交棒不可看到縮一下」的不變量。真要縮小機身，得連 CORE.dotSize 也
+  // 一起做成隨斷點變化，而不是只縮 sprite。
+  scale: { pc: 1, pad: 1, mob: 1 } as Record<'pc' | 'pad' | 'mob', number>,
+};
+
 // 註：原有 PATH（桌機設計中心線幾何：stub 垂直段 + C/L 曲線片段 + 相對 date 大標左上角的
 // anchorOffset）已隨 date 段移除。新稿 hero 段的路徑是「第一屏中央 → 視窗正中央」的垂直線，
 // 幾何直接由 section 量測推導、不需常數（見 OrangeCorePath.vue 的 build()）。

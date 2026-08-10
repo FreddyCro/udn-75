@@ -23,6 +23,10 @@ import { nearestArcLength, type SlashWindow } from '~/utils/forum-slash';
 const rootEl = ref<HTMLElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
 const coreEl = ref<HTMLElement | null>(null);
+// 彗星尾：可見層固定 dasharray、遮罩層滑動開窗（見模板註解）。
+const trailEl = ref<SVGPathElement | null>(null);
+const trailMaskEl = ref<SVGMaskElement | null>(null);
+const trailMaskPathEl = ref<SVGPathElement | null>(null);
 // 可見線：整條由 waypoint 算出來，故只有一個 <path>。
 const genEl = ref<SVGPathElement | null>(null);
 
@@ -50,12 +54,16 @@ function detectBp(): 'pc' | 'pad' | 'mob' {
   return 'mob';
 }
 
+// 論壇四之後逐格變形成紙飛機的格數（0..8）；0 = 維持橘方塊。
+const planeFrame = ref(0);
+
 // 路徑核心的外觀與 ForumCore 的橘點共用同一份設定：交棒點兩顆重合，尺寸或顏色不同會看到縮一下。
-const coreStyle = {
-  width: `${CORE.dotSize}px`,
-  height: `${CORE.dotSize}px`,
-  background: `rgb(${CORE.orange.join(', ')})`,
-};
+const coreStyle = computed(() => {
+  const orange = `rgb(${CORE.orange.join(', ')})`;
+  const box = { width: `${CORE.dotSize}px`, height: `${CORE.dotSize}px` };
+  // 進到第 1 格之後底色讓給 sprite，改用 color 餵 currentColor。
+  return planeFrame.value > 0 ? { ...box, color: orange } : { ...box, background: orange };
+});
 
 let st: ScrollTrigger | null = null;
 // 驅動線總長（含尾段）：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用。
@@ -69,18 +77,26 @@ let tailEndY = 0;
 // 回中節點表（容器 y ↔ 弧長）：place() 靠它把核心留在視窗中央附近，見 buildArcKnots。
 // 與 motionLen 同時在 build() 建立一次，scrub 每幀只做內插。
 let knots: ArcKnot[] = [];
+// 變身點的弧長。量不到 → null → 全程維持橘方塊、不畫尾跡，但整條線照跑。
+let swapLen: number | null = null;
 
 // 沒有可跑的驅動線時清空：核心藏起來，橘點回到原本的 coreOut 淡出（見 forumCoreDotVisible）。
 // ⚠ progress 也要歸零，不能只清 active：從 pc 切到 pad/mob 時它會留著上一個斷點的殘值，
 //   forumPathRiding 因此卡在 true —— 路徑核心保持可見，而 place() 已因 motionLen=0 提早
 //   return，方塊就停在最後一次的 transform 上，變成論壇段裡一顆不會動的橘方塊。
+//   planeFrame 是同一型事故：不清的話會停在舊格數（可能是 8），且 coreStyle 在
+//   planeFrame > 0 時不輸出 background，殘影會是一架不會動的紙飛機而非橘方塊。
 function reset() {
   motionEl.value?.removeAttribute('d');
+  trailEl.value?.removeAttribute('d');
+  trailMaskPathEl.value?.removeAttribute('d');
   motionLen = 0;
   pathLen = 0;
   lineEndY = 0;
   tailEndY = 0;
   knots = [];
+  swapLen = null;
+  planeFrame.value = 0;
   setForumPathActive(false);
   setForumPathProgress(0);
   setForumSlashWindow(null);
@@ -136,6 +152,20 @@ function syncSlashWindow(motion: SVGPathElement) {
   setForumSlashWindow(w);
 }
 
+// 變身節點在驅動線上的弧長。節點本來就在線上，故最近點即精確值。
+// 髮夾彎會讓線多次經過鄰近位置，但變身節點與後段各點的 y 差很遠，不會選錯分支。
+function syncSwapLen(
+  motion: SVGPathElement,
+  points: Map<string, [number, number]>,
+): number | null {
+  const b = bp.value;
+  if (!b || !pathLen) return null;
+  const pt = points.get(FORUM_PLANE.node[b]!);
+  if (!pt) return null;
+  const sample = (len: number) => motion.getPointAtLength(len);
+  return nearestArcLength({ x: pt[0]!, y: pt[1]! }, sample, pathLen);
+}
+
 // ── 整條線由 waypoint 算出（三個斷點共用）─────────────────────────────
 // 稿的寬度只是一個點、斷點卻是一段區間，而 pad / mob 的版面是流排版（.forum-event 退回
 // flex 直排），垂直位置隨字數／字體一起變 —— 所以線必須依 FORUM_PATH_NODES[bp] ＋
@@ -182,7 +212,8 @@ function buildNodesD(list: ForumPathNode[]) {
     };
   };
 
-  return buildNodePathD(list, { width: rootRect.width, measure });
+  const out = buildNodePathD(list, { width: rootRect.width, measure });
+  return out ? { ...out, width: rootRect.width } : null;
 }
 
 // 依當前版面重建整條線（前半段＋後半段）。可見線與驅動線吃同一個 d。
@@ -199,6 +230,11 @@ function build() {
 
   genEl.value?.setAttribute('d', out.d);
   motion.setAttribute('d', out.d);
+  trailEl.value?.setAttribute('d', out.d);
+  trailMaskPathEl.value?.setAttribute('d', out.d);
+  // 遮罩區預設只有外框 ±10%，會把線裁掉 → 明寫成涵蓋整條線再各留 100 的餘裕。
+  trailMaskEl.value?.setAttribute('width', `${out.width + 200}`);
+  trailMaskEl.value?.setAttribute('height', `${out.endY + 200}`);
   pathLen = motion.getTotalLength();
   motionLen = pathLen;
   lineEndY = out.endY;
@@ -207,6 +243,7 @@ function build() {
   // ⚠ tailEndY 不能留 0 —— ScrollTrigger 的 end 讀它，0 會被 GSAP 夾成 start + 0.01，
   //   捲動尺變零長度、核心一進場就跳到路徑末端。
   tailEndY = lineEndY;
+  swapLen = syncSwapLen(motion, out.points);
   syncKnots(motion);
   syncSlashWindow(motion);
 
@@ -234,7 +271,19 @@ function place(rawP: number) {
   const ahead = motion.getPointAtLength(Math.min(pathLen || motionLen, tanLen + d));
   const angle =
     (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
-  gsap.set(core, { x: pt.x, y: pt.y, rotation: angle });
+  // 一律 +90：sprite 機鼻朝 −y，而 angle 是「朝右為 0°」。第 0 格是正方形，
+  // 多轉 90° 看起來完全一樣，故不分支。
+  gsap.set(core, { x: pt.x, y: pt.y, rotation: angle + 90 });
+  planeFrame.value = morphFrame(len, swapLen, FORUM_PLANE.morphLen);
+
+  const { dash, offset } = trailWindow(
+    len, swapLen, FORUM_PLANE.tailLen, FORUM_PLANE.rearOffset,
+  );
+  const maskPath = trailMaskPathEl.value;
+  if (maskPath) {
+    maskPath.setAttribute('stroke-dasharray', `${dash} 99999`);
+    maskPath.setAttribute('stroke-dashoffset', `${offset}`);
+  }
 
   // 語意維持「設計線走完的比例」，下游的 forumPathRiding 因此不變。
   setForumPathProgress(pathLen ? Math.min(1, len / pathLen) : 0);
@@ -314,6 +363,29 @@ onBeforeUnmount(() => {
       <path ref="motionEl" fill="none" stroke="none" />
     </svg>
 
+    <!-- 尾跡：可見層吃固定 dasharray（＝虛線釘在弧長上），遮罩層滑動開窗。
+         遮罩描邊取可見層的 2 倍才蓋得乾淨。 -->
+    <svg class="forum-path__trail" xmlns="http://www.w3.org/2000/svg">
+      <mask
+        id="forum-trail"
+        ref="trailMaskEl"
+        maskUnits="userSpaceOnUse"
+        x="-100"
+        y="-100"
+      >
+        <path ref="trailMaskPathEl" fill="none" stroke="#fff" :stroke-width="FORUM_PATH_STROKE * 2" />
+      </mask>
+      <path
+        ref="trailEl"
+        fill="none"
+        stroke="currentcolor"
+        :stroke-width="FORUM_PATH_STROKE"
+        stroke-linecap="square"
+        :stroke-dasharray="FORUM_PLANE.dash.join(' ')"
+        mask="url(#forum-trail)"
+      />
+    </svg>
+
     <!-- 路徑核心：p=0（尚未交棒）時必須藏著 —— 它是隨頁面捲動的 absolute 元素，
          若一直可見，段落進場到交棒點之間畫面上會同時有它與中央那顆固定橘點。 -->
     <span
@@ -321,7 +393,13 @@ onBeforeUnmount(() => {
       class="forum-path__core"
       :class="{ 'is-riding': forumPathRiding }"
       :style="coreStyle"
-    />
+    >
+      <ForumPlaneSprite
+        v-if="planeFrame > 0 && bp"
+        :frame="planeFrame"
+        :scale="FORUM_PLANE.scale[bp]"
+      />
+    </span>
   </div>
 </template>
 
@@ -361,6 +439,15 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   overflow: visible;
+}
+
+// 尾跡的座標可能超出 svg box → overflow: visible 才不被裁掉（同 __motion）。
+// 顏色吃 currentcolor，與核心同一個來源。
+.forum-path__trail {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  color: rgb(255, 127, 0);
 }
 
 // 位置由 place() 逐幀以 gsap transform 寫入；top/left 只是把 transform 的原點釘在容器左上角。

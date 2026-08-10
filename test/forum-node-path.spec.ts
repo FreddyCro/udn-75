@@ -447,3 +447,30 @@ describe('必要錨點不可只靠會消失的 placeholder（回歸：pc W5／W1
     }
   );
 });
+
+describe('buildNodePathD 的 points 回傳', () => {
+  const nodes: ForumPathNode[] = [
+    { id: 'A', x: 0.25, anchor: { sel: '.a', edge: 'top' }, join: 'line' },
+    { id: 'B', x: 0.5, anchor: { sel: '.b', edge: 'top' }, join: 'line' },
+    { id: 'C', x: 0.75, anchor: { sel: '.c', edge: 'top' }, optional: true },
+  ];
+  const measure: ForumPathMeasure = (a) =>
+    a.sel === '.c' ? null : rect({ top: a.sel === '.a' ? 100 : 300 });
+
+  it('回傳每個存活節點的座標，key 是節點 id', () => {
+    const out = buildNodePathD(nodes, { width: 1000, measure })!;
+    expect(out.points.get('A')).toEqual([250, 100]);
+    expect(out.points.get('B')).toEqual([500, 300]);
+  });
+
+  it('量不到的 optional 節點不會出現在 points 裡', () => {
+    const out = buildNodePathD(nodes, { width: 1000, measure })!;
+    expect(out.points.has('C')).toBe(false);
+  });
+
+  it('d 與 endY 不受影響', () => {
+    const out = buildNodePathD(nodes, { width: 1000, measure })!;
+    expect(out.d).toBe('M250 100L500 300');
+    expect(out.endY).toBe(300);
+  });
+});

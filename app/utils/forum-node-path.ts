@@ -735,7 +735,7 @@ function resolveY(a: ForumPathAnchor, m: { top: number; height: number }): numbe
 export function buildNodePathD(
   nodes: ForumPathNode[],
   ctx: { width: number; measure: ForumPathMeasure; amplitude?: number }
-): { d: string; endY: number } | null {
+): { d: string; endY: number; points: Map<string, [number, number]> } | null {
   const { width, measure, amplitude = 1 } = ctx;
 
   // 先過濾出「存活的點」：optional 且量不到 → 跳過；必要點量不到 → 整條放棄。
@@ -783,5 +783,9 @@ export function buildNodePathD(
   }
 
   // endY 與 d 用同一個捨入值：ScrollTrigger 的 end 與線的末端必須指同一個點。
-  return { d, endY: r2(live[live.length - 1]!.pt[1]!) };
+  // points 給下游依節點 id 反查座標用（紙飛機的變身點）—— 不含被跳過的 optional 節點。
+  const points = new Map<string, [number, number]>(
+    live.map((l) => [l.node.id, l.pt] as const),
+  );
+  return { d, endY: r2(live[live.length - 1]!.pt[1]!), points };
 }

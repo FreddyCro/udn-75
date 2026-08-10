@@ -263,7 +263,6 @@ onBeforeUnmount(() => {
   width: var(--agenda-arrow-u);
   background: var(--accent);
   opacity: 0;
-  transition: opacity 0.3s ease;
   pointer-events: none;
 
   .agenda__group--active & {
