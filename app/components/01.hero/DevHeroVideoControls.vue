@@ -1,6 +1,10 @@
 <script setup lang="ts">
 // hero 影片狀態切換列（切 main/loop/outro/gone + SKIP + 影片秒數讀數）。
 // dev=false（預設）時完全不渲染；樣式精簡，production 負擔極小。
+//
+// 由 01.hero/HeroVideo.vue 掛出，開關是 ?pathdebug（見該檔的 videoDebug）。
+// 主要用途：把影片停在退場交棒的那一幀，量 HERO_OUTRO_CORE_ANCHOR
+// （量法寫在 ~/utils/hero-video-config 該常數上方）。
 import { HERO_STATES, type HeroState } from '~/composables/useHeroVideo';
 import { HERO_VIDEO_SEGMENTS } from '@/utils/hero-video-config';
 

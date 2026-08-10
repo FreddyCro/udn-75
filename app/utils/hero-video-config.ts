@@ -8,6 +8,7 @@
 //
 // 目前只有一支剪輯（實測 40.02s，main / loop / outro 都在同一支裡），mob 版是同一支的
 // 低碼率轉檔（40.03s）→ 段落秒數三個裝置共用；pad 版尚未提供，先沿用 pc。
+// 實際會播到的只有 0–33 與 36–38.5 兩段（中間 3 秒與 38.5s 之後都不播，見下方段落表）。
 
 import type { HeroCoreAnchor } from './hero-core-handoff';
 
@@ -51,7 +52,7 @@ export const HERO_VIDEO_POSTER: Record<HeroVideoDevice, string> = {
  * 實際收尾時間不寫死在設定裡，改由 `<video>.duration` / `@ended` 決定
  * （見 HeroVideo 的 onTimeUpdate / onEnded）—— 換剪輯時 outro 不必跟著改秒數。
  *
- * 目前 outro 有明確秒數（40s）故未使用；若之後想「不寫死、跟著剪輯長度走」再填回 outro.end。
+ * 目前 outro 有明確秒數（38.5s）故未使用；若之後想「不寫死、跟著剪輯長度走」再填回 outro.end。
  */
 export const HERO_VIDEO_END = Number.POSITIVE_INFINITY;
 
@@ -60,10 +61,14 @@ export const HERO_VIDEO_END = Number.POSITIVE_INFINITY;
 //   loop  loop.start → loop.end   等待使用者下滑；到 end 自動跳回 start 循環
 //   outro outro.start → outro.end 退場段；到 end（或影片播完）→ gone（影片淡出、露出白底）
 //
-// 段落請「相接」（前段 end ＝ 後段 start）：自動推進時 currentTime 已落在新段內，
+// 段落預設「相接」（前段 end ＝ 後段 start）：自動推進時 currentTime 已落在新段內，
 // 不會多做一次 seek（跳動）。影片全長實測 40.02s。
 //
-// 秒數依 #首頁影片(ENG) 提供的時間點：正片 0–30、loop 30–33、退場 33 → 影片結束（40s）。
+// ⚠️ loop → outro 是**刻意的例外**：loop.end 33 → outro.start 36，中間那 3 秒不播，
+//    觸發退場時由 HeroVideo 的 watch(heroState) seek 過去。這是剪輯要求（退場要從 36s
+//    那一幀開始），不是漏填 —— 別「順手」把它改成相接。其餘段落改動時仍請維持相接。
+//
+// 秒數：正片 0–30、loop 30–33（循環）、退場 36–38.5 → gone（影片其餘部分不播）。
 export const HERO_VIDEO_SEGMENTS: HeroVideoSegments = {
   main: { start: 0, end: 30 },
   loop: { start: 30, end: 33 },
@@ -99,7 +104,8 @@ export const HERO_VIDEO_READY_TIMEOUT = 8000;
 // 座標是**影片畫面**的正規化比例，不是螢幕比例 —— object-fit: cover 會等比放大並裁掉溢出
 // 部分，換算交給 coverAnchorToScreen，故換視窗尺寸 / 換斷點都不必重量。
 //
-// 怎麼量：DevHeroVideoControls 切到「3.退場」，把影片停在交棒的那一幀（＝ outro.end），
+// 怎麼量：帶 ?pathdebug 開站（HeroVideo 會掛出 DevHeroVideoControls），切到「3.退場」，
+// 把影片停在交棒的那一幀（＝ outro.end），
 // 截圖量那顆橘塊的中心與邊長，各除以影片畫面尺寸（pc 版 1920×1080）：
 //   x = 中心x ÷ 1920   y = 中心y ÷ 1080   size = 邊長 ÷ 1920
 //

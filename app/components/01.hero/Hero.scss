@@ -55,6 +55,9 @@
   }
 }
 
+// 帶 hash 進站時 Hero.vue 會把轉場名稱換成 loader-cut —— 這裡**刻意沒有**對應規則：
+// 沒有 transition/animation，Vue 量到零時長就直接移除，載入層不會在目標段落上淡 0.6s。
+//
 // HeroLoader 收尾後淡出移除
 .loader-fade-leave-active {
   transition: opacity 0.6s ease;

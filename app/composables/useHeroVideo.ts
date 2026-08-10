@@ -61,8 +61,8 @@ export function useHeroVideo() {
    * 正中央淡入）。非 main / loop 時無作用。
    * 觸發者是 HeroVideo 右下角的 skip 按鈕（正片 3s 後淡入，見 HERO_SKIP_APPEAR_AT）。
    *
-   * 刻意「不」先播退場段：outro 約 5.5 秒（見 hero-video-config 的 HERO_VIDEO_SEGMENTS），
-   * 按了 SKIP 還要等它播完才看到結果，對開發與試看都是浪費。
+   * 刻意「不」先播退場段：outro 2.5 秒（36–38.5，見 hero-video-config 的 HERO_VIDEO_SEGMENTS），
+   * 加上 seek 過去的緩衝，按了 SKIP 還要等它播完才看到結果，對開發與試看都是浪費。
    * 要單獨預覽退場段，直接呼叫 setState('outro')。
    */
   const skip = () => {
@@ -91,7 +91,8 @@ export function useHeroVideo() {
   // outro 也鎖是 2026-08-07 的修正：退場段一解鎖，觸發退場的那個手勢會「同時」啟動退場
   // 又把影片往上捲走 → 影片裡那顆 orange core 與 DOM 的 core（恆在視窗 50vh，見
   // .claude/memory/hero-core-screen-locked.md）差一個「使用者滑了多少」，永遠對不上。
-  // 鎖住這 2.5 秒，影片與視窗維持 1:1，兩顆 core 的落點才是可推算的。
+  // 鎖住退場那 2.5 秒（36–38.5，外加 seek 過去的緩衝），影片與視窗維持 1:1，
+  // 兩顆 core 的落點才是可推算的。
   // 影片卡住不會鎖死：HeroVideo 進 outro 時會起一支保險絲（HERO_OUTRO_STALL_GRACE_MS）。
   const shouldLockScroll = computed(
     () =>
