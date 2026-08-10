@@ -6,8 +6,9 @@
 //   2. 四階段（main / loop / outro / gone）在影片時間軸上的秒數
 // 要換片或調時間點只改這裡，元件不必動。
 //
-// 目前只有一支剪輯（實測 40.02s，main / loop / outro 都在同一支裡），mob 版是同一支的
-// 低碼率轉檔（40.03s）→ 段落秒數三個裝置共用；pad 版尚未提供，先沿用 pc。
+// 三個裝置各有一支剪輯，main / loop / outro 都在同一支裡，長度實測皆為 40.73s
+// → 段落秒數三個裝置共用（下方 HERO_VIDEO_SEGMENTS_BY_DEVICE 不必覆寫）。
+// 畫面尺寸不同：pc 1920×1080（橫）、pad 1024×1364（直）、mob 720×1280（直）。
 // 實際會播到的只有 0–33 與 36–38.5 兩段（中間 3 秒與 38.5s 之後都不播，見下方段落表）。
 
 import type { HeroCoreAnchor } from './hero-core-handoff';
@@ -29,14 +30,14 @@ export type HeroVideoSegments = Record<HeroVideoPhase, HeroVideoSegment>;
 // 路徑相對 public/；實際載入時會補上 runtimeConfig.public.APP_ASSETS_PATH 前綴（同 UVid / UPic）。
 // 裝置判定沿用 ~/utils/get-device 的 getDeviceTypeByResolution（單一來源，與 UVid 一致）。
 //
-// ⚠️ 檔案大小差兩個量級（pc 70MB / mob 2.8MB），這條表直接決定開場要等多久 —— 手機若指到
-//    pc 那支，光是把影片拉到「可播放」就會把載入層卡在 99% 直到 HERO_VIDEO_READY_TIMEOUT。
-//    SSR 期間 device 一律先當 pc（見 HeroVideo 的 hydration mismatch 註解），故 mob 裝置一定
-//    會經歷「先掛 pc src → 掛載後換成 mob src」；HeroVideo 刻意把 preload 壓在 metadata、
-//    等掛載後才升級成 auto，就是為了讓那段「掛錯來源」的期間不要真的去拉 70MB。
+// ⚠️ 這條表直接決定開場要等多久（pc 9.8MB / pad 7.0MB / mob 4.3MB）—— 手機若指到 pc 那支，
+//    光是把影片拉到「可播放」就可能把載入層卡在 99% 直到 HERO_VIDEO_READY_TIMEOUT。
+//    SSR 期間 device 一律先當 pc（見 HeroVideo 的 hydration mismatch 註解），故 pad / mob 裝置
+//    一定會經歷「先掛 pc src → 掛載後換成該裝置的 src」；HeroVideo 刻意把 preload 壓在
+//    metadata、等掛載後才升級成 auto，就是為了讓那段「掛錯來源」的期間不要真的去拉 pc 那支。
 export const HERO_VIDEO_SRC: Record<HeroVideoDevice, string> = {
   pc: '/img/udn75_bg_video_opening_pc.mp4',
-  pad: '/img/udn75_bg_video_opening_pc.mp4', // TODO: 換成 pad 版剪輯（目前沿用 pc，70MB）
+  pad: '/img/udn75_bg_video_opening_pad.mp4',
   mob: '/img/udn75_bg_video_opening_mob.mp4',
 };
 
@@ -104,17 +105,21 @@ export const HERO_VIDEO_READY_TIMEOUT = 8000;
 // 座標是**影片畫面**的正規化比例，不是螢幕比例 —— object-fit: cover 會等比放大並裁掉溢出
 // 部分，換算交給 coverAnchorToScreen，故換視窗尺寸 / 換斷點都不必重量。
 //
-// 怎麼量（pad / mob 剪輯到位後要重量）：直接從影片檔抽出 outro.end 那一幀，例如
+// 怎麼量：直接從影片檔抽出 outro.end 那一幀，例如
 //   ffmpeg -ss 38.5 -i public/img/udn75_bg_video_opening_pc.mp4 -frames:v 1 outro-end.png
-// 量那顆橘塊的中心與邊長，各除以影片畫面尺寸（pc 版 1920×1080）：
-//   x = 中心x ÷ 1920   y = 中心y ÷ 1080   size = 邊長 ÷ 1920
+// 量那顆橘塊的中心與邊長，各除以**該支**影片的畫面尺寸
+// （pc 1920×1080、pad 1024×1364、mob 720×1280）：
+//   x = 中心x ÷ 畫面寬   y = 中心y ÷ 畫面高   size = 邊長 ÷ 畫面寬
 //
 // 預設值＝畫面正中心、邊長換算後在 1280 寬視窗上剛好 26px（＝ orange-core-config 的
 // CORE.dotSize）。影片剪輯本來就把 core 收在正中心的話，這組預設不必動，交棒位移為 0。
 export const HERO_OUTRO_CORE_ANCHOR: Record<HeroVideoDevice, HeroCoreAnchor> = {
   pc: { x: 0.5, y: 0.5, size: 39 / 1920 },
-  pad: { x: 0.5, y: 0.5, size: 39 / 1920 }, // TODO: 換成 pad 版剪輯後重量
-  mob: { x: 0.5, y: 0.5, size: 39 / 1920 }, // TODO: 換成 mob 版剪輯後重量
+  // pad / mob 是各自獨立的直式剪輯（非 pc 的轉檔），core 的落點與邊長理論上與 pc 不同，
+  // 但 size 的分母是各自的畫面寬 → 若剪輯都把 core 收在正中心、且橘塊佔畫面寬的比例相同，
+  // 這組預設就會是對的。TODO: 抽出 38.5s 那一幀確認（見上方「怎麼量」）。
+  pad: { x: 0.5, y: 0.5, size: 39 / 1920 },
+  mob: { x: 0.5, y: 0.5, size: 39 / 1920 },
 };
 
 // 交棒動畫：DOM core 從影片那顆的位置／尺寸滑回自己的位置／26px。

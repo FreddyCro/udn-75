@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import meta from '~/locales/meta.json';
+import { useTracking } from '~/utils/tracking';
 
 const config = useRuntimeConfig();
 const APP_MODE = config.public.APP_MODE;
@@ -17,6 +18,9 @@ useSeoMeta({
   keywords: meta.metaKeywords,
   robots: APP_MODE === 'production' ? 'index, follow' : 'noindex, nofollow',
 });
+
+// UDN 追蹤碼（GTM / comScore / Alexa / etu…），集中於 utils/tracking.ts
+useHead(useTracking());
 </script>
 
 <template>

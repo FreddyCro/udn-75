@@ -7,10 +7,22 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import type { IntroMediaImage, IntroMediaVideo } from './SubpageIntroMedia.vue';
 
 export interface SubpageNavData {
   backUrl: string;
   next?: { title: string; url: string };
+}
+
+/**
+ * 引言之後的滿屏媒體（舞台第三拍）。二選一：
+ * - images：多張照片自動輪播，每張各自帶圖說
+ * - video：單支影片
+ * 兩者皆空（或 src 為空字串）＝ 該頁不放媒體，舞台維持 hero／引言兩拍。
+ */
+export interface SubpageIntroMediaData {
+  images?: IntroMediaImage[];
+  video?: IntroMediaVideo;
 }
 export interface SubpageContent {
   hero: {
@@ -31,10 +43,24 @@ export interface SubpageContent {
    * 不會被拉開，與早期拆成多個 <p> 的排版等價。
    */
   intro: string;
+  /** 引言之後的滿屏媒體；沒給（或內容為空）就不渲染、舞台也不多一拍 */
+  introMedia?: SubpageIntroMediaData;
   nav: SubpageNavData;
 }
 
-defineProps<{ content: SubpageContent }>();
+const props = defineProps<{ content: SubpageContent }>();
+
+/**
+ * 過濾掉「結構在、內容還沒填」的情形（locales 先留了空殼給編輯填）：
+ * 圖片要有 src 才算數，影片要有 pc 來源才算數。回傳 null ＝ 這頁沒有媒體。
+ */
+const introMedia = computed(() => {
+  const m = props.content.introMedia;
+  if (!m) return null;
+  if (m.video?.src?.pc) return { video: m.video };
+  const images = (m.images ?? []).filter((img) => !!img.src);
+  return images.length ? { images } : null;
+});
 
 // 藝術字路徑來自 locales/*.json，需補上資產前綴才吃得到子路徑／CDN 部署（bg 走 UPic，內部已前綴）
 const assetUrl = useAssetUrl();
@@ -43,22 +69,35 @@ const stageRef = ref<HTMLElement | null>(null);
 const heroRef = ref<HTMLElement | null>(null);
 const heroInnerRef = ref<HTMLElement | null>(null);
 const introInnerRef = ref<HTMLElement | null>(null);
+const mediaRef = ref<HTMLElement | null>(null);
 
 /** 錨點列（SubpageAnchorBar）是否滑入：捲過 hero/引言舞台後才固定在視窗下緣出現 */
 const anchorBarVisible = ref(false);
 
 /**
- * 舞台是否啟用 pin 模式（hero 與引言疊在同一屏）。
- * SSR／no-JS／reduced-motion 維持 false：兩塊照文件流各佔一屏、全程可見，不疊不藏。
+ * 舞台是否啟用 pin 模式（hero／引言／媒體疊在同一屏）。
+ * SSR／no-JS／reduced-motion 維持 false：各塊照文件流各佔一屏、全程可見，不疊不藏。
  */
 const stagePinned = ref(false);
+
+/**
+ * 第三拍的媒體是否「輪到它演」。pin 模式下它整段都在視窗內、只是靠透明度藏著，
+ * 元件自己的 IntersectionObserver 判斷不出來，所以由舞台把進度線的結果傳下去，
+ * 輪播才會在使用者捲到那一拍時從第一張開始。非 pin（降級）維持 true。
+ */
+const mediaActive = ref(true);
 
 // hero 進場：由下往上、透明度 0→100%，0.4s
 const REVEAL = { autoAlpha: 0, y: 200, duration: 0.4, ease: 'power2.out' };
 
-// pin 進度過這兩條線就切換：先送走 hero，隔一小段再迎進引言（快速捲過≈交叉淡化）
-const HERO_OUT = 0.35;
-const INTRO_IN = 0.5;
+/**
+ * 舞台一「拍」＝捲過一屏；拍內過 BEAT_OUT 送走前一塊、過 BEAT_IN 迎進下一塊
+ * （兩條線間隔小，快速捲過≈交叉淡化）。
+ * 有 introMedia 就是兩拍（hero → 引言 → 媒體），pin 距離同步加長成 200%，
+ * 所以門檻要除以拍數才會落在同樣的「每屏 0.35 / 0.5」節奏上。
+ */
+const BEAT_OUT = 0.35;
+const BEAT_IN = 0.5;
 
 let tweens: gsap.core.Tween[] = [];
 let triggers: ScrollTrigger[] = [];
@@ -120,21 +159,38 @@ onMounted(async () => {
     heroRef.value?.querySelector<HTMLElement>('.subpage__hero-bg') ?? null,
   ].filter((el): el is HTMLElement => !!el);
   const introTarget = introInnerRef.value ? [introInnerRef.value] : [];
+  const mediaTarget = mediaRef.value ? [mediaRef.value] : [];
 
   const heroFade = makeFade(heroTargets);
   const introFade = makeFade(introTarget);
+  const mediaFade = makeFade(mediaTarget);
 
-  // 載入即播 hero 進場；引言先藏著等進度線
+  // 載入即播 hero 進場；後面兩塊先藏著等進度線
   if (heroTargets.length) tweens.push(gsap.from(heroTargets, REVEAL));
   gsap.set(introTarget, { autoAlpha: 0, y: 200 });
+  // 沒有第三拍時 mediaTarget 是空陣列，gsap 會警告 target not found
+  if (mediaTarget.length) gsap.set(mediaTarget, { autoAlpha: 0, y: 200 });
 
   /**
-   * 舞台 pin 一屏的距離（end: '+=100%'）：hero 與引言疊在這一屏內完成交接，
-   * 滾動進度只當開關 —— 過 HERO_OUT 送走 hero、過 INTRO_IN 迎進引言（各 0.4s，回捲反向）。
-   * 交接發生在原地，不需要捲過兩塊各自的 100vh，就不會有空白捲動段。
+   * 舞台 pin 的距離＝拍數 × 一屏：各塊疊在這幾屏內依序交接，
+   * 滾動進度只當開關（各 0.4s，回捲反向）。交接發生在原地，
+   * 不需要捲過每塊各自的 100vh，就不會有空白捲動段。
    */
+  const beats = mediaTarget.length ? 2 : 1;
+  /** 第 beat 拍（0-based）的第 offset 條線，換算成整段 pin 的進度值 */
+  const line = (beat: number, offset: number) => (beat + offset) / beats;
+  const HERO_OUT = line(0, BEAT_OUT);
+  const INTRO_IN = line(0, BEAT_IN);
+  const INTRO_OUT = line(1, BEAT_OUT);
+  const MEDIA_IN = line(1, BEAT_IN);
+
+  // 進 pin 版型後媒體先歸位到「還沒輪到」，由下方進度線接手
+  mediaActive.value = false;
+
   let heroShown = true;
-  let introShown = false;
+  // 引言有三態：before＝還沒進場（藏在下方）、shown、after＝已被媒體接手（往上送走）
+  let introState: 'before' | 'shown' | 'after' = 'before';
+  let mediaShown = false;
   // ⚠️ 首頁 → 子頁換的是 layout，Nuxt 的 scrollBehavior 會等 layout 轉場結束才回捲到頂，
   //    同步狀態（不播過場），跳回 hero 則重播進場 → 只留「hero 淡入」。
   let lastScroll: number | null = null; // null = 尚未收到 update，初次一律視為跳捲
@@ -143,7 +199,7 @@ onMounted(async () => {
       ScrollTrigger.create({
         trigger: stageRef.value,
         start: 'top top',
-        end: '+=100%',
+        end: `+=${beats * 100}%`,
         pin: true,
         anticipatePin: 1,
         onUpdate: (self) => {
@@ -160,15 +216,28 @@ onMounted(async () => {
             if (jumped) heroFade.reveal();
             else heroFade.show();
           }
-          if (!introShown && p >= INTRO_IN) {
-            introShown = true;
-            introFade.show(jumped);
-          } else if (introShown && p < INTRO_IN) {
-            introShown = false;
-            introFade.hide(200, jumped);
+
+          // 沒有第三拍時 INTRO_OUT 落在 1 之後，永遠進不了 after，行為與原本相同
+          const wantIntro =
+            p < INTRO_IN ? 'before' : p >= INTRO_OUT ? 'after' : 'shown';
+          if (wantIntro !== introState) {
+            introState = wantIntro;
+            if (wantIntro === 'shown') introFade.show(jumped);
+            // before 藏回下方（回捲時原路退回）、after 往上送走（與 hero 退場同向）
+            else introFade.hide(wantIntro === 'before' ? 200 : -120, jumped);
+          }
+
+          if (!mediaShown && p >= MEDIA_IN) {
+            mediaShown = true;
+            mediaActive.value = true;
+            mediaFade.show(jumped);
+          } else if (mediaShown && p < MEDIA_IN) {
+            mediaShown = false;
+            mediaActive.value = false;
+            mediaFade.hide(200, jumped);
           }
         },
-        // pin 結束＝hero/引言演完 → 錨點列於視窗下緣滑入；回捲進 pin 段則收回
+        // pin 結束＝舞台演完 → 錨點列於視窗下緣滑入；回捲進 pin 段則收回
         onLeave: () => (anchorBarVisible.value = true),
         onEnterBack: () => (anchorBarVisible.value = false),
       }),
@@ -235,6 +304,17 @@ onBeforeUnmount(() => {
           <p class="subpage__intro-text" v-html="content.intro" />
         </div>
       </div>
+
+      <!-- 舞台第三拍：引言之後的滿屏媒體（照片輪播或影片）。
+           內容由各頁 locales 的 content.introMedia 提供，沒填就整塊不存在、舞台回到兩拍 -->
+      <div v-if="introMedia" ref="mediaRef" class="subpage__media">
+        <SubpageIntroMedia
+          fill
+          :active="mediaActive"
+          :images="introMedia.images"
+          :video="introMedia.video"
+        />
+      </div>
     </div>
 
     <!-- 舞台之後的內容：不透明背景，維持 rail(z1) / 滿版區塊(z2) 的疊層約定 -->
@@ -288,11 +368,20 @@ onBeforeUnmount(() => {
   overflow: hidden;
 
   .subpage__hero,
-  .subpage__intro {
+  .subpage__intro,
+  .subpage__media {
     position: absolute;
     inset: 0;
     min-height: 0; // 高度由 inset 決定（= 舞台一屏），不再各自撐 100svh
+    height: auto;
   }
+}
+
+// 引言之後的滿屏媒體。降級（no-JS／reduced-motion）時照文件流自佔一屏；
+// pin 模式改為疊在同層（見上方 --pinned）。媒體以 fill 模式撐滿，圖說才貼在視窗底。
+.subpage__media {
+  height: 100vh;
+  height: 100svh;
 }
 
 // 設計稿 canvas＝裝置視窗且 header 疊在 frame 內 → 首屏滿版 100vh（非 100vh − header）；

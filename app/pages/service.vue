@@ -24,16 +24,6 @@ const c = raw as ServiceContent;
 
 <template>
   <Subpage :content="c">
-    <!-- 單一檔案無裝置變體 → 三個斷點同一支；純裝飾循環影片 -->
-    <div class="sp-full mt-16">
-      <UVid
-        :src="{ mob: c.video.src, pad: c.video.src, pc: c.video.src }"
-        :muted="true"
-        preload="metadata"
-        :aria-label="c.video.alt"
-      />
-    </div>
-
     <!-- 在演算法時代守住脈絡 -->
     <div class="sp-col mt-16">
       <h2 class="sp-h3 mb-4">{{ c.context.title }}</h2>

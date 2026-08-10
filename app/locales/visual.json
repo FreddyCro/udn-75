@@ -9,6 +9,16 @@
     "bg": "/img/visual/udn75_bg_visual"
   },
   "intro": "在有限的時間和空間裡，視覺設計師一直在提煉以圖像為視覺訊號的報導，它表明了我們在這個主題上投入了額外的時間和精力，因為它的內容值得一看。",
+  "introMedia": {
+    "video": {
+      "src": {
+        "mob": "/img/visual/udn75_video05_01_mob",
+        "pad": "/img/visual/udn75_video05_01_pad",
+        "pc": "/img/visual/udn75_video05_01_pc"
+      },
+      "caption": ""
+    }
+  },
   "nav": {
     "backUrl": "/#media",
     "next": {

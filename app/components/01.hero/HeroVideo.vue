@@ -461,8 +461,9 @@ onBeforeUnmount(() => {
 }
 
 // <video> 本體：滿版裁切置中。
-// RWD 影片「來源」在 ~/utils/hero-video-config 依裝置切換；此處預留各斷點的裁切位置
-// （pad / mob 剪輯到位後，再依設計稿調整 object-position / 尺寸）。
+// RWD 影片「來源」在 ~/utils/hero-video-config 依裝置切換；三支剪輯都已到位，且 pad / mob
+// 是直式（1024×1364 / 720×1280，與其視窗方向相符）→ cover 置中就是設計要的裁切，
+// 下面兩個斷點覆寫目前與預設同值，留著當「要按斷點微調時」的位置。
 //
 // ⚠️ 改 object-position 要一起改退場交棒的換算：coverAnchorToScreen 預設以 center 分配
 //    裁切量（見 ~/utils/hero-core-handoff 與 Hero.vue 的 runCoreEntrance），
@@ -476,10 +477,10 @@ onBeforeUnmount(() => {
   pointer-events: none;
 
   @include rwd-max('pc') {
-    object-position: center; // TODO: pad 稿到位後調整
+    object-position: center; // pad（直式剪輯）
   }
   @include rwd-max('tablet') {
-    object-position: center; // TODO: mob 稿到位後調整
+    object-position: center; // mob（直式剪輯）
   }
 }
 
