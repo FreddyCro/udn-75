@@ -13,6 +13,7 @@ import {
 } from '~/utils/symbol-atlas';
 import { sampleImageToGridWithLimit } from '~/utils/symbol-sampler';
 import { FACE_HOVER_INFLUENCE, faceUv } from '~/utils/symbol-hint';
+import type { SymbolMode } from '~/composables/useOrangeCoreProgress';
 
 const props = defineProps({
   /** 人像圖片（需含透明背景，alpha 即輪廓遮罩） */
@@ -237,7 +238,8 @@ onBeforeUnmount(() => cancelAnimationFrame(scrambleRaf));
 // 三種狀態：'face' = 集合（人像）/ 'disperse' = 分散（散場漂浮）/ 'converge' = 匯聚成點。
 // 三態互斥，由 uDisperse / uConverge 兩個 uniform 表示（同一時間至多一個為 1）。
 // v-model 由父層決定預設值並隨意切換；元件內按鈕也只是指派它。
-type SymbolMode = 'face' | 'disperse' | 'converge';
+// 型別取自 useOrangeCoreProgress（驅動端 SymbolScene 寫的就是那個 useState）——
+// 兩邊各宣告一份的話，哪天多一個狀態就會只改到一邊。
 const mode = defineModel<SymbolMode>('mode', { default: 'face' });
 const MODES: { value: SymbolMode; label: string }[] = [
   { value: 'face', label: '集合' },
@@ -574,7 +576,16 @@ const toDraft = (val: any, kind: string) => {
 const fromDraft = (val: any, kind: string) => {
   // parse 失敗直接 throw，由 applyRefresh 攔下並保留舊值
   if (kind === 'json') return JSON.parse(String(val));
-  if (kind === 'num') return Number(val);
+  if (kind === 'num') {
+    // ⚠️ 不能直接 Number(val)：Number('') === 0，清空欄位會**悄悄**變成 0 —— 例如
+    //    charAspect: 0 會讓 computeGrid 算出 Infinity 的 cell 高與 -Infinity 的座標，
+    //    畫面壞掉卻沒有任何提示（不像 JSON 那種 kind 會顯示 cfgError）。
+    //    改成 throw，交給 applyRefresh 的 catch：保留舊值並在 footer 顯示訊息。
+    const s = String(val).trim();
+    const n = Number(s);
+    if (s === '' || !Number.isFinite(n)) throw new Error('不是有效數字');
+    return n;
+  }
   if (kind === 'bool') return !!val;
   if (kind === 'csvNum')
     return String(val)
@@ -702,6 +713,9 @@ const exportConfig = () => {
     exportLabel.value = '⬇ Export JSON';
   }, 1600);
 };
+onBeforeUnmount(() => {
+  if (exportResetTimer) clearTimeout(exportResetTimer);
+});
 
 onMounted(() => {
   const wrap = wrapRef.value;
@@ -778,6 +792,26 @@ onMounted(() => {
   // sortedChars 由 buildParticles 算好（atlas 與取樣要用同一份）
   let sortedChars: string[] = [];
 
+  // 「沒有粒子」的完整狀態。
+  // buildParticles 會先把舊的 geom / mat dispose 掉才呼叫 buildFromImage，而新的要到
+  // 該函式下半段才建 —— 中途折返若只是 return，留下的是一堆「已 dispose 但不是 null」的
+  // handle：animate() 繼續往上面寫、卸載時又 dispose 一次，而舊的 halfW/halfH 還在 →
+  // 畫面明明是空的，宮格彩蛋與 dismissHint() 卻照樣被觸發。
+  const clearParticleState = () => {
+    geom = null;
+    mat = null;
+    points = null;
+    dispArr = null;
+    velArr = null;
+    targetArr = null;
+    seedArr = null;
+    dispAttr = null;
+    pCount = 0;
+    halfW = 0;
+    halfH = 0;
+    hintPos.value = null; // null ＝ 人像還沒建好、先不渲染（見 hintPos 宣告處）
+  };
+
   // ---------- 圖片亮度採樣：網格化，亮部大/粗/淺色 ----------
   const buildFromImage = (img: HTMLImageElement) => {
     const W = img.naturalWidth;
@@ -787,7 +821,16 @@ onMounted(() => {
     c.height = H;
     const ctx2d = c.getContext('2d')!;
     ctx2d.drawImage(img, 0, 0);
-    const imageData = ctx2d.getImageData(0, 0, W, H);
+    let imageData: ImageData;
+    try {
+      imageData = ctx2d.getImageData(0, 0, W, H);
+    } catch (err) {
+      // loadImage 已設 crossOrigin，正常情況走不到這裡。留著是為了讓「畫布被跨源圖片
+      // 污染」這種只會在正式站出現的情形有明確訊息，而不是 onload 裡一個未捕捉的例外。
+      console.error('[SymbolFace] 無法讀取圖片像素（canvas 被跨源圖片污染？）', err);
+      clearParticleState();
+      return;
+    }
 
     const sample = sampleImageToGridWithLimit(
       { data: imageData.data, width: W, height: H },
@@ -813,6 +856,8 @@ onMounted(() => {
       console.warn(
         '[SymbolFace] 取樣結果為 0 顆粒子，請檢查 contrast / invert / 圖片 alpha',
       );
+      clearParticleState(); // ⚠️ 不能只是 return，理由見該函式
+      gridStats.value = { cols: sample.cols, rows: sample.rows, count: 0 };
       return;
     }
     if (count > cfg.maxParticles) {
@@ -879,9 +924,11 @@ onMounted(() => {
       console.warn('[SymbolFace] glitchItems 最多 4 組，其餘已忽略');
     }
     const glitchCount = items.length;
-    const glitchColors = Array.from(
-      { length: 4 },
-      (_, i) => new THREE.Color(items[i]?.color ?? '#000000'),
+    // ⚠️ 必須走 srgbColor（理由見該 helper 上方）：直接 new THREE.Color(hex) 會被
+    //    ColorManagement 轉成 linear-sRGB，而本元件是 raw shader、沒有轉回來的那一段 ——
+    //    #ff0055 會畫成約 #ff0017、#00ffcc 約 #00ff9a。
+    const glitchColors = Array.from({ length: 4 }, (_, i) =>
+      srgbColor(items[i]?.color ?? '#000000'),
     );
     // density 除以 100：gemini 的 density 單位是百分比（1–30）
     const glitchDensity = Array.from(
@@ -1144,14 +1191,33 @@ onMounted(() => {
   // 但在 Hero 那層 IO 恆真 → mount 就開跑、3 秒後結束，遠早於轉場開窗，
   // 於是這段「粒子從無淡入、從 0 長大」從來沒有觀眾。改綁執行閘門即與可見性同步。
   let revealStarted = false;
+  // ⚠️ 留住補間本體：它跑在 gsap 自己的 ticker 上，與本元件的 rAF 是兩套時鐘 ——
+  //    stopLoop() 取消 rAF 並不會停下它。少了這個 handle，使用者在那 revealDuration 秒內
+  //    捲出去，動畫照樣在背景跑完、revealStarted 也永遠停在 true，捲回來不會再播 ——
+  //    正好違背上面那段「reveal 必須有觀眾」的用意。
+  let revealTween: gsap.core.Tween | null = null;
   const tryReveal = () => {
     if (!shouldRun() || !mat || revealStarted) return;
     revealStarted = true;
-    gsap.to(mat.uniforms.uProgress, {
+    revealTween = gsap.to(mat.uniforms.uProgress, {
       value: 1,
       duration: cfg.revealDuration,
       ease: 'power2.inOut',
+      onComplete: () => (revealTween = null), // 跑完就脫手 → 下面兩支才分得出「跑完」與「跑到一半」
     });
+  };
+
+  /** 收回 reveal 到起點並允許重跑（重建粒子系統時用：新材質的 uProgress 本來就從 0 起）。 */
+  const resetReveal = () => {
+    revealTween?.kill();
+    revealTween = null;
+    revealStarted = false;
+    if (mat) mat.uniforms.uProgress!.value = 0;
+  };
+
+  /** 捲出視窗／切分頁：只把**還沒跑完**的 reveal 收回起點，已經跑完的不動。 */
+  const rewindRevealIfRunning = () => {
+    if (revealTween) resetReveal();
   };
 
   // 已載入的圖與其 src（refresh 時若 src 未變可直接重採樣，不必重載）
@@ -1161,18 +1227,29 @@ onMounted(() => {
   // 重建粒子系統：dispose 舊的 → 依目前 cfg 重建 atlas / 漸層 / 幾何 / 材質，並重跑 reveal
   const buildParticles = () => {
     if (!loadedImg) return;
+    // ⚠️ 先驗證再 dispose。順序反過來的話，chars 為空這條路徑會在「舊的已經拆光」之後
+    //    才折返，留下四個「已 dispose 但不是 null」的 handle，卸載時再被 dispose 一次。
+    //    驗證失敗一律整組不動 —— 同 applyRefresh 對 JSON 格式錯誤的處理（保留舊值）。
+    const nextChars = sortCharsByInk(cfg.chars);
+    if (nextChars.length === 0) {
+      console.warn('[SymbolFace] chars 去重濾空白後為空，維持原有粒子系統不變');
+      return;
+    }
+
     if (points) scene.remove(points);
     geom?.dispose();
     mat?.dispose();
     atlas?.texture.dispose();
     colorRamp?.dispose();
+    // dispose 完就歸 null：其餘地方（animate / onBeforeUnmount）一律以 null 判斷「有沒有東西」，
+    // 留著已 dispose 的 handle 就是在製造二次 dispose 與對死物件寫入。
+    geom = null;
+    mat = null;
+    points = null;
+    atlas = null;
+    colorRamp = null;
 
-    sortedChars = sortCharsByInk(cfg.chars);
-    if (sortedChars.length === 0) {
-      console.warn('[SymbolFace] chars 去重濾空白後為空，不建立粒子系統');
-      points = null;
-      return;
-    }
+    sortedChars = nextChars;
     const weights = buildWeightLadder(
       cfg.weightSteps,
       cfg.weightMin,
@@ -1184,18 +1261,37 @@ onMounted(() => {
         ? cfg.colorStops
         : undefined;
     colorRamp = buildColorRamp(cfg.color, stops);
-    revealStarted = false; // 讓 reveal 重跑（新材質 uProgress 從 0 起）
+    resetReveal(); // 讓 reveal 重跑（新材質 uProgress 從 0 起）
     buildFromImage(loadedImg);
   };
 
-  const img = new Image();
-  img.src = cfg.src;
-  img.onload = () => {
-    if (unmounted) return;
-    loadedImg = img;
+  // 圖片載入（初次與 refresh 換 src 共用）。
+  // ⚠️ crossOrigin：本專案的圖片走 APP_ASSETS_PATH 前綴，正式站可能與頁面不同源 ——
+  //    沒有 CORS 的圖畫進 canvas 會「污染」它，buildFromImage 的 getImageData() 就會在
+  //    onload 裡丟 SecurityError。同源時設這個屬性無害，跨源時則需伺服器給 CORS 標頭。
+  // ⚠️ onerror：少了它，404 或 CORS 被拒的結果就是整段靜靜地一片空白，連 console 都沒東西。
+  // src 一定要最後設：快取命中時 onload 可能同步觸發，先設 src 會漏掉 handler。
+  const loadImage = (src: string, onReady: (im: HTMLImageElement) => void) => {
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => {
+      if (unmounted) return;
+      onReady(im);
+    };
+    im.onerror = () => {
+      if (unmounted) return;
+      console.error(
+        `[SymbolFace] 圖片載入失敗：${src}（檢查路徑是否存在、跨網域是否給了 CORS 標頭）`,
+      );
+    };
+    im.src = src;
+  };
+
+  loadImage(cfg.src, (im) => {
+    loadedImg = im;
     loadedSrc = cfg.src;
     buildParticles();
-  };
+  });
 
   // refresh：套用 cfg（背景色/彩蛋色即時更新）後重建粒子；src 變更則先載入新圖再重建
   rebuildParticles = () => {
@@ -1203,14 +1299,12 @@ onMounted(() => {
     scene.background = new THREE.Color(cfg.bgColor);
     if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
     if (cfg.src !== loadedSrc) {
-      const im = new Image();
-      im.src = cfg.src;
-      im.onload = () => {
-        if (unmounted) return;
+      const nextSrc = cfg.src;
+      loadImage(nextSrc, (im) => {
         loadedImg = im;
-        loadedSrc = cfg.src;
+        loadedSrc = nextSrc;
         buildParticles();
-      };
+      });
     } else {
       buildParticles();
     }
@@ -1445,6 +1539,9 @@ onMounted(() => {
       tryReveal();
       startLoop();
     } else {
+      // 順序：先收 reveal 再停迴圈。reveal 跑在 gsap 的 ticker 上、停 rAF 停不掉它，
+      // 不收就會在沒有觀眾的情況下跑完（見 rewindRevealIfRunning）。
+      rewindRevealIfRunning();
       stopLoop();
     }
   };
@@ -1506,6 +1603,12 @@ onMounted(() => {
     resizeObs.disconnect();
     renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('pointerleave', onLeave);
+    revealTween?.kill(); // gsap ticker 上的補間，不會隨 rAF 一起停
+    revealTween = null;
+    // ⚠️ dispose() 只釋放 three 這側的資源，WebGL context 本身要 forceContextLoss() 才會
+    //    還給瀏覽器。demo 頁的「矩陣／散點」切換每按一次就掛一個新的 WebGL 元件 ——
+    //    不還的話大約 8~16 次就撞到瀏覽器的 context 上限，之後新的 canvas 全黑。
+    renderer.forceContextLoss();
     renderer.dispose();
     geom?.dispose();
     mat?.dispose();
@@ -1654,6 +1757,9 @@ onMounted(() => {
   width: 100%;
   // 視窗高的單一來源見 app/utils/viewport-height.ts；mixins.scss 由 nuxt.config
   // 的 additionalData 自動注入，不必在此 @use。
+  // 這是 in-flow 用法（demo 頁）的預設；掛在 hero 轉場層裡時由該層覆寫成 height:100%
+  // —— 那層是 fixed inset:0（dynamic viewport），與 --vh（large viewport）不是同一把尺。
+  // 理由寫在 01.hero/HeroSymbolTransition.vue 的 :deep(.stage)。
   height: vh(1);
   background: #fff;
   overflow: hidden;

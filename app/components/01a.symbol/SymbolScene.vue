@@ -22,7 +22,8 @@ const sceneHeight = vhLength(SYMBOL_VH);
 //   ・start 'top bottom' 只看「sec1 底緣抵達視窗底」→ 與本段高度無關，故不論 SYMBOL_VH 調多少，
 //     都精準接在 hero 轉場 pin 釋放的同一刻（兩軌首尾相接、不重疊）。
 //   ・end 'bottom bottom' → 捲動距離＝本段高度＝ SYMBOL_VH × 100vh。
-//   ・scrub 特性 → 往回捲自動倒退（converge→…→disperse）。
+//   ・往回捲自動倒退（converge→…→disperse）：靠 onUpdate 直接讀 self.progress，
+//     不是 scrub —— 本 trigger 沒有掛動畫，沒有東西需要被 scrub 平滑補間。
 //
 // ── symbolProgress 時序表 ────────────────────────────────────────────────
 // ⚠️ 這是換算結果、不是資料來源：門檻在 SYMBOL_STOPS / SYMBOL_INTRO / FORUM_HANDOFF，
@@ -47,9 +48,11 @@ const sceneHeight = vhLength(SYMBOL_VH);
 //
 // ⚠️ SymbolFace 內部並不吃 scroll：上表的 mode 切換只是「觸發」它 2.2s 的 gsap 補間
 //    （disperseDuration）。本表只管門檻位置。
-// ⚠️ reveal（粒子淡入）不在本表內：它由 SymbolFace 的執行閘門一次性啟動 ——
+// ⚠️ reveal（粒子淡入）不在本表內：它由 SymbolFace 的執行閘門啟動 ——
 //    ＝ 轉場層 active（transitionProgress > 0，比本段的起點更早）＋ 進入視口 ＋ 分頁在前景。
 //    也就是說 reveal 發生在前一軌（hero 轉場的拉長段）裡，本段接手時粒子已在場。
+//    三個訊號在 reveal 跑完前任一個轉為 false（例如使用者又捲回 hero），SymbolFace 會把它
+//    收回起點並允許重跑 —— 這段動畫的用意就是「要有人看見」，不是計時器。
 const sceneRef = ref<HTMLElement | null>(null);
 let symbolST: ScrollTrigger | null = null;
 
@@ -60,7 +63,8 @@ onMounted(() => {
     trigger: sceneRef.value,
     start: 'top bottom',
     end: 'bottom bottom',
-    invalidateOnRefresh: true,
+    // 刻意沒有 invalidateOnRefresh：它是「refresh 時對綁定的動畫呼叫 invalidate()」，
+    // 而本 trigger 沒有掛動畫 → 純粹的 no-op。start/end 是字串，refresh 本來就會重算。
     onUpdate: (self) => setSymbolProgress(self.progress),
     onLeaveBack: () => setSymbolProgress(0), // 捲回本段之前 → 回到 disperse
     onLeave: () => setSymbolProgress(1), //     捲過本段之後 → 維持 enter（已進入論壇）
