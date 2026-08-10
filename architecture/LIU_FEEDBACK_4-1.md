@@ -4,8 +4,8 @@
 2. 小標空格希望是全形的
 3. anchor 依該被全部遮住
 4. anchor hover 放大效果
-5. horo 標題和圖片重心偏右
-6. intro 等比例放大(切板問題)
+5. intro hero 標題和圖片重心偏右
+6. intro desc 等比例放大(切板問題)
 7. intro desc 消失後，原地淡入 intro media，intro media 也和 desc 一樣原地滾動淡出，內文在往上滾進來
 8. MacBook pro 遇到 intro 太晚出來，調成早一點出來停久一點
 9. publish x 換素材(加背景顏色避免漏餡)
@@ -68,3 +68,13 @@
 
 1. 外圍 crop 一個圓形
 2. 橘色中心再密一點
+
+---
+
+## Yumi 問
+
+1. 智慧心媒體設計稿 pc 者消失?
+2. subpage 很怪淡出直接出現content淡入上方空間被 nav 遮擋，在排版流中會跟右側nav打架
+3. tablet container是抓max-w還是padding
+4. /service 加了影片(?
+5. ai摘要 人工智慧缺內文
