@@ -25,6 +25,10 @@ export interface SubpageWorkItem {
 
 const props = defineProps<{ works: SubpageWorkItem[] }>();
 
+// locales JSON 存的是站台根路徑（/img/...），縮圖是 runtime 才綁上 :src → 需自行前綴，
+// 否則部署到子路徑／CDN 時瀏覽器會解析到 origin 根目錄而 404。
+const assetUrl = useAssetUrl();
+
 /* ── 懸浮縮圖狀態（觸發區＝得獎作品清單的每一列）── */
 const worksWrap = ref<HTMLElement | null>(null);
 const thumbBox = ref<HTMLElement | null>(null);
@@ -63,7 +67,7 @@ async function activate(i: number, rowEl: HTMLElement) {
   if (i === activeIdx.value && thumb.visible) return;
   activeIdx.value = i;
 
-  thumb.images = images; // hover／滾入才設 src → GlitchImage lazy 載入
+  thumb.images = images.map(assetUrl); // hover／滾入才設 src → GlitchImage lazy 載入
   thumb.w = w.thumbW ?? null;
   thumb.ratio = w.thumbRatio ?? null;
   thumb.layout = w.thumbLayout ?? null;
