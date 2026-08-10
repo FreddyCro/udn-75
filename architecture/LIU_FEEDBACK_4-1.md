@@ -2,22 +2,22 @@
 
 1. 換很多文字
 2. 小標空格希望是全形的
-3. anchor 依該被全部遮住
-4. anchor hover 放大效果
+3. anchor 應該被全部遮住，hero/intro 以上都蓋住 anchor
+4. anchor hover 放大效果(bug)
 5. intro hero 標題和圖片重心偏右
-6. intro desc 等比例放大(切板問題)
+6. intro desc 等比例放大(切板問題)(1280以下 clamp，以上維持)
 7. intro desc 消失後，原地淡入 intro media，intro media 也和 desc 一樣原地滾動淡出，內文在往上滾進來
-8. MacBook pro 遇到 intro 太晚出來，調成早一點出來停久一點
+8. MacBook pro 遇到 intro 太晚出來，調成早一點出來停久一點(遇到空白)
 9. publish x 換素材(加背景顏色避免漏餡)
 10. publish x scroll distance 久一點
 11. 獲獎歷程箭頭走過底色都橘色
-12. next page button hover 放大，漣漪消失，文字不要底線
+12. next page button hover 維持放大，漣漪消失，文字不要底線
 13. AI 摘要，校園參考.... placeholder 有錯字
 
 ### glitch
 
 1. v (F)作品懸浮拿掉陰影
-2. (Y)作品懸浮靠上的時候距離文字更遠，向上時稍微被蓋到
+2. (Y)作品懸浮靠上的時候距離文字更遠，向上時稍微被蓋到(連續兩個有 desc 的 item)
 
 ### (Y)滾圖
 
@@ -36,7 +36,7 @@
 **Freddy 做元件給 Yumi 放入 intro**
 
 1. 圖片輪播(只有一張就是放大一次就好)
-2. 影片循環播放(有 gemini 和)
+2. 影片循環播放(有 gemini)
 
 ---
 
