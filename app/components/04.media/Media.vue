@@ -116,8 +116,8 @@ useMediaIntroMotion({
         </div>
       </div>
 
-    <!-- hold 緩衝 spacer：高度由 useMediaIntroMotion 寫入（播完縮短＝原地解除
-         hold；回捲重播時還原）。必須是 section 的內容才算進 sticky 活動範圍 -->
+    <!-- hold 緩衝 spacer：高度由 useMediaIntroMotion 寫入＝整段 motion 的
+         scrub 行程。必須是 section 的內容才算進 sticky 活動範圍 -->
     <div ref="bufferRef" class="media__hold-buffer" aria-hidden="true" />
   </section>
 </template>
