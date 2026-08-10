@@ -117,33 +117,7 @@ const symbolHint = section1.symbol.hint;
         :float-amp="18"
         :float-micro="0.5"
       />
-      <!-- 前一版底紋（已退役、搬到 legacy/，僅此處對照）：中心/外圍兩區 + variant 換抽 -->
-      <LegacyHeartMetaballBlock
-        :idleBlobMin="0.1"
-        :idleBlobMax="0.2"
-        :idleRoamSpeed="3"
-        :life="3"
-      />
-      <!-- 現役底紋（Section 4 使用）：三塊紋理 patch 漂移重疊（1格棋盤×1、2格棋盤×1、線段紋×1） -->
-      <HeartMetaball :idleRoamSpeed="2" />
-      <!-- <section class="glitch-demo">
-        <GlitchImage
-          ref="glitchRef"
-          class="glitch-demo__item"
-          :images="[glitch3, glitch1, glitch2]"
-          :duration="1.2"
-          :pieces="12"
-          bg-color="#ffffff"
-          caption="6 位中途少年的自白，訴說著觸法行為背後的困境與茫然。"
-        />
-        <button class="glitch-start-btn" type="button" @click="startGlitch">
-          start
-        </button>
-      </section>
-      <ShowcaseGallery /> -->
     </main>
-    <!-- 暫用：手動觸發 GlitchImage（之後改由列表 hover/scroll 觸發 start()） -->
-    <!-- <AppFooter /> -->
   </div>
 </template>
 

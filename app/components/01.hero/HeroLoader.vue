@@ -14,19 +14,23 @@ const props = defineProps({
   duration: { type: Number, default: 3.2 },
   /**
    * 方塊邊長（px）；固定尺寸，欄列數由視窗推算。
-   * 預設取共用常數 HANDOFF_CUBE —— 收尾時中央那格就是「交接橘塊」，它必須等於 HeroStart 的
-   * cube（否則載入層淡出時方塊會換個大小）。同一個常數同時決定網格密度，故**整份網格與
-   * 交接橘塊必然等大**，不會出現「中央那顆比別人大」。見 ~/utils/orange-core-config。
+   * 預設取共用常數 HANDOFF_CUBE —— 中央那格是「留白位」：數字全程壓在它上面，載入層淡出後
+   * HeroStart 的 cube 也落在同一處。邊長取同一個常數，那塊留白才剛好等於接手的 cube
+   * （否則交接時會看到白洞比方塊大或小一圈）。見 ~/utils/orange-core-config。
    * 註：設計稿 loading-1~7 的格子是 1280×720 稿上的 83.333px，比 cube 小 11.7px；此處
    * 刻意選「整份跟著 cube 放大」而非兩者各留一份數字。
    */
   tileSize: { type: Number, default: HANDOFF_CUBE },
-  /** 橘色「處理中」前緣的方塊數（同時有幾顆橘）。設計稿 loading-6（96%）為 1 顆橘＋2 顆藍 */
+  /** 橘色「處理中」前緣的**最少**方塊數（尾聲）。設計稿 loading-6（96%）為 1 顆橘＋2 顆藍 */
   orangeTiles: { type: Number, default: 1 },
+  /**
+   * 橘色前緣寬度佔「尚未翻白格數」的比例。前緣不是固定寬度，而是隨剩餘量收斂：
+   * 開頭剩得多 → 一整片橘同時在跑（固定 1 顆時，200＋格的網格裡幾乎看不出有橘色）；
+   * 越接近 100% 剩越少 → 自動收到 orangeTiles 的下限，尾聲仍是設計稿的 1 顆橘。
+   */
+  orangeRatio: { type: Number, default: 0.12 },
   /** 進站後延遲幾秒才開始 */
   startDelay: { type: Number, default: 0.2 },
-  /** 進度到達此比例（0~1，對應數字百分比）時，中央格就提早翻橘，與後續「100%」數字重疊一段時間 */
-  centerOrangeAt: { type: Number, default: 0.8 },
   /**
    * 影片（或主要素材）是否已可播放。
    * false 時進度會封頂在 99%「等載入」，即使 duration 已到也不收尾；
@@ -48,17 +52,17 @@ const TILE_COLOR = ['var(--color-blue)', 'var(--color-orange)', '#fff'] as const
 // 總格數（resize 時重算）；欄列數各自強制為奇數，保證有「正中間一格」。
 // 欄數只寫進 --cols 給 CSS grid 用，列數只用來算 centerIndex，兩者都不必留在 JS 這側。
 const count = ref(0);
-// 正中央那格的 index：最先翻白、最後翻橘，且中心對齊視窗正中心。
-// 收尾時它就是「交接橘塊」——邊長＝tileSize＝HANDOFF_CUBE＝HeroStart 的 cube，
-// 置中方式也與 cube 等效（奇數網格置中 ⇔ flex 置中），故兩層的方塊完全重合。
+// 正中央那格的 index：**全程留白**，且中心對齊視窗正中心 —— 百分比數字永遠壓在乾淨白底上，
+// 不會被橘色前緣掃過而讀不清。邊長＝tileSize＝HANDOFF_CUBE＝HeroStart 的 cube，
+// 置中方式也與 cube 等效（奇數網格置中 ⇔ flex 置中），故載入層淡出後 cube 正好補進這格。
 let centerIndex = 0;
 
 // 每格在翻白順序中的「名次」（0..N-1）；名次越小越早翻白
 let order: number[] = [];
 // 上一幀每格狀態，避免重複寫入 DOM
 let prevState: number[] = [];
-// 橘色前緣寬度（格數）；僅隨 orangeTiles 變動，故於 buildOrder 算一次。
-let band = 1;
+// 橘色前緣的最少格數（下限）；僅隨 orangeTiles 變動，故於 buildOrder 算一次。
+let minBand = 1;
 
 let raf = 0;
 let prevNow = -1;
@@ -89,7 +93,8 @@ const computeGrid = () => {
   }
 };
 
-// 洗牌產生翻白順序（Fisher–Yates），並強制「正中央」為第一個翻白（名次 0）
+// 洗牌產生翻白順序（Fisher–Yates），並強制「正中央」為第一個翻白（名次 0）——
+// 中央格另外被硬鎖成白（見 frame()），排在名次 0 只是讓它不佔用前緣掃描的位置。
 const buildOrder = (n: number) => {
   const arr = Array.from({ length: n }, (_, i) => i);
   for (let i = n - 1; i > 0; i--) {
@@ -103,8 +108,12 @@ const buildOrder = (n: number) => {
   order = new Array(n);
   for (let rank = 0; rank < n; rank++) order[arr[rank]!] = rank;
   prevState = new Array(n).fill(-1);
-  band = Math.max(1, Math.round(props.orangeTiles)); // 橘色前緣寬度
+  minBand = Math.max(1, Math.round(props.orangeTiles)); // 橘色前緣寬度下限
 };
+
+// 橘色前緣寬度：隨「尚未翻白的格數」收斂（見 orangeRatio），故開頭寬、尾聲只剩 minBand。
+const bandWidth = (remaining: number) =>
+  Math.max(minBand, Math.round(remaining * props.orangeRatio));
 
 // 0=藍 1=橘 2=白（見 TILE_COLOR）
 const paint = (idx: number, state: number) => {
@@ -117,10 +126,10 @@ const paint = (idx: number, state: number) => {
 const finish = () => {
   finished = true;
   const n = count.value;
-  // 其餘翻白、正中央格「直接」翻橘（同一幀）：不再有先全白、隔一段才冒出橘色的空檔；
-  // 橘塊精準落在視窗正中心，數字同時淡出（被橘塊取代/遮蓋）。
-  // → 淡出後 HeroStart 的 cube 接在同一位置、同一尺寸（tileSize＝HANDOFF_CUBE）。
-  for (let idx = 0; idx < n; idx++) paint(idx, idx === centerIndex ? 1 : 2);
+  // 全部翻白（含中央格）：載入層收在一片乾淨白底上，數字同時淡出。
+  // 橘色交接不在本層做 —— 淡出那 0.6s 內 HeroStart 的 cube 由白底浮現，落點與尺寸
+  // 正是中央那格（tileSize＝HANDOFF_CUBE），視覺上就是「白底中央長出橘塊」。
+  for (let idx = 0; idx < n; idx++) paint(idx, 2);
   if (counterRef.value) counterRef.value.style.opacity = '0';
   emit('done');
 };
@@ -134,6 +143,10 @@ const frame = (now: number) => {
 
   const n = count.value;
 
+  // 中央格全程白，且必須搶在 startDelay 之前 —— .tile 的 CSS 底色是藍的，晚一步「0%」
+  // 就會有 startDelay 那段時間壓在藍底上。收尾後這格留白由 HeroStart 的 cube 直接補上。
+  paint(centerIndex, 2);
+
   const active = elapsed - props.startDelay;
   if (active <= 0) {
     raf = requestAnimationFrame(frame);
@@ -145,16 +158,13 @@ const frame = (now: number) => {
   let p = easeInOutQuad(t);
   if (!props.ready) p = Math.min(p, 0.99);
   const whiteCount = Math.floor(p * n);
+  const band = bandWidth(n - whiteCount);
 
-  // 進度到 centerOrangeAt（如 80%）就先讓中央格翻橘（此時數字仍在跑 → 橘塊與「100%」重疊一段）
-  const centerOrangeNow = p >= props.centerOrangeAt;
-
-  // 依名次決定狀態：已過 → 白；前緣 band 內 → 橘；其餘 → 藍
+  // 依名次決定狀態：已過 → 白；前緣 band 內 → 橘；其餘 → 藍（中央格上面已鎖成白）
   for (let idx = 0; idx < n; idx++) {
+    if (idx === centerIndex) continue;
     const rank = order[idx]!;
-    let state = rank < whiteCount ? 2 : rank < whiteCount + band ? 1 : 0;
-    if (idx === centerIndex && centerOrangeNow) state = 1; // 中央格提早翻橘
-    paint(idx, state);
+    paint(idx, rank < whiteCount ? 2 : rank < whiteCount + band ? 1 : 0);
   }
 
   if (counterRef.value) counterRef.value.textContent = `${Math.round(p * 100)}%`;

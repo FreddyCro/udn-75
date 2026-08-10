@@ -36,13 +36,15 @@
   2. 逐格上色：由上往下找第一個「覆蓋該格且紋理實格」的 patch（透空格讓位下層
      → 重疊區兩紋理自然交織）；未被任何 patch 接手的格子不畫。
   3. 中心變橘（雙層慢速換抽・中心密集邊緣稀疏）：橘色是「以焦點為中心的機率
-     場」，密度 p = orangeMax × (1-rn)^orangeGamma 連續衰減（rn=1 即
-     orangeCells×CELL px 處歸零），沒有「內圈全滿」的平台區 → 中心密、邊緣疏。
+     場」，內核（rn ≤ ORANGE_CORE）密度滿載，之後才照
+     p = orangeMax × (1-rc)^orangeGamma 連續衰減（rn=1 即 orangeCells×CELL px
+     處歸零）→ 中間密實、邊緣依舊漸疏。
      機率場再由兩層獨立的慢速換抽落成實際色塊：
        區塊層  accentBlock 格見方為單位、「區塊 × epoch」穩定 hash（switchPeriod、
                相位逐塊錯開）→ 橘色成小團塊、此起彼落地變橘/變回
        格層    逐格 dropout（orangeHole，另一個較慢的 epoch）→ 團塊內再挖空，
-               不會出現實心橘色大面積
+               不會出現實心橘色大面積；挖空率隨半徑遞增（中心幾乎不挖、
+               邊緣全額）→ 只加中心密度，外圈的漸散感不變
      另加逐區塊半徑抖動 ±15% → 橘色範圍邊界不是完美同心圓。兩層都綁 epoch，
      同 epoch 內每幀同值 → 不閃爍。
   4. 收邊（參考正式版・圓弧）：metaball 場（游標/漂移沿路蓋章 + 逐格隨機閾值）
@@ -122,11 +124,13 @@ const props = withDefaults(
     orangeCells?: number;
     /** 中心（rn=0）的變橘機率（0~1） */
     orangeMax?: number;
-    /** 密度衰減指數：p = orangeMax × (1-rn)^orangeGamma
+    /** 密度衰減指數：p = orangeMax × (1-rc)^orangeGamma
+     *  （rc＝扣掉中心飽和核 ORANGE_CORE 後重新正規化的半徑）
      *  → 1 為線性、越大中心越集中、邊緣越快變稀疏 */
     orangeGamma?: number;
     /** 橘色挖空比例（0~1）：被區塊層抽中變橘的格子，再以此機率留藍
-     *  → 橘色團塊內部透空、不成實心（另用一組較慢的 epoch，不閃爍） */
+     *  → 橘色團塊內部透空、不成實心（另用一組較慢的 epoch，不閃爍）。
+     *  這是「邊緣」的挖空率，實際挖空率隨半徑由 ×HOLE_CENTER 遞增到 ×1 */
     orangeHole?: number;
     /** patch 整體縮放倍率 */
     patchScale?: number;
@@ -236,6 +240,12 @@ onMounted(() => {
   const ORANGE_HOLE = Math.min(Math.max(props.orangeHole, 0), 1); // 挖空比例
   // 挖空層換抽週期：刻意與區塊層不可公度 → 兩層各自緩慢重抽、不同步
   const HOLE_PERIOD = SWITCH_PERIOD * 1.7;
+  // 中心飽和核（正規化半徑）：此範圍內密度滿載（p = orangeMax），之後才照
+  // (1-rn)^gamma 衰減 → 中間明顯變密，rn=1 歸零的邊緣行為完全不變
+  const ORANGE_CORE = 0.18;
+  // 挖空比例隨半徑遞增：中心只留 ORANGE_HOLE 的 20%（幾乎不挖）、邊緣 100%
+  // → 只加中心密度，外圈的稀疏漸散感照舊
+  const HOLE_CENTER = 0.2;
 
   // 穩定的偽隨機（同輸入每幀同值 → 不閃爍）
   const hash = (x: number, y: number) => {
@@ -280,10 +290,20 @@ onMounted(() => {
   //   orb    軌道半徑（格）；實際半徑再乘 driftRatio
   //   fq     角速度倍率（彼此不可公度 → 相對位置持續變化、不週期性復位）
   //   phase  起始相位（差約 120°，開場就均勻散開）
+  //
+  // 【高度為什麼比設計稿的「扁矩形」高】
+  // 外緣是「場的圓形等值線」與「patch 聯集」取交集：等值線半徑
+  // = headR/√(th+0.16) ≈ 147~223px，水平方向 patch 鋪到 286px（圓贏）、
+  // 垂直方向舊高度只鋪到約 133~175px（patch 贏）→ 上下被矩形切平、
+  // 輪廓成了 1.24:1 的扁橢圓。把 h 拉高到垂直覆蓋也蓋過等值線，
+  // 四面都由同一個圓來裁 → 輪廓才是圓的。
+  // 上限：ORB×DRIFT_Y_MUL + h/2 必須 ≤ 水平的 55 格，否則 clusterC 換成由
+  // 垂直決定 → CLUSTER_PX／headR 跟著變大、整團會膨脹（此處三塊分別為
+  // 43.9 / 49.1 / 42.9 格，仍由水平的 55 格作主，尺寸不變）。
   const ROSTER = [
-    { tex: 1, w: 72, h: 40, orb: 12, phase: 0.0, fq: 0.9 }, // 2格棋盤（底層）
-    { tex: 0, w: 64, h: 44, orb: 15, phase: 2.09, fq: 1.17 }, // 1格棋盤
-    { tex: 2, w: 60, h: 36, orb: 13, phase: 4.19, fq: 1.38 }, // 線段紋（頂層）
+    { tex: 1, w: 72, h: 62, orb: 12, phase: 0.0, fq: 0.9 }, // 2格棋盤（底層）
+    { tex: 0, w: 64, h: 66, orb: 15, phase: 2.09, fq: 1.17 }, // 1格棋盤
+    { tex: 2, w: 60, h: 58, orb: 13, phase: 4.19, fq: 1.38 }, // 線段紋（頂層）
   ];
   const ORBIT_W = 0.32; // 公轉基礎角速度（rad/s，再乘 fq 與 driftSpeed）
   const WOBBLE = 0.18; // 次諧波抖動（佔軌道半徑）：讓軌跡不是正圓、有機一點
@@ -721,18 +741,24 @@ onMounted(() => {
         const by = Math.floor(gy / ACCENT_BLOCK);
         const rJit = 0.85 + hash(bx * 3.9 + 5.7, by * 5.3 + 1.9) * 0.3;
         const rn = (Math.hypot(cx - centerX, cy - centerY) / ORANGE_R) * rJit;
-        const p = rn >= 1 ? 0 : props.orangeMax * Math.pow(1 - rn, ORANGE_GAMMA);
+        // 衰減起點退到 ORANGE_CORE：內核滿載、之後才開始掉，rn=1 一樣歸零
+        const rc = Math.max(0, (rn - ORANGE_CORE) / (1 - ORANGE_CORE));
+        const p = rn >= 1 ? 0 : props.orangeMax * Math.pow(1 - rc, ORANGE_GAMMA);
         // 區塊層：accentBlock 見方為單位、區塊 × epoch 穩定 hash、相位逐塊
         // 錯開（switchPeriod）→ 橘色成小團塊、此起彼落地變橘/變回
         const bPhase = hash(bx * 7.1 + 1.3, by * 7.1 + 2.7);
         const epoch = Math.floor(t / SWITCH_PERIOD + bPhase);
         let accent = p > 0 && hash3(bx, by, epoch + 0.5) < p;
         // 格層挖空：被抽中的格子再逐格 dropout（自己的較慢 epoch、相位逐格
-        // 錯開）→ 橘色團塊內部透空，不會有實心橘色大面積
+        // 錯開）→ 橘色團塊內部透空，不會有實心橘色大面積。
+        // 挖空率隨半徑遞增（中心 ×HOLE_CENTER、rn≥1 為全額）→ 中心密實、
+        // 外圈照舊透空，橘色不會整片糊掉
         if (accent && ORANGE_HOLE > 0) {
+          const holeP =
+            ORANGE_HOLE * (HOLE_CENTER + (1 - HOLE_CENTER) * Math.min(rn, 1));
           const hPhase = hash(gx * 1.9 + 4.4, gy * 2.7 + 6.1);
           const hEpoch = Math.floor(t / HOLE_PERIOD + hPhase);
-          if (hash3(gx * 0.7 + 3.1, gy * 1.3 + 9.7, hEpoch + 4.2) < ORANGE_HOLE)
+          if (hash3(gx * 0.7 + 3.1, gy * 1.3 + 9.7, hEpoch + 4.2) < holeP)
             accent = false;
         }
         ctx.fillStyle = accent ? ACCENT : COLOR;

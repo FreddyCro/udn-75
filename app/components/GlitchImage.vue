@@ -75,8 +75,6 @@ const props = withDefaults(
     stagger?: number;
     /** 舞台寬高比（width / height）：定位座標的參考框 */
     aspectRatio?: number;
-    /** 卡片陰影（CSS box-shadow，reveal 後才套上） */
-    shadow?: string;
     /** 單卡序列總時長（秒） */
     duration?: number;
     /** 單卡切塊數量 */
@@ -104,7 +102,6 @@ const props = withDefaults(
     ],
     stagger: 0.4,
     aspectRatio: 1.6,
-    shadow: '0 10px 30px rgba(0, 0, 0, 0.18)',
     duration: 2,
     pieces: 24,
     bgColor: undefined,
@@ -338,10 +335,9 @@ const playCard = async (
     );
   }
 
-  // <img> 現身瞬間補上縫隙 = 完成拼圖，再把 overlay 收掉；陰影此刻才浮現
+  // <img> 現身瞬間補上縫隙 = 完成拼圖，再把 overlay 收掉
   tl.set(img, { autoAlpha: 1 }, D1 * D);
   tl.set(overlay, { autoAlpha: 0 }, D1 * D + 0.02 * D);
-  if (overlay.parentElement) tl.set(overlay.parentElement, { boxShadow: props.shadow }, D1 * D);
   if (onRevealed) tl.call(onRevealed, [], D1 * D); // glitch 結束 → 影片卡開始播放
   tl.set({}, {}, D);
   return tl;
@@ -352,13 +348,12 @@ let tls: gsap.core.Timeline[] = [];
 let captionCall: gsap.core.Tween | null = null;
 
 const play = () => {
-  // 降級／instant：直接顯示完整圖（影片直接播放）+ 陰影 + 文字，不跑 glitch；
+  // 降級／instant：直接顯示完整圖（影片直接播放）+ 文字，不跑 glitch；
   // instant（已播過一次的重觸發）仍保留飄移與視差，reduced-motion 全靜止
   if (reducedMotion() || props.instant) {
     cards.value.forEach((card, i) => {
       if (card.video) revealVideo(i);
       else if (imgEls[i]) gsap.set(imgEls[i], { autoAlpha: 1 });
-      if (cardEls[i]) cardEls[i]!.style.boxShadow = props.shadow;
     });
     captionVisible.value = true;
     if (!reducedMotion()) startFloat();
@@ -436,10 +431,7 @@ const reset = () => {
     }
     overlayEls[i]?.replaceChildren();
     const card = cardEls[i];
-    if (card) {
-      card.style.boxShadow = 'none';
-      card.style.transform = '';
-    }
+    if (card) card.style.transform = '';
   });
 };
 
@@ -510,7 +502,7 @@ defineExpose({ start, reset });
 .glitch-stage {
   position: relative;
   width: 100%;
-  /* 卡片溢出與陰影需露出 */
+  /* 卡片溢出需露出 */
   overflow: visible;
 }
 
