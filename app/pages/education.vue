@@ -7,7 +7,6 @@ definePageMeta({ layout: 'subpage' });
 /** education 專屬文案結構：Subpage 外殼所需的 hero/intro/nav + 各內文區塊 */
 interface EducationContent extends SubpageContent {
   opening: string;
-  figure: { src: string; alt: string; caption: string };
   closing: string;
   cta: { label: string; url: string };
 }
@@ -21,14 +20,6 @@ const c = raw as EducationContent;
     <!-- 引言之後第一段：無小標，接在引言的 padding-bottom 之下 -->
     <div class="sp-col mt-16">
       <p class="sp-p" v-html="c.opening" />
-    </div>
-
-    <!-- 頒獎典禮照片 -->
-    <div class="sp-col mt-16">
-      <figure>
-        <UPic :src="c.figure.src" :use-prefix="false" :srcset="['mob']" :alt="c.figure.alt" />
-        <figcaption class="sp-caption mt-2">{{ c.figure.caption }}</figcaption>
-      </figure>
     </div>
 
     <!-- 結語 -->

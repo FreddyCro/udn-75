@@ -29,7 +29,7 @@
 2. 放大功能
 3. 刪掉照片留空位(feature)，不要往前補
 
-### (Y)education 內文有一張圖片刪除
+### V (Y)education 內文有一張圖片刪除
 
 ### (F)Subpage intro media
 
@@ -60,9 +60,9 @@
 
 ### (Y)media
 
-1. font weight 調整
-2. hover font-size 改成 scale
-3. 連結移除講者資訊文字
+1. V font weight 調整
+2. V hover font-size 改成 scale
+3. V 連結移除講者資訊文字
 
 ### Media meatball
 
@@ -73,8 +73,8 @@
 
 ## Yumi 問
 
-1. 智慧心媒體設計稿 pc 者消失?
-2. subpage 很怪淡出直接出現content淡入上方空間被 nav 遮擋，在排版流中會跟右側nav打架
-3. tablet container是抓max-w還是padding
-4. /service 加了影片(?
-5. ai摘要 人工智慧缺內文
+1. V 智慧心媒體設計稿 pc 者消失?
+2. V subpage 很怪淡出直接出現content淡入上方空間被 nav 遮擋，在排版流中會跟右側nav打架
+3. V tablet container是抓max-w還是padding
+4. V /service 加了影片(?
+5. V ai摘要 人工智慧缺內文
