@@ -467,6 +467,7 @@ function applyScrollLock() {
           :color="['#000000', '#77c6e0', '#d1f4ff', '#ffffff']"
           :color-stops="[0, 0.4, 0.75, 1]"
           bg-color="#000"
+          :world-scale="0.8"
           :cols="85"
           :char-aspect="0.65"
           :contrast="1.2"

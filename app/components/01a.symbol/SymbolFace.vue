@@ -38,7 +38,16 @@ const props = defineProps({
   fitWidth: { type: Number, default: 500 },
   /** 目標框高（world 單位）：圖以 contain 方式塞入，正規化 render 大小 */
   fitHeight: { type: Number, default: 500 },
-  /** 貼合後的額外縮放倍率（手動微調用；1 = 純貼合目標框） */
+  /** 貼合後的額外縮放倍率（1 = 純貼合目標框）。
+   *  ⚠️ 這是**唯一**的「整張臉等比縮放」旋鈕：cellW ∝ worldW、cellH = cellW/charAspect、
+   *     aSize ∝ cellH（見 symbol-sampler 的 computeGrid / sampleImageToGrid）——
+   *     故它同時縮外框、間距、符號大小，三者比例不變，粒子數也不變。
+   *     改 cols / sizeMax 都只動內部比例，臉的外框大小紋風不動。
+   *  ⚠️ 縮小後不會跟著縮的是所有 world 單位的互動/動畫量：holeRadius、holeSpread、
+   *     groupShift、floatAmp、floatMicro、disperseSpread、impulseStrength、maxSpeed。
+   *     它們相對於變小的人臉會等比變大（真空洞看起來更兇、飄得更晃），要維持原本手感
+   *     得自己一起乘。convergeSize 則相反 —— 它是螢幕 px、要與 ForumCore 的橘方塊
+   *     硬切對位，不可跟著縮。 */
   worldScale: { type: Number, default: 1.0 },
   /** 橫向格數＝疏密主控，clamp 到 20..400。
    *  85 而非 gemini 的 130：滿版一屏放不下 130 欄的可辨識字級（見 spec § 2 的對照表） */

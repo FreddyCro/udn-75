@@ -57,6 +57,7 @@ const symbolHint = section1.symbol.hint;
         :max-speed="3000"
         :max-particles="24000"
         bg-color="#000"
+        :world-scale="0.7"
         :float-amp="18"
         :float-micro="0.5"
         :chars="[
