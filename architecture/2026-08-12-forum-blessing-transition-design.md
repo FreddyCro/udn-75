@@ -1,10 +1,12 @@
 # 02.forum → 03.blessing 過場 — 設計稿
 
 日期：2026-08-12
-狀態：**待實作**
+狀態：**已實作**（分支 `feat/forum-blessing-cover`；實測數字見第十二節。
+文中標「實測修正」的兩處是實作過程中推翻本稿原本寫法的地方，已就地更正。）
 相關檔案：`app/components/02.forum/Forum.vue`、`app/components/02.forum/ForumCorePath.vue`、
 `app/components/03.blessing/Blessing.vue`、`app/composables/useOrangeCoreProgress.ts`、
-`app/utils/orange-core-config.ts`、`app/utils/forum-node-path.ts`
+`app/composables/useCoreSequence.ts`、`app/utils/orange-core-config.ts`、
+`app/utils/forum-node-path.ts`、`test/blessing-cover.spec.ts`、`test/forum-node-path.spec.ts`
 設計稿：pc 四張分鏡 **永續祝福1–4**＝`2065:145459` / `2065:145381` / `2065:145577` / `2065:145653`
 （pad／mob 分鏡未提供，本次以 pc 稿推導、三個斷點共用同一套機制）
 
@@ -69,12 +71,44 @@
 ```
 .sec2
   .sec2__path        （不動）
-  .sec2__pin         position: sticky; bottom: 0     ← 定住最後一屏
+  .sec2__pin         position: sticky;               ← 定住最後一屏
+                     top: calc(vh() - var(--sec2-pin-h))
   .sec2__seam        height: 0                       ← 真正的接縫標記（不 sticky）
   .sec2__cover-hold  height: vhLength(1)             ← sticky 的活動範圍
   <ForumCore>        （fixed，順序無關）
 .section3            margin-top: calc(#{vh()} * -1); z-index: 1
 ```
+
+### ⚠️ 夾點必須用 `top`，不是 `bottom`（2026-08-12 實測修正）
+
+本設計稿最初寫的是 `bottom: 0`，**那是錯的**，實作後在真實頁面上量出來完全沒有定住效果。
+
+`bottom: 0` 的語意是「不讓下緣掉到視窗底緣**以下**」：它在你還沒捲到那一塊時先把它往
+**上**拉進畫面，捲過去就放行 —— **它永遠不會把元素往下推**。而「捲過去時原地不動」
+需要的正是往下推。`top` 才是往下推的那一側。
+
+因為 `.sec2__pin` **比視窗高**（pc 實測 4243 vs 900），夾點要放在 `vh() − 塊高`：
+把「頂端」夾在那裡，等價於把「下緣」夾在視窗底緣。
+
+1440×900、`?highlights=1`，取 cover 窗口的 p = 0 / 0.25 / 0.5 / 0.75 / 1，
+量 `.sec2__pin` 下緣相對視窗底緣：
+
+| 夾點 | 五個取樣點的偏移 | 結果 |
+|---|---|---|
+| `bottom: 0` | 0, −225, −450, −675, −900 | 以 1:1 跟著捲動走 ＝ **完全沒定住** |
+| `top: calc(vh() − 塊高)` | 0, 0, 0, 0, 0 | **整段 100vh 誤差 0px** |
+
+兩者的面板上緣都是 900 → 675 → 450 → 225 → 0 線性上升（那一半本來就是對的）。
+
+時機也剛好：夾點觸發的條件是「自然頂端升過 `vh() − 塊高`」＝「自然下緣升過視窗底緣」，
+而自然下緣就是接縫 —— 也就是 cover 的起點，不會提早定住；放行則由容器（`.sec2`）
+下緣決定，也就是 `.sec2__cover-hold` 用完的那一刻。
+
+塊高隨內容、字體、斷點與 `?highlights` 開關變，CSS 算不出來 → 由 JS 量進
+`--sec2-pin-h`（`ResizeObserver`，同 `Blessing.vue` 量 `--face-block-h` 的作法）。
+fallback 刻意給大到不可能的值，夾點變成極負數、sticky 永不觸發 → 退回「不定住」的
+原本行為。**量不到時寧可沒有效果，不要一個錯的定住**（fallback 給 0 會讓夾點變成
+`100vh`，整個 forum 尾段被往下推出畫面）。
 
 - **頁面總高不變**：`.sec2` 被 spacer 撐高 100vh，`.section3` 的負 margin 又扣回來 → 淨零。
   `Media`（04）不位移，`2026-08-11-blessing-media-transition-design.md` 那段過場**不需要重調**。
@@ -82,8 +116,9 @@
   也就是今天的接縫。
 - **定住的 100vh 與上升的 100vh 是同一段**：`.sec2__pin` 的 sticky 活動範圍就是那個 spacer，
   而 spacer 的起點就是接縫。兩段首尾自動對齊，**不需要第二條 trigger 去同步**。
-- **定住的是「forum 最後一屏」**（`bottom: 0` ＝ 下緣貼視窗底緣），與尾端是精彩活動還是論壇四無關
-  —— `ForumHighlights` 維持 `?highlights=1` 的預設關閉，日後打開自動就是設計稿的樣子。
+- **定住的是「forum 最後一屏」**（夾點等價於下緣貼視窗底緣，見下方 ⚠️），與尾端是精彩活動
+  還是論壇四無關 —— `ForumHighlights` 維持 `?highlights=1` 的預設關閉，日後打開自動就是
+  設計稿的樣子。
 
 ⚠️ **spacer 高度與負 margin 必須是同一個值**，否則頁面總高會變、`Media` 位移。
 兩邊都從 `--vh` 取（JS 的 `vhLength(1)`、SCSS 的 `vh()`），故恆等。不要把任何一邊寫成字面 `100vh`
@@ -177,7 +212,7 @@ scrub 的頭尾沒有硬轉折，且本身已夾在 `[0, 1]`。
 
 ---
 
-## 五、白方塊：數字全部對得上，所以不必量測
+## 五、白方塊：橫向數字全部對得上，只有縱向偏移要量
 
 **35px ＝ 臉的一個 2×2 格**：`blessing-face-frames.ts` 是 16×16 網格、方塊多為 2×2 單位，
 pc 的臉 280px → 一格 17.5px → 2×2 ＝ 35px。分鏡的 `Group 12479` 每個 rect 都是 35×35，
@@ -255,6 +290,11 @@ cover 進度到 1 時方塊已就位、與 `BlessingFace` 的第 0 格（同一�
 
 ```scss
 .section3 {
+  // 退路：不支援 color-mix 的瀏覽器會整條丟掉下面那個宣告，若沒有這一行，色塊會**沒有背景**
+  // —— 變透明、露出底下的 forum，整段覆蓋直接破功。給純橘 ＝ 降級成「全程橘、少了藍色那一拍」，
+  // 那是這段轉場最安全的落點（橘是它最終、也是最長的狀態）。
+  // ⚠️ 順序是關鍵：退路必須在前，寫在後面會贏過 color-mix、把效果殺掉。
+  background: var(--color-orange);
   background: color-mix(
     in srgb,
     var(--color-orange) calc(var(--cover-orange, 1) * 100%),
@@ -262,6 +302,11 @@ cover 進度到 1 時方塊已就位、與 `BlessingFace` 的第 0 格（同一�
   );
 }
 ```
+
+`color-mix()` 本身沒問題 —— 專案已經在用（`AppHeader.vue` 的 `--hd-bg`），`100dvh` / `100svh`
+也已在 `Media.vue` / `Subpage.vue` 用著；`viewport-height.ts` 與 `mixins.scss` 那些「不用 2022 年後
+語法」的註解是針對 `--vh` 單一來源機制的決定，不是全域禁令。**要補的只是退路**：那兩處不支援時
+只是少個底色濃淡，這裡不支援卻會讓整段覆蓋破功，blast radius 不同（2026-08-12 補上）。
 
 `--cover-orange` 由 `coverOrangeAt(coverProgress)` 餵入，預設 `1`（純橘）——
 SSR 與任何還沒建好 trigger 的時刻都落在橘色，不會閃一下藍。
@@ -275,7 +320,12 @@ SSR 與任何還沒建好 trigger 的時刻都落在橘色，不會閃一下藍�
 | `.section3__face-art`（掛在 `<BlessingFace>` 上的 class） | cover 進度 ＝ 1 | 在那之前臉的第 01 格與白方塊會同時出現在同一個位置（兩顆白方塊）。⚠️ 門檻掛在**臉的 svg** 上，不是 `.section3__face` —— 白方塊住在後者裡面，藏外層會把方塊一起藏掉 |
 | `.section3__face-seed`（白方塊） | 接觸 → cover 進度 1 | 接觸前它會貼在色塊上緣、比飛機先出現 |
 
-三者都用 opacity／`visibility` 而非 `v-if`：`--face-cell-y` 靠量測，元素得一直在版面上才量得到。
+**intro 與臉的 svg** 用 opacity 而非 `v-if`：`--face-cell-y` 是量 `.section3__face` 相對臉屏的偏移，
+那兩個元素得一直在版面上，量測才成立。
+
+**白方塊用 `v-if`**（2026-08-12 實作時修正本節原本「三者都用 opacity」的說法 —— 那句話寫得過廣）：
+它是 `position: absolute`，本來就不參與 `.section3__face` 的排版，藏或不藏都影響不到 `--face-cell-y`；
+而 `v-if` 才給得出 reduce-motion 下「**根本沒有方塊**」的行為（`opacity: 0` 只是看不見，元素還在）。
 scrub 驅動的那兩個（intro、seed）**不要**加 `transition`
 —— 理由同 `.section3__partners.is-out` 的註解（補間會讓每一幀滯後於捲動，手感發黏）。
 
@@ -384,7 +434,8 @@ const SEAM_END: ForumPathAnchor = { sel: '.sec2__seam', edge: 'top' };
 ```scss
 .sec2__pin {
   position: sticky;
-  bottom: 0;
+  // 夾點用 top 而非 bottom，且要減掉塊高 —— 理由與實測數字見第二節的 ⚠️。
+  top: calc(#{vh()} - var(--sec2-pin-h, 100000px));
 
   // 量測期間退回一般流：sticky 位移會污染 .sec2__pin 內所有錨點的 rect（見設計稿第八節）。
   // 設值 → 量測 → 還原都在同一個 task 內完成，中間不會 paint，畫面不會跳。
@@ -461,5 +512,85 @@ const SEAM_END: ForumPathAnchor = { sel: '.sec2__seam', edge: 'top' };
    `ScrollTrigger.refresh()` 之後設計線與飛機的位置仍然正確（`?pathdebug` 對照）。
 8. **深連結**：直接開 `/#blessing` → 色塊是橘的、臉在該有的格號上，不會看到滿版淺藍。
 9. **降級路徑**：`prefers-reduced-motion` 下沒有白方塊，臉從 cover 起就是完成的笑臉，換色照舊。
+   ⚠️ **2026-08-12 實測：這一條驗不過，但原因不在本次的程式碼。** `useOrangeCoreProgress` 的
+   `reduceMotion`（`useState` ＋ `onMounted` 讀 `matchMedia`）在 render 時始終是 `false`——
+   模擬 `prefers-reduced-motion: reduce` 時，JS 的 `matchMedia().matches` 是 `true`、CSS 也生效
+   （`.section3__partners` 的 `transition` computed 成 `none`），但 `blessingFrame` 仍停在第 0 格、
+   白方塊仍出現。`git show 8932cfb^` 證實那套機制與 `blessingFrame` 的早期 return **在本計畫之前
+   就存在且未被本計畫修改** → 既有的「逐格臉停在完成笑臉」本來就沒作用，本段新增的兩個門檻
+   讀同一個旗標，因此一併失效（門檻邏輯本身經兩輪 review 確認正確）。屬另案，未在本次處理。
 10. **三個斷點**：pad／mob 的白方塊同樣落在臉的第 01 格上（那兩個斷點的臉在文字**下方**，
     靠 `--face-cell-y` 的量測而非 CSS 推導）。
+
+---
+
+## 十二、實作後的實測數字（2026-08-12）
+
+以 Playwright 在真實頁面上量的，供日後改動時當回歸基準。`p` ＝ cover 軌進度。
+
+### 頁面總高與骨架（1440×900、`?highlights=1`）
+
+| 項目 | 改動前 | 改動後 |
+|---|---|---|
+| `document.body.scrollHeight` | 23969 | **23969**（delta 0） |
+| `.sec2` 高 | 9686 | 10586（＋900 ＝ 一個視窗高） |
+
+`.sec2__cover-hold` 高 900 ＝ `.section3` 的 `margin-top` −900（同一個 `--vh`），故淨零。
+`.sec2__seam` 高 0、`position: static`、位置恰在 `.sec2__pin` 自然下緣（差 0px）。
+`.section3` `z-index: 1`、`.sec2` `z-index: auto`。
+
+### 定住（`.sec2__pin` 下緣 − 視窗底緣）
+
+| p | −0.2 | 0 | 0.2 | 0.4 | 0.5 | 0.6 | 0.8 | 1 | 1.2 |
+|---|---|---|---|---|---|---|---|---|---|
+| 偏移 | +180 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | −180 |
+
+不提早定住（−0.2 仍在自然位置）、全程 0px、cover 之後正確放行。
+面板上緣同時 120% → 100 → 80 → 60 → 50 → 40 → 20 → 0 → −20% 線性。
+
+### 接觸點與換色
+
+飛機中心 − 接縫：p=0.5 時 **0px**（＝ `COVER_CONTACT` 的幾何預期，視窗中央）。
+
+| p | 0 → 0.5 | 0.52 | 0.56 → 1 |
+|---|---|---|---|
+| `--cover-orange` | 0 | 0.259 | 1 |
+| 背景 | `srgb(0.6235, 0.8392, 1)` ＝ `#9FD6FF` | 藍橘混色 | `srgb(1, 0.498, 0)` ＝ `#FF7F00` |
+| intro opacity | 0 | 0.259 | 1 |
+
+轉橘於 0.5 起、0.56 完成（＝ `COVER_ORANGE_FADE` 0.06）。
+**白字未曾疊在藍底上**：p=0.5（最後一格全藍）時 intro 上緣已在畫面 84%，但 opacity 仍為 0。
+
+### 白方塊與交棒（三個斷點）
+
+| 斷點 | `--face-cell-y` | 定住 | 接觸時「方塊上緣 − 色塊上緣」 | 交棒 dy | dx / dw |
+|---|---|---|---|---|---|
+| pc 1440×900 | 310px | 0px | 0.0 | **0.00** | 0 / 0 |
+| pad 1024×900 | 469px | 0px | 0.0 | **0.00** | 0 / 0 |
+| mob 414×896 | 491px | 0px | 0.0 | **0.00** | 0 / 0 |
+
+三個 `--face-cell-y` 都不同，正是「必須量測」的證據：pad 的 `--face-block-h` 是 598，
+若照 pc 的算式 `(vh − 塊高)/2` 會得 151，與實際 469 差 318px（＝ intro 高 ＋ gap）。
+
+pc 的收斂過程（`--cover-seed` → 方塊與臉第 01 格的 dy）：
+
+| p | 0.5 | 0.52 | 0.7 | 0.9 | 0.99 | 0.999 |
+|---|---|---|---|---|---|---|
+| `--cover-seed` | 0 | 0.005 | 0.352 | 0.896 | 0.999 | 1.000 |
+| dy | −310 | −308.6 | −200.9 | −32.2 | −0.34 | **0.00** |
+
+smoothstep 的形狀看得出來：接觸後只走 1.45px，末端才緩緩落定。臉的 svg 全程 opacity 0，
+不會出現兩顆白方塊。
+
+### 深連結
+
+`/?highlights=1#blessing` 直接落地：`--cover-orange` = 1、背景橘 —— 不會看到滿版淺藍。
+
+### 量測時的兩個坑（日後重測請注意）
+
+1. **hero 有捲動鎖與 `position: fixed` 疊層**（`.hero-start`，`z-index: 1500`）。`scrollTo` 之後
+   版面量測是對的，但畫面會被鎖回 hero → 截圖全是 start 畫面。要先 `.hero-start__cube` click
+   再按 Skip，`.hero-start` 卸載後才截得到。
+2. **`skip` 之後版面還在沉澱**（ScrollTrigger refresh、pin spacer 釋放），此時算出的
+   「cover 起點」會事後漂移，取樣點就會對到錯的位置。改成**反解**：迭代收斂到
+   「面板上緣 ＝ 目標 px」的捲動位置，對漂移免疫。
