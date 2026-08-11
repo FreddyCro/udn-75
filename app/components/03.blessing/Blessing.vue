@@ -61,6 +61,8 @@ const partnersHoldHeight = vhLength(BLESSING_PARTNERS_HOLD_VH);
 const sectionRef = ref<HTMLElement | null>(null);
 const trackRef = ref<HTMLElement | null>(null);
 const innerRef = ref<HTMLElement | null>(null);
+const screenRef = ref<HTMLElement | null>(null);
+const faceRef = ref<HTMLElement | null>(null);
 const partnersRef = ref<HTMLElement | null>(null);
 let coverST: ScrollTrigger | null = null;
 let faceST: ScrollTrigger | null = null;
@@ -104,20 +106,36 @@ watch(partnersHeld, async () => {
 // ⚠️ 一定要寫在 section 根節點：.section3__partners 是 .section3__face-track 的**兄弟**，
 //    自訂屬性只往下繼承，寫在臉屏上它讀不到（會靜靜退回 fallback 280px —— pc 剛好對，
 //    pad / mob 就整個歪掉）。
-const syncFaceBlockHeight = () => {
+//
+// --face-cell-y ＝ 臉框上緣在臉屏內的 y ＝ 白方塊要走的距離
+// （起點是臉屏上緣，而 cover 期間臉屏上緣就是色塊上緣＝接縫）。
+//
+// ⚠️ 一定要量、不能用 --face-block-h 推：pc 的臉是 .section3__face-inner 的第一個
+//    flex item（臉框上緣 ＝ inner 上緣），但 **pad／mob 的 .section3__face 是
+//    order: 2、排在文字下方**，臉框上緣還要加上 intro 高度與 gap，CSS 算不出來。
+//
+// 量相對值（兩個 rect 相減）而非絕對座標：臉屏是 sticky，絕對座標會隨 sticky 是否
+// engage 而變，相對值不會 —— 這個偏移純粹是版面內部的事。
+const syncFaceMetrics = () => {
   if (!sectionRef.value || !innerRef.value) return;
   sectionRef.value.style.setProperty(
     '--face-block-h',
     `${innerRef.value.offsetHeight}px`,
   );
+
+  if (!screenRef.value || !faceRef.value) return;
+  const y =
+    faceRef.value.getBoundingClientRect().top -
+    screenRef.value.getBoundingClientRect().top;
+  sectionRef.value.style.setProperty('--face-cell-y', `${y}px`);
 };
 
 onMounted(() => {
-  syncFaceBlockHeight();
+  syncFaceMetrics();
   // 臉屏是 align-items: center（不是 stretch）→ 內層的高度由內容決定，不會被臉屏的
   // min-height 回頭撐大，所以不會有 observe → 改高 → 再觸發 observe 的迴圈。
   if (innerRef.value && typeof ResizeObserver !== 'undefined') {
-    innerRO = new ResizeObserver(syncFaceBlockHeight);
+    innerRO = new ResizeObserver(syncFaceMetrics);
     innerRO.observe(innerRef.value);
   }
 
@@ -214,10 +232,27 @@ onBeforeUnmount(() => {
       class="section3__face-track"
       :style="{ height: faceTrackHeight }"
     >
-      <div class="section3__face-screen">
+      <div ref="screenRef" class="section3__face-screen">
         <div ref="innerRef" class="section3__face-inner">
-          <div class="section3__face">
-            <BlessingFace :frame="blessingFrame" />
+          <div ref="faceRef" class="section3__face">
+            <!-- 逐格臉：cover 跑完才現身，與白方塊交棒（兩者同格同色同位置 → 硬切）。
+                 門檻掛在 svg 自己身上，**不是** .section3__face —— 白方塊住在後者裡面，
+                 藏外層會把方塊一起藏掉。 -->
+            <BlessingFace
+              class="section3__face-art"
+              :class="{ 'is-in': coverFaceVisible }"
+              :frame="blessingFrame"
+            />
+
+            <!-- 白方塊：紙飛機沒入色塊後從接縫長出來的那一格 ＝ 逐格臉的第 01 格
+                 （FACE_FRAMES[0] = [7,0,2,2]）。位置用網格比例寫死、不需量測；
+                 只有位移的幅度要量（--face-cell-y，見 script）。 -->
+            <span
+              v-if="coverSeedVisible"
+              class="section3__face-seed"
+              :style="{ '--cover-seed': coverSeed }"
+              aria-hidden="true"
+            />
           </div>
 
           <div class="section3__intro">
@@ -420,6 +455,7 @@ onBeforeUnmount(() => {
 }
 
 .section3__face {
+  position: relative; // 白方塊（.section3__face-seed）是絕對定位的子元素，要以本框為定位基準。
   flex-shrink: 0;
   width: 280px;
   height: 280px;
@@ -433,6 +469,34 @@ onBeforeUnmount(() => {
     width: 200px;
     height: 200px;
   }
+}
+
+// 逐格臉的 svg：cover 跑完才現身（見 template）。用 opacity 而非 v-if／display，
+// 讓它一直佔位 —— --face-cell-y 是量出來的，元素不在版面上就量不到。
+// scrub 驅動，刻意不加 transition（與白方塊是硬切交棒，補間反而會看到兩者都不是
+// 全不透明的那一瞬間 —— 同 .forum-path__core 的取捨）。
+.section3__face-art {
+  opacity: 0;
+
+  &.is-in {
+    opacity: 1;
+  }
+}
+
+// 白方塊：飛機沒入色塊後從接縫長出來的那一格。
+// 網格比例寫死 —— FACE_FRAMES[0] = [7,0,2,2] 在 16×16 網格上是 x 7/16 起、佔 2/16，
+// 所以它**水平居中於臉框**（7+1 = 8 ＝ 網格中心），三個斷點都不必分開寫。
+// 位移：起點是色塊上緣（＝ 臉屏上緣，故幅度就是 --face-cell-y），終點是 0（就位）。
+// --cover-seed 由 seedTravelAt(coverProgress) 餵入，scrub 驅動故不加 transition。
+// fallback 0px：量到之前不動，不會亂飛。
+.section3__face-seed {
+  position: absolute;
+  top: 0;
+  left: 43.75%; // 7 / 16
+  width: 12.5%; // 2 / 16
+  aspect-ratio: 1;
+  background: #fff;
+  transform: translateY(calc((var(--cover-seed, 1) - 1) * var(--face-cell-y, 0px)));
 }
 
 .section3__intro {
