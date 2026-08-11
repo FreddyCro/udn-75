@@ -46,6 +46,34 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
 //    vhLength(1)、那裡是 SCSS 的 vh()），故恆等。任何一邊寫成字面 100vh 就會
 //    在行動裝置網址列收合時脫鉤，頁面總高跟著變。
 const coverHoldHeight = vhLength(1);
+
+// `.sec2__pin` 的高度，寫進它自己的 `--sec2-pin-h` 供 sticky 的 top 算式用（見 SCSS）。
+//
+// 為什麼要量：定住的做法是把「頂端」夾在 vh() − 塊高，等價於把「下緣」夾在視窗底緣
+// （理由見 SCSS 的 ⚠️）。而塊高隨內容、字體、斷點變，`?highlights` 開關也會改它，
+// CSS 算不出來 —— 同 Blessing.vue 量 `--face-block-h` 的作法。
+//
+// 不會有「量測 → 改樣式 → 再觸發量測」的迴圈：top 只是 sticky 的夾點，不影響本塊的高度。
+const pinRef = ref<HTMLElement | null>(null);
+let pinRO: ResizeObserver | null = null;
+
+const syncPinHeight = () => {
+  if (!pinRef.value) return;
+  pinRef.value.style.setProperty('--sec2-pin-h', `${pinRef.value.offsetHeight}px`);
+};
+
+onMounted(() => {
+  syncPinHeight();
+  if (pinRef.value && typeof ResizeObserver !== 'undefined') {
+    pinRO = new ResizeObserver(syncPinHeight);
+    pinRO.observe(pinRef.value);
+  }
+});
+
+onBeforeUnmount(() => {
+  pinRO?.disconnect();
+  pinRO = null;
+});
 </script>
 
 <template>
@@ -72,7 +100,7 @@ const coverHoldHeight = vhLength(1);
     <!-- 議程整組：agendaRevealed（越過 coreOut）才淡入，見下方 .sec2__pin 註解。
          （原本這層同時是 forum pin 的釘住目標，該 pin 已隨 SymbolFace 序列移除 —— <SymbolScene>
            改用「不 pin 的捲動尺」，見該元件註解。） -->
-    <div class="sec2__pin" :class="{ 'sec2__pin--revealed': agendaRevealed }">
+    <div ref="pinRef" class="sec2__pin" :class="{ 'sec2__pin--revealed': agendaRevealed }">
       <Agenda />
       <AgendaReport />
 
@@ -200,9 +228,25 @@ const coverHoldHeight = vhLength(1);
   // 覆蓋過場：定住「forum 最後一屏」讓 blessing 的色塊蓋過去（設計師：精彩活動 fix 在
   // 畫面中心、下個 section 往上蓋）。活動範圍由後面的 .sec2__cover-hold 撐出來，
   // 所以定住的距離恰好等於色塊上升的 100vh，兩段不需要另一條 trigger 去同步。
-  // bottom: 0 ＝ 下緣貼視窗底緣 → 定住的是「最後一屏」，與尾端是精彩活動還是論壇四無關。
+  // 定住的是下緣貼視窗底緣的「最後一屏」，與尾端是精彩活動還是論壇四無關
+  // （靠什麼夾點做到見下方 top 的推導 —— 不是 bottom: 0）。
   position: sticky;
-  bottom: 0;
+  // ⚠️ 用 top 而**不是** bottom —— 這是本段唯一容易寫錯的地方。
+  //   `bottom: 0` 的語意是「不讓下緣掉到視窗底緣**以下**」：它在還沒捲到本塊時先把它
+  //   往**上**拉進畫面，捲過去就放行 —— 永遠不會把元素往**下**推。而「捲過去時原地不動」
+  //   需要的正是往下推。實測 bottom: 0 完全沒有定住效果（下緣以 1:1 跟著捲動走）。
+  //   top 才是往下推的那一側；本塊**比視窗高**，所以夾點要放在 vh() − 塊高 ——
+  //   把「頂端」夾在那裡等價於把「下緣」夾在視窗底緣。實測 cover 全程 100vh 誤差 0px。
+  //
+  //   它也剛好在對的時機開始：夾點觸發的條件是「自然頂端升過 vh() − 塊高」，
+  //   等價於「自然下緣升過視窗底緣」，而自然下緣就是接縫 —— 也就是 cover 的起點，
+  //   不會提早定住。放行則由容器（.sec2）的下緣決定，也就是 .sec2__cover-hold 用完的那一刻。
+  //
+  // --sec2-pin-h 由 JS 量（見 script）。fallback 故意給一個大到不可能的值 ——
+  // 夾點會變成極負數、sticky 永遠不觸發 → 退回「不定住」的原本行為。
+  // 量不到的時候寧可**沒有效果**，也不要一個錯的定住（例如 fallback 給 0 會讓
+  // 夾點變成 100vh，整個 forum 尾段被往下推出畫面）。
+  top: calc(#{vh()} - var(--sec2-pin-h, 100000px));
   background: #fff;
   opacity: 0;
   transition: opacity 0.4s ease;
