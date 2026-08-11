@@ -32,9 +32,10 @@ onMounted(() => {
 
 const panelOpen = ref(true);
 
-// 彩蛋句與 PC 互動提示：與正式站共用同一份文案（見 locales/section1.json）
+// 彩蛋句與互動提示：與正式站共用同一份文案（見 locales/section1.json）
 const symbolPhrases = section1.symbol.phrases;
 const symbolHint = section1.symbol.hint;
+const symbolHintMob = section1.symbol.hintMob;
 </script>
 
 <template>
@@ -46,6 +47,7 @@ const symbolHint = section1.symbol.hint;
         v-model:mode="symbolMode"
         :phrases="symbolPhrases"
         :hint="symbolHint"
+        :hint-mob="symbolHintMob"
         :hole-radius="25"
         :hole-spread="50"
         :return-ease="1.5"

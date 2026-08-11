@@ -82,8 +82,13 @@ const props = defineProps({
   maxParticles: { type: Number, default: 24000 },
 
   // ---------- 場景 / 動畫節奏 ----------
-  /** 背景色 */
+  /** 背景色（集合 / 散場漂浮時的底色） */
   bgColor: { type: String, default: '#ffffff' },
+  /** 匯聚成點狀態的背景色：mode 切到 converge 時整片底色翻成這個顏色。
+   *  補間與粒子收攏**同步**（同 disperseDuration、同 ease，見 syncBg），故底色是隨著
+   *  那團符號收緊而漸亮、在收成一顆點的同一刻到位；切回其他狀態會沿原路補回去。
+   *  ⚠️ 這是整片畫面的底色，不是元件外框 —— canvas 是滿版不透明的，翻的是 scene.background。 */
+  convergeBgColor: { type: String, default: '#ffffff' },
   /** 組合（reveal）動畫秒數 */
   revealDuration: { type: Number, default: 3 },
   /** 散場（disperse）動畫秒數 */
@@ -198,9 +203,13 @@ const props = defineProps({
   active: { type: Boolean, default: true },
 
   /** PC 互動提示文字（空字串＝不顯示）。換行用 \n，樣式端以 white-space: pre-line 呈現。
-   *  設計稿 Figma 2065:139734：圓環圖示 + 兩行說明，錨在人像右下角。
+   *  設計稿 Figma 2065:139734：圓環圖示 + 兩行說明橫排，錨在人像右下臉頰（見 HINT_ICON_UV）。
    *  只在 ≥1280px 出現（樣式端擋），且游標真的碰到人像就收起（收多久見 hintOnce）。 */
   hint: { type: String, default: '' },
+  /** 手機版互動提示文字（＜768px，空字串＝不顯示）。設計稿 Figma 2065:120222。
+   *  與 hint 的差別是**版位與文案**：手機的說明不排在圖示右邊，而是單行置中排在人像下方；
+   *  文案也不同（手機沒有游標，稿上是「點擊人臉…」）。圓環圖示本身兩個斷點共用。 */
+  hintMob: { type: String, default: '' },
   /** 提示是否「整個生命週期只出現一次」。
    *  false（預設）＝ 每次**重新完整集合**都再出現一次；游標碰到人像仍立即收起，
    *    但那次收起只對這一輪集合有效（見 faceFormed 的 watch）。
@@ -270,8 +279,13 @@ onBeforeUnmount(() => cancelAnimationFrame(scrambleRaf));
 const mode = defineModel<SymbolMode>('mode', { default: 'face' });
 let disperseFn: ((animated?: boolean) => void) | null = null;
 
-// 狀態改變時，可逆地補間 uDisperse / uConverge（0↔1）
-watch(mode, () => disperseFn?.(true));
+// 狀態改變時，可逆地補間 uDisperse / uConverge（0↔1）與整片底色（見 syncBg）。
+// 兩者吃同一組 duration / ease，故「收攏」與「翻底色」是同一個動作的兩面。
+let syncBgFn: ((animated?: boolean) => void) | null = null;
+watch(mode, () => {
+  disperseFn?.(true);
+  syncBgFn?.(true);
+});
 
 // 「完整集合」：mode 是 face、首次進場的 reveal 已跑完（uProgress=1）、且 uDisperse /
 // uConverge 都已回到 0。由 animate() 每幀依 uniform 實況推導（只在真的變動時才寫入，
@@ -352,11 +366,29 @@ const applyColors = (next: Record<string, any>) => {
   repaintColors?.();
 };
 
-// ---------- PC 互動提示 ----------
-// 顯示條件三個都要成立：人臉已完整集合（faceFormed）、尚未 dismiss、視窗 ≥1280（樣式端擋）。
-// 位置由 onMounted 內把人像 bbox 右下角投影到螢幕算出，null ＝ 人像還沒建好、先不渲染。
+// ---------- 互動提示 ----------
+// 顯示條件三個都要成立：人臉已完整集合（faceFormed）、尚未 dismiss、斷點有稿（樣式端擋）。
+// 位置由 onMounted 內把人像 bbox 上的錨點投影到螢幕算出，null ＝ 人像還沒建好、先不渲染。
+
+// 圓環圖示的錨點：人像 bbox 內的正規化座標（u 由左、v 由上，0..1）。
+// 稿上兩個斷點放的位置不同，故分開列：
+//   pc  ── 使用者提供的 pc 版位參考圖，量圖示中心相對 bbox 的比例（右下臉頰、壓在下顎線上）
+//   mob ── Figma 2065:120222：bbox (62,135) 293×428、圖示 88×88 落在 (269,368)
+//          → u=(269+44-62)/293、v=(368+44-135)/428
+// ⚠️ 是**圖示中心**不是整組的中心：pc 稿的說明文字排在圖示右邊（整組 203px 寬），
+//    若拿整組置中，圖示會被文字推得偏左半個文字寬。對位交給 CSS（見 .hint 的 transform）。
+const HINT_ICON_UV = {
+  pc: [0.847, 0.859],
+  mob: [0.857, 0.647],
+};
+// 手機版說明文字與人像 bbox 底緣的距離（Figma 2065:120222：bbox 底 563 → 文字頂 594）。
+// 實際寫在 .hint-mob 的 margin-top，這裡只是註記出處。
+const HINT_MOB_QUERY = '(max-width: 767.98px)'; // ＝ mixins.scss 的 rwd-max('tablet')
+
 const hintVisible = ref(false);
 const hintPos = ref<{ x: number; y: number } | null>(null);
+// 手機版說明文字的錨點：人像 bbox 底緣中點（水平置中、垂直間距交給 CSS）
+const hintMobPos = ref<{ x: number; y: number } | null>(null);
 // 非 reactive：只有 animate() 熱迴圈讀寫，不需要觸發 re-render（真正驅動畫面的是 hintVisible）。
 let hintDismissed = false;
 
@@ -391,7 +423,38 @@ onMounted(() => {
   const height = wrap.clientHeight;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(cfg.bgColor);
+  // ⚠️ 這顆 Color 物件從頭到尾是同一個 instance（下方 syncBg 就地補間 r/g/b），
+  //    不要在別處用 scene.background = new THREE.Color(...) 換掉它 —— 那會把
+  //    gsap 正在補間的目標換成孤兒，畫面停在換掉那一刻的顏色。
+  const bgColor = new THREE.Color(cfg.bgColor);
+  scene.background = bgColor;
+
+  // 匯聚態翻底色：converge → convergeBgColor、其餘（集合 / 散場）→ bgColor，可逆補間。
+  // 與 disperseFn 同一套寫法與同一組 duration / ease —— 底色是跟著 uConverge 一起走的，
+  // 不是另一段獨立動畫：那團符號收緊到成點的同時底色剛好到位，中途往回捲也沿原路退回。
+  // animated=false 用於初始定位、面板即時套色與重建粒子。
+  // ⚠️ 這裡用 new THREE.Color(hex) 而不是本檔的 srgbColor()：scene.background 走的是
+  //    three 自己的 output 轉換鏈（會轉回 sRGB 再輸出），與 raw shader 的 uniform 不同。
+  //    詳見 srgbColor 上方那段。
+  const syncBg = (animated = true) => {
+    const target = new THREE.Color(
+      mode.value === 'converge' ? cfg.convergeBgColor : cfg.bgColor,
+    );
+    gsap.killTweensOf(bgColor);
+    if (animated) {
+      gsap.to(bgColor, {
+        r: target.r,
+        g: target.g,
+        b: target.b,
+        duration: cfg.disperseDuration,
+        ease: 'power2.inOut',
+      });
+    } else {
+      bgColor.copy(target);
+    }
+  };
+  syncBgFn = syncBg;
+  syncBg(false); // 套用初始狀態（依 mode 直接定位），不動畫
 
   const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 2000);
   camera.position.z = 600;
@@ -476,7 +539,9 @@ onMounted(() => {
     pCount = 0;
     halfW = 0;
     halfH = 0;
-    hintPos.value = null; // null ＝ 人像還沒建好、先不渲染（見 hintPos 宣告處）
+    // null ＝ 人像還沒建好、先不渲染（見 hintPos 宣告處）
+    hintPos.value = null;
+    hintMobPos.value = null;
   };
 
   // ---------- 圖片亮度採樣：網格化，亮部大/粗/淺色 ----------
@@ -948,7 +1013,9 @@ onMounted(() => {
   // 所以這條路徑不能有取樣、烘 atlas、配置 Float32Array 之類的動作。
   repaintColors = () => {
     if (unmounted) return;
-    scene.background = new THREE.Color(cfg.bgColor);
+    // 不換物件、只就地補到目前狀態該有的顏色（理由見 bgColor 宣告處）。
+    // 不動畫：面板拖色票是「即時預覽」，每次 input 都排一段 0.6s 補間會變成拖影。
+    syncBg(false);
     if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
     if (!mat) return; // 粒子系統還沒建好（圖片載入中）：cfg 已更新，等 build 時自然吃到
 
@@ -997,7 +1064,7 @@ onMounted(() => {
   // refresh：套用 cfg（背景色/彩蛋色即時更新）後重建粒子；src 變更則先載入新圖再重建
   rebuildParticles = () => {
     if (unmounted) return;
-    scene.background = new THREE.Color(cfg.bgColor);
+    syncBg(false); // 同 repaintColors：就地補色、不換物件（理由見 bgColor 宣告處）
     if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
     if (cfg.src !== loadedSrc) {
       const nextSrc = cfg.src;
@@ -1027,21 +1094,31 @@ onMounted(() => {
   let viewH = height;
   if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
 
-  // hint 錨點：人像 bbox 右下角 (halfW, -halfH) 投影到螢幕 px。
+  // hint 錨點：人像 bbox 上的兩個定點投影到螢幕 px —— 圖示（HINT_ICON_UV）與手機文字（底緣中點）。
   // ⚠️ 與 .egg 的差別 —— .egg 跟著游標跑、必須每幀寫 DOM；hint 的錨點在 world 裡是不動的，
   //    只有 resize 與粒子重建會改變它的螢幕位置，故不進 animate() 的熱迴圈。
   const hintAnchor = new THREE.Vector3();
+  const projectAnchor = (x: number, y: number) => {
+    hintAnchor.set(x, y, 0).project(camera);
+    return {
+      x: (hintAnchor.x * 0.5 + 0.5) * viewW,
+      y: (-hintAnchor.y * 0.5 + 0.5) * viewH,
+    };
+  };
   const updateHintAnchor = () => {
     if (halfW <= 0 || halfH <= 0) return;
     // ⚠️ buildFromImage 會在第一幀 render 之前呼叫這裡（img.onload 早於 IntersectionObserver
     //    啟動 rAF），此時 camera.matrixWorldInverse 仍是單位矩陣、position.z 還沒烘進去，
     //    project() 的透視除法會除以 0 → Infinity。先手動更新矩陣，補上 renderer 尚未做的那一步。
     camera.updateMatrixWorld();
-    hintAnchor.set(halfW, -halfH, 0).project(camera);
-    hintPos.value = {
-      x: (hintAnchor.x * 0.5 + 0.5) * viewW,
-      y: (-hintAnchor.y * 0.5 + 0.5) * viewH,
-    };
+    // 斷點在這裡即時判定就夠，不必另掛 matchMedia listener：跨斷點必然改變 .stage 的寬，
+    // 那會觸發下方的 ResizeObserver → 再呼叫本函式一次。
+    const [u, v] = window.matchMedia(HINT_MOB_QUERY).matches
+      ? HINT_ICON_UV.mob
+      : HINT_ICON_UV.pc;
+    // uv(0..1，左上原點) → world：x 由 -halfW 到 +halfW、y 由 +halfH 到 -halfH
+    hintPos.value = projectAnchor(halfW * (u! * 2 - 1), -halfH * (v! * 2 - 1));
+    hintMobPos.value = projectAnchor(0, -halfH);
   };
 
   const animate = () => {
@@ -1320,6 +1397,8 @@ onMounted(() => {
     renderer.domElement.removeEventListener('pointerleave', onLeave);
     revealTween?.kill(); // gsap ticker 上的補間，不會隨 rAF 一起停
     revealTween = null;
+    gsap.killTweensOf(bgColor); // 同上：底色補間也跑在 gsap 的 ticker 上
+    syncBgFn = null;
     // ⚠️ dispose() 只釋放 three 這側的資源，WebGL context 本身要 forceContextLoss() 才會
     //    還給瀏覽器。demo 頁的「矩陣／散點」切換每按一次就掛一個新的 WebGL 元件 ——
     //    不還的話大約 8~16 次就撞到瀏覽器的 context 上限，之後新的 canvas 全黑。
@@ -1348,15 +1427,14 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
       </slot>
     </div>
 
-    <!-- PC 互動提示：錨在人像右下角（位置由 JS 投影寫進 transform），
-         游標真的碰到人像後永久收起。圖示照 Figma 2065:139734 的三個同心圓。 -->
+    <!-- 互動提示：圓環圖示錨在人像右下臉頰（位置由 JS 投影寫成 --hint-x/y，對位交給 CSS），
+         游標/手指真的碰到人像後收起。圖示照 Figma 2065:139734 的三個同心圓，兩個斷點共用；
+         說明文字 pc 排在圖示右邊（.hint__text）、手機排在人像下方（.hint-mob）。 -->
     <div
-      v-if="hint && hintPos"
+      v-if="(hint || hintMob) && hintPos"
       class="hint"
       :class="{ 'hint--on': hintVisible }"
-      :style="{
-        transform: `translate(${hintPos.x}px, ${hintPos.y}px) translate(-50%, -50%)`,
-      }"
+      :style="{ '--hint-x': `${hintPos.x}px`, '--hint-y': `${hintPos.y}px` }"
       aria-hidden="true"
     >
       <svg
@@ -1386,6 +1464,21 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
       </svg>
       <p class="hint__text">{{ hint }}</p>
     </div>
+
+    <!-- 手機版說明文字：單行置中，錨在人像 bbox 底緣中點、下移 31px（Figma 2065:120222）。
+         與上面那組共用 hintVisible，故顯隱時機、dismiss 行為完全一致。 -->
+    <p
+      v-if="hintMob && hintMobPos"
+      class="hint-mob"
+      :class="{ 'hint-mob--on': hintVisible }"
+      :style="{
+        '--hint-x': `${hintMobPos.x}px`,
+        '--hint-y': `${hintMobPos.y}px`,
+      }"
+      aria-hidden="true"
+    >
+      {{ hintMob }}
+    </p>
   </div>
 </template>
 
@@ -1428,10 +1521,12 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
   will-change: transform, opacity;
 }
 
-// PC 互動提示：位置由 JS 把人像 bbox 右下角投影成螢幕 px 寫進 transform。
-// ≥1280 才顯示：這是「用滑鼠玩粒子」的教學，窄視窗的版面也放不下這 203px 寬的一組。
-// ⚠️ 已知取捨：寬度 ≥1280 的觸控裝置（iPad Pro 橫向、Surface）也會看到這句「游標移動」，
-//    但那台機器沒有游標。改用 (hover: hover) 能擋掉，此處依專案決定一律走 pc 斷點。
+// 圓環圖示那一組：位置由 JS 把 bbox 上的錨點投影成螢幕 px，寫進 --hint-x/y。
+// tablet（768–1279）不顯示：稿只有 mob 與 pc 兩版，中間那段沒有版位可依。
+// ⚠️ 已知取捨：寬度 ≥1280 的觸控裝置（iPad Pro 橫向、Surface）也會看到 pc 那句「游標移動」，
+//    但那台機器沒有游標。改用 (hover: hover) 能擋掉，此處依專案決定一律走斷點。
+$hint-icon-size: 88px;
+
 .hint {
   position: absolute;
   left: 0;
@@ -1440,10 +1535,19 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
   display: none;
   align-items: center;
   gap: 16px;
+  // ⚠️ 第二段位移是把**圖示中心**（而非整組的中心）對到錨點：pc 稿的說明文字排在圖示
+  //    右邊，整組 203px 寬，用 -50% 會把圖示往左推半個文字寬、離開臉頰。
+  //    手機版文字不在這組裡（見 .hint-mob），整組就是圖示，-50% 與此式同值。
+  transform: translate(var(--hint-x), var(--hint-y))
+    translate(calc($hint-icon-size / -2), -50%);
   pointer-events: none; // 不能擋住 canvas 的 pointermove，否則整個斥力互動會死
   opacity: 0;
   transition: opacity 0.4s ease;
   will-change: opacity;
+
+  @include rwd-max('tablet') {
+    display: flex;
+  }
 
   @include rwd-min('pc') {
     display: flex;
@@ -1454,15 +1558,18 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
   opacity: 1;
 }
 
-// 設計稿 Figma 2065:139734：88×88 三個同心圓
+// 設計稿 Figma 2065:139734 / 2065:120222：88×88 三個同心圓（兩個斷點同尺寸）
 .hint__icon {
   flex: 0 0 auto;
-  width: 88px;
-  height: 88px;
+  width: $hint-icon-size;
+  height: $hint-icon-size;
 }
 
-// 設計稿：Noto Sans TC Light 13 / 26、字距 1.3、白色（主字體由 base.scss 全域指定）
+// pc 稿的橫排說明：Noto Sans TC Light 13 / 26、字距 1.3、白色（主字體由 base.scss 全域指定）。
+// 手機不排在圖示旁邊，故 <pc 一律不出現 —— 這也讓 .hint 在手機只剩圖示、上面那道
+// translate 自然等於置中。
 .hint__text {
+  display: none;
   margin: 0;
   font-size: 13px;
   font-weight: 300;
@@ -1470,6 +1577,41 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
   letter-spacing: 1.3px;
   color: #fff;
   white-space: pre-line; // 吃文案裡的 \n
+
+  @include rwd-min('pc') {
+    display: block;
+  }
+}
+
+// 手機版說明：單行置中排在人像下方。設計稿 Figma 2065:120222 —— Noto Sans TC Light
+// 20 / 26、字距 4、白色；bbox 底緣（＝ --hint-y 的錨點）再往下 31px。
+// margin-top 先作用、transform 後作用，故等同「錨點 + 31px」。
+.hint-mob {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  display: none;
+  margin: 31px 0 0;
+  transform: translate(var(--hint-x), var(--hint-y)) translate(-50%, 0);
+  font-size: 20px;
+  font-weight: 300;
+  line-height: 26px;
+  letter-spacing: 4px;
+  color: #fff;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  will-change: opacity;
+
+  @include rwd-max('tablet') {
+    display: block;
+  }
+}
+
+.hint-mob--on {
+  opacity: 1;
 }
 
 </style>

@@ -102,10 +102,13 @@ onBeforeUnmount(() => {
   justify-content: center;
   color: inherit;
 
+  // 展開的三顆與 toggler 疊在同一欄（left: 0），故外框寬要和 toggler 一致，
+  // glyph 才會置中對齊；若留 auto，各 glyph 會靠左貼齊而與 toggler 差 4~5px。
   .app-header-share--dropdown & {
     position: absolute;
     top: 0;
     left: 0;
+    width: var(--hd-icon-w);
     height: var(--hd-icon-h);
     opacity: 0;
     pointer-events: none;
@@ -137,6 +140,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: var(--hd-icon-w);
   height: var(--hd-icon-h);
   padding: 0;
   border: 0;

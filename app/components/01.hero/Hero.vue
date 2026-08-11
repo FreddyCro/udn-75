@@ -155,10 +155,10 @@ const coreVisible = computed(
 // ⚠️ pin 會在 .sec1__inner 寫入 transform，使其成為 fixed 子孫的 containing block →
 //    HeroLoader 與 HeroSymbolTransition 都必須掛在 inner「外面」，否則改以 inner 為基準而跑位。
 let transitionST: ScrollTrigger | null = null;
-// 引言淡出：start 用量出來的幾何而非進度門檻 —— 'bottom center' ＝ 文字底緣升到視窗中央，
+// 引言淡出：start 用量出來的幾何而非進度門檻 —— 'bottom center' ＝ 內容 group 底緣升到視窗中央，
 // 而 core 全程定在視窗中央（見 .claude/memory/hero-core-screen-locked.md），
-// 故這一刻正是「方塊剛穿出最後一行」。其後吃掉 INTRO_FADE_VH 的捲動距離淡完。
-// trigger 取文字本體（不含 runway）；scrub → 往回捲自動復原。
+// 故這一刻正是「方塊剛穿出內容的最後一個元素」。其後吃掉 INTRO_FADE_VH 的捲動距離淡完。
+// trigger 取內容 group（不含 runway）；scrub → 往回捲自動復原。
 let introFadeST: ScrollTrigger | null = null;
 // core 的進場動畫（見 runCoreEntrance）：留著才能在倒帶回 loop 時中途收掉。
 let entranceTween: gsap.core.Tween | null = null;
@@ -437,7 +437,7 @@ function applyScrollLock() {
       />
 
       <div class="sec1__scene">
-        <!-- intro 引言：置中窄欄；core 從文字後方垂直穿過，穿出最後一行後整段才淡出讓位給轉場。
+        <!-- intro 引言：置中窄欄；core 從文字後方垂直穿過，穿出內容的最後一個元素後整段才淡出讓位給轉場。
              本元素（含 runway）的底緣＝path 終點與 transition pin 起點的共用參照；
              runway 長度由 INTRO_FADE_VH 推出（--intro-runway），故淡完＝pin 接手。 -->
         <div
@@ -445,7 +445,17 @@ function applyScrollLock() {
           class="sec1__intro"
           :style="{ opacity: introOpacity, '--intro-runway': introRunway }"
         >
-          <p ref="introBodyRef" class="sec1__intro-body">{{ str.intro.body }}</p>
+          <!-- introBodyRef 掛在「內容 group」而非單一段落上：淡出起點量的是整組的底緣
+               （段落界線由 locales 的 body 陣列表達，見 CLAUDE.md 文案外部化）。 -->
+          <div ref="introBodyRef" class="sec1__intro-body">
+            <p
+              v-for="(paragraph, i) in str.intro.body"
+              :key="i"
+              class="sec1__intro-p"
+            >
+              {{ paragraph }}
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -476,6 +486,7 @@ function applyScrollLock() {
           v-model:mode="symbolMode"
           :phrases="str.symbol.phrases"
           :hint="str.symbol.hint"
+          :hint-mob="str.symbol.hintMob"
           :hole-radius="25"
           :hole-spread="50"
           :return-ease="1.5"

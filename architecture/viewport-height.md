@@ -21,7 +21,7 @@
 
 | 尺 | span（視窗高 736 時）| ＝ |
 | --- | --- | --- |
-| `p.sec1__intro-body` | 294 | `INTRO_FADE_VH 0.4 × 736` |
+| `div.sec1__intro-body` | 294 | `INTRO_FADE_VH 0.4 × 736` |
 | `div.sec1__intro`（pin）| 884 | `TRANSITION_VH 1.2 × 736` |
 | `section.sec-symbol` | 2355 | `SYMBOL_VH 3.2 × 736` |
 | `div.section3__face-track` | 884 | `BLESSING_VH 1.2 × 736` |

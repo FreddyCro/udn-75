@@ -123,7 +123,7 @@ export function useOrangeCoreProgress() {
 
   // forum 接棒視窗：symbolProgress ∈ [coreIn, coreOut) → 橘核心（ForumCore）現身。
   //   進入（≥coreIn）→ SymbolFace 收斂點交棒給橘核心（硬切，兩顆已同色同尺寸，見 FORUM_HANDOFF）；
-  //   離開（≥coreOut）→ 黑底淡出、露出議程。捲回會自動反向。
+  //   離開（≥coreOut）→ 滿版底色淡出、露出議程。捲回會自動反向。
   // 越過整段 pin（onLeave → symbolProgress=1）時 ≥coreOut，故 forum 之後橘核心不會殘留蓋住畫面。
   const forumCoreActive = computed(
     () =>
@@ -132,7 +132,7 @@ export function useOrangeCoreProgress() {
   );
 
   // forum 議程揭露：越過 agendaIn 才顯示議程。之前一律藏著，確保 SymbolFace↔橘核心
-  // crossfade 期間（兩層黑底皆未達全滿）下方議程不會短暫露餡。
+  // crossfade 期間（兩層滿版底色皆未達全滿）下方議程不會短暫露餡。
   // agendaIn 刻意早於 coreOut，讓這 0.4s 的淡入發生在畫面外（此時符號段底緣還在視窗底
   // 下方 32vh）；若跟著 coreOut（＝符號段捲完那一刻）才淡入，會在畫面底緣看得到。
   // 捲回會自動反向。
@@ -153,9 +153,9 @@ export function useOrangeCoreProgress() {
     slashDrawAt(forumPathProgress.value, forumSlashWindow.value),
   );
 
-  // 橘核心那顆方塊的顯隱（與 ForumCore 的黑底分開）。
-  // 黑底只在 [coreIn, coreOut) 現身，但橘點必須從 coreIn 一路撐到論壇段路徑接手為止 ——
-  // coreOut 到交棒點之間還有約 82vh，若跟著黑底淡出，畫面上會有一段沒有核心、
+  // 橘核心那顆方塊的顯隱（與 ForumCore 的滿版底色分開）。
+  // 底色只在 [coreIn, coreOut) 現身，但橘點必須從 coreIn 一路撐到論壇段路徑接手為止 ——
+  // coreOut 到交棒點之間還有約 82vh，若跟著底色淡出，畫面上會有一段沒有核心、
   // 然後又在設計線頂端冒出一顆（就是這次要修掉的斷點）。
   // forumPathActive 為 false（該斷點無線稿）時退化成原本的 [coreIn, coreOut)。
   const forumCoreDotVisible = computed(() => {

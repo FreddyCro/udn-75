@@ -46,6 +46,12 @@ export const SYMBOL_CONFIG_SCHEMA: SymbolField[] = [
   },
   { key: 'bgColor', label: '背景色', kind: 'color', group: SYMBOL_COLOR_GROUP },
   {
+    key: 'convergeBgColor',
+    label: '匯聚態背景色',
+    kind: 'color',
+    group: SYMBOL_COLOR_GROUP,
+  },
+  {
     key: 'convergeColor',
     label: '收斂點顏色',
     kind: 'color',
@@ -457,6 +463,7 @@ export const SYMBOL_LIVE_COLOR_KEYS = [
   'colorStops',
   'colorMode',
   'bgColor',
+  'convergeBgColor',
   'convergeColor',
   'phraseColor',
   'glitchItems',

@@ -255,12 +255,18 @@ const effectiveTheme = computed<HeaderTheme>(() =>
   inset: 0 0 auto 0;
   z-index: 1000;
   font-family: 'Noto Sans TC', sans-serif;
-  --hd-icon-h: 28px; // mob／pad 稿的 icon 外框高
+  // icon 外框：音效／share／漢堡三顆共用同一個版位尺寸（mob／pad 稿 35×28、pc 稿 27.5×22）。
+  // 稿上 icon 群組總寬正好是「兩顆外框＋間距」：82 = 35+12+35、75 = 27.5+20+27.5，
+  // 故外框寬不可省成 auto，否則群組寬度會隨 glyph 比例漂移。
+  // glyph 只吃外框高的百分比、寬度按原生比例縮放，三顆都比外框窄，不會溢出。
+  --hd-icon-w: 35px;
+  --hd-icon-h: 28px;
   --hd-bg: rgb(255 255 255 / 0.7);
   --hd-fg: var(--color-gray);
   --hd-accent: var(--color-orange);
 
   @include rwd-min('pc') {
+    --hd-icon-w: 27.5px;
     --hd-icon-h: 22px;
   }
 
@@ -430,6 +436,7 @@ const effectiveTheme = computed<HeaderTheme>(() =>
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: var(--hd-icon-w);
   height: var(--hd-icon-h);
   padding: 0;
   border: 0;

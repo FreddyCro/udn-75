@@ -33,14 +33,23 @@
     will-change: opacity;
   }
 
+  // 內容 group：欄寬容器（引言淡出的量測對象，見 Hero.vue 的 introBodyRef）
   &__intro-body {
     max-width: 630px;
     margin: 0 auto; // 置中窄欄（設計稿左右留白對稱）
+  }
+
+  // 引言段落。段間距＝一個行高：三份設計稿都是 36px，與 line-height 同值。
+  &__intro-p {
     color: var(--color-gray);
     font-weight: 300; // Noto Sans TC Light
     font-size: 18px;
     line-height: 36px;
     text-align: justify;
+
+    & + & {
+      margin-top: 36px;
+    }
   }
 }
 

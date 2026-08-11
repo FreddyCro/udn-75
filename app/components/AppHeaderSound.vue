@@ -28,7 +28,8 @@ const { soundOn, toggleSound } = useAppSound();
   color: var(--hd-fg);
   cursor: pointer;
 
-  // 外框由 header 給（--hd-icon-h），glyph 佔外框 85%（設計稿 18.7 / 22）
+  // 外框由 header 給（--hd-icon-w / --hd-icon-h），glyph 佔外框高 85%（設計稿 18.7 / 22）
+  width: var(--hd-icon-w);
   height: var(--hd-icon-h);
 
   :deep(.app-header-icon) {

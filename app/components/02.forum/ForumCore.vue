@@ -9,15 +9,16 @@
        SymbolFace 因此改用 ResizeObserver，否則收斂點會偏右半個捲軸寬（見該元件的說明）。
   - 交棒是**硬切**、不是 crossfade：收斂點在收攏末段已由白轉橘（SymbolFace 的 convergeColor
     ＝ CORE.orange），到 coreIn 時兩顆同色同尺寸同位置，直接換人畫看不出接縫。
-  - 黑底與橘點是兩層、吃兩個條件：黑底只在 [coreIn, coreOut) 現身（其下方 .sec2 是白底，
-    提早淡出會露出白階跳動），走 0.4s 淡入 —— 那段期間上下都是黑的，看不出來；橘點要撐到
-    論壇段路徑接手，故用 dotVisible（見 useOrangeCoreProgress 的 forumCoreDotVisible）。
+  - 底色與橘點是兩層、吃兩個條件：底色只在 [coreIn, coreOut) 現身，走 0.4s 淡入；
+    橘點要撐到論壇段路徑接手，故用 dotVisible（見 useOrangeCoreProgress 的 forumCoreDotVisible）。
+    ⚠️ 這層底色是**白的**，理由見下方 .forum-core__bg —— 它現在的任務是「保證這段是白的」，
+       不是「遮黑」。往下捲的全程（converge → forum）維持白底是刻意的規則。
   - 往回捲自動反向（boolean 觸發的 CSS 轉場可逆）。
   - z-index 20：低於 AppHeader（1000），故 header 全程可見。
 -->
 <script setup lang="ts">
 defineProps<{
-  /** forum 接棒視窗內（[coreIn, coreOut)）為 true → 黑底淡入 */
+  /** forum 接棒視窗內（[coreIn, coreOut)）為 true → 底色淡入 */
   active?: boolean;
   /** 橘點是否可見：coreIn 起一路撐到論壇段路徑接手 */
   dotVisible?: boolean;
@@ -49,7 +50,7 @@ const dotStyle = {
 </template>
 
 <style lang="scss" scoped>
-// 容器本身不再帶 opacity：黑底與橘點的淡出時機不同，共用一個 opacity 就沒辦法讓橘點活過 coreOut。
+// 容器本身不再帶 opacity：底色與橘點的淡出時機不同，共用一個 opacity 就沒辦法讓橘點活過 coreOut。
 .forum-core {
   position: fixed;
   inset: 0;
@@ -59,10 +60,17 @@ const dotStyle = {
   pointer-events: none;
 }
 
+// 交棒期間的滿版底色。**白色**：規則是「往下捲的全程維持白底，只有往回捲變回人臉才轉黑」
+// —— SymbolFace 在 converge 已把 scene.background 補間成白（見該元件的 convergeBgColor），
+// 其下方 .sec2 也是白底，這層白正好把中間那段接起來，全程沒有一次亮度跳動。
+// ⚠️ 這裡原本是 #000。當時符號段收在黑畫面，這層黑是用來「遮住下方白底、避免白階跳動」；
+//    改成白底規則之後，那個黑反而成了唯一製造黑閃的東西（白 → 黑 → 白）。
+// ⚠️ 保留這一層而不是整組拿掉：它是滿版 fixed，能**保證**這段一定是白的，
+//    不必去假設此刻捲到哪、露出來的是 .sec2 還是 hero 那層。
 .forum-core__bg {
   position: absolute;
   inset: 0;
-  background: #000;
+  background: #fff;
   opacity: 0;
   transition: opacity 0.4s ease;
 
@@ -71,8 +79,8 @@ const dotStyle = {
   }
 }
 
-// position: relative 是必要的 —— 黑底是 absolute（已定位），未定位的元素會先繪製，
-// 橘點若維持 static 就會被黑底蓋住。兩者都定位後由 DOM 順序決定，橘點在上。
+// position: relative 是必要的 —— 底色是 absolute（已定位），未定位的元素會先繪製，
+// 橘點若維持 static 就會被底色蓋住。兩者都定位後由 DOM 順序決定，橘點在上。
 //
 // 出現是**瞬間**的（見 is-dot-visible 內的 transition: none）：coreIn 那一刻 SymbolFace 的
 // 收斂點已經是同色（convergeColor ＝ CORE.orange）、同尺寸（convergeSize ＝ CORE.dotSize）、

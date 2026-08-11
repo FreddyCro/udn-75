@@ -415,10 +415,31 @@ onBeforeUnmount(() => {
       @click="skip()"
     />
 
-    <!-- 下滑看更多：僅 loop 狀態顯示（提示使用者向下滾動以觸發退場） -->
+    <!--
+      下滑看更多：僅 loop 狀態顯示（提示使用者向下滾動以觸發退場）。
+      設計稿（mob 2065:120052 / pad 2065:124031 / pc 2065:139395）只有一個 22×12 的
+      點陣 chevron，沒有文字也沒有那條垂直細線 —— 文案改掛 .visually-hidden：
+      這個提示對讀不到圖形的使用者更重要，稿上沒畫不代表不必說。
+    -->
     <div v-if="heroState === 'loop'" class="sec1__hero-scroll">
-      <span class="sec1__hero-scroll-text">{{ str.hero.scrollHint }}</span>
-      <span class="sec1__hero-scroll-line" aria-hidden="true" />
+      <span class="visually-hidden">{{ str.hero.scrollHint }}</span>
+      <!--
+        點陣 chevron：11 顆 2×2 實心方塊排成階梯狀，與稿逐點相同。
+        與 <UBtnSkip> 的雙箭頭是同一個 component「提示下滑」，那邊是轉 90° 的
+        12×22（指右），這裡是原方向的 22×12（指下）—— 座標互為轉置。
+        同樣沿用該檔的處理：不引外部 svg 檔、直接畫 rect，
+        shape-rendering 保住像素邊緣。
+      -->
+      <svg
+        class="sec1__hero-scroll-icon"
+        viewBox="0 0 22 12"
+        shape-rendering="crispEdges"
+        aria-hidden="true"
+      >
+        <path
+          d="M0 0h2v2H0z M2 2h2v2H2z M4 4h2v2H4z M6 6h2v2H6z M8 8h2v2H8z M10 10h2v2H10z M12 8h2v2H12z M14 6h2v2H14z M16 4h2v2H16z M18 2h2v2H18z M20 0h2v2H20z"
+        />
+      </svg>
     </div>
   </div>
 </template>
@@ -498,32 +519,80 @@ onBeforeUnmount(() => {
   }
 }
 
-// 下滑看更多：文字置中、下方一條細線垂直延伸至「看得到的」hero 底緣
-// （bottom 吃 --chrome-inset 的理由同上方 skip）
+// 下滑看更多：水平置中、貼齊「看得到的」hero 底緣上方一段距離
+// （bottom 吃 --chrome-inset 的理由同上方 skip）。
+//
+// 底距照三份稿的絕對值（同 skip，不做比例換算）：稿上圖示皆為 22×12、水平置中，
+// 只有底距不同 —— mob 414×736 距底 44、pad 768×1024 距底 72、pc 1280×720 距底 44。
+// （mob 稿實際落在中心右側 6px，判定為稿上誤差，這裡照 pad / pc 一律置中。）
 .sec1__hero-scroll {
   position: absolute;
   left: 50%;
-  bottom: var(--chrome-inset);
+  bottom: calc(44px + var(--chrome-inset));
   transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+
+  @include rwd-min('tablet') {
+    bottom: calc(72px + var(--chrome-inset));
+  }
+  @include rwd-min('pc') {
+    bottom: calc(44px + var(--chrome-inset));
+  }
 }
 
-.sec1__hero-scroll-text {
-  color: var(--color-gray);
-  font-weight: 300; // Noto Sans TC Light
-  font-size: 12px;
-  line-height: 1;
-  letter-spacing: 1.2px;
-  white-space: nowrap;
+// 稿上三個斷點都是 22×12，故不隨斷點變化；色票＝稿上的 main/light gray #898989。
+//
+// 漂移動態：借 CodePen「SCSS Arrow Animation」的節奏（見 hero-scroll-hint keyframes），
+// 只借動態 —— 尺寸、色票、置中、底距皆維持設計稿原樣。
+//
+// 動畫掛在內層 <svg> 而非外層 .sec1__hero-scroll：外層的 transform 正在做
+// translateX(-50%) 的水平置中，transform 不能疊加（同一屬性後者整條覆蓋前者），
+// 掛上去就會把置中弄掉。分兩層各管一件事最省事。
+.sec1__hero-scroll-icon {
+  display: block;
+  width: 22px;
+  height: 12px;
+  fill: var(--color-gray-light);
+  animation: hero-scroll-hint 3s linear infinite;
+
+  // 停用動畫後停在 keyframes 之外的原樣態（無位移、實色）＝ 設計稿的靜態外觀
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 }
 
-.sec1__hero-scroll-line {
-  width: 1px;
-  height: 30px;
-  margin-top: 8px;
-  background: var(--color-gray-light);
+// 從上方淡入、行經設計稿的原位、再往下淡出，3s 一循環（節奏與位移比例同參考範例）。
+//
+// ⚠️ 位移量與「最亮的一刻」是綁在一起的一組數字，改一個要想另一個：
+//   ① ±8px ＝ 參考範例的 ±2/3 個箭頭尺寸，換算到本圖示的高 12px。
+//   ② 50% 這格刻意是 translateY(0) ＋ opacity 1 —— 那正是設計稿量到的位置
+//      （距底 44 / 72）與稿上的實色。故「看得最清楚的瞬間 ＝ 與稿一致」，
+//      漂移只發生在頭尾看不見的時候，不會讓人覺得圖示位置跑掉了。
+//
+// 峰值取 1 而非參考範例的 .7：稿上就是實色 #898989，調暗即改樣式。
+// 10% / 90% 兩格只寫 opacity，transform 交給 0% → 50% → 100% 線性內插（同參考範例）。
+// 稿上只有一顆 chevron（不複製第二顆來做半週期補位），故每循環有約 0.6s 完全隱形。
+$hero-scroll-drift: 8px;
+
+@keyframes hero-scroll-hint {
+  0% {
+    opacity: 0;
+    transform: translateY(-$hero-scroll-drift);
+  }
+
+  10%,
+  90% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY($hero-scroll-drift);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -87,20 +87,40 @@ watch(() => symbolTarget.value.enter, (e) => (symbolLayerDone.value = e), {
 </script>
 
 <template>
-  <!-- 純捲動尺：無內容。黑底是為了萬一轉場層還沒蓋滿時不露白。
+  <!-- 純捲動尺：無內容。底色是為了萬一轉場層還沒蓋滿時不露餡，故要跟著序列走：
+       converge 起翻白（見下方 SCSS 與 SymbolFace 的 convergeBgColor）。
+       data-header-theme 一併跟著翻 —— header 是靠段落宣告的主題決定自身配色，
+       底色翻白之後還宣告 dark 的話，header 的內容會白對白看不見。
+       （屬性本身在 SSR 就存在，符合 AppHeader onMounted 收集 [data-header-theme] 的前提；
+         值由 dataset 每次捲動即時讀取，故動態綁定有效，見 AppHeader 的 updateTheme。）
        （進度除錯已整合成跨章節的 <DevCoreProgress>，掛在 pages/index.vue，?pathdebug 開啟。） -->
   <section
     ref="sceneRef"
     class="sec-symbol"
+    :class="{ 'sec-symbol--light': symbolMode === 'converge' }"
     :style="{ height: sceneHeight }"
     aria-hidden="true"
-    data-header-theme="dark"
+    :data-header-theme="symbolMode === 'converge' ? 'light' : 'dark'"
   />
 </template>
 
 <style lang="scss" scoped>
+// 這段的底色只有在「上面兩層都沒蓋住」時才會被看到，而那正是 coreOut 之後那一小段：
+// ForumCore 的滿版白底已淡出、.sec2 還沒捲上來，露出來的就是本段。
+// 故它必須跟著序列翻面，否則往下捲會在 forum 前面插一段黑（白 → 黑 → 白）。
+//
+// 綁 symbolMode === 'converge' 而不是自己算門檻：resolveSymbol 在越過 enter 之後回傳的
+// mode 仍是 'converge'（見 useOrangeCoreProgress），故這個條件涵蓋「converge 起一路到段落結束」，
+// 且往回捲到人臉時自動翻回黑 —— 與 SymbolFace 的 convergeBgColor 是同一條規則的兩半。
+//
+// 不做 transition：切換的那一刻本段一定被不透明的轉場層（含滿版 canvas）蓋著，看不到；
+// 補一段時間曲線只會多一個要和 disperseDuration 對齊的數字。
 .sec-symbol {
   position: relative;
   background-color: #000;
+}
+
+.sec-symbol--light {
+  background-color: #fff;
 }
 </style>

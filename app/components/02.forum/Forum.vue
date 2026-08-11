@@ -8,8 +8,8 @@ import type { ForumEvent } from '~/types/forum';
 
 // SymbolFace 序列（disperse→face→converge→enter）已搬到獨立的 <SymbolScene>（01a.symbol）：
 // symbolProgress 寫入與 mode 指派都由該元件擁有，本區只「讀」它解出的結果：
-//   forumCoreActive     — symbolProgress ∈ [coreIn, coreOut) → ForumCore 的黑底現身（接棒）。
-//   forumCoreDotVisible — 橘點的顯隱：coreIn 起撐到論壇段路徑接手為止（比黑底晚很多）。
+//   forumCoreActive     — symbolProgress ∈ [coreIn, coreOut) → ForumCore 的滿版底色現身（接棒）。
+//   forumCoreDotVisible — 橘點的顯隱：coreIn 起撐到論壇段路徑接手為止（比底色晚很多）。
 //   forumPathRiding     — 路徑已接手 → 橘點的消失改為瞬間（見 ForumCore 的 SCSS）。
 //   agendaRevealed      — 越過 coreOut → 議程揭露。
 // 門檻見 ~/utils/orange-core-config 的 SYMBOL_STOPS / FORUM_HANDOFF。
@@ -84,7 +84,7 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
     </div>
 
     <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊）。fixed 滿版、由 SymbolScene 寫入的
-         symbolProgress 隔空驅動，故放在議程整組之外。黑底在 coreOut 淡出，橘點則撐到論壇段
+         symbolProgress 隔空驅動，故放在議程整組之外。底色在 coreOut 淡出，橘點則撐到論壇段
          路徑接手（見 ForumCore 與 useOrangeCoreProgress 的 forumCoreDotVisible）。
          （進度除錯已整合成跨章節的 <DevCoreProgress>，掛在 pages/index.vue，?pathdebug 開啟 ——
            就是本檔下方 pathDebug 用的同一個參數。） -->
@@ -97,7 +97,7 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
 </template>
 
 <style lang="scss" scoped>
-// 交棒期間由 ForumCore（fixed 黑底滿版）遮住，故本區白底不影響 crossfade。
+// 交棒期間由 ForumCore（fixed 滿版底色，現為白）遮住，故本區白底不影響 crossfade。
 // 白底：新版議程段為淺色稿；水平 padding 收掉，讓 <AgendaReport> 的灰底能滿版。
 // 段落頂端的 140 留白掛在 .sec2__path 而非這裡：核心的設計線要從「黑白接縫」進場，
 // 而它的座標原點是 .sec2__path 的 padding box —— 留白掛在 .sec2 會讓原點下沉 140，
@@ -168,7 +168,7 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
 }
 
 // 議程＋recap 整組：coreOut 前一律藏著，避免 SymbolFace↔橘核心 crossfade 期間
-// （淡出的星空層與淡入的橘核心黑底皆未達全滿）從縫隙短暫露餡；
+// （淡出的 SymbolFace 那層與淡入的橘核心底色皆未達全滿）從縫隙短暫露餡；
 // --revealed（agendaRevealed）時隨橘核心淡出而淡入，剛好接上。捲回自動反向。
 //
 // 白底是本層自身的遮蔽（原本靠 .sec2 的白底，那是祖先遮不到），crossfade 期間也靠它
