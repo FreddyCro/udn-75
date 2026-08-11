@@ -56,6 +56,7 @@ export function useCoreSequence() {
       symbol: core.symbolProgress.value,
       forumPath: core.forumPathProgress.value,
       blessing: core.blessingProgress.value,
+      blessingOut: core.blessingOutProgress.value,
     })[t];
 
   // 'time' part 的完成旗標。這類 part 只有 idle / done 兩態 —— 不追時間軸進度，

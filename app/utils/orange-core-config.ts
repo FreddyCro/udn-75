@@ -243,6 +243,45 @@ export const FORUM_PLANE = {
 export const BLESSING_VH = 1.2;
 export const BLESSING_HOLD = 0.15;
 
+// ── 永續祝福退場：夥伴清單淡出（03 → 04 過場的第一拍）────────────────
+// 窗口的**終點**由幾何鎖死：`.section3` 下緣抵達視窗頂，也就是 media 的 `top top`
+//（收窄唯一能開始的最早時機 —— 更早的話接縫還在畫面上，收窄會露出橫向缺口）。
+// 起點則是自由的，往回退 BLESSING_OUT_VH 個視窗高，這就是整段退場的長度旋鈕。
+//
+// BLESSING_OUT_FADE：淡出佔窗口的比例，其後是純橘的呼吸拍（＝ 1 − 本值）。
+// 接縫離開視窗頂時畫面上必須只剩橘，滿版橘底與 media 橘塊之間那道寬度差才接得無縫。
+//
+// 兩個值的分工：**OUT_VH 決定整段多長，OUT_FADE 決定其中多少花在淡出**。
+//
+// 2026-08-11：窗口 1.0 → 0.6、fade 0.65 → 0.85。
+//   原本吃滿一個視窗高沒有理由（起點是自由的），加上 media 拍 0 的 35vh，
+//   整段過場 135vh，實測過長。改後 60 + 20 ＝ 80vh。
+//   代價：淡出起點提前，此時夥伴清單頂端已被視窗頂切掉約 240px（原本剛好完整）。
+//   要換回「面板完整時才開始淡」就把 OUT_VH 調回 0.75 以上。
+export const BLESSING_OUT_VH = 0.6;
+export const BLESSING_OUT_FADE = 0.85;
+
+// ── 夥伴清單的閱讀定格（× 視窗高）────────────────────────────────────
+// `.section3__partners` 是 sticky top: 0，這個值是它定住的捲動距離
+//（由 `.section3__partners-hold` spacer 撐出來 —— sticky 的活動範圍是父層的
+// **content box**，用 `.section3` 的 padding 撐不出來，見 Media.vue 同一個坑）。
+//
+// 為什麼需要它：面板塊高約 778px、視窗約 900px，「完整在畫面上」的捲動距離只有
+// 兩者之差（≈122px），跟過場長度無關 —— 不定住就一定來不及看。
+// 加 `.section3` 的 padding-bottom 不能替代：那會把接縫與整個淡出窗口一起往下推，
+// 面板卻不動，等於在淡一個已經捲出畫面的東西。
+//
+// 定住期間頁面不動但**沒有上鎖**：指標在清單上時 wheel 捲清單（14 家夥伴約 1500px
+// 塞在 600px 高的面板裡），捲到底瀏覽器自動把捲動接回頁面。
+export const BLESSING_PARTNERS_HOLD_VH = 1;
+
+/** 夥伴清單在退場軌 p 時的 opacity（1 → 0）。
+ *  smoothstep 兩端一階導數為 0 → scrub 淡出的頭尾沒有硬轉折，且它本身已夾在 [0,1]。
+ *  純函式、不依賴 DOM —— 曲線由 test/blessing-outro.spec.ts 守著。 */
+export function partnersFadeAt(p: number): number {
+  return 1 - smoothstep(0, BLESSING_OUT_FADE, p);
+}
+
 // ── 序列定址表：章節 → part → progress ────────────────────────────────
 // 這張表是**溝通用的座標系**，不是新的驅動機制 —— 底下仍是既有那幾條 progress 軌，
 // 本表只是把它們切成有名字的段落，讓「在 forum.face.59% 加事件」這種話能對回程式碼。
@@ -274,7 +313,8 @@ export type SequenceTrack =
   | 'transition'
   | 'symbol'
   | 'forumPath'
-  | 'blessing';
+  | 'blessing'
+  | 'blessingOut';
 
 /** 'time' part 吃的完成旗標 */
 export type SequenceFlag = 'heroVideo' | 'stairs';
@@ -309,6 +349,9 @@ export const TRACK_VH: Partial<Record<SequenceTrack, number>> = {
   transition: TRANSITION_VH,
   symbol: SYMBOL_VH,
   blessing: BLESSING_VH,
+  // 退場窗口的長度是設定值（見 BLESSING_OUT_VH），不像 path / forumPath 要量測，
+  // 故 dashboard 給得出 vh。
+  blessingOut: BLESSING_OUT_VH,
 };
 
 export const SEQUENCE: readonly SequenceChapter[] = [
@@ -357,7 +400,11 @@ export const SEQUENCE: readonly SequenceChapter[] = [
     parts: [
       { key: 'face', label: `逐格臉（尾 ${BLESSING_HOLD * 100}% 停格）`, drive: 'scrub', track: 'blessing' },
       { key: 'stairs', label: '階梯線逐格進場', drive: 'time', flag: 'stairs' },
-      { key: 'partners', label: '夥伴清單', drive: 'none' },
+      { key: 'partners', label: `夥伴清單（sticky 定住 ${BLESSING_PARTNERS_HOLD_VH * 100}vh 供閱讀）`, drive: 'none', vh: BLESSING_PARTNERS_HOLD_VH },
+      // 03 → 04 過場第一拍。放在 partners 之後還有一個副作用是修掉既有問題：
+      // partners 是無軌 part，「結束了沒」靠下一段反推（useCoreSequence 的 ②），
+      // 在此之前它是序列末端 → 永遠停在未完成，dashboard 的游標卡在那裡。
+      { key: 'outro', label: `夥伴清單淡出（前 ${BLESSING_OUT_FADE * 100}% 淡完，其後純橘）`, drive: 'scrub', track: 'blessingOut' },
     ],
   },
 ];
