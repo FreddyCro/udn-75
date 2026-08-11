@@ -2,11 +2,18 @@
 /**
  * SubpageAnchor — 子頁右側錨點導覽（pc 限定，<1280 隱藏、改用 SubpageAnchorBar），
  * 資料來自 locales/common.json 的 subpageAnchors。藝術字以 CSS mask + currentColor
- * 上色，hover／active 換色不需多份素材。
+ * 上色，換色不需多份素材。hover 與 active 同為「不透明＋放大」，不變色。
+ * 顯隱與 SubpageAnchorBar 同步：由 Subpage.vue 的舞台 ScrollTrigger 決定，
+ * 捲進 subpage__content（舞台演完）才淡入，hero／引言期間不出現。
  * rail 走低 z-index（--subpage-anchor-z，預設 1）：滿版 section 以
  * position: relative + z-index: 2 + 不透明背景即可蓋過，不需 JS 偵測。
  */
 import str from '~/locales/common.json';
+
+defineProps<{
+  /** true 時淡入；預設隱藏（舞台 hero／引言還在演） */
+  visible?: boolean;
+}>();
 
 const { subpageAnchors } = str;
 const route = useRoute();
@@ -15,7 +22,11 @@ const assetUrl = useAssetUrl();
 </script>
 
 <template>
-  <nav class="subpage-anchor" aria-label="子頁導覽">
+  <nav
+    class="subpage-anchor"
+    :class="{ 'subpage-anchor--visible': visible }"
+    aria-label="子頁導覽"
+  >
     <ul class="subpage-anchor__list">
       <li v-for="a in subpageAnchors" :key="a.url" class="subpage-anchor__item">
         <NuxtLink
@@ -48,6 +59,23 @@ const assetUrl = useAssetUrl();
   z-index: var(--subpage-anchor-z, 1); // 滿版區塊 z-index ≥ 2 即蓋過 rail（底層）
   display: none; // <1280 改用 SubpageAnchorBar
   transform: translateY(-50%);
+  // 預設藏著（hero／引言舞台期間），舞台演完由 --visible 淡入；
+  // visibility 延遲切換 = 淡出播完才真正移出焦點順序
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.3s ease,
+    visibility 0s linear 0.3s;
+
+  &--visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.3s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 
   @include rwd-min('pc') {
     display: block;
@@ -69,13 +97,15 @@ const assetUrl = useAssetUrl();
   color: var(--color-gray);
   opacity: 0.4;
   text-decoration: none;
-  transition:
-    color 0.2s ease,
-    opacity 0.2s ease;
+  transition: opacity 0.2s ease;
 
+  // hover 不變色，放大效果與 active 一致（尾端橫線仍為 active 限定）
   &:hover {
-    color: var(--color-orange);
     opacity: 1;
+
+    .subpage-anchor__art {
+      transform: scale(1.25);
+    }
   }
 
   // 目前所在頁：藝術字放大 1.25（設計稿 12 → 15px）＋ 尾端橫線

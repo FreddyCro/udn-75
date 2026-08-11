@@ -41,6 +41,7 @@ const rootRef = ref<HTMLElement | null>(null);
 const stageRef = ref<HTMLElement | null>(null);
 const trackRef = ref<HTMLElement | null>(null);
 const lineRef = ref<HTMLElement | null>(null);
+const trailRef = ref<HTMLElement | null>(null);
 const arrowRef = ref<HTMLElement | null>(null);
 const activeIdx = ref(0);
 const itemEls: HTMLElement[] = [];
@@ -87,6 +88,22 @@ function build() {
     { x: () => Math.max(0, line.offsetWidth - arrow.offsetWidth), ease: 'none', duration: 1 },
     0,
   );
+  // 橘色軌跡與箭頭同步（同 timeline、同線性 ease）：scaleX 長到箭頭左緣即可，
+  // 箭頭自己的尾線（同高、橘色）接續其餘 153px，走過的線因此整段是橘的
+  const trail = trailRef.value;
+  if (trail) {
+    tl.fromTo(
+      trail,
+      { scaleX: 0 },
+      {
+        scaleX: () =>
+          Math.max(0, line.offsetWidth - arrow.offsetWidth) / Math.max(1, line.offsetWidth),
+        ease: 'none',
+        duration: 1,
+      },
+      0,
+    );
+  }
   itemEls.forEach((el, i) => {
     tl!.fromTo(
       el,
@@ -105,7 +122,9 @@ function teardown() {
   tl?.kill();
   tl = null;
   gsap.set(
-    [trackRef.value, lineRef.value, arrowRef.value, ...itemEls].filter(Boolean),
+    [trackRef.value, lineRef.value, trailRef.value, arrowRef.value, ...itemEls].filter(
+      Boolean,
+    ),
     { clearProps: 'all' },
   );
 }
@@ -140,7 +159,7 @@ onBeforeUnmount(() => {
       <slot name="title" />
 
       <div ref="trackRef" class="award-timeline__track">
-        <!-- 歷程線（藍，靜態鋪滿）+ 橘色像素箭頭（隨捲動沿線右移） -->
+        <!-- 歷程線（藍，靜態鋪滿）+ 橘色軌跡（箭頭走過的段落）+ 橘色像素箭頭（隨捲動沿線右移） -->
         <div class="award-timeline__head" aria-hidden="true">
           <img
             ref="lineRef"
@@ -148,6 +167,7 @@ onBeforeUnmount(() => {
             src="/img/news/udn75_news_timeline_line.svg"
             alt=""
           />
+          <span ref="trailRef" class="award-timeline__trail" />
           <img
             ref="arrowRef"
             class="award-timeline__arrow"
@@ -239,6 +259,19 @@ onBeforeUnmount(() => {
   display: block;
   width: 100%;
   height: 4px;
+}
+
+// 箭頭走過的橘色軌跡：疊在藍線上、與藍線同幾何，scaleX 由 build() 的 timeline
+// 隨捲動從 0 長到箭頭左緣（reduced-motion 靜態版維持 0 → 只見藍線）
+.award-timeline__trail {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: var(--color-orange);
+  transform: scaleX(0);
+  transform-origin: left center;
 }
 
 .award-timeline__arrow {

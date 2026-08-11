@@ -31,7 +31,8 @@ withDefaults(
         :to="next.url"
       >
         <span class="subpage-nav__label">{{ next.title }}</span>
-        <!-- 兩段音波（同 HeroStart 音效提示）：兩圈相位差半個週期的擴散波，墊在圓鈕背後 -->
+        <!-- 兩段音波（同 HeroStart 音效提示）：兩圈相位差半個週期的擴散波，墊在圓鈕背後；
+             hover 時淡出（hover 回饋交給圓鈕停在放大態） -->
         <span class="subpage-nav__next-wrap">
           <svg class="subpage-nav__pulse" viewBox="0 0 96 96" aria-hidden="true">
             <circle class="subpage-nav__pulse-wave" cx="48" cy="48" r="47.75" />
@@ -80,7 +81,8 @@ withDefaults(
   color: var(--color-gray);
   text-decoration: none;
 
-  &:hover .subpage-nav__label {
+  // 底線僅保留給「返回」當 hover 回饋；「下一篇」的 hover 回饋是圓鈕停在放大態
+  &--back:hover .subpage-nav__label {
     text-decoration: underline;
   }
 }
@@ -107,10 +109,32 @@ withDefaults(
   height: 68px;
 }
 
+// 圓鈕呼吸：盒維持 84×84（版面不動），以 scale 在 68px ↔ 84px 之間起伏；
+// hover 移除動畫 = 停在 keyframes 首尾的 scale(1)（84px 放大態），移開再從頭呼吸
 .subpage-nav__icon--next {
   position: relative; // 疊在音波之上（同層繪製順序，不用 z-index）
   width: 84px;
   height: 84px;
+  animation: subpage-nav-breathe 2s ease-in-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+.subpage-nav__link--next:hover .subpage-nav__icon--next {
+  animation: none;
+}
+
+@keyframes subpage-nav-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(0.8095); // = 68px（68 / 84）
+  }
 }
 
 // 音波的定位基準：只包圓鈕，寬度不含左側文字
@@ -128,6 +152,12 @@ withDefaults(
   height: 128px;
   transform: translate(-50%, -50%);
   pointer-events: none;
+  transition: opacity 0.2s ease;
+
+  // hover 漣漪淡出，只留停在 84px 的圓鈕
+  .subpage-nav__link--next:hover & {
+    opacity: 0;
+  }
 
   @media (prefers-reduced-motion: reduce) {
     display: none;

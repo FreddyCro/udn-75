@@ -78,8 +78,8 @@ const heroInnerRef = ref<HTMLElement | null>(null);
 const introInnerRef = ref<HTMLElement | null>(null);
 const mediaRef = ref<HTMLElement | null>(null);
 
-/** 錨點列（SubpageAnchorBar）是否滑入：捲過 hero/引言舞台後才固定在視窗下緣出現 */
-const anchorBarVisible = ref(false);
+/** 錨點（pc 右側 rail 與 <1280 底部列）是否出現：捲過 hero/引言舞台後才顯示 */
+const anchorVisible = ref(false);
 
 /**
  * 舞台是否啟用 pin 模式（hero／引言／媒體疊在同一屏）。
@@ -150,8 +150,8 @@ onMounted(async () => {
         ScrollTrigger.create({
           trigger: stageRef.value,
           start: 'bottom top',
-          onEnter: () => (anchorBarVisible.value = true),
-          onLeaveBack: () => (anchorBarVisible.value = false),
+          onEnter: () => (anchorVisible.value = true),
+          onLeaveBack: () => (anchorVisible.value = false),
         }),
       );
     }
@@ -247,9 +247,9 @@ onMounted(async () => {
             }
           }
         },
-        // pin 結束＝舞台演完 → 錨點列於視窗下緣滑入；回捲進 pin 段則收回
-        onLeave: () => (anchorBarVisible.value = true),
-        onEnterBack: () => (anchorBarVisible.value = false),
+        // pin 結束＝舞台演完 → 錨點出現（pc rail 淡入、<1280 底部列滑入）；回捲進 pin 段則收回
+        onLeave: () => (anchorVisible.value = true),
+        onEnterBack: () => (anchorVisible.value = false),
       }),
     );
 
@@ -329,8 +329,10 @@ onBeforeUnmount(() => {
 
     <!-- 舞台之後的內容：不透明背景，維持 rail(z1) / 滿版區塊(z2) 的疊層約定 -->
     <div class="subpage__content">
-      <!-- <1280 錨點列（取代 pc 的右側 rail）：固定在視窗下緣，舞台演完才滑入 -->
-      <SubpageAnchorBar :visible="anchorBarVisible" />
+      <!-- 錨點導覽（皆 position: fixed，不占版面）：舞台演完才出現、回捲則收回。
+           pc = 右側 rail、<1280 = 視窗下緣錨點列，顯隱共用同一條進度線 -->
+      <SubpageAnchor :visible="anchorVisible" />
+      <SubpageAnchorBar :visible="anchorVisible" />
 
       <!-- 內文：各頁以預設 slot 撰寫，間距在頁面上逐塊標 Tailwind mt-*/mb-* -->
       <div class="subpage__body">
@@ -504,7 +506,7 @@ onBeforeUnmount(() => {
 
 // 引言滿版一屏（pin 模式時 = 舞台那一屏）：mob/pad 對稿上下留白相等 → 垂直置中；
 // pc 對稿不置中，改以「靠下 + 底距 80」表達，視窗高度一離開 720 也不會失準。
-// 不設 z-index／自身底色：引言不遮蓋右側 rail（SubpageAnchor），錨點照樣疊在上面。
+// 舞台期間右側 rail（SubpageAnchor）整個藏著（進 subpage__content 才淡入），此處不需 z-index。
 .subpage__intro {
   display: flex;
   align-items: center;

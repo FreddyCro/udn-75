@@ -216,9 +216,11 @@ function build() {
   if (!root) return;
   st = ScrollTrigger.create({
     trigger: root,
-    // 不 pin：以區塊自身的捲動行程當進度
-    start: 'top 50%',
-    end: 'center center',
+    // 不 pin：以區塊自身的捲動行程當進度。
+    // start 早（頂緣進到視窗 3/4 處即起演）、end 晚（中心略過視窗中線才定版），
+    // 把 scrub 行程拉長近一倍，分鏡演久一點、不會一捲就散開完
+    start: 'top bottom',
+    end: 'bottom 70%',
     scrub: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => (progress.value = self.progress),

@@ -1,7 +1,9 @@
 <script lang="ts" setup>
 /**
  * AiSearch — 「聯合報數位版 AI 搜尋」體驗區塊（data 頁）。
- * 搜尋框輪播關鍵字；點擊展開 AI 摘要面板、內文逐字打出；
+ * 搜尋框輪播關鍵字；點擊展開 AI 摘要面板，內文「全文常駐 DOM」、
+ * 逐字以 CSS stagger 淡入（每字 delay = 全篇字序 × typeSpeed）——
+ * 不截字重排，展開瞬間高度即定案，打字過程不再撐高面板；
  * reduced-motion 直接整段顯示。
  *
  * 摘要「全部出來」（打完字＋來源／聲明淡入）之後輪播會自己接回去跑，
@@ -37,24 +39,28 @@ const props = withDefaults(
   },
 );
 
+/** 單字淡入時長（ms）：與 SCSS 的 ai-search-char-in 時長一致 */
+const CHAR_FADE_MS = 300;
+
 const rootRef = ref<HTMLElement | null>(null);
 const foldRef = ref<HTMLElement | null>(null);
 const current = ref(0); // 輪播中的關鍵字 index
 const activeIndex = ref(0); // 面板正在顯示（點擊時選中）的關鍵字 index
 const inView = ref(false); // 區塊是否在視窗內：離開視窗不讓輪播在背景空轉
 const expanded = ref(false);
-const typedCount = ref(0); // 已打出的總字數（跨段落）
-const typing = ref(false);
-const done = ref(false); // 摘要打完 → 顯示資料來源與聲明
+const typing = ref(false); // 逐字淡入進行中（游標顯示期間）
+const done = ref(false); // 摘要出完 → 顯示資料來源與聲明
+const runId = ref(0); // 每次搜尋 +1：重建內文節點，讓 CSS 逐字動畫從頭播
 
 let rotateTimer: ReturnType<typeof setInterval> | null = null;
-let typeTimer: ReturnType<typeof setInterval> | null = null;
+let doneTimer: ReturnType<typeof setTimeout> | null = null;
 let observer: IntersectionObserver | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let reduced = false;
 
-/** 摘要展開/收合/逐字打字都會改變頁面高度 → debounce 重算下方 pin 區塊的 ScrollTrigger 起點 */
+/** 摘要展開/收合會改變頁面高度 → debounce 重算下方 pin 區塊的 ScrollTrigger 起點
+ *（全文常駐 DOM，逐字淡入不再逐步撐高） */
 function scheduleRefresh() {
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
@@ -71,20 +77,20 @@ const paragraphs = computed(() => {
   return s.split(/(?:<br\s*\/?>\s*)+/).filter((p) => p.length > 0);
 });
 
-const totalChars = computed(() =>
-  paragraphs.value.reduce((n, p) => n + [...p].length, 0),
-);
-
-/** 依 typedCount 將字數分配到各段落（逐段依序打出） */
-const typedParas = computed(() => {
-  let left = typedCount.value;
+/** 各段的字元陣列與全篇起始字序：每字 delay = (offset + 段內字序) × typeSpeed */
+const paraMeta = computed(() => {
+  let offset = 0;
   return paragraphs.value.map((p) => {
     const chars = [...p];
-    const take = Math.min(chars.length, Math.max(0, left));
-    left -= chars.length;
-    return chars.slice(0, take).join('');
+    const meta = { chars, offset };
+    offset += chars.length;
+    return meta;
   });
 });
+
+const totalChars = computed(() =>
+  paraMeta.value.reduce((n, m) => n + m.chars.length, 0),
+);
 
 function startRotate() {
   if (rotateTimer || props.keywords.length < 2 || !inView.value) return;
@@ -101,43 +107,42 @@ function stopRotate() {
 }
 
 function stopType() {
-  if (typeTimer) {
-    clearInterval(typeTimer);
-    typeTimer = null;
+  if (doneTimer) {
+    clearTimeout(doneTimer);
+    doneTimer = null;
   }
   typing.value = false;
 }
 
-/** 以「當下輪播到的關鍵字」展開摘要，逐字打出；打完才把輪播接回去 */
+/** 以「當下輪播到的關鍵字」展開摘要，全文進 DOM 後逐字淡入；出完才把輪播接回去 */
 function expand() {
-  stopRotate(); // 打字期間輪播暫停，避免結果被換掉
+  stopRotate(); // 逐字期間輪播暫停，避免結果被換掉
   stopType();
   activeIndex.value = current.value;
   expanded.value = true;
   done.value = false;
+  runId.value += 1; // 重建內文節點 → CSS stagger 從第一字重播
   if (reduced) {
-    typedCount.value = totalChars.value; // 降級：整段直接顯示
-    done.value = true;
+    done.value = true; // 降級：整段直接顯示（char 動畫也由 media query 關閉）
     startRotate(); // 結果已全部出來 → placeholder 繼續輪播
     return;
   }
-  typedCount.value = 0;
   typing.value = true;
-  typeTimer = setInterval(() => {
-    typedCount.value += 1;
-    if (typedCount.value >= totalChars.value) {
+  // 逐字動畫由 CSS 自跑，JS 只在「末字淡入播完」時收尾
+  doneTimer = setTimeout(
+    () => {
       stopType();
       done.value = true; // 來源／聲明淡入＝結果全部出來
       startRotate(); // placeholder 繼續輪播，面板留著這筆結果，可再點一次重跑
-    }
-  }, props.typeSpeed);
+    },
+    totalChars.value * props.typeSpeed + CHAR_FADE_MS,
+  );
 }
 
 function collapse() {
   stopType();
   expanded.value = false;
   done.value = false;
-  typedCount.value = 0;
   startRotate(); // 收合後恢復輪播
 }
 
@@ -209,18 +214,30 @@ onBeforeUnmount(() => {
       </button>
 
       <div ref="foldRef" class="ai-search__fold">
-        <div class="ai-search__body">
+        <!-- :key="runId"：每次搜尋重建節點，逐字動畫才會從頭播（同關鍵字重搜亦然） -->
+        <div :key="runId" class="ai-search__body">
+          <!-- 全文常駐 DOM：每字一個 span，delay = 全篇字序 × typeSpeed 依序淡入；
+               游標貼各段尾端，僅在該段淡入的時間窗內顯示（--delay/--dur） -->
           <p
-            v-for="(p, i) in typedParas"
-            v-show="p.length > 0"
+            v-for="(m, i) in paraMeta"
             :key="i"
             class="ai-search__answer"
             aria-live="polite"
           >
-            {{ p
-            }}<span
-              v-if="typing && p.length > 0 && (typedParas[i + 1] ?? '') === ''"
+            <span
+              v-for="(ch, j) in m.chars"
+              :key="j"
+              class="ai-search__char"
+              :class="{ 'ai-search__char--in': typing }"
+              :style="typing ? { animationDelay: `${(m.offset + j) * typeSpeed}ms` } : undefined"
+              >{{ ch }}</span
+            ><span
+              v-if="typing"
               class="ai-search__caret"
+              :style="{
+                '--delay': `${m.offset * typeSpeed}ms`,
+                '--dur': `${m.chars.length * typeSpeed + CHAR_FADE_MS}ms`,
+              }"
               aria-hidden="true"
             />
           </p>
@@ -412,15 +429,48 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
 }
 
-// 打字游標
+// 逐字淡入：delay 由 template 帶入（全篇字序 × typeSpeed）。
+// fill-mode: both → delay 期間停在 0%（透明），但字始終占位，段落高度不變。
+// 沒有 --in（reduced-motion 降級或已收尾）時無動畫＝直接可見。
+.ai-search__char--in {
+  animation: ai-search-char-in 0.3s ease both; // 時長須與 script 的 CHAR_FADE_MS 一致
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes ai-search-char-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+// 打字游標：貼在各段尾端，僅在該段逐字的時間窗內顯示 ——
+// 預設 visibility: hidden，window 動畫（--delay 起、--dur 長、fill: none）期間才 visible，
+// 播完自動落回 hidden；閃爍交給疊加的 blink 動畫。
 .ai-search__caret {
   display: inline-block;
   width: 2px;
   height: 1.1em;
   margin-left: 2px;
   vertical-align: -0.15em;
+  visibility: hidden;
   background: var(--color-gray);
-  animation: ai-search-blink 0.8s steps(1) infinite;
+  animation:
+    ai-search-blink 0.8s steps(1) infinite,
+    ai-search-caret-window var(--dur, 0s) linear var(--delay, 0s);
+}
+
+@keyframes ai-search-caret-window {
+  from,
+  to {
+    visibility: visible;
+  }
 }
 
 @keyframes ai-search-blink {
