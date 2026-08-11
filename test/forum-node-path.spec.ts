@@ -173,11 +173,26 @@ describe('完整路徑（前半段 ＋ 後半段）', () => {
     expect(opt[0]!.anchor.sel).toBe('.highlights__item');
   });
 
-  it.each(['pc', 'pad', 'mob'] as const)('%s 的最後一點掛在段落底（不受開關影響）', (bp) => {
+  it.each(['pc', 'pad', 'mob'] as const)('%s 的最後一點掛在接縫（不受開關影響）', (bp) => {
     const last = FORUM_PATH_NODES[bp]!.at(-1)!;
-    expect(last.anchor.sel).toBe('.sec2__pin');
-    expect(last.anchor.edge).toBe('bottom');
+    // 錨在零高度的 .sec2__seam 而非 .sec2__pin：後者是 sticky（覆蓋過場要定住 forum
+    // 最後一屏），量測若發生在 sticky 已 engage 時會拿到位移後的 rect。
+    expect(last.anchor.sel).toBe('.sec2__seam');
+    expect(last.anchor.edge).toBe('top');
     expect(last.optional).toBeUndefined();
+  });
+
+  // 末節點的 x 要讓紙飛機正好落在「逐格臉的第 01 格」上 —— 白方塊就從那裡長出來，
+  // 對不上會看到方塊橫向跳一下（違反本專案「交棒不可看到縮一下」的不變量）。
+  // FACE_FRAMES[0] = [7,0,2,2]，網格 x 7..9 of 16 → 那一格**水平居中於臉框**。
+  it('pc 末節點的 x ＝ 臉框中心（296.5 / 1280）', () => {
+    // 臉框中心 ＝ 視窗中心 − 343.5（內容塊 280 + gap 180 + intro 507 置中）；
+    // .forum-path 是 1280 置中 → 兩者都錨在視窗中心，故此比例與視窗寬無關。
+    expect(FORUM_PATH_NODES.pc.at(-1)!.x).toBe(0.2316);
+  });
+
+  it.each(['pad', 'mob'] as const)('%s 末節點的 x 是 center（臉框置中於視窗）', (bp) => {
+    expect(FORUM_PATH_NODES[bp]!.at(-1)!.x).toBe('center');
   });
 });
 

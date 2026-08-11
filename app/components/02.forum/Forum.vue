@@ -40,6 +40,12 @@ const highlightsVisible = computed(() => route.query.highlights === '1');
 // ⚠️ 它**只**上色、不改層序：議程群組那一段的線仍被 .agenda__group 的白底遮住（那是刻意的，
 //    否則就看不出核心該藏在哪裡）。要臨時看穿，把該處的 z-index 調到 2 以上。
 const pathDebug = computed(() => route.query.pathdebug !== undefined);
+
+// 覆蓋過場的 sticky 活動範圍高度。`.sec2__pin` 靠它才定得住那 100vh。
+// ⚠️ 必須與 `.section3` 的負 margin-top 同值 —— 兩邊都從 `--vh` 取（這裡是
+//    vhLength(1)、那裡是 SCSS 的 vh()），故恆等。任何一邊寫成字面 100vh 就會
+//    在行動裝置網址列收合時脫鉤，頁面總高跟著變。
+const coverHoldHeight = vhLength(1);
 </script>
 
 <template>
@@ -82,6 +88,20 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
 
       <ForumHighlights v-if="highlightsVisible" />
     </div>
+
+    <!-- 接縫標記：零高度、**不** sticky，位置恆等於 .sec2__pin 的自然下緣。
+         它是 <ForumCorePath> 的末節點錨點（forum-node-path 的 SEAM_END）——
+         不直接量 .sec2__pin 是因為它現在是 sticky，量測若發生在 sticky 已 engage 時
+         rect 會是位移後的值。見設計稿第八節。 -->
+    <div class="sec2__seam" aria-hidden="true" />
+
+    <!-- 覆蓋過場：撐出 .sec2__pin 的 sticky 活動範圍（＝ 定住最後一屏的 100vh）。
+         這 100vh 由 .section3 的負 margin-top 蓋回來，頁面總高淨零。 -->
+    <div
+      class="sec2__cover-hold"
+      :style="{ height: coverHoldHeight }"
+      aria-hidden="true"
+    />
 
     <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊）。fixed 滿版、由 SymbolScene 寫入的
          symbolProgress 隔空驅動，故放在議程整組之外。底色在 coreOut 淡出，橘點則撐到論壇段
@@ -177,7 +197,12 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
 //    「核心從議程群組背後穿過」是由 .agenda__group 自己 z-index: 2 ＋ 白底達成，不是靠這層。
 //    要讓後半段某一塊也擋住核心，同樣得在那一塊上做，不能改本層。
 .sec2__pin {
-  position: relative;
+  // 覆蓋過場：定住「forum 最後一屏」讓 blessing 的色塊蓋過去（設計師：精彩活動 fix 在
+  // 畫面中心、下個 section 往上蓋）。活動範圍由後面的 .sec2__cover-hold 撐出來，
+  // 所以定住的距離恰好等於色塊上升的 100vh，兩段不需要另一條 trigger 去同步。
+  // bottom: 0 ＝ 下緣貼視窗底緣 → 定住的是「最後一屏」，與尾端是精彩活動還是論壇四無關。
+  position: sticky;
+  bottom: 0;
   background: #fff;
   opacity: 0;
   transition: opacity 0.4s ease;
@@ -185,7 +210,24 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
   &--revealed {
     opacity: 1;
   }
+
+  // 量測期間退回一般流：sticky 位移會污染 .sec2__pin **內部**所有錨點的 rect
+  // （論壇四的 tag／cta／speakers、精彩活動的 item）—— 不會報錯，整條線靜默歪掉。
+  // 屬性由 ForumCorePath.build() 在量測前後開關，設值 → 量測 → 還原都在同一個 task 內
+  // 完成，中間不會 paint，畫面不會跳。見設計稿第八節。
+  .sec2[data-path-measuring] & {
+    position: static;
+  }
 }
+
+// 接縫標記：零高度，只用來給路徑量位置（見 template 註解）。
+.sec2__seam {
+  height: 0;
+}
+
+// 覆蓋過場的 sticky 活動範圍：高度由 inline style 給（vhLength(1)），這裡不定高 ——
+// 與 .section3__partners-hold 同一個作法（sticky 的活動範圍必須是**子元素**撐出來的，
+// 用 .sec2 的 padding 撐不出來）。
 
 // 論壇四的容器：<ForumEvent> 的 pc 版位是絕對定位到 1280 設計稿座標，
 // 而 .sec2__pin 沒有限寬（它要讓 <AgendaReport> 的灰底滿版）→ 這層補上與

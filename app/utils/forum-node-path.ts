@@ -567,7 +567,12 @@ const PC_FRONT_NODES: ForumPathNode[] = [
 //
 // 精彩活動可被 ?highlights=1 關掉 → 掛在它身上的點標 optional，關掉時整條會自己重接。
 const AGENDA_END: ForumPathAnchor = { sel: '.agenda', edge: 'bottom' };
-const PIN_END: ForumPathAnchor = { sel: '.sec2__pin', edge: 'bottom' };
+/** 接縫：`.sec2` 與 `.section3` 的交界。
+ *  錨在零高度的 `.sec2__seam` 而非 `.sec2__pin` —— 後者是 sticky（覆蓋過場要定住 forum
+ *  最後一屏），量測若發生在 sticky 已 engage 時會拿到位移後的 rect，整條線靜默歪掉。
+ *  `.sec2__seam` 在 `.sec2__pin` 之後、spacer 之前，位置恆等於 `.sec2__pin` 的自然下緣。
+ *  見 architecture/2026-08-12-forum-blessing-transition-design.md 第八節。 */
+const SEAM_END: ForumPathAnchor = { sel: '.sec2__seam', edge: 'top' };
 /** 精彩活動的第二則（關掉時不存在 → optional） */
 const HL_ITEM: ForumPathAnchor = { sel: '.highlights__item', nth: 1, edge: 'top' };
 
@@ -583,7 +588,11 @@ const PC_TAIL_NODES: ForumPathNode[] = [
     join: { relIn: 31.2, relOut: -21.6, hIn: 0.27, hOut: 0.45 } },
   { id: 'R5', x: 0.23, anchor: HL_ITEM, optional: true,
     join: { relIn: -8, relOut: 20.7, hIn: 0.53, hOut: 0.22 } },
-  { id: 'R6', x: 0.261, anchor: PIN_END },
+  // x 對齊「逐格臉的第 01 格」—— 白方塊就從飛機沒入的位置長出來（FACE_FRAMES[0] =
+  // [7,0,2,2]，網格 x 7..9 of 16 → 那一格水平居中於臉框）。
+  // pc：臉框中心 ＝ 視窗中心 − 343.5（內容塊 280 + gap 180 + intro 507 置中於視窗），
+  // 而 .forum-path 是 1280 置中 → 296.5 / 1280 ＝ 0.2316，**與視窗寬無關**。
+  { id: 'R6', x: 0.2316, anchor: SEAM_END },
 ];
 
 const PAD_TAIL_NODES: ForumPathNode[] = [
@@ -600,7 +609,8 @@ const PAD_TAIL_NODES: ForumPathNode[] = [
     join: { relIn: -44.8, relOut: 52.3, hIn: 0.43, hOut: 0.4 } },
   { id: 'S5', x: 0.593, anchor: HL_ITEM, optional: true,
     join: { relIn: 40.4, relOut: -6.1, hIn: 0.46, hOut: 0.38 } },
-  { id: 'S6', x: 0.472, anchor: PIN_END },
+  // pad 的臉框水平置中於視窗，而第 01 格居中於臉框 → 就是視窗中心（見 R6 的註解）。
+  { id: 'S6', x: 'center', anchor: SEAM_END },
 ];
 
 const MOB_TAIL_NODES: ForumPathNode[] = [
@@ -617,7 +627,8 @@ const MOB_TAIL_NODES: ForumPathNode[] = [
     join: { relIn: 9.3, relOut: -33.3, hIn: 0.29, hOut: 0.49 } },
   { id: 'T6', x: 0.413, anchor: HL_ITEM, optional: true,
     join: { relIn: -24, relOut: 4.9, hIn: 0.64, hOut: 0.22 } },
-  { id: 'T7', x: 0.495, anchor: PIN_END },
+  // 同 S6。⚠️ mob 的末節點是 T7，T6 是精彩活動那一點。
+  { id: 'T7', x: 'center', anchor: SEAM_END },
 ];
 
 /**

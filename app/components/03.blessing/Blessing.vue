@@ -232,6 +232,14 @@ onBeforeUnmount(() => {
 <style lang="scss" scoped>
 .section3 {
   position: relative;
+  // 疊在 forum 之上：覆蓋過場 ＝「forum 尾段 sticky 定住 ＋ 本段負 margin 蓋上去」。
+  // ⚠️ 負 margin 必須與 Forum.vue 的 .sec2__cover-hold 同值（兩邊都從 --vh 取），
+  //    否則頁面總高會變、Media 位移，blessing → media 那段過場的節奏就得重調。
+  // ⚠️ 只給本段 z-index，**不要**給 .sec2 —— 那會讓 .sec2 變成 stacking context，
+  //    把裡面 <ForumCore> 的 z-index: 20 關進去。.sec2__path 也是 z-index: 1，
+  //    同值由 DOM 順序決勝，本段在後、贏。
+  z-index: 1;
+  margin-top: calc(#{vh()} * -1);
   background: var(--color-orange);
   color: #fff;
 }

@@ -229,32 +229,42 @@ function build() {
   const list = nodes.value;
   if (!list?.length) return reset();
 
-  const out = buildNodesD(list);
-  // 必要錨點量不到就整條放棄 —— 少一個點會讓後面全部接到錯的鄰居身上，靜默變形。
-  // （標了 optional 的點量不到不算，產生器會自己跳過並重接。）
-  if (!out) return reset();
+  // 量測期間讓 .sec2__pin 退回一般流（見該處 SCSS 與設計稿第八節）：它是 sticky，
+  // 若此刻 sticky 已 engage，它內部所有錨點的 rect 都是位移後的值 —— 不會報錯，
+  // 整條線靜默歪掉。屬性的設與還原之間沒有 yield，故不會 paint、畫面不跳。
+  // `return reset()` 走的也是 finally，不會漏掉還原。
+  const scope = rootEl.value?.closest('.sec2') as HTMLElement | null;
+  scope?.setAttribute('data-path-measuring', '');
+  try {
+    const out = buildNodesD(list);
+    // 必要錨點量不到就整條放棄 —— 少一個點會讓後面全部接到錯的鄰居身上，靜默變形。
+    // （標了 optional 的點量不到不算，產生器會自己跳過並重接。）
+    if (!out) return reset();
 
-  genEl.value?.setAttribute('d', out.d);
-  motion.setAttribute('d', out.d);
-  trailEl.value?.setAttribute('d', out.d);
-  trailMaskPathEl.value?.setAttribute('d', out.d);
-  // 遮罩區預設只有外框 ±10%，會把線裁掉 → 明寫成涵蓋整條線再各留 100 的餘裕。
-  trailMaskEl.value?.setAttribute('width', `${out.width + 200}`);
-  trailMaskEl.value?.setAttribute('height', `${out.endY + 200}`);
-  pathLen = motion.getTotalLength();
-  motionLen = pathLen;
-  lineEndY = out.endY;
-  // 後半段的 waypoint 已經走到段落底（.sec2__pin 的下緣），故不再需要隱形尾段；
-  // 「核心留在視窗中央」改由回中節點表保證（見 syncKnots / buildArcKnots）。
-  // ⚠ tailEndY 不能留 0 —— ScrollTrigger 的 end 讀它，0 會被 GSAP 夾成 start + 0.01，
-  //   捲動尺變零長度、核心一進場就跳到路徑末端。
-  tailEndY = lineEndY;
-  swapLen = syncSwapLen(motion, out.points);
-  syncKnots(motion);
-  syncSlashWindow(motion);
+    genEl.value?.setAttribute('d', out.d);
+    motion.setAttribute('d', out.d);
+    trailEl.value?.setAttribute('d', out.d);
+    trailMaskPathEl.value?.setAttribute('d', out.d);
+    // 遮罩區預設只有外框 ±10%，會把線裁掉 → 明寫成涵蓋整條線再各留 100 的餘裕。
+    trailMaskEl.value?.setAttribute('width', `${out.width + 200}`);
+    trailMaskEl.value?.setAttribute('height', `${out.endY + 200}`);
+    pathLen = motion.getTotalLength();
+    motionLen = pathLen;
+    lineEndY = out.endY;
+    // 後半段的 waypoint 已經走到段落底（.sec2__pin 的下緣），故不再需要隱形尾段；
+    // 「核心留在視窗中央」改由回中節點表保證（見 syncKnots / buildArcKnots）。
+    // ⚠ tailEndY 不能留 0 —— ScrollTrigger 的 end 讀它，0 會被 GSAP 夾成 start + 0.01，
+    //   捲動尺變零長度、核心一進場就跳到路徑末端。
+    tailEndY = lineEndY;
+    swapLen = syncSwapLen(motion, out.points);
+    syncKnots(motion);
+    syncSlashWindow(motion);
 
-  setForumPathActive(true);
-  place(st ? st.progress : 0);
+    setForumPathActive(true);
+    place(st ? st.progress : 0);
+  } finally {
+    scope?.removeAttribute('data-path-measuring');
+  }
 }
 
 // 依 raw 捲動進度把核心定位到驅動線上的點，並轉到該處的路徑切線方向（雲霄飛車感）。
@@ -336,11 +346,14 @@ onMounted(async () => {
     // 路徑起點在容器 (640, 0)＝黑白接縫，而 ForumCore 的橘點釘在視窗正中央 ——
     // 「容器頂端抵達視窗中央」的那一刻兩者是同一點，交棒不需要任何補償值。
     start: 'top center',
-    // 終點：尾段末端（議程底緣）抵達視窗中央。tailEndY 由 build() 從實際幾何算出，
-    // refreshInit → build() 先跑，故每次 refresh 都是最新值。
+    // 終點：接縫抵達「接觸點」的視窗位置。對齊字串由 COVER_CONTACT 導出
+    // （coverContactAlign()），與 blessing 的色塊換色共用同一個來源 ——
+    // 飛機走完路徑的那一刻就是色塊碰到它的那一刻，兩邊不可能脫鉤。
+    // COVER_CONTACT = 0.5 → '50%'，與改動前的 `center` 完全相同。
+    // tailEndY 由 build() 從實際幾何算出，refreshInit → build() 先跑，故每次 refresh 都是最新值。
     // ⚠ 刻意不掛 endTrigger：.forum-event__date 是 position: absolute，量不到有效高度；
     //   也刻意不碰 .sec2 的 bottom —— 上游 SymbolScene 的 pin-spacer 會撐高它，變成循環依賴。
-    end: () => `top+=${tailEndY} center`,
+    end: () => `top+=${tailEndY} ${coverContactAlign()}`,
     scrub: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => place(self.progress),
