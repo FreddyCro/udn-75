@@ -293,6 +293,43 @@ export function partnersFadeAt(p: number): number {
   return 1 - smoothstep(0, BLESSING_OUT_FADE, p);
 }
 
+// ── forum → blessing 覆蓋過場（02 → 03）────────────────────────────────
+// cover 軌吃的捲動距離**恆等於 100vh**：軌是「`.section3` 上緣從視窗底緣升到視窗頂緣」，
+// 而它在一般流裡跟捲動 1:1 —— 幾何鎖死，沒有可調的長度，故本段沒有 *_VH 常數。
+// 完整推導見 architecture/2026-08-12-forum-blessing-transition-design.md 第二節。
+//
+// COVER_CONTACT：紙飛機碰到色塊上緣的時機（cover 軌 0..1）。
+// ⚠️ 它同時是 ForumCorePath 那條 ScrollTrigger 的 end 對齊位置 —— 兩者必須一致，
+//    所以只有這一個來源（那邊改讀 coverContactAlign()）。各寫一份就會在調值時脫鉤，
+//    症狀是「飛機已經被色塊蓋住但底色還是藍的」。
+// 0.5 ＝ 接縫升到視窗中央 ＝ 改動前 `center` 的行為，與論壇段入口的 `start: 'top center'`
+// 是同一招零跳點交棒（飛機的螢幕位置本來就被回中節點表拉在視窗中央附近，見 buildArcKnots）。
+// 設計稿的接觸點在畫面 67%（＝ 0.333）；改它會連帶拉長整條 forum 路徑的捲動尺、
+// 飛機全程變慢，故維持 0.5 —— 要對稿只需調這一個數字。
+export const COVER_CONTACT = 0.5;
+
+/** ForumCorePath 的 ScrollTrigger end 對齊字串（＝ 接觸那一刻接縫在視窗的位置）。 */
+export function coverContactAlign(): string {
+  return `${(1 - COVER_CONTACT) * 100}%`;
+}
+
+// 藍→橘在接觸之後吃掉的 cover 進度（標題／引言的淡入共用同一條曲線）。
+// 設計師的描述是「碰觸時變橘」→ 要短到讀起來像瞬間；但不做成 0：滿版色塊硬切會閃。
+// 0.06 × 100vh，pc 900 高約 54px 捲動 ≈ 一兩格滑鼠滾輪。
+export const COVER_ORANGE_FADE = 0.06;
+
+/** cover 軌 p 時「橘的比例」（0 ＝ 全藍、1 ＝ 全橘）。標題／引言的 opacity 共用。
+ *  純函式、不依賴 DOM —— 曲線由 test/blessing-cover.spec.ts 守著。 */
+export function coverOrangeAt(p: number): number {
+  return smoothstep(COVER_CONTACT, COVER_CONTACT + COVER_ORANGE_FADE, p);
+}
+
+/** cover 軌 p 時白方塊走完「接縫 → 臉的第 01 格」的比例（0 ＝ 貼在接縫上、1 ＝ 就位）。
+ *  smoothstep 的頭段幾乎不動 → 讀起來像「從色塊邊緣冒出來」，末端才緩緩落進格子。 */
+export function seedTravelAt(p: number): number {
+  return smoothstep(COVER_CONTACT, 1, p);
+}
+
 // ── 序列定址表：章節 → part → progress ────────────────────────────────
 // 這張表是**溝通用的座標系**，不是新的驅動機制 —— 底下仍是既有那幾條 progress 軌，
 // 本表只是把它們切成有名字的段落，讓「在 forum.face.59% 加事件」這種話能對回程式碼。
@@ -324,6 +361,7 @@ export type SequenceTrack =
   | 'transition'
   | 'symbol'
   | 'forumPath'
+  | 'cover'
   | 'blessing'
   | 'blessingOut';
 
@@ -359,6 +397,9 @@ export type SequenceChapter = {
 export const TRACK_VH: Partial<Record<SequenceTrack, number>> = {
   transition: TRANSITION_VH,
   symbol: SYMBOL_VH,
+  // cover 軌長是**幾何常數**（`.section3` 的 top bottom → top top 恆為一個視窗高），
+  // 不像 path / forumPath 要量測，故 dashboard 給得出 vh。它不是旋鈕，不要調。
+  cover: 1,
   blessing: BLESSING_VH,
   // 退場窗口的長度是設定值（見 BLESSING_OUT_VH），不像 path / forumPath 要量測，
   // 故 dashboard 給得出 vh。
@@ -409,6 +450,7 @@ export const SEQUENCE: readonly SequenceChapter[] = [
     key: 'blessing',
     label: '永續祝福',
     parts: [
+      { key: 'cover', label: `色塊往上蓋（${COVER_CONTACT * 100}% 處接觸、淺藍轉橘）`, drive: 'scrub', track: 'cover' },
       { key: 'face', label: `逐格臉（尾 ${BLESSING_HOLD * 100}% 停格）`, drive: 'scrub', track: 'blessing' },
       { key: 'stairs', label: '階梯線逐格進場', drive: 'time', flag: 'stairs' },
       { key: 'partners', label: `夥伴清單（sticky 定住 ${BLESSING_PARTNERS_HOLD_VH * 100}vh 供閱讀）`, drive: 'none', vh: BLESSING_PARTNERS_HOLD_VH },
