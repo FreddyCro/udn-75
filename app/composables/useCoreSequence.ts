@@ -55,6 +55,7 @@ export function useCoreSequence() {
       transition: core.transitionProgress.value,
       symbol: core.symbolProgress.value,
       forumPath: core.forumPathProgress.value,
+      cover: core.coverProgress.value,
       blessing: core.blessingProgress.value,
       blessingOut: core.blessingOutProgress.value,
     })[t];

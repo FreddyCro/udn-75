@@ -99,6 +99,13 @@ export function useOrangeCoreProgress() {
     (forumCoreCenterOffset.value = v);
   const setForumSlashWindow = (w: SlashWindow | null) => (forumSlashWindow.value = w);
 
+  // 02 → 03 覆蓋過場的捲動進度（0..1）：由 Blessing.vue 的 cover ScrollTrigger
+  // （`.section3` 的 top bottom → top top，幾何上恆為一個視窗高）每次 update 寫入，
+  // 故往回捲會自動倒帶。與 blessingProgress 首尾相接不重疊：那條的 start 是
+  // `.section3__face-track` 的 top top，也就是本條的 end。
+  const coverProgress = useState<number>('blessing-cover-progress', () => 0);
+  const setCoverProgress = (p: number) => (coverProgress.value = clamp01(p));
+
   // 永續祝福逐格臉的捲動進度（0..1）：由 Blessing.vue 的 ScrollTrigger 於每次
   // update 讀 self.progress 寫入（無 scrub），故往回捲會自動倒帶。
   const blessingProgress = useState<number>('blessing-progress', () => 0);
@@ -216,6 +223,8 @@ export function useOrangeCoreProgress() {
     forumPathRiding,
     setPathProgress,
     setSymbolProgress,
+    coverProgress,
+    setCoverProgress,
     blessingProgress,
     setBlessingProgress,
     blessingFrame,
