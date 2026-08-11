@@ -17,6 +17,7 @@ import {
   SYMBOL_CONFIG_KEYS,
   SYMBOL_LIVE_COLOR_KEYS,
 } from '~/utils/symbol-face-schema';
+import { scrambleText } from '~/utils/symbol-scramble';
 import type { SymbolMode } from '~/composables/useOrangeCoreProgress';
 
 const props = defineProps({
@@ -237,9 +238,10 @@ const activeEgg = ref(-1);
 // 彩蛋切換時的「亂碼跑動」出現動畫：activeEgg 換格時，文字由隨機字元逐步落定成句子，
 // 讓「切換到另一則彩蛋」更明顯。displayText 取代直接顯示 phrases[activeEgg]。
 const displayText = ref('');
-const GLITCH_CHARS = 'AMFOBI7501<>/\\[]{}#%&@十人工智慧能力未來';
 const SCRAMBLE_MS = 480;
 let scrambleRaf = 0;
+// 時鐘是**時間軸**（換格觸發後 480ms 跑完），亂碼的長相則與 SymbolIntro 共用
+// 同一支 scrambleText（見 ~/utils/symbol-scramble 檔頭）。
 const runScramble = (target: string) => {
   cancelAnimationFrame(scrambleRaf);
   if (!target) {
@@ -249,18 +251,7 @@ const runScramble = (target: string) => {
   const startT = performance.now();
   const tick = (nowT: number) => {
     const p = Math.min((nowT - startT) / SCRAMBLE_MS, 1);
-    const revealed = Math.floor(p * target.length); // 由左到右逐字落定
-    let s = '';
-    for (let i = 0; i < target.length; i++) {
-      const ch = target[i]!;
-      // 換行字元不參與亂碼：文案的斷行是設計稿定死的（Figma 1145:41559），
-      // 若讓 \n 被換成一般字元，跑亂碼那 0.48 秒整塊會先塌成一行再彈回四行。
-      s +=
-        i < revealed || ch === ' ' || ch === '\n'
-          ? ch
-          : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
-    }
-    displayText.value = s;
+    displayText.value = scrambleText(target, p);
     if (p < 1) scrambleRaf = requestAnimationFrame(tick);
     else displayText.value = target;
   };
