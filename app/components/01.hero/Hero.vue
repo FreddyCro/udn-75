@@ -455,6 +455,28 @@ function applyScrollLock() {
             >
               {{ paragraph }}
             </p>
+
+            <!--
+              段末 logo。刻意包一層 div 再放 UPic：UPic 的 classname 掛在內層 <img> 上，
+              而本檔 <style> 是 scoped —— scoped 只會把 scope id 蓋在子元件的根 <picture>，
+              選不到內層 <img>。包一層自家的 div，尺寸與間距就寫在自己的 BEM element 上。
+              走 UPic 而非裸 <img>：src 由它前綴 APP_ASSETS_PATH，部署到子路徑／CDN 才不會 404。
+              單檔圖用法（見 UPic.vue 案例 3）：logo.png 只有 1x、無 webp、無裝置後綴。
+              eager：它在第一屏捲動範圍內，lazy 會讓 logo 在橘方塊經過時才冒出來。
+            -->
+            <div class="sec1__intro-logo">
+              <UPic
+                src="/img/logo"
+                ext="png"
+                :use-prefix="false"
+                :use2x="false"
+                :webp="false"
+                :width="162"
+                :height="48"
+                loading="eager"
+                :alt="str.intro.logoAlt"
+              />
+            </div>
           </div>
         </div>
       </div>

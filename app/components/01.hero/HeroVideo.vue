@@ -429,9 +429,21 @@ onBeforeUnmount(() => {
         12×22（指右），這裡是原方向的 22×12（指下）—— 座標互為轉置。
         同樣沿用該檔的處理：不引外部 svg 檔、直接畫 rect，
         shape-rendering 保住像素邊緣。
+
+        ⚠️ 畫兩顆（稿上是一顆）：這是動態的一部分，不是版面上多了一個圖示 ——
+        兩顆疊在同一個位置、跑同一條路徑，只差半個週期（見 --offset 的 delay），
+        於是任一瞬間一顆在行程上半段、另一顆在下半段，看起來像一前一後的雙箭頭。
+        少了第二顆就補不起每循環約 0.6s 的空檔（參考範例即是如此設計）。
+        靜止時（prefers-reduced-motion）兩顆完全重合 ＝ 稿上那一顆。
+
+        v-for 而非把 <svg> 抄兩份：路徑只寫一次，兩顆的差異全在 CSS。
+        （<UBtnSkip> 那邊把座標寫進同一條 path 是因為兩箭頭不需各自動畫。）
       -->
       <svg
+        v-for="i in 2"
+        :key="i"
         class="sec1__hero-scroll-icon"
+        :class="{ 'sec1__hero-scroll-icon--offset': i === 2 }"
         viewBox="0 0 22 12"
         shape-rendering="crispEdges"
         aria-hidden="true"
@@ -525,10 +537,15 @@ onBeforeUnmount(() => {
 // 底距照三份稿的絕對值（同 skip，不做比例換算）：稿上圖示皆為 22×12、水平置中，
 // 只有底距不同 —— mob 414×736 距底 44、pad 768×1024 距底 72、pc 1280×720 距底 44。
 // （mob 稿實際落在中心右側 6px，判定為稿上誤差，這裡照 pad / pc 一律置中。）
+//
+// 尺寸寫死 22×12 ＝ 稿上圖示的框：兩顆 chevron 都絕對定位疊在這個框裡（見下方），
+// 容器不會被子項的位移撐大或縮成 0 高 —— 於是上面那組底距量到的始終是同一個框。
 .sec1__hero-scroll {
   position: absolute;
   left: 50%;
   bottom: calc(44px + var(--chrome-inset));
+  width: 22px;
+  height: 12px;
   transform: translateX(-50%);
 
   @include rwd-min('tablet') {
@@ -539,39 +556,62 @@ onBeforeUnmount(() => {
   }
 }
 
+// 一顆 chevron 的行程與週期。兩者是綁在一起的一組數字：
+//   $hero-scroll-drift 決定「跑多遠」，$hero-scroll-cycle 決定「多久跑完」，
+//   而 --offset 那顆的 delay 是 -半個週期 → 兩顆的間距恆為半個行程（8px）。
+// ±8px ＝ 參考範例的 ±2/3 個箭頭尺寸，換算到本圖示的高 12px；
+// 換算後兩顆重疊約 4px（1/3 個身高），與參考範例的重疊比例相當 —— 那正是
+// 「一前一後、後面那顆像殘影」的來源。改任一個值都會動到這個關係。
+$hero-scroll-drift: 8px;
+$hero-scroll-cycle: 3s;
+
 // 稿上三個斷點都是 22×12，故不隨斷點變化；色票＝稿上的 main/light gray #898989。
 //
 // 漂移動態：借 CodePen「SCSS Arrow Animation」的節奏（見 hero-scroll-hint keyframes），
 // 只借動態 —— 尺寸、色票、置中、底距皆維持設計稿原樣。
 //
-// 動畫掛在內層 <svg> 而非外層 .sec1__hero-scroll：外層的 transform 正在做
-// translateX(-50%) 的水平置中，transform 不能疊加（同一屬性後者整條覆蓋前者），
-// 掛上去就會把置中弄掉。分兩層各管一件事最省事。
+// 兩顆都絕對定位在容器的 0,0（容器已固定成 22×12）：它們要疊在同一個位置、跑同一條
+// 路徑，靠 delay 錯開，而不是在版面上一上一下排開。
+//
+// 動畫掛在 <svg> 而非外層 .sec1__hero-scroll：外層的 transform 正在做 translateX(-50%)
+// 的水平置中，transform 不能疊加（同一屬性後者整條覆蓋前者），掛上去就會把置中弄掉。
+// 分兩層各管一件事最省事。
 .sec1__hero-scroll-icon {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
   width: 22px;
   height: 12px;
   fill: var(--color-gray-light);
-  animation: hero-scroll-hint 3s linear infinite;
+  animation: hero-scroll-hint $hero-scroll-cycle linear infinite;
 
-  // 停用動畫後停在 keyframes 之外的原樣態（無位移、實色）＝ 設計稿的靜態外觀
+  // 停用動畫後停在 keyframes 之外的原樣態：無位移、opacity 1 的實色 #898989
+  // ＝ 設計稿量到的靜態外觀（此時兩顆完全重合，看起來就是稿上那一顆）。
+  // 刻意不比照動畫峰值的 .7 —— 不會動的那一版，該長成稿上的樣子，
+  // 而不是某一格動畫的切片。
   @media (prefers-reduced-motion: reduce) {
     animation: none;
   }
 }
 
-// 從上方淡入、行經設計稿的原位、再往下淡出，3s 一循環（節奏與位移比例同參考範例）。
+// 第二顆：同一條路徑、倒推半個週期起跑（＝ 參考範例的 animation-delay: $speed/-2）。
+// 負延遲代表「一掛上就已經跑到一半」，故不必等一個週期才出現。
+// ⚠️ 必須排在基底規則之後：兩者選擇器權重相同，靠順序才蓋得掉 animation 簡寫
+//    帶入的 animation-delay: 0s。
+.sec1__hero-scroll-icon--offset {
+  animation-delay: $hero-scroll-cycle * -0.5;
+}
+
+// 從上方淡入、行經設計稿的原位、再往下淡出，一循環 $hero-scroll-cycle
+// （節奏與位移比例同參考範例）。
 //
-// ⚠️ 位移量與「最亮的一刻」是綁在一起的一組數字，改一個要想另一個：
-//   ① ±8px ＝ 參考範例的 ±2/3 個箭頭尺寸，換算到本圖示的高 12px。
-//   ② 50% 這格刻意是 translateY(0) ＋ opacity 1 —— 那正是設計稿量到的位置
-//      （距底 44 / 72）與稿上的實色。故「看得最清楚的瞬間 ＝ 與稿一致」，
-//      漂移只發生在頭尾看不見的時候，不會讓人覺得圖示位置跑掉了。
+// 50% 這格刻意是 translateY(0)：那正是設計稿量到的位置（距底 44 / 72）。故「走到稿上
+// 原位的那一刻也是最亮的一刻」，漂移只發生在淡掉的頭尾，不會讓人覺得圖示位置跑掉了。
 //
-// 峰值取 1 而非參考範例的 .7：稿上就是實色 #898989，調暗即改樣式。
+// 峰值 opacity 照參考範例的 .7（＝ #898989 疊在白底上約等於 #a7a7a7），不到稿上的實色 ——
+// 最亮的一刻也留一點透明，整段呼吸才不會在中央「頓」一下。
 // 10% / 90% 兩格只寫 opacity，transform 交給 0% → 50% → 100% 線性內插（同參考範例）。
-// 稿上只有一顆 chevron（不複製第二顆來做半週期補位），故每循環有約 0.6s 完全隱形。
-$hero-scroll-drift: 8px;
 
 @keyframes hero-scroll-hint {
   0% {
@@ -585,7 +625,7 @@ $hero-scroll-drift: 8px;
   }
 
   50% {
-    opacity: 1;
+    opacity: 0.7;
     transform: translateY(0);
   }
 

@@ -7,7 +7,7 @@
   }
 
   // ===== 內容場景 =====
-  // 對齊 Figma 1280 設計稿：內容置中、左右留白 56px
+  // 內容置中；左右留白 mob 26（Figma 414 稿）／pad 與 pc 56（Figma 1280 稿）
   &__scene {
     position: relative;
     // core（OrangeCore z-index 2）要「從文字後方」穿過去 —— 內容整層疊在它之上，
@@ -16,7 +16,11 @@
     z-index: 3;
     max-width: 1280px;
     margin: 0 auto;
-    padding: 0 56px;
+    padding: 0 26px;
+
+    @include rwd-min('tablet') {
+      padding: 0 56px;
+    }
   }
 
   // orange core：外觀 / 淡入已抽到 OrangeCore.vue（scoped）。
@@ -24,19 +28,32 @@
   // ---- intro 引言 ----
   &__intro {
     // 上方：預留 core「舞台」空間，往下滑引言文字才進入視窗。
-    padding-top: 100px;
-    // 下方 runway＝50vh（core 從文字底緣走到視窗正中央所需，OrangeCorePath 的終點
+    padding-top: clamp(360px, #{vh(0.78)}, 560px);
+    // 下方 runway＝50vh（core 從內容底緣走到視窗正中央所需，OrangeCorePath 的終點
     // ＝ sectionHeight − 50vh）＋ 引言淡出窗口。值由 Hero.vue 依 INTRO_FADE_VH 算出後
     // 以 --intro-runway 餵進來（單一來源，見 orange-core-config）；fallback 對應 0.4。
     padding-bottom: var(--intro-runway, #{vh(0.9)});
     // 透明度由 Hero.vue 依 path 進度寫 inline style（接近視窗中央時淡出讓位給轉場）。
     will-change: opacity;
+
+    @include rwd-min('tablet') {
+      padding-top: 100px;
+    }
   }
 
-  // 內容 group：欄寬容器（引言淡出的量測對象，見 Hero.vue 的 introBodyRef）
+  // 內容 group：欄寬容器（引言淡出的量測對象，見 Hero.vue 的 introBodyRef）。
+  // 欄寬 mob 撐滿（414 − 26×2 ＝ 362，同稿）／pad 530／pc 630
   &__intro-body {
-    max-width: 630px;
+    max-width: none;
     margin: 0 auto; // 置中窄欄（設計稿左右留白對稱）
+
+    @include rwd-min('tablet') {
+      max-width: 530px;
+    }
+
+    @include rwd-min('pc') {
+      max-width: 630px;
+    }
   }
 
   // 引言段落。段間距＝一個行高：三份設計稿都是 36px，與 line-height 同值。
@@ -51,16 +68,18 @@
       margin-top: 36px;
     }
   }
-}
 
-// ---- 手機（<768px）：scene / intro 的基本調整 ----
-@media screen and (max-width: 767.98px) {
-  .sec1__scene {
-    padding: 0 20px;
-  }
+  // 段末 logo：162×48 置中（三稿同尺寸）。內層 UPic 的 .u-pic-img 是 width:100%/height:auto，
+  // 故寬度由本容器決定；line-height: 0 收掉 inline <picture> 的行框餘隙 ——
+  // 否則 group 底緣會多出幾 px，連帶把引言淡出的起點往下推。
+  &__intro-logo {
+    width: 162px;
+    margin: 64px auto 0;
+    line-height: 0;
 
-  .sec1__intro {
-    padding-top: clamp(360px, #{vh(0.78)}, 560px);
+    @include rwd-min('tablet') {
+      margin-top: 80px;
+    }
   }
 }
 
