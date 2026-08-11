@@ -48,11 +48,12 @@ V 間距調整(縮小)，上面晚點消失、下免早點出現
 
 ## face
 
-1. 提供可微調的 dashboard
+1. v 提供可微調的 dashboard
 2. intro 向上淡入動態、文字亂跳效果、三行時間差出現
 3. v 匯聚的效果加上速差，會比較有 figma 設計稿的效果
 4. navbar anchor 已經算論壇了
-5. 臉小一點、下方有 scroll 提示
+5. v 臉小一點
+6. 下方有 scroll 提示
 
 ## Forum agenda
 
