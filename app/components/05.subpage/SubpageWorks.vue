@@ -65,6 +65,7 @@ async function activate(i: number, rowEl: HTMLElement) {
   const images = w.thumbs?.length ? w.thumbs : w.thumb ? [w.thumb] : [];
   if (!images.length) return;
   if (i === activeIdx.value && thumb.visible) return;
+  const prevIdx = activeIdx.value; // 換列瞬間還在收合中的上一列（下方量測時要補償）
   activeIdx.value = i;
 
   thumb.images = images.map(assetUrl); // hover／滾入才設 src → GlitchImage lazy 載入
@@ -82,6 +83,22 @@ async function activate(i: number, rowEl: HTMLElement) {
   if (!box) return;
   const wrapRect = wrap.getBoundingClientRect();
   const rowRect = rowEl.getBoundingClientRect();
+
+  // 上一列若在本列「上方」且有 desc，此刻它正在 1fr→0fr 收合（0.3s），
+  // 量到的 rowRect 還被它的 desc 撐著、收完整列會上移 →
+  // 先扣掉這筆「即將消失的高度」（desc-wrap 當下高 + margin-top，收定目標皆為 0），
+  // 用收定後的座標定位，貼上方的縮圖才不會在版面縮上來後蓋到列
+  let shrink = 0;
+  if (prevIdx !== -1 && prevIdx !== i) {
+    const prevEl = wrap.querySelectorAll<HTMLElement>('.award-work')[prevIdx];
+    const prevWrap = prevEl?.querySelector<HTMLElement>('.award-work__desc-wrap');
+    if (prevEl && prevWrap && prevEl.getBoundingClientRect().top < rowRect.top) {
+      shrink =
+        prevWrap.getBoundingClientRect().height +
+        (parseFloat(getComputedStyle(prevWrap).marginTop) || 0);
+    }
+  }
+
   // 說明是 0fr→1fr 過渡展開，此刻 rect 尚未含展開高度 →
   // 以說明內容高推得展開後的底線位置，縮圖貼線外側才不會蓋到說明
   const descEl = rowEl.querySelector<HTMLElement>('.award-work__desc');
@@ -94,13 +111,14 @@ async function activate(i: number, rowEl: HTMLElement) {
     // 8 = 展開後 desc-wrap 的 margin-top（見 SubpageWork.vue）
     grow = Math.max(0, descEl.scrollHeight + 8 - currentH);
   }
-  const rowBottom = rowRect.bottom + grow;
-  const rowCenterY = rowRect.top + (rowRect.height + grow) / 2;
+  const rowTop = rowRect.top - shrink;
+  const rowBottom = rowRect.bottom - shrink + grow;
+  const rowCenterY = rowTop + (rowRect.height + grow) / 2;
   // 列在視窗上半 → 縮圖貼列下方；列在下半 → 貼列上方（展開向下長，上緣不動）
   const showBelow = rowCenterY < window.innerHeight / 2;
   thumb.top = showBelow
     ? rowBottom - wrapRect.top + THUMB_GAP
-    : rowRect.top - wrapRect.top - THUMB_GAP - box.offsetHeight;
+    : rowTop - wrapRect.top - THUMB_GAP - box.offsetHeight;
 }
 
 function deactivate() {

@@ -48,7 +48,7 @@ function build() {
       // 若自然高度超過一屏（橫式手機等）退回貼頂，避免頂部被裁
       start: () =>
         root.clientHeight >= window.innerHeight ? 'top top' : 'center center',
-      end: () => `+=${shift()}`, // 捲動距離 = 位移量 → 垂直水平 1:1，不搶拍
+      end: () => `+=${shift() * 0.7}`,
       pin: true,
       anticipatePin: 1,
       scrub: 1,
