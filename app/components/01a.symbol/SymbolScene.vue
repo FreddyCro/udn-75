@@ -32,7 +32,7 @@ const sceneHeight = vhLength(SYMBOL_VH);
 //
 //   step  mode / 事件                              progress    累計距離（起→迄）        該段距離
 //   ①     disperse 分散（前段疊開場三行文案）        0 → 28%     0    → 112vh   (0→1210px)     112vh
-//         └ 文案 8vh 淡入起／32vh 全亮／80vh 淡出起／104vh 淡完（SYMBOL_INTRO，見 SymbolIntro.vue）
+//         └ 文案 8vh 第一行起／56vh 第三行落定／80vh 淡出起／104vh 淡完（SYMBOL_INTRO，見 SymbolIntro.vue）
 //   ②     face 集合（人像）＝最長的一拍              28% → 62%   112  → 248vh   (1210→2678px)  136vh
 //   ③     converge 匯聚成點                         62% → 84%   248  → 336vh   (2678→3629px)  88vh
 //   ④     coreIn 交棒：本層淡出＋ForumCore 硬切上場  84%         336vh          (3629px)        —

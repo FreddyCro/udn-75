@@ -132,19 +132,35 @@ export const FORUM_HANDOFF = {
 //    時序表」註解 —— 那張表是本檔門檻 × SYMBOL_VH 的 vh 換算結果，不會自己更新。
 // ── 開場三行文案（Figma 智慧論壇05：pc 2065:139731 / pad 2065:124199 / mob 2065:120221）──
 // 疊在第一拍（disperse）上的一層純文字，見 01a.symbol/SymbolIntro.vue。
-// 四個門檻都是 symbolProgress，opacity 由 symbolIntroOpacity() 換算（scrub，往回捲自動倒退）。
+// 四個門檻都是 symbolProgress（scrub，往回捲自動倒退）：
+//   in → full   三行**依序**向上淡入 + 逐字亂碼落定（每行的窗見 symbolIntroLine）
+//   full → fadeOut  全亮停留（讀完三行）
+//   fadeOut → out   整組一起淡出（symbolIntroOutOpacity）—— 退場不再依序，
+//                   它的作用只是清場給人像集合，再演一次會拖到下一拍
 //
 // ⚠️ out 必須早於 SYMBOL_STOPS[0].until（＝ disperse→face 的交界）——
 //    文字要在粒子開始集合成人像之前淡乾淨，兩件事同時發生會互相搶焦點。
 //    test/symbol-sequence.spec.ts 守著這條。
 //
-// 換算成捲動距離（SYMBOL_VH = 4.0 ⇒ 400vh）：8vh 淡入起、32vh 全亮、80vh 淡出起、104vh 淡完。
+// 2026-08-12：full 0.08 → 0.14。三行改依序進場後，24vh 切成三段重疊的窗每行只剩約 10vh，
+//    快捲的人讀不出先後順序。多要的 24vh 從全亮停留期扣（48 → 24vh），其後門檻全部不動。
+//
+// 換算成捲動距離（SYMBOL_VH = 4.0 ⇒ 400vh）：
+//   8vh 第一行起 → 56vh 第三行落定 → 80vh 淡出起 → 104vh 淡完。
 export const SYMBOL_INTRO = {
   in: 0.02,
-  full: 0.08,
+  full: 0.14,
   fadeOut: 0.2,
   out: 0.26,
 } as const;
+
+// 每行的窗寬 ＝ stagger × 此值。2 ＝ 相鄰兩行重疊一半（前一行升到一半，下一行才起跑）。
+export const INTRO_LINE_SPAN_RATIO = 2;
+// 每行由多少 px 的下方升到定位。24px 對 44/48px 的行高約半行 —— 看得出來但不誇張。
+export const INTRO_LINE_SHIFT = 24;
+// 亂碼在自己那扇窗的多少比例處就落定完畢。< 1 ⇒ 最後一小段是「已可讀的整行」升到定位，
+// 而不是升定的同一刻才落最後一個字。
+export const INTRO_REVEAL_SPAN = 0.8;
 
 // GLSL 的 smoothstep：兩端一階導數為 0，淡入淡出的頭尾不會有硬轉折。
 // 本檔僅此一處用到，不外掛工具檔。
@@ -153,13 +169,38 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** 開場三行文案在 symbolProgress = p 時的 opacity（0..1）。
- *  淡入段 × (1 − 淡出段)：full–fadeOut 之間恆為 1，區間外恆為 0。
+/** 開場三行文案的**整組退場**係數（1 ＝ 在場、0 ＝ 已淡完）。
+ *  進場是逐行的（symbolIntroLine），退場是整片的，故兩者分開兩支。
  *  純函式、不依賴 DOM —— 曲線由 test/symbol-sequence.spec.ts 守著。 */
-export function symbolIntroOpacity(p: number): number {
-  const fadeIn = smoothstep(SYMBOL_INTRO.in, SYMBOL_INTRO.full, p);
-  const fadeOut = smoothstep(SYMBOL_INTRO.fadeOut, SYMBOL_INTRO.out, p);
-  return fadeIn * (1 - fadeOut);
+export function symbolIntroOutOpacity(p: number): number {
+  return 1 - smoothstep(SYMBOL_INTRO.fadeOut, SYMBOL_INTRO.out, p);
+}
+
+/** 第 index 行（共 count 行）在 symbolProgress = p 時的進場狀態。
+ *
+ *  每行的窗由 in / full 與行數**推導**，不寫死：
+ *    stagger = (full − in) / (count − 1 + INTRO_LINE_SPAN_RATIO)
+ *    line i  : [in + i·stagger, in + (i + INTRO_LINE_SPAN_RATIO)·stagger]
+ *  分母那項保證 i = count−1 的**結尾正好落在 full** —— 行數若從三行變四行，
+ *  窗會自動變窄，而不是溢出 full 去撞淡出段。
+ *
+ *  三行代入：0.02–0.08 / 0.05–0.11 / 0.08–0.14（每行 24vh、彼此錯開 12vh）。
+ *
+ *  ⚠️ reveal 用**線性**而不是 smoothstep：落字要等速，用 smoothstep 會變成
+ *     「先慢、中間一次噴完、再慢」，看起來像掉幀。 */
+export function symbolIntroLine(
+  p: number,
+  index: number,
+  count: number,
+): { opacity: number; shift: number; reveal: number } {
+  const stagger =
+    (SYMBOL_INTRO.full - SYMBOL_INTRO.in) / (count - 1 + INTRO_LINE_SPAN_RATIO);
+  const start = SYMBOL_INTRO.in + index * stagger;
+  const end = start + INTRO_LINE_SPAN_RATIO * stagger;
+  const opacity = smoothstep(start, end, p);
+  const t = (p - start) / (end - start);
+  const reveal = Math.min(1, Math.max(0, t / INTRO_REVEAL_SPAN));
+  return { opacity, shift: INTRO_LINE_SHIFT * (1 - opacity), reveal };
 }
 
 export const SYMBOL_STOPS: readonly {
