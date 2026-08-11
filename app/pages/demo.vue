@@ -1,60 +1,49 @@
 <script lang="ts" setup>
-import story from '~/locales/story.json';
+// SymbolFace 調參頁：左邊是滿高的粒子場，右邊是 <SymbolFaceDevPanel> 側欄。
+// 側欄收合時 canvas 回到滿版 ＝ 正式站（Hero 轉場層內）的真實比例，要比對構圖時按一下。
 import section1 from '~/locales/section1.json';
+import type { SymbolMode } from '~/composables/useOrangeCoreProgress';
 
-const config = useRuntimeConfig();
+// 不套 layout：AppHeader 是 fixed 滿版頂條（z-index 1000），會壓在側欄標題與
+// canvas 上緣；而且這頁要的是「與正式站同比例的乾淨預覽」，header / footer 都是雜訊。
+definePageMeta({ layout: false });
 
-// SymbolFace 狀態：'face' = 集合（人像）/ 'disperse' = 分散（漂浮）/ 'converge' = 匯聚成點
-// 改這裡決定預設狀態；之後任何地方指派 symbolMode.value = 'disperse' | 'converge' | 'face' 即可切換
-const symbolMode = ref<'face' | 'disperse' | 'converge'>('face');
+// 'face' = 集合（人像）/ 'disperse' = 分散（漂浮）/ 'converge' = 匯聚成點。
+// 正式站由 SymbolScene 依捲動指派，這裡由側欄底部的三顆按鈕切換。
+const symbolMode = ref<SymbolMode>('face');
 
-// SymbolFace 版本對照：'matrix' = 新版網格矩陣 / 'scatter' = 改寫前的機率散點版
-// 用 v-if 一次只掛一個：兩者都是 100vh 滿版 WebGL，同時掛載會有兩個 three.js
-// 場景與兩組 RAF（約 30k 粒子），低階機會掉幀。切換時舊元件的 onBeforeUnmount
-// 會 dispose 場景，資源乾淨釋放。
-const symbolVersion = ref<'matrix' | 'scatter'>('matrix');
+// 面板 ↔ SymbolFace 的接線：面板只吐設定，套用一律由這裡轉呼叫元件方法。
+//   ・live  → applyColors()：只換 ramp texture 與 uniform，拖色票即時看到結果
+//   ・apply → applyConfig()：整組重建（按 ↻ Refresh 才會走到）
+const faceRef = ref<{
+  config: Record<string, any>;
+  gridStats: { cols: number; rows: number; count: number };
+  applyConfig: (c: Record<string, any>) => void;
+  applyColors: (c: Record<string, any>) => void;
+} | null>(null);
 
-// GlitchImage 觸發 API（暫用右下角按鈕；之後改由列表 hover/scroll 呼叫 start()）
-const glitchRef = ref<{ start: () => void; reset: () => void } | null>(null);
-const startGlitch = () => glitchRef.value?.start();
+// 面板的 draft 初值 ＝ SymbolFace 併入 default 後的實際設定。
+// 不能直接把下面那串 props 給它 —— 那串只寫了要覆寫的項目，src / fitWidth / 漂浮速度…
+// 這些吃 default 的欄位會變成 undefined。子元件的 onMounted 早於父層，故這裡拿得到。
+const faceConfig = ref<Record<string, any> | null>(null);
+onMounted(() => {
+  faceConfig.value = faceRef.value?.config ?? null;
+});
 
-// 彩蛋句子（row-major 對應宮格）：與正式站共用同一份文案，見 locales/section1.json
+const panelOpen = ref(true);
+
+// 彩蛋句與 PC 互動提示：與正式站共用同一份文案（見 locales/section1.json）
 const symbolPhrases = section1.symbol.phrases;
-
-// PC 互動提示文案（與正式站共用同一份，見 locales/section1.json）
 const symbolHint = section1.symbol.hint;
 </script>
 
 <template>
-  <div>
-    <!-- <AppHeader /> -->
-    <main class="main-content">
-      <div class="symbol-switch">
-        <button
-          type="button"
-          :class="{ 'symbol-switch__btn--active': symbolVersion === 'matrix' }"
-          class="symbol-switch__btn"
-          @click="symbolVersion = 'matrix'"
-        >
-          新版 矩陣
-        </button>
-        <button
-          type="button"
-          :class="{ 'symbol-switch__btn--active': symbolVersion === 'scatter' }"
-          class="symbol-switch__btn"
-          @click="symbolVersion = 'scatter'"
-        >
-          舊版 散點
-        </button>
-      </div>
-
-      <!-- :auto-mouse="true" -->
-      <!-- 新版：網格矩陣（gemini-code 質感移植）。字元依墨水量對應亮度、逐格字重、
-           四色標可調位置的漸層、glitch 跳色；字級是 world 單位，縮放視窗比例不變。 -->
+  <div class="lab" :class="{ 'lab--closed': !panelOpen }">
+    <div class="lab__canvas">
+      <!-- 參數與 Hero.vue 那顆正式站的 <SymbolFace> 對齊；差異只在這裡可以即時調 -->
       <SymbolFace
-        v-if="symbolVersion === 'matrix'"
+        ref="faceRef"
         v-model:mode="symbolMode"
-        :dev="true"
         :phrases="symbolPhrases"
         :hint="symbolHint"
         :hole-radius="25"
@@ -90,128 +79,75 @@ const symbolHint = section1.symbol.hint;
           { color: '#00ffcc', density: 2, fps: 8 },
         ]"
       />
-      <!-- 改寫前的快照，props 沿用舊介面、與新版互不牽動（見 legacy/SymbolFaceScatter.vue） -->
-      <LegacySymbolFaceScatter
-        v-else
+    </div>
+
+    <div class="lab__panel">
+      <SymbolFaceDevPanel
         v-model:mode="symbolMode"
-        :dev="true"
-        :phrases="symbolPhrases"
-        :hole-radius="25"
-        :hole-spread="50"
-        :return-ease="1.5"
-        :friction="1.8"
-        :impulse-strength="10000"
-        :impulse-spray="0.9"
-        :impulse-spray-z="0.6"
-        :velocity-follow="0.1"
-        :max-speed="3000"
-        :max-particles="10000"
-        :color="['#ffffff', '#9fd6ff', '#77c6e0', '#3f8fb5']"
-        bg-color="#000"
-        :sample-step="5"
-        :size-min="16"
-        :size-max="32"
-        :min-density="0.7"
-        :density-gamma="2.4"
-        :dark-boost="1.8"
-        :float-amp="18"
-        :float-micro="0.5"
+        :initial="faceConfig"
+        :stats="faceRef?.gridStats ?? { cols: 0, rows: 0, count: 0 }"
+        @apply="faceRef?.applyConfig($event)"
+        @live="faceRef?.applyColors($event)"
       />
-    </main>
+    </div>
+
+    <button class="lab__toggle" type="button" @click="panelOpen = !panelOpen">
+      {{ panelOpen ? '✕' : '⚙' }}
+    </button>
   </div>
 </template>
 
-<style scoped>
-/* 新舊版 SymbolFace 對照切換：z-index 需高於 SymbolFace dev 面板（5）
-   與 layout 的 AppHeader（1000）—— 後者是 fixed 滿版頂條，會蓋住左上角。 */
-.symbol-switch {
+<style lang="scss" scoped>
+.lab {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: #080808;
+}
+
+// canvas 區塊：側欄開合時寬度跟著變，SymbolFace 內部靠 ResizeObserver 自己重算，
+// 不必額外通知。min-width: 0 是必要的 —— flex item 預設 min-width: auto，
+// 子層那顆 canvas 會把它撐開、把側欄擠出畫面。
+.lab__canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+}
+
+// 收合走 flex-basis → 0 而不是 v-if：面板 unmount 會連 draft 一起丟掉，
+// 展開後所有調到一半的值都會退回初值。
+.lab__panel {
+  flex: 0 0 380px;
+  height: 100%;
+  overflow: hidden;
+  transition: flex-basis 0.25s ease;
+
+  .lab--closed & {
+    flex-basis: 0;
+  }
+}
+
+// 固定在視窗右上角：側欄開著時浮在它的標題列旁（.panel__title 已留出右側空間），
+// 收起後是唯一叫得回面板的入口。
+.lab__toggle {
   position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 1001;
-  display: flex;
-  gap: 6px;
-}
-
-.symbol-switch__btn {
-  padding: 8px 14px;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 32px;
+  height: 32px;
   font-family: ui-monospace, 'Courier New', monospace;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #fff;
-  background: rgba(20, 22, 28, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.symbol-switch__btn--active {
-  color: #10141b;
-  background: #ffb060;
-  border-color: #ffb060;
-}
-
-.story-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: 0 24px;
-  text-align: center;
-}
-
-.story-section__title {
-  margin: 0 0 16px;
-  font-size: clamp(1.75rem, 4vw, 2.5rem);
-  font-weight: 700;
-}
-
-/* orange-core step 0 的句中佔位字位（透明，OrangeCore 的核心方塊全程對齊在此） */
-.orange-core-anchor {
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  margin: 0 0.12em;
-  vertical-align: -0.08em;
-}
-
-.story-section__body {
-  max-width: 32em;
-  margin: 0;
-  font-size: clamp(1rem, 2vw, 1.125rem);
-  font-weight: 300;
-}
-
-.glitch-demo {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 30vh;
-  padding: 30vh 24px;
-}
-
-.glitch-demo__item {
-  width: min(100%, 640px);
-}
-
-/* 暫用：手動觸發 GlitchImage 的按鈕（之後移除，改由列表觸發） */
-.glitch-start-btn {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
-  z-index: 9999;
-  padding: 10px 24px;
-  font-family: inherit;
   font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: #fff;
-  background: #ff7f00;
-  border: none;
-  border-radius: 999px;
+  font-weight: bold;
+  color: #77c6e0;
+  background: #2b2b2b;
+  border: 1px solid #77c6e0;
+  border-radius: 4px;
   cursor: pointer;
+
+  &:hover {
+    color: #000;
+    background: #77c6e0;
+  }
 }
 </style>

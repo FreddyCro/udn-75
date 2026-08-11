@@ -448,7 +448,6 @@ function applyScrollLock() {
         <SymbolFace
           :active="symbolLayerActive"
           v-model:mode="symbolMode"
-          :dev="false"
           :phrases="str.symbol.phrases"
           :hint="str.symbol.hint"
           :hole-radius="25"

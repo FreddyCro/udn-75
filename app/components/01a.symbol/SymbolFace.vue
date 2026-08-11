@@ -13,6 +13,10 @@ import {
 } from '~/utils/symbol-atlas';
 import { sampleImageToGridWithLimit } from '~/utils/symbol-sampler';
 import { FACE_HOVER_INFLUENCE, faceUv } from '~/utils/symbol-hint';
+import {
+  SYMBOL_CONFIG_KEYS,
+  SYMBOL_LIVE_COLOR_KEYS,
+} from '~/utils/symbol-face-schema';
 import type { SymbolMode } from '~/composables/useOrangeCoreProgress';
 
 const props = defineProps({
@@ -181,9 +185,6 @@ const props = defineProps({
    *  設計稿 Figma 2065:139734：圓環圖示 + 兩行說明，錨在人像右下角。
    *  只在 ≥1280px 出現（樣式端擋），且游標真的碰到人像後永久收起。 */
   hint: { type: String, default: '' },
-
-  /** 開發用：顯示右上角可收合的參數面板（預設 false；demo 頁設 true） */
-  dev: { type: Boolean, default: false },
 });
 
 // 色票字串 → uniform 用的 vec3，**不做色彩空間轉換**。
@@ -237,15 +238,11 @@ watch(activeEgg, (idx) => {
 onBeforeUnmount(() => cancelAnimationFrame(scrambleRaf));
 // 三種狀態：'face' = 集合（人像）/ 'disperse' = 分散（散場漂浮）/ 'converge' = 匯聚成點。
 // 三態互斥，由 uDisperse / uConverge 兩個 uniform 表示（同一時間至多一個為 1）。
-// v-model 由父層決定預設值並隨意切換；元件內按鈕也只是指派它。
+// v-model 由父層決定預設值並隨意切換（正式站是 SymbolScene 依捲動指派，
+// demo 頁是側欄面板的三顆按鈕）。
 // 型別取自 useOrangeCoreProgress（驅動端 SymbolScene 寫的就是那個 useState）——
 // 兩邊各宣告一份的話，哪天多一個狀態就會只改到一邊。
 const mode = defineModel<SymbolMode>('mode', { default: 'face' });
-const MODES: { value: SymbolMode; label: string }[] = [
-  { value: 'face', label: '集合' },
-  { value: 'disperse', label: '分散' },
-  { value: 'converge', label: '匯聚成點' },
-];
 let disperseFn: ((animated?: boolean) => void) | null = null;
 
 // 狀態改變時，可逆地補間 uDisperse / uConverge（0↔1）
@@ -255,382 +252,60 @@ watch(mode, () => disperseFn?.(true));
 let syncActive: (() => void) | null = null;
 watch(() => props.active, () => syncActive?.());
 
-// ---------- 開發用 config 面板（dev=true 顯示）----------
-// 面板編輯 draft（不即時套用）；按 Refresh 才把 draft → cfg 並重建粒子系統。
-// cfg 是 three.js 實際讀取的設定（初始 = props；本檔內 three.js 讀設定的地方都改讀 cfg）。
-const CONFIG_SCHEMA = [
-  // 圖像 / 採樣
-  { key: 'src', label: '圖片路徑', kind: 'text', group: '圖像 / 採樣' },
-  { key: 'chars', label: '符號集', kind: 'csvStr', group: '圖像 / 採樣' },
-  {
-    key: 'color',
-    label: '顏色(逗號多色)',
-    kind: 'colorList',
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'colorMode',
-    label: '取色模式',
-    kind: 'select',
-    options: ['tone', 'random'],
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'colorStops',
-    label: '色標位置(逗號)',
-    kind: 'csvNum',
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'weightSteps',
-    label: '字重階數',
-    kind: 'num',
-    step: 1,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'weightMin',
-    label: '字重 min',
-    kind: 'num',
-    step: 100,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'weightMax',
-    label: '字重 max',
-    kind: 'num',
-    step: 100,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'fitWidth',
-    label: 'fit 寬',
-    kind: 'num',
-    step: 10,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'fitHeight',
-    label: 'fit 高',
-    kind: 'num',
-    step: 10,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'worldScale',
-    label: 'world 縮放',
-    kind: 'num',
-    step: 0.05,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'cols',
-    label: '格數(疏密)',
-    kind: 'num',
-    step: 5,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'charAspect',
-    label: '字寬高比',
-    kind: 'num',
-    step: 0.05,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'contrast',
-    label: '對比',
-    kind: 'num',
-    step: 0.1,
-    group: '圖像 / 採樣',
-  },
-  { key: 'invert', label: '負片', kind: 'bool', group: '圖像 / 採樣' },
-  {
-    key: 'jitter',
-    label: '格點抖動',
-    kind: 'num',
-    step: 0.05,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'sizeMin',
-    label: '字級 min(格高比)',
-    kind: 'num',
-    step: 0.01,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'sizeMax',
-    label: '字級 max(格高比)',
-    kind: 'num',
-    step: 0.01,
-    group: '圖像 / 採樣',
-  },
-  {
-    key: 'maxParticles',
-    label: '粒子上限',
-    kind: 'num',
-    step: 500,
-    group: '圖像 / 採樣',
-  },
-  // 場景 / 節奏
-  { key: 'bgColor', label: '背景色', kind: 'color', group: '場景 / 節奏' },
-  {
-    key: 'revealDuration',
-    label: '組合秒數',
-    kind: 'num',
-    step: 0.1,
-    group: '場景 / 節奏',
-  },
-  {
-    key: 'disperseDuration',
-    label: '散場秒數',
-    kind: 'num',
-    step: 0.1,
-    group: '場景 / 節奏',
-  },
-  {
-    key: 'disperseSpread',
-    label: '散場範圍 xyz',
-    kind: 'csvNum',
-    group: '場景 / 節奏',
-  },
-  {
-    key: 'convergeSize',
-    label: '收斂點邊長(px)',
-    kind: 'num',
-    step: 1,
-    group: '場景 / 節奏',
-  },
-  {
-    key: 'convergeColor',
-    label: '收斂點顏色',
-    kind: 'color',
-    group: '場景 / 節奏',
-  },
-  {
-    key: 'inkGamma',
-    label: '字墨飽滿度',
-    kind: 'num',
-    step: 0.05,
-    group: '場景 / 節奏',
-  },
-  {
-    key: 'twinkleAmp',
-    label: '明滅幅度',
-    kind: 'num',
-    step: 0.01,
-    group: '場景 / 節奏',
-  },
-  {
-    key: 'breathAmp',
-    label: '呼吸幅度',
-    kind: 'num',
-    step: 0.01,
-    group: '場景 / 節奏',
-  },
-  {
-    key: 'glitchItems',
-    label: 'glitch(JSON)',
-    kind: 'json',
-    group: '場景 / 節奏',
-  },
-  // 漂浮
-  {
-    key: 'floatAmp',
-    label: '整體漂浮幅度',
-    kind: 'num',
-    step: 1,
-    group: '漂浮',
-  },
-  { key: 'floatMicro', label: '微擾幅度', kind: 'num', step: 1, group: '漂浮' },
-  {
-    key: 'floatSpeed',
-    label: '漂浮速度',
-    kind: 'num',
-    step: 0.1,
-    group: '漂浮',
-  },
-  // 斥力 / 物理
-  {
-    key: 'holeRadius',
-    label: '真空半徑',
-    kind: 'num',
-    step: 5,
-    group: '斥力 / 物理',
-  },
-  {
-    key: 'holeSpread',
-    label: '擴散範圍',
-    kind: 'num',
-    step: 5,
-    group: '斥力 / 物理',
-  },
-  {
-    key: 'returnEase',
-    label: '回位速率',
-    kind: 'num',
-    step: 0.1,
-    group: '斥力 / 物理',
-  },
-  {
-    key: 'friction',
-    label: '動量衰減',
-    kind: 'num',
-    step: 0.1,
-    group: '斥力 / 物理',
-  },
-  {
-    key: 'impulseStrength',
-    label: '外推力道',
-    kind: 'num',
-    step: 100,
-    group: '斥力 / 物理',
-  },
-  {
-    key: 'impulseSpray',
-    label: '發散角',
-    kind: 'num',
-    step: 0.05,
-    group: '斥力 / 物理',
-  },
-  {
-    key: 'impulseSprayZ',
-    label: 'z 散射',
-    kind: 'num',
-    step: 0.05,
-    group: '斥力 / 物理',
-  },
-  {
-    key: 'velocityFollow',
-    label: '拖曳甩出比例',
-    kind: 'num',
-    step: 0.05,
-    group: '斥力 / 物理',
-  },
-  {
-    key: 'maxSpeed',
-    label: '速度上限',
-    kind: 'num',
-    step: 100,
-    group: '斥力 / 物理',
-  },
-  // 避讓 / 滑鼠
-  {
-    key: 'groupShift',
-    label: '群閃避量',
-    kind: 'num',
-    step: 1,
-    group: '避讓 / 滑鼠',
-  },
-  {
-    key: 'groupShiftNear',
-    label: '閃避近界',
-    kind: 'num',
-    step: 10,
-    group: '避讓 / 滑鼠',
-  },
-  {
-    key: 'groupShiftFar',
-    label: '閃避遠界',
-    kind: 'num',
-    step: 10,
-    group: '避讓 / 滑鼠',
-  },
-  {
-    key: 'mouseEase',
-    label: '滑鼠平滑',
-    kind: 'num',
-    step: 0.5,
-    group: '避讓 / 滑鼠',
-  },
-  { key: 'autoMouse', label: '自動游標', kind: 'bool', group: '避讓 / 滑鼠' },
-  {
-    key: 'autoMouseSpeed',
-    label: '自動游標速度',
-    kind: 'num',
-    step: 0.1,
-    group: '避讓 / 滑鼠',
-  },
-  // 彩蛋
-  { key: 'phrases', label: '彩蛋句(逗號)', kind: 'csvStr', group: '彩蛋' },
-  { key: 'gridCols', label: '宮格欄', kind: 'num', step: 1, group: '彩蛋' },
-  { key: 'gridRows', label: '宮格列', kind: 'num', step: 1, group: '彩蛋' },
-  { key: 'phraseColor', label: '彩蛋文字色', kind: 'color', group: '彩蛋' },
-];
-
-const panelOpen = ref(true);
-// dev 面板的唯讀資訊：實際採用的格數與粒子數（cols 可能因 maxParticles 被降過）
-const gridStats = ref({ cols: 0, rows: 0, count: 0 });
-// 面板欄位轉型失敗的訊息（目前只有 glitch JSON 會發生），顯示在 footer
-const cfgError = ref('');
-// props 值 → 面板可編輯字串（陣列類轉成逗號字串）
-const toDraft = (val: any, kind: string) => {
-  if (kind === 'json') return JSON.stringify(val ?? [], null, 0);
-  if (kind === 'csvNum' || kind === 'csvStr') return (val ?? []).join(', ');
-  if (kind === 'colorList')
-    return Array.isArray(val) ? val.join(', ') : (val ?? '');
-  return val;
-};
-// 面板值 → cfg 正確型別
-const fromDraft = (val: any, kind: string) => {
-  // parse 失敗直接 throw，由 applyRefresh 攔下並保留舊值
-  if (kind === 'json') return JSON.parse(String(val));
-  if (kind === 'num') {
-    // ⚠️ 不能直接 Number(val)：Number('') === 0，清空欄位會**悄悄**變成 0 —— 例如
-    //    charAspect: 0 會讓 computeGrid 算出 Infinity 的 cell 高與 -Infinity 的座標，
-    //    畫面壞掉卻沒有任何提示（不像 JSON 那種 kind 會顯示 cfgError）。
-    //    改成 throw，交給 applyRefresh 的 catch：保留舊值並在 footer 顯示訊息。
-    const s = String(val).trim();
-    const n = Number(s);
-    if (s === '' || !Number.isFinite(n)) throw new Error('不是有效數字');
-    return n;
-  }
-  if (kind === 'bool') return !!val;
-  if (kind === 'csvNum')
-    return String(val)
-      .split(',')
-      .map((s) => Number(s.trim()))
-      .filter((n) => !Number.isNaN(n));
-  if (kind === 'csvStr')
-    return String(val)
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-  if (kind === 'colorList') {
-    const parts = String(val)
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    return parts.length > 1 ? parts : (parts[0] ?? '');
-  }
-  return val; // color / text / select
-};
-
-// cfg：three.js 讀取的實際設定（plain object，避免熱迴圈 reactive 開銷）
+// ---------- 設定（cfg）與開發面板的對接 ----------
+// cfg 是 three.js 實際讀取的設定（初值 = props 併入 default 後的結果；本檔內 three.js
+// 讀設定的地方一律讀 cfg 而不是 props）。開發面板本身住在 <SymbolFaceDevPanel>，
+// 由 demo 頁擺在 canvas 旁邊當側欄 —— 本元件只負責把 cfg 套進 three.js。
+//
+// 對外兩條套用路徑（見檔尾 defineExpose）：
+//   ・applyConfig(next) —— 全套用：重建 atlas / 幾何 / 材質並重跑 reveal。非顏色參數走這條。
+//   ・applyColors(next) —— 只換一張 256×1 的 ramp texture 與幾個 uniform，不動幾何。
+//     顏色類參數走這條，所以拖色票 / 色標滑桿時畫面即時跟著變，不會每改一次就重跑
+//     3 秒的組合動畫。可即時的鍵名列在 SYMBOL_LIVE_COLOR_KEYS。
 const cfg: Record<string, any> = {};
-// draft：面板 v-model 綁定（reactive）
-const draft = reactive<Record<string, any>>({});
-for (const f of CONFIG_SCHEMA) {
-  cfg[f.key] = props[f.key as keyof typeof props];
-  draft[f.key] = toDraft(props[f.key as keyof typeof props], f.kind);
+for (const key of SYMBOL_CONFIG_KEYS) {
+  cfg[key] = props[key as keyof typeof props];
 }
-// onMounted 內指派：把 cfg 套進 three.js 並重建粒子系統
+
+// 面板的唯讀資訊：實際採用的格數與粒子數（cols 可能因 maxParticles 被降過）
+const gridStats = ref({ cols: 0, rows: 0, count: 0 });
+
+// glitch 跳色的 uniform 值。抽成函式是因為有兩個呼叫點：建材質時（buildParticles）
+// 與即時套色時（repaintColors）—— 後者要在材質已存在的情況下就地覆寫同一組 uniform。
+// GLSL ES 1.0 的陣列 uniform 必須是固定長度，故一律備 4 組，未使用的以 uGlitchCount 擋掉
+// （density 0 也不會命中）。
+// ⚠️ 顏色必須走 srgbColor（理由見該 helper 上方）：直接 new THREE.Color(hex) 會被
+//    ColorManagement 轉成 linear-sRGB，而本元件是 raw shader、沒有轉回來的那一段 ——
+//    #ff0055 會畫成約 #ff0017、#00ffcc 約 #00ff9a。
+// density 除以 100：gemini 的 density 單位是百分比（1–30）。
+const glitchUniforms = () => {
+  const items = (cfg.glitchItems ?? []).slice(0, 4);
+  return {
+    count: items.length,
+    colors: Array.from({ length: 4 }, (_, i) =>
+      srgbColor(items[i]?.color ?? '#000000'),
+    ),
+    density: Array.from({ length: 4 }, (_, i) => (items[i]?.density ?? 0) / 100),
+    fps: Array.from({ length: 4 }, (_, i) => items[i]?.fps ?? 0),
+  };
+};
+
+// 兩者都在 onMounted 內指派（要有 scene / mat 才做得了事）
 let rebuildParticles: (() => void) | null = null;
-const applyRefresh = () => {
-  cfgError.value = '';
-  const next: Record<string, any> = {};
-  for (const f of CONFIG_SCHEMA) {
-    try {
-      next[f.key] = fromDraft(draft[f.key], f.kind);
-    } catch {
-      // 該欄位保留舊值，其餘照常套用
-      cfgError.value = `${f.label} 格式錯誤，已保留原值`;
-      next[f.key] = cfg[f.key];
-    }
-  }
+let repaintColors: (() => void) | null = null;
+
+/** 全套用：合併設定後重建粒子系統（換圖、換格數、換字重…都走這條）。 */
+const applyConfig = (next: Record<string, any>) => {
   Object.assign(cfg, next);
   rebuildParticles?.();
+};
+
+/** 即時套色：只合併顏色鍵並就地更新 texture / uniform，不重建幾何。 */
+const applyColors = (next: Record<string, any>) => {
+  for (const key of SYMBOL_LIVE_COLOR_KEYS) {
+    if (key in next) cfg[key] = next[key];
+  }
+  repaintColors?.();
 };
 
 // ---------- PC 互動提示 ----------
@@ -681,41 +356,6 @@ watch(
 );
 onBeforeUnmount(clearHintTimer);
 
-// 匯出目前面板所有設定成 JSON：下載成檔案並順手複製到剪貼簿。
-// 值取自 draft（面板當下值）並轉回正確型別（數字/陣列），再附上目前 mode。
-const exportLabel = ref('⬇ Export JSON');
-let exportResetTimer: ReturnType<typeof setTimeout> | null = null;
-const exportConfig = () => {
-  const snapshot: Record<string, any> = {};
-  for (const f of CONFIG_SCHEMA) {
-    try {
-      snapshot[f.key] = fromDraft(draft[f.key], f.kind);
-    } catch {
-      snapshot[f.key] = cfg[f.key];
-    }
-  }
-  snapshot.mode = mode.value;
-  const json = JSON.stringify(snapshot, null, 2);
-
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'symbol-face-config.json';
-  a.click();
-  URL.revokeObjectURL(url);
-
-  navigator.clipboard?.writeText(json).catch(() => {});
-
-  exportLabel.value = '✓ 已匯出';
-  if (exportResetTimer) clearTimeout(exportResetTimer);
-  exportResetTimer = setTimeout(() => {
-    exportLabel.value = '⬇ Export JSON';
-  }, 1600);
-};
-onBeforeUnmount(() => {
-  if (exportResetTimer) clearTimeout(exportResetTimer);
-});
 
 onMounted(() => {
   const wrap = wrapRef.value;
@@ -917,25 +557,11 @@ onMounted(() => {
     dispAttr.setUsage(THREE.DynamicDrawUsage);
     geom.setAttribute('aDisp', dispAttr);
 
-    // glitch 跳色：GLSL ES 1.0 的陣列 uniform 必須是固定長度，故一律備 4 組，
-    // 未使用的以 uGlitchCount 擋掉（density 0 也不會命中）。
-    const items = (cfg.glitchItems ?? []).slice(0, 4);
+    // glitch 跳色（4 組固定長度陣列 uniform 的理由見 glitchUniforms 上方註解）
     if ((cfg.glitchItems ?? []).length > 4) {
       console.warn('[SymbolFace] glitchItems 最多 4 組，其餘已忽略');
     }
-    const glitchCount = items.length;
-    // ⚠️ 必須走 srgbColor（理由見該 helper 上方）：直接 new THREE.Color(hex) 會被
-    //    ColorManagement 轉成 linear-sRGB，而本元件是 raw shader、沒有轉回來的那一段 ——
-    //    #ff0055 會畫成約 #ff0017、#00ffcc 約 #00ff9a。
-    const glitchColors = Array.from({ length: 4 }, (_, i) =>
-      srgbColor(items[i]?.color ?? '#000000'),
-    );
-    // density 除以 100：gemini 的 density 單位是百分比（1–30）
-    const glitchDensity = Array.from(
-      { length: 4 },
-      (_, i) => (items[i]?.density ?? 0) / 100,
-    );
-    const glitchFps = Array.from({ length: 4 }, (_, i) => items[i]?.fps ?? 0);
+    const glitch = glitchUniforms();
 
     mat = new THREE.ShaderMaterial({
       transparent: true,
@@ -967,10 +593,10 @@ onMounted(() => {
         uColorRamp: { value: colorRamp },
         uInkGamma: { value: cfg.inkGamma },
         uColorRandom: { value: cfg.colorMode === 'random' ? 1 : 0 },
-        uGlitchCount: { value: glitchCount },
-        uGlitchColor: { value: glitchColors },
-        uGlitchDensity: { value: glitchDensity },
-        uGlitchFps: { value: glitchFps },
+        uGlitchCount: { value: glitch.count },
+        uGlitchColor: { value: glitch.colors },
+        uGlitchDensity: { value: glitch.density },
+        uGlitchFps: { value: glitch.fps },
       },
       vertexShader: /* glsl */ `
         attribute vec3 aStart;
@@ -1224,12 +850,24 @@ onMounted(() => {
   let loadedImg: HTMLImageElement | null = null;
   let loadedSrc = cfg.src;
 
+  // 依 cfg.color / cfg.colorStops 烘一張 256×1 的漸層 texture。
+  // ⚠️ buildColorRamp 要求 stops.length === colors.length，否則**靜靜地**退回等距 ——
+  //    所以長度不合時這裡直接不傳，讓「等距」是明講的決定而不是意外。
+  const makeColorRamp = () => {
+    const colors = Array.isArray(cfg.color) ? cfg.color : [cfg.color];
+    const stops = Array.isArray(cfg.colorStops) ? cfg.colorStops : [];
+    return buildColorRamp(
+      cfg.color,
+      stops.length === colors.length ? stops : undefined,
+    );
+  };
+
   // 重建粒子系統：dispose 舊的 → 依目前 cfg 重建 atlas / 漸層 / 幾何 / 材質，並重跑 reveal
   const buildParticles = () => {
     if (!loadedImg) return;
     // ⚠️ 先驗證再 dispose。順序反過來的話，chars 為空這條路徑會在「舊的已經拆光」之後
     //    才折返，留下四個「已 dispose 但不是 null」的 handle，卸載時再被 dispose 一次。
-    //    驗證失敗一律整組不動 —— 同 applyRefresh 對 JSON 格式錯誤的處理（保留舊值）。
+    //    驗證失敗一律整組不動 —— 同面板對格式錯誤欄位的處理（保留舊值）。
     const nextChars = sortCharsByInk(cfg.chars);
     if (nextChars.length === 0) {
       console.warn('[SymbolFace] chars 去重濾空白後為空，維持原有粒子系統不變');
@@ -1256,13 +894,32 @@ onMounted(() => {
       cfg.weightMax,
     );
     atlas = buildGlyphAtlas(sortedChars.slice(1), weights);
-    const stops =
-      Array.isArray(cfg.colorStops) && cfg.colorStops.length
-        ? cfg.colorStops
-        : undefined;
-    colorRamp = buildColorRamp(cfg.color, stops);
+    colorRamp = makeColorRamp();
     resetReveal(); // 讓 reveal 重跑（新材質 uProgress 從 0 起）
     buildFromImage(loadedImg);
+  };
+
+  // 即時套色：只換 ramp texture 與幾個 uniform，不碰幾何、不重跑 reveal。
+  // 面板的顏色類欄位（色票 / 色標滑桿 / glitch 卡片）每次 input 都會打到這裡，
+  // 所以這條路徑不能有取樣、烘 atlas、配置 Float32Array 之類的動作。
+  repaintColors = () => {
+    if (unmounted) return;
+    scene.background = new THREE.Color(cfg.bgColor);
+    if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
+    if (!mat) return; // 粒子系統還沒建好（圖片載入中）：cfg 已更新，等 build 時自然吃到
+
+    const nextRamp = makeColorRamp();
+    colorRamp?.dispose(); // 舊 texture 是這裡唯一的 owner，不 dispose 就每拖一格漏一張
+    colorRamp = nextRamp;
+    mat.uniforms.uColorRamp.value = nextRamp;
+    mat.uniforms.uColorRandom.value = cfg.colorMode === 'random' ? 1 : 0;
+    mat.uniforms.uSolidColor.value.copy(srgbColor(cfg.convergeColor));
+
+    const glitch = glitchUniforms();
+    mat.uniforms.uGlitchCount.value = glitch.count;
+    mat.uniforms.uGlitchColor.value = glitch.colors;
+    mat.uniforms.uGlitchDensity.value = glitch.density;
+    mat.uniforms.uGlitchFps.value = glitch.fps;
   };
 
   // 圖片載入（初次與 refresh 換 src 共用）。
@@ -1617,6 +1274,11 @@ onMounted(() => {
     wrap.removeChild(renderer.domElement);
   });
 });
+
+// 給開發面板用的介面（正式站不會碰到；面板只在 demo 頁掛載）。
+// config 是 plain object、故意不做成 reactive —— 它在 animate() 熱迴圈裡每幀被讀很多次，
+// 包成 reactive 等於在每幀加上一整排 proxy trap。面板只在初始化時讀它一次當 draft 初值。
+defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
 </script>
 
 <template>
@@ -1665,88 +1327,6 @@ onMounted(() => {
         <circle cx="44" cy="44" r="8" fill="white" fill-opacity="0.85" />
       </svg>
       <p class="hint__text">{{ hint }}</p>
-    </div>
-
-    <!-- dev config 面板（右上角、可收合）：改值不即時套用，按 Refresh 才重建 -->
-    <div v-if="dev" class="cfg">
-      <button class="cfg__toggle" type="button" @click="panelOpen = !panelOpen">
-        <span>⚙ Config</span>
-        <span>{{ panelOpen ? '▾' : '▸' }}</span>
-      </button>
-      <div v-show="panelOpen" class="cfg__body">
-        <template v-for="(f, i) in CONFIG_SCHEMA" :key="f.key">
-          <div
-            v-if="f.group && f.group !== CONFIG_SCHEMA[i - 1]?.group"
-            class="cfg__group"
-          >
-            {{ f.group }}
-          </div>
-          <label class="cfg__row">
-            <span class="cfg__label" :title="f.key">{{ f.label }}</span>
-            <input
-              v-if="f.kind === 'bool'"
-              v-model="draft[f.key]"
-              class="cfg__input cfg__input--check"
-              type="checkbox"
-            />
-            <input
-              v-else-if="f.kind === 'color'"
-              v-model="draft[f.key]"
-              class="cfg__input cfg__input--color"
-              type="color"
-            />
-            <select
-              v-else-if="f.kind === 'select'"
-              v-model="draft[f.key]"
-              class="cfg__input"
-            >
-              <option v-for="o in f.options" :key="o" :value="o">
-                {{ o }}
-              </option>
-            </select>
-            <input
-              v-else-if="f.kind === 'num'"
-              v-model.number="draft[f.key]"
-              class="cfg__input"
-              type="number"
-              :step="f.step ?? 1"
-            />
-            <input
-              v-else
-              v-model="draft[f.key]"
-              class="cfg__input"
-              type="text"
-            />
-          </label>
-        </template>
-        <div class="cfg__footer">
-          <div class="cfg__stats">
-            {{ gridStats.cols }} × {{ gridStats.rows }} 格 ／
-            {{ gridStats.count.toLocaleString() }} 顆
-          </div>
-          <div v-if="cfgError" class="cfg__error">{{ cfgError }}</div>
-          <div class="cfg__modes">
-            <button
-              v-for="m in MODES"
-              :key="m.value"
-              class="cfg__mode"
-              :class="{ 'cfg__mode--active': mode === m.value }"
-              type="button"
-              @click="mode = m.value"
-            >
-              {{ m.label }}
-            </button>
-          </div>
-          <div class="cfg__actions">
-            <button class="cfg__refresh" type="button" @click="applyRefresh">
-              ↻ Refresh
-            </button>
-            <button class="cfg__export" type="button" @click="exportConfig">
-              {{ exportLabel }}
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -1828,179 +1408,4 @@ onMounted(() => {
   white-space: pre-line; // 吃文案裡的 \n
 }
 
-/* ---------- dev config 面板 ---------- */
-.cfg {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 5;
-  width: 340px;
-  max-width: calc(100% - 24px);
-  font-family: ui-monospace, 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.45;
-  color: #e8e8e8;
-  background: rgba(20, 22, 28, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
-  backdrop-filter: blur(4px);
-  cursor: default;
-  overflow: hidden;
-}
-
-.cfg__toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 8px 12px;
-  font: inherit;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.06);
-  border: 0;
-  cursor: pointer;
-}
-
-.cfg__body {
-  max-height: calc(100vh - 68px);
-  overflow-y: auto;
-  padding: 4px 12px 12px;
-}
-
-.cfg__group {
-  margin: 10px 0 4px;
-  padding-bottom: 2px;
-  font-weight: 700;
-  color: #7fd0ff;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.cfg__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 3px 0;
-}
-
-.cfg__label {
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cfg__input {
-  flex: 0 0 120px;
-  width: 120px;
-  min-width: 0;
-  padding: 2px 4px;
-  font: inherit;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-}
-
-.cfg__input--check {
-  flex-basis: auto;
-  width: 16px;
-  height: 16px;
-}
-
-.cfg__input--color {
-  padding: 0;
-  height: 22px;
-}
-
-.cfg__footer {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 8px;
-  background: rgba(20, 22, 28, 0.9);
-}
-
-.cfg__stats {
-  font-size: 12px;
-  color: #7fd0ff;
-  letter-spacing: 0.04em;
-}
-
-.cfg__error {
-  font-size: 12px;
-  color: #ff9a9a;
-}
-
-.cfg__modes {
-  display: flex;
-  gap: 6px;
-}
-
-.cfg__mode {
-  flex: 1 1 0;
-  padding: 8px 4px;
-  font: inherit;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.cfg__mode:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.cfg__mode--active {
-  color: #10141b;
-  background: #ffb060;
-  border-color: #ffb060;
-}
-
-.cfg__mode--active:hover {
-  background: #ffc281;
-}
-
-.cfg__actions {
-  display: flex;
-  gap: 6px;
-}
-
-.cfg__refresh,
-.cfg__export {
-  flex: 1 1 0;
-  padding: 10px 6px;
-  font: inherit;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: #10141b;
-  border: 0;
-  border-radius: 6px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.cfg__refresh {
-  background: #7fd0ff;
-}
-
-.cfg__refresh:hover {
-  background: #a5e0ff;
-}
-
-.cfg__export {
-  background: #8fe3a0;
-}
-
-.cfg__export:hover {
-  background: #aef0ba;
-}
 </style>
