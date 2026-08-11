@@ -25,6 +25,11 @@ const {
   stairsDone,
   setBlessingOutProgress,
   partnersOpacity,
+  setCoverProgress,
+  coverOrange,
+  coverSeed,
+  coverSeedVisible,
+  coverFaceVisible,
 } = useOrangeCoreProgress();
 
 // 夥伴清單整塊的現身時機。
@@ -57,6 +62,7 @@ const sectionRef = ref<HTMLElement | null>(null);
 const trackRef = ref<HTMLElement | null>(null);
 const innerRef = ref<HTMLElement | null>(null);
 const partnersRef = ref<HTMLElement | null>(null);
+let coverST: ScrollTrigger | null = null;
 let faceST: ScrollTrigger | null = null;
 let outroST: ScrollTrigger | null = null;
 let innerRO: ResizeObserver | null = null;
@@ -124,8 +130,30 @@ onMounted(() => {
   }
   window.addEventListener('resize', syncPartnersHeld, { passive: true });
 
-  if (!trackRef.value) return;
   gsap.registerPlugin(ScrollTrigger);
+
+  // 02 → 03 覆蓋過場：色塊上緣從視窗底緣升到視窗頂緣。
+  // `top bottom` → `top top` 幾何上恆為一個視窗高，不需要（也不該有）長度旋鈕。
+  // trigger 用 sectionRef 而非 trackRef：量的是 section 的上緣 ＝ 色塊上緣 ＝ 接縫。
+  // 與 faceST 首尾相接不重疊：那條的 start（`.section3__face-track` 的 top top）
+  // 就是本條的 end。
+  //
+  // onRefresh 不是可有可無的：header 的 #blessing 是深連結，直接落在段落中段時
+  // onUpdate 不保證會發火 → coverProgress 留在 0 → 使用者看到滿版淺藍色塊。
+  if (sectionRef.value) {
+    coverST = ScrollTrigger.create({
+      trigger: sectionRef.value,
+      start: 'top bottom',
+      end: 'top top',
+      invalidateOnRefresh: true,
+      onUpdate: (self) => setCoverProgress(self.progress),
+      onRefresh: (self) => setCoverProgress(self.progress),
+      onLeaveBack: () => setCoverProgress(0),
+      onLeave: () => setCoverProgress(1),
+    });
+  }
+
+  if (!trackRef.value) return;
   faceST = ScrollTrigger.create({
     trigger: trackRef.value,
     start: 'top top',
@@ -163,6 +191,8 @@ onBeforeUnmount(() => {
   partnersRO = null;
   innerRO?.disconnect();
   innerRO = null;
+  coverST?.kill();
+  coverST = null;
   faceST?.kill();
   faceST = null;
   outroST?.kill();
@@ -176,6 +206,7 @@ onBeforeUnmount(() => {
     ref="sectionRef"
     class="section3"
     data-header-theme="orange"
+    :style="{ '--cover-orange': coverOrange }"
   >
     <!-- ① 逐格臉屏 -->
     <div
@@ -240,7 +271,15 @@ onBeforeUnmount(() => {
   //    同值由 DOM 順序決勝，本段在後、贏。
   z-index: 1;
   margin-top: calc(#{vh()} * -1);
-  background: var(--color-orange);
+  // 藍 → 橘：--cover-orange 由 coverOrangeAt(coverProgress) 餵入（見 script）。
+  // 設計師：「小飛機碰觸到下方色塊時色塊變橘色」→ 接觸點前是淺藍。
+  // fallback 1（純橘）→ SSR 與 trigger 建好之前都不會閃一下藍。
+  // 兩個色都是 token，不寫死色值（test/design-tokens.spec.ts 守著）。
+  background: color-mix(
+    in srgb,
+    var(--color-orange) calc(var(--cover-orange, 1) * 100%),
+    var(--color-blue)
+  );
   color: #fff;
 }
 
@@ -402,6 +441,12 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   gap: 36px;
   width: 507px;
+  // 白字，所以色塊還是淺藍時必須藏著：它的版位在臉屏內約 220px，cover 進度 0.31 就
+  // 進畫面了 —— 比接觸（COVER_CONTACT 0.5）**早**，不擋掉會有一段白字疊在淺藍上。
+  // 直接吃 --cover-orange：與換色同一條曲線 → 底色變橘的同時它現身，正是設計師說的
+  // 「底色變橘時，會看到原本位置的白字標題和引言」。
+  // scrub 驅動，刻意不加 transition（補間會讓每一幀滯後於捲動，手感發黏）。
+  opacity: var(--cover-orange, 1);
 
   @include rwd-max('pc') {
     order: 1;

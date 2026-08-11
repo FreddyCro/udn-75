@@ -19,7 +19,10 @@ import {
   SYMBOL_STOPS,
   FORUM_HANDOFF,
   BLESSING_HOLD,
+  COVER_CONTACT,
+  coverOrangeAt,
   partnersFadeAt,
+  seedTravelAt,
 } from '~/utils/orange-core-config';
 import { FACE_FRAME_COUNT } from '~/utils/blessing-face-frames';
 import { slashDrawAt, type SlashWindow } from '~/utils/forum-slash';
@@ -200,6 +203,31 @@ export function useOrangeCoreProgress() {
     partnersFadeAt(blessingOutProgress.value),
   );
 
+  // coverProgress → 色塊「橘的比例」（曲線見 coverOrangeAt）。
+  // 標題與引言的 opacity 共用同一個值：它們是白字，色塊還是淺藍時必須藏著，
+  // 而「底色變橘就看到白字標題」正是設計師的描述。
+  // 刻意**不**吃 reduceMotion：它是綁在捲動上的換色、不是自走動畫（同 partnersOpacity）。
+  const coverOrange = computed(() => coverOrangeAt(coverProgress.value));
+
+  // 白方塊走完「接縫 → 臉的第 01 格」的比例（曲線見 seedTravelAt）。
+  const coverSeed = computed(() => seedTravelAt(coverProgress.value));
+
+  // 白方塊的顯隱：接觸點起、cover 跑完為止（跑完就換成 BlessingFace 的第 0 格）。
+  // reduceMotion 時整個不出現 —— 那種情形逐格臉直接停在完成的笑臉（見 blessingFrame），
+  // 沒有「第 01 格」可以交棒，方塊沉下去之後會看到完整笑臉硬換上來。
+  const coverSeedVisible = computed(
+    () =>
+      !reduceMotion.value &&
+      coverProgress.value >= COVER_CONTACT &&
+      coverProgress.value < 1,
+  );
+
+  // 逐格臉的 svg 何時現身：cover 跑完（與白方塊交棒，兩者同格同色同位置 → 硬切）。
+  // reduceMotion 時從頭就在（見 coverSeedVisible）。
+  const coverFaceVisible = computed(
+    () => reduceMotion.value || coverProgress.value >= 1,
+  );
+
   return {
     pathProgress,
     transitionProgress,
@@ -231,6 +259,10 @@ export function useOrangeCoreProgress() {
     blessingOutProgress,
     setBlessingOutProgress,
     partnersOpacity,
+    coverOrange,
+    coverSeed,
+    coverSeedVisible,
+    coverFaceVisible,
     stairsDone,
     reduceMotion,
   };
