@@ -18,7 +18,9 @@ const { heading, body, cta } = str.report;
 
     <p class="agenda-report__body">{{ body }}</p>
 
-    <a class="agenda-report__cta" :href="cta.href">{{ cta.label }}</a>
+    <UBtn variant="gray" class="agenda-report__cta" :href="cta.href">
+      {{ cta.label }}
+    </UBtn>
   </section>
 </template>
 
@@ -81,31 +83,24 @@ const { heading, body, cta } = str.report;
   }
 }
 
-// CTA：設計稿 422×74 深灰底白字（非橘色，與議程的 primary 按鈕區隔）。
+// CTA：設計稿 422×74 深灰底白字（非橘色，與議程的 primary 按鈕區隔）——
+// 配色在 <UBtn variant="gray">，這裡只給尺寸與版位。
+// margin 的 auto 置中吃得到，是因為 UBtn 的根節點是 display: grid（block-level）。
 .agenda-report__cta {
-  display: grid;
-  place-items: center;
-  width: 422px;
-  height: 74px;
+  --u-btn-w: 422px;
+  --u-btn-h: 74px;
+
   margin: 40px auto 0;
-  background: var(--color-gray);
-  color: #fff;
-  font-size: 22px;
-  line-height: 36px;
-  letter-spacing: 0.1em;
-  text-decoration: none;
-  text-indent: 0.05em;
 
   @include rwd-max('pc') {
-    width: 296px;
-    height: 70px;
+    --u-btn-w: 296px;
+    --u-btn-h: 70px;
+
     margin-top: 32px;
-    font-size: 18px;
   }
 
   @include rwd-max('tablet') {
-    width: 100%;
-    font-size: 20px;
+    --u-btn-w: 100%;
   }
 }
 </style>

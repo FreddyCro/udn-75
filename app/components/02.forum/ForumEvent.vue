@@ -56,8 +56,11 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
       <p v-if="event.body" class="forum-event__body">{{ event.body }}</p>
 
-      <!-- TODO 報名連結未定，暫用 # 佔位（同 AppHeader 的待補外連）。 -->
-      <a v-if="event.cta" class="forum-event__cta" href="#">{{ event.cta }}</a>
+      <!-- TODO 報名連結未定，暫用 # 佔位（同 AppHeader 的待補外連）。
+           盒子與配色由 <UBtn> 畫，本檔的 .forum-event__cta 只給尺寸與版位。 -->
+      <UBtn v-if="event.cta" variant="primary" class="forum-event__cta" href="#">
+        {{ event.cta }}
+      </UBtn>
     </div>
 
     <!-- 日期／地點／引言：三場的排列差很多，故整層攤平成設計稿座標，各群組自行定位。 -->
@@ -471,45 +474,36 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   }
 }
 
-// CTA：設計稿 y=542。
+// CTA：設計稿 y=542。盒子與配色都在 <UBtn>（variant="primary"），這裡只給尺寸與版位。
+//
+// ⚠️ 這個 class 是 ForumCorePath 的量測錨點（~/utils/forum-node-path 的 W12／R3／S3，
+//    讀它的 rect 定位）—— 盒子幾何一動，那條橘核心設計線就跟著偏。
 .forum-event__cta {
-  display: grid;
-  place-items: center;
-  width: 371px;
-  height: 80px;
+  --u-btn-w: 371px;
+  --u-btn-h: 80px;
+
   margin: 32px 0 0;
-  background: var(--accent);
-  color: #fff;
-  font-size: 22px;
-  line-height: 36px;
-  letter-spacing: 0.1em;
-  text-decoration: none;
-  text-indent: 0.05em;
 
   @include rwd-max('pc') {
-    width: 296px;
-    height: 70px;
-    font-size: 18px;
+    --u-btn-w: 296px;
+    --u-btn-h: 70px;
   }
 
   // mob：滿版且排到最後（見 .forum-event__head 的 display: contents）。
   @include rwd-max('tablet') {
+    --u-btn-w: 100%;
+
     order: 1;
-    width: 100%;
-    font-size: 20px;
   }
 
-  // 論壇四的按鈕在 pc 稿是 440 寬；pad／mob 與論壇二同尺寸，但仍要明寫回去
-  // （同 __body 的理由：這一層特異度較高，會蓋掉基底 rwd 區塊的值）。
+  // 論壇四的按鈕在 pc 稿是 440 寬（pad／mob 與論壇二同尺寸）。
+  // 改吃 CSS 變數後這裡只覆蓋 pc 那一個值就夠 —— 原本得把 pad／mob 的寬度再寫一次，
+  // 是因為 width 會被 `.forum-event--youth .forum-event__cta`（0,2,0）壓過基底的
+  // rwd 區塊（0,1,0）；現在用 rwd-min('pc') 限定在 pc 區間，與基底的 rwd-max('pc')
+  // 不重疊，特異度陷阱就消失了（同 __body 仍有的那個坑）。
   .forum-event--youth & {
-    width: 440px;
-
-    @include rwd-max('pc') {
-      width: 296px;
-    }
-
-    @include rwd-max('tablet') {
-      width: 100%;
+    @include rwd-min('pc') {
+      --u-btn-w: 440px;
     }
   }
 }

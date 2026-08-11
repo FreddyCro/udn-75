@@ -107,7 +107,7 @@ const props = defineProps({
    *     這一段白→橘讓接棒不再需要 crossfade：兩顆同色同尺寸同位置，直接硬切。 */
   convergeColor: {
     type: String,
-    default: `#${CORE.orange.map((v) => v.toString(16).padStart(2, '0')).join('')}`,
+    default: CORE_ORANGE_HEX,
   },
   /** 匯聚的「速差」：每顆粒子起跑點的散佈比例（0..0.9）。
    *  0 ＝ 全員同步收攏 —— 那等同對原點做等比縮放，看起來是「整張臉變小」而不是
@@ -184,8 +184,8 @@ const props = defineProps({
   gridCols: { type: Number, default: 3 },
   /** 宮格列數（縱向切幾格） */
   gridRows: { type: Number, default: 2 },
-  /** 彩蛋文字顏色 */
-  phraseColor: { type: String, default: '#ffffff' },
+  /** 彩蛋文字顏色。設計稿 Figma 1145:41559：main/orange（＝ CORE.orange） */
+  phraseColor: { type: String, default: CORE_ORANGE_HEX },
 
   /** 是否在場：false → 停掉 rAF 迴圈（不做物理積分、不上傳 buffer、不 render）。
    *  ⚠️ 為什麼需要這個 prop、而不是在元件內自己判斷：本元件在 Hero 是住在
@@ -199,8 +199,15 @@ const props = defineProps({
 
   /** PC 互動提示文字（空字串＝不顯示）。換行用 \n，樣式端以 white-space: pre-line 呈現。
    *  設計稿 Figma 2065:139734：圓環圖示 + 兩行說明，錨在人像右下角。
-   *  只在 ≥1280px 出現（樣式端擋），且游標真的碰到人像後永久收起。 */
+   *  只在 ≥1280px 出現（樣式端擋），且游標真的碰到人像就收起（收多久見 hintOnce）。 */
   hint: { type: String, default: '' },
+  /** 提示是否「整個生命週期只出現一次」。
+   *  false（預設）＝ 每次**重新完整集合**都再出現一次；游標碰到人像仍立即收起，
+   *    但那次收起只對這一輪集合有效（見 faceFormed 的 watch）。
+   *    捲回去重看、或散場後再聚回來的使用者，會重新拿到這個提示。
+   *  true ＝ 碰過一次就永久收起，之後再怎麼重新集合都不再出現（提示是教學，學會就不該再打擾）。
+   *  ⚠️ 兩種模式都不受 resize / 離開視窗影響，差別只在「重新集合時要不要復原」。 */
+  hintOnce: { type: Boolean, default: false },
 });
 
 // 色票字串 → uniform 用的 vec3，**不做色彩空間轉換**。
@@ -237,8 +244,10 @@ const runScramble = (target: string) => {
     let s = '';
     for (let i = 0; i < target.length; i++) {
       const ch = target[i]!;
+      // 換行字元不參與亂碼：文案的斷行是設計稿定死的（Figma 1145:41559），
+      // 若讓 \n 被換成一般字元，跑亂碼那 0.48 秒整塊會先塌成一行再彈回四行。
       s +=
-        i < revealed || ch === ' '
+        i < revealed || ch === ' ' || ch === '\n'
           ? ch
           : GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
     }
@@ -263,6 +272,16 @@ let disperseFn: ((animated?: boolean) => void) | null = null;
 
 // 狀態改變時，可逆地補間 uDisperse / uConverge（0↔1）
 watch(mode, () => disperseFn?.(true));
+
+// 「完整集合」：mode 是 face、首次進場的 reveal 已跑完（uProgress=1）、且 uDisperse /
+// uConverge 都已回到 0。由 animate() 每幀依 uniform 實況推導（只在真的變動時才寫入，
+// 故不是每幀觸發 re-render），迴圈停下時一律為 false（見 stopLoop）。
+//
+// ⚠️ 不能改用 mode 判斷 —— mode 是「指令」不是「狀態」：翻成 face 的那一刻粒子還散在
+//    半個畫面，要 disperseDuration(2.2s) 補間才聚攏；首次進場另有 revealDuration(3s)
+//    的 uProgress 0→1。彩蛋與 PC 提示都是「臉已經在那裡」才成立的互動邀請，
+//    集合途中就出現等於指著一團還在飛的粒子說「移動游標」。
+const faceFormed = ref(false);
 
 // 父層告知「本層是否在場」→ 重算執行閘門（onMounted 內指派，見 shouldRun / syncRunning）
 let syncActive: (() => void) | null = null;
@@ -334,52 +353,35 @@ const applyColors = (next: Record<string, any>) => {
 };
 
 // ---------- PC 互動提示 ----------
-// 顯示條件三個都要成立：mode 是 face（且粒子已集合完）、尚未 dismiss、視窗 ≥1280（樣式端擋）。
+// 顯示條件三個都要成立：人臉已完整集合（faceFormed）、尚未 dismiss、視窗 ≥1280（樣式端擋）。
 // 位置由 onMounted 內把人像 bbox 右下角投影到螢幕算出，null ＝ 人像還沒建好、先不渲染。
 const hintVisible = ref(false);
 const hintPos = ref<{ x: number; y: number } | null>(null);
 // 非 reactive：只有 animate() 熱迴圈讀寫，不需要觸發 re-render（真正驅動畫面的是 hintVisible）。
 let hintDismissed = false;
-let hintTimer: ReturnType<typeof setTimeout> | null = null;
 
-const clearHintTimer = () => {
-  if (hintTimer) {
-    clearTimeout(hintTimer);
-    hintTimer = null;
-  }
-};
-
-/** 游標真的碰到人像 → 永久收起（離開、捲回、resize 都不復原：提示是教學，學會就不該再打擾）。 */
+/** 游標真的碰到人像 → 收起。收多久由 hintOnce 決定：
+ *  once ＝ 永久；非 once ＝ 只到下次重新集合為止（重置點在 faceFormed 的 watch）。 */
 const dismissHint = () => {
   hintDismissed = true;
-  clearHintTimer();
   hintVisible.value = false;
 };
 
-// ⚠️ 延遲 cfg.disperseDuration 才淡入：mode 翻成 face 的當下，粒子還要 2.2s 才聚成人臉，
-//    提早出現等於指著一團散沙說「移動游標」。離開 face（捲回或前進 converge）立即隱藏。
-// props.hint 是從 section1.json 靜態 import 的常數，故不納入 watch source；
-// 若之後改成動態文案（例如 CMS/可切換語系），需一併把 props.hint 加進來追蹤。
-watch(
-  mode,
-  (m) => {
-    clearHintTimer();
-    if (hintDismissed || !props.hint || m !== 'face') {
-      hintVisible.value = false;
-      return;
-    }
-    // { immediate: true } 的 watch 在 SSR 也會同步執行這個 callback（Vue 只跳過非 immediate 的），
-    // 但 SSR 沒有 onBeforeUnmount 可以清 timer，排下去的 setTimeout 會連同整個元件 scope 活過整個 request，
-    // 所以排計時器這一步只在 client 做。
-    if (import.meta.client) {
-      hintTimer = setTimeout(() => {
-        hintVisible.value = true;
-      }, cfg.disperseDuration * 1000);
-    }
-  },
-  { immediate: true },
-);
-onBeforeUnmount(clearHintTimer);
+// 綁 faceFormed 而不是 mode：粒子真的聚成人臉那一刻才淡入，離開集合態（捲回 disperse、
+// 前進 converge、或捲出視窗停掉迴圈）立即隱藏。
+// ⚠️ 這裡不再排 setTimeout —— 舊寫法是「mode 翻成 face 後等 disperseDuration」去**猜**
+//    集合完成的時間點：猜不到首次進場的 revealDuration、也猜不到補間被 kill/重跑
+//    （見 disperseFn 的 killTweensOf）或迴圈中途被停掉的情形。
+// props.hint / props.hintOnce 都是靜態常數（文案從 section1.json import，once 由父層寫死），
+// 故不納入 watch source；若之後改成動態值，需一併加進來追蹤。
+watch(faceFormed, (formed) => {
+  // 非 once：離開集合態時把「已收起」還原 → 下一次完整集合會再出現一次。
+  // ⚠️ 重置點放在**離開**而不是**進入**集合態：進入那一刻重置的話，
+  //    dismissHint 與這裡會在同一輪集合內互踩 —— 游標一停在人像上，
+  //    收起與復原會輪流發生，提示變成閃爍。
+  if (!formed && !props.hintOnce) hintDismissed = false;
+  hintVisible.value = formed && !hintDismissed && !!props.hint;
+});
 
 
 onMounted(() => {
@@ -1166,10 +1168,21 @@ onMounted(() => {
       dispAttr.needsUpdate = true;
     }
 
-    // 游標在人像 bbox 內的正規化座標（只在集合狀態、influence 夠高時才算）。
+    // 「完整集合」判定（見 faceFormed 宣告處）：三個 uniform 的實況，不是 mode 這道指令。
+    // 用容差而非 ===：補間若被 killTweensOf 中途換掉，殘值可能停在 1e-8 這種量級。
+    // 只在真的變動時才寫 ref → 每幀讀 .value 是純 getter，不會觸發 re-render。
+    const formedNow =
+      mode.value === 'face' &&
+      !!mat &&
+      mat.uniforms.uProgress!.value >= 0.999 &&
+      mat.uniforms.uDisperse!.value <= 0.001 &&
+      mat.uniforms.uConverge!.value <= 0.001;
+    if (formedNow !== faceFormed.value) faceFormed.value = formedNow;
+
+    // 游標在人像 bbox 內的正規化座標（只在**完整集合**、influence 夠高時才算）。
     // 宮格彩蛋與 PC 提示共用這一份判定，見 ~/utils/symbol-hint。
     const onFace =
-      mode.value === 'face' && influence > FACE_HOVER_INFLUENCE
+      formedNow && influence > FACE_HOVER_INFLUENCE
         ? faceUv(smoothMouse.x, smoothMouse.y, halfW, halfH)
         : null;
 
@@ -1226,6 +1239,9 @@ onMounted(() => {
     running = false;
     cancelAnimationFrame(raf);
     raf = 0;
+    // 迴圈停了就沒人再推導 faceFormed，得在這裡收掉：否則捲出視窗（或父層撤下本層）時
+    // 它會凍在 true，PC 提示跟著留在畫面上，捲回來又被 rewindRevealIfRunning 打回未集合。
+    faceFormed.value = false;
     // 位移/速度歸零：下次恢復時粒子直接在原位，不會從上次被游標撞開的地方 ease 回來。
     if (dispArr && velArr && dispAttr) {
       dispArr.fill(0);
@@ -1388,18 +1404,24 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
   cursor: crosshair;
 }
 
-/* 彩蛋文字：定位/透明度由 JS 每幀以 transform/opacity 控制 */
+/* 彩蛋文字：定位/透明度由 JS 每幀以 transform/opacity 控制。
+   設計稿 Figma 1145:41559：Noto Sans TC Regular 20 / 32、字距 0、main/orange、置中。
+   顏色不寫在這裡 —— 由 phraseColor prop 以 inline style 寫進 el.style.color（面板可即時改），
+   inline style 本來就蓋過這條規則，寫了也只是死碼。
+   ⚠️ white-space: pre 而非 pre-line：稿上每行都是 nowrap、斷行位置由文案的 \n 定死
+   （見 locales/section1.json 的 symbol.phrases），不可讓容器寬度自己再折一次。
+   同理不設 max-width —— 那會讓最長的「永遠不會被AI取代」在窄視窗被折斷。 */
 .egg {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 2;
-  max-width: 16em;
-  font-size: clamp(14px, 1.4vw, 20px);
-  font-weight: 600;
-  line-height: 1.5;
-  letter-spacing: 0.02em;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 32px;
+  letter-spacing: 0;
   text-align: center;
+  white-space: pre;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.25s ease;

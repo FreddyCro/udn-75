@@ -116,7 +116,8 @@ onBeforeUnmount(() => {
           :key="anchor.target"
           class="app-header-menu__link"
           :class="{
-            'app-header-menu__link--active': isHome && activeTarget === anchor.target,
+            'app-header-menu__link--active':
+              isHome && activeTarget === anchor.target,
           }"
           :href="isHome ? `#${anchor.target}` : `/#${anchor.target}`"
           :tabindex="open ? 0 : -1"
@@ -161,21 +162,45 @@ onBeforeUnmount(() => {
   opacity: 0.2;
 }
 
+// 面板高度是「宣告」出來的，不是被內容 padding 撐出來的：
+//   height    = 100%（＝視窗高 − 3px 進度條）− 面板底緣到視窗底的留白（mob 稿 165 / pad 稿 230）
+//   max-height= 設計稿面板高，視窗再高也不超過（mob 568 / pad 793）
+// 內容則一端各自貼齊：__nav 靠 padding-top 貼上、__share 靠 margin-top:auto 貼下。
+// 這樣日後只改上面兩個數字，內部間距不會跟著位移。
+// min-height 保底：極矮視窗（如手機橫向）算出的高度小於內容時不裁切。
 .app-header-menu__panel {
   position: relative;
-  // 高度由內容撐出，不寫死 568：頂端讓開 header 主列，底部留 30
+  display: flex;
+  justify-content: space-between;
+  flex-direction: column;
+  height: calc(100% - 165px);
+  min-height: fit-content;
+  max-height: 568px;
   padding: calc(var(--header-height) - 3px) 32px 30px;
   background-color: #fff;
+
+  @include rwd-min('tablet') {
+    height: calc(100vh - 80px);
+    max-height: 793px;
+    padding-bottom: 40px; // 793.5 − 753（icon 底緣）
+  }
 
   // 面板恆為白底，故覆寫 --hd-fg 而非跟 AppHeaderShare 搶 color 的特異度
   --hd-fg: var(--color-gray-light);
 }
 
+// 錨點列貼面板上緣：padding-top ＝ 稿上首個錨點 y − header 主列高（已由 panel 的 padding-top 佔掉）
 .app-header-menu__nav {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  padding-bottom: 16px;
   gap: 36px;
-  padding-top: 86px; // 166 − 80（header 主列已由 panel 的 padding-top 佔掉）
+
+  @include rwd-min('tablet') {
+    padding-bottom: 92px;
+  }
 }
 
 .app-header-menu__link {
@@ -190,9 +215,9 @@ onBeforeUnmount(() => {
     content: '';
     position: absolute;
     right: 0;
-    bottom: -4px;
+    bottom: -12px;
     left: 0;
-    height: 3px;
+    height: 4px;
     background-color: var(--color-orange);
     transform: scaleX(0);
     transition: transform 0.2s ease;
@@ -203,8 +228,10 @@ onBeforeUnmount(() => {
   }
 }
 
+// 分享列貼面板下緣（padding-bottom 之上）。不寫死與錨點列的間距，
+// 面板高度一改就自己跟著走 —— 稿上的 mob 104 / pad 253 會自然算出來。
 .app-header-menu__share {
-  margin-top: 104px; // 505 − 401
+  margin-top: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {

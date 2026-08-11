@@ -52,7 +52,7 @@ const { transitionProgress, setTransitionProgress, symbolMode, symbolLayerDone }
 //
 // 斷點 767.98 對齊 mixins.scss 的 rwd-max('tablet')；用 matchMedia 而非 resize，
 // 手機網址列收合不會誤觸（那只改高度）→ 只有真的跨斷點/轉向才重建粒子。
-const SYMBOL_WORLD_SCALE = { pc: 0.8, mob: 0.6 };
+const SYMBOL_WORLD_SCALE = { pc: 0.9, mob: 0.6 };
 const MOB_QUERY = '(max-width: 767.98px)';
 // client 端在 setup 就同步取值 → 不會先用桌機值建一次粒子再重建。
 // worldScale 不出現在 DOM 上，故 SSR(false) 與 client 首次求值不同也不會 hydration mismatch。

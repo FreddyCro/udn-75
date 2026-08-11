@@ -208,6 +208,17 @@ export const CORE = {
   orange: [255, 127, 0] as [number, number, number],
 };
 
+// CORE.orange 的 CSS hex 形式（＝ tailwind.css 的 --color-orange）。
+// 需要色字串而非 rgb 三元組的地方用這個：SymbolFace 的 convergeColor（WebGL uniform）
+// 與 phraseColor（彩蛋文字，寫進 el.style.color）。
+// ⚠️ 住在這裡而不是 SymbolFace.vue 內：那邊要拿它當 defineProps 的 default，
+//    而 defineProps 會被提升到 setup() 外 —— 只吃得到模組層的 import，
+//    <script setup> 裡宣告的 const 會編譯失敗。
+// ⚠️ 也不寫成 '#ff7f00' 字面量：test/design-tokens.spec.ts 守著「token 色值不重複寫死」。
+export const CORE_ORANGE_HEX = `#${CORE.orange
+  .map((v) => v.toString(16).padStart(2, '0'))
+  .join('')}`;
+
 // ── 論壇段紙飛機 ─────────────────────────────────────────────────────
 // node：變身節點（後半段的節點編號逐斷點不同）。morphLen：九格走完的弧長。
 // tailLen：彗星尾長度（稿上尾跡的弧長）。dash：稿值，線寬吃 FORUM_PATH_STROKE。

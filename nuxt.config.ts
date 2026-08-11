@@ -38,6 +38,9 @@ export default defineNuxtConfig({
     { path: '~/components/03.blessing', pathPrefix: false },
     { path: '~/components/04.media', pathPrefix: false },
     { path: '~/components/05.subpage', pathPrefix: false },
+    // ui/：跨 section 共用的無語意元件（UBtn…）。同樣要 pathPrefix: false，
+    // 否則會被最後那筆 '~/components'（預設 pathPrefix: true）命名成 <UiUBtn>。
+    { path: '~/components/ui', pathPrefix: false },
     '~/components',
   ],
 

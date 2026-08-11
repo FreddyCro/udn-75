@@ -11,6 +11,7 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section2.json';
+import type { UBtnVariant } from '~/types/ui';
 
 const { groups, actions } = str.agenda;
 
@@ -132,16 +133,18 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- 議程 CTA：設計稿兩顆並排置中。variant 決定橘框（outline）或橘底（primary）。 -->
+    <!-- 議程 CTA：設計稿兩顆並排置中。variant 決定框線款（outline）或橘底（primary），
+         兩者的配色都在 <UBtn>，本檔的 .agenda__action 只給尺寸與 flex 版位。 -->
     <div class="agenda__actions">
-      <a
+      <UBtn
         v-for="(action, i) in actions"
         :key="i"
         class="agenda__action"
-        :class="`agenda__action--${action.variant}`"
+        :variant="action.variant as UBtnVariant"
         :href="action.href"
-        >{{ action.label }}</a
       >
+        {{ action.label }}
+      </UBtn>
     </div>
   </div>
 </template>
@@ -417,46 +420,22 @@ onBeforeUnmount(() => {
   }
 }
 
-// 字級比照 <ForumEvent> 的 .forum-event__cta；
-// letter-spacing 會在末字後多留一格，text-indent 補回一半才視覺置中。
+// 盒子、字級與兩款配色都在 <UBtn>（variant outline／primary），這裡只給尺寸與 flex 版位。
 .agenda__action {
-  display: grid;
-  place-items: center;
-  width: 414px;
-  height: 76px;
-  font-size: 22px;
-  line-height: 36px;
-  letter-spacing: 0.1em;
-  text-decoration: none;
-  text-indent: 0.05em;
+  --u-btn-w: 414px;
+  --u-btn-h: 76px;
 
-  &--outline {
-    border: 1px solid var(--accent);
-    color: var(--accent);
-
-    // pad／mob 稿的「下載完整議程」是深灰細框、深灰字（與橘色的報名鈕拉開層級）。
-    @include rwd-max('pc') {
-      border-color: var(--color-gray);
-      color: var(--color-gray);
-      font-weight: 300;
-    }
-  }
-
-  &--primary {
-    background: var(--accent);
-    color: #fff;
-  }
-
+  // pad：兩顆各自均分 608 的內容寬（故寬度交給 flex，不給固定值）。
   @include rwd-max('pc') {
+    --u-btn-w: auto;
+    --u-btn-h: 70px;
+
     flex: 1 1 0;
-    width: auto;
-    height: 70px;
-    font-size: 18px;
   }
 
+  // mob：.agenda__actions 轉直排，寬度由 flex 的 stretch 撐滿。
   @include rwd-max('tablet') {
     flex: 0 0 auto;
-    font-size: 20px;
   }
 }
 
