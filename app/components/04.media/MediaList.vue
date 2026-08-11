@@ -16,7 +16,7 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
 </script>
 
 <template>
-  <!-- 01–04 清單：編號＋標題：副標＋單位／作者，hover 放大（frame 76） -->
+  <!-- 01–04 清單：編號＋標題：副標，hover 放大（frame 76） -->
   <ol class="media__list">
     <li
       v-for="(a, i) in subpageAnchors"
@@ -25,8 +25,7 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
       class="media__item"
     >
       <NuxtLink class="media__row" :to="a.url">
-        <!-- text 在 pad 以上攤平成 grid 欄位（display: contents），
-             mob 稿收成直排文字塊；break 只在 mob 稿於「：」後換行 -->
+        <!-- 文字塊（編號＋標題，hover 整塊 scale）；break 只在 mob 稿於「：」後換行 -->
         <span class="media__text">
           <!-- 編號藝術字（同 SubpageAnchor：mask 上色，資料共用 numImg） -->
           <span
@@ -37,8 +36,6 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
           <span class="media__row-title"
             >{{ a.title }}：<br class="media__break" />{{ a.subtitle }}</span
           >
-          <!-- 單位／作者合併一則：pad 以上在標題右側自成一欄、mob 移到標題下方 -->
-          <span class="media__author">{{ a.unit }}／{{ a.author }}</span>
         </span>
         <img
           class="media__arrow"
@@ -96,12 +93,20 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
   }
 }
 
-// 文字塊：mob 稿直排
+// 文字塊：hover 整塊（編號＋標題）scale 放大 —— transform 走合成器、不觸發
+// reflow 才不卡頓（作者欄已移除，不再需要 font-size 真實佔位去推擠右欄）；
+// scale 不佔版面，列高與分隔線全程不動
 .media__text {
   display: block;
+  transform-origin: left center;
+  transition: transform 0.25s ease;
+
+  .media__row:hover & {
+    transform: scale(1.36); // ≈ 22 → 30px（對稿 hover 態字級）
+  }
 }
 
-// 編號藝術字：高度＝文字行高，hover 以尺寸放大（真實佔位）
+// 編號藝術字：高度＝文字行高（hover 隨 .media__text 整塊 scale，不再各自變高）
 .media__num {
   display: inline-block;
   height: 18px;
@@ -111,11 +116,6 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
   -webkit-mask: var(--mask) no-repeat left center / contain;
   vertical-align: -3px;
   margin-right: 4px;
-  transition: height 0.25s ease;
-
-  .media__row:hover & {
-    height: 30px; // ≈1.25 倍
-  }
 
   @include rwd-min('mobile') {
     height: 22px;
@@ -129,13 +129,7 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
 .media__row-title {
   font-size: var(--text-body); // 18
   line-height: 30px;
-  font-weight: 400;
-  // hover 改 font-size 而非 transform：真實佔位，flex 會把作者列往右推
-  transition: font-size 0.25s ease;
-
-  .media__row:hover & {
-    font-size: 30px; // 20 × 1.51（行高固定 46，列高不跳動）
-  }
+  font-weight: 300;
 
   @include rwd-min('mobile') {
     font-size: 22px;
@@ -150,24 +144,6 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
 // mob 稿標題固定於「：」後換行（pad 以上單行）
 .media__break {
   @include rwd-min('tablet') {
-    display: none;
-  }
-}
-
-// 單位／作者：mob 稿置於標題下方，pad 以上在標題右側自成一欄
-//（pad 欄寬 260 允許折行；pc 欄寬 350 單行）
-.media__author {
-  display: block;
-  margin-top: 8px;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 300;
-
-  @include rwd-min('tablet') {
-    margin-top: 0;
-  }
-
-  @include rwd-min('pc') {
     display: none;
   }
 }
