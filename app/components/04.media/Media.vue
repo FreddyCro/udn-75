@@ -70,7 +70,17 @@ useMediaIntroMotion({
 </script>
 
 <template>
-  <section id="media" ref="sectionRef" class="media" data-metaball-scope>
+  <!-- data-header-theme 預設 light：屬性必須在 SSR 輸出裡就存在，AppHeader 才會在
+       onMounted 的一次性 querySelectorAll 收到本元素；值由 useMediaIntroMotion 在
+       捲動中接管（拍 0 期間畫面上緣是整片橘 → orange）。reduced-motion 與 /#media
+       兩條降級路徑不建 timeline、橘塊不出現，留在 light 天然正確。 -->
+  <section
+    id="media"
+    ref="sectionRef"
+    class="media"
+    data-metaball-scope
+    data-header-theme="light"
+  >
     <!-- sticky 畫面組：hold 期間整組（含摺疊線下的清單）定住不動 -->
     <div ref="holdRef" class="media__hold">
         <!-- 互動底紋 -->

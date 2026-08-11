@@ -7,6 +7,13 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  HIDE_Y,
+  blockState,
+  stageBeats,
+  stageLines,
+  type StageBlockState,
+} from '@/utils/subpage-stage-beats';
 import type { IntroMediaImage, IntroMediaVideo } from './SubpageIntroMedia.vue';
 
 export interface SubpageNavData {
@@ -18,7 +25,7 @@ export interface SubpageNavData {
  * 引言之後的滿屏媒體（舞台第三拍）。二選一：
  * - images：多張照片自動輪播，每張各自帶圖說
  * - video：單支影片
- * 兩者皆空（或 src 為空字串）＝ 該頁不放媒體，舞台維持 hero／引言兩拍。
+ * 兩者皆空（或 src 為空字串）＝ 該頁不放媒體，舞台只剩 hero／引言，pin 距離收回一屏。
  */
 export interface SubpageIntroMediaData {
   images?: IntroMediaImage[];
@@ -90,15 +97,6 @@ const mediaActive = ref(true);
 // hero 進場：由下往上、透明度 0→100%，0.4s
 const REVEAL = { autoAlpha: 0, y: 200, duration: 0.4, ease: 'power2.out' };
 
-/**
- * 舞台一「拍」＝捲過一屏；拍內過 BEAT_OUT 送走前一塊、過 BEAT_IN 迎進下一塊
- * （兩條線間隔小，快速捲過≈交叉淡化）。
- * 有 introMedia 就是兩拍（hero → 引言 → 媒體），pin 距離同步加長成 200%，
- * 所以門檻要除以拍數才會落在同樣的「每屏 0.35 / 0.5」節奏上。
- */
-const BEAT_OUT = 0.35;
-const BEAT_IN = 0.5;
-
 let tweens: gsap.core.Tween[] = [];
 let triggers: ScrollTrigger[] = [];
 
@@ -111,12 +109,25 @@ function makeFade(targets: HTMLElement[]) {
       : tweens.push(
           gsap.to(targets, { autoAlpha: 1, y: 0, duration: 0.4, ease: 'power2.out', overwrite: 'auto' }),
         );
-  const hide = (y: number, instant = false) =>
-    instant
-      ? gsap.set(targets, { autoAlpha: 0, y, overwrite: 'auto' })
-      : tweens.push(
-          gsap.to(targets, { autoAlpha: 0, y, duration: 0.4, ease: 'power2.in', overwrite: 'auto' }),
-        );
+  /** onComplete 在淡出真的播完才呼叫（instant 則立即）：給「等看不見了再收拾」的副作用用。
+   *  被 overwrite 接手而中止的 tween 不會觸發，所以淡出中途改回淡入不會誤收。 */
+  const hide = (y: number, instant = false, onComplete?: () => void) => {
+    if (instant) {
+      gsap.set(targets, { autoAlpha: 0, y, overwrite: 'auto' });
+      onComplete?.();
+      return;
+    }
+    tweens.push(
+      gsap.to(targets, {
+        autoAlpha: 0,
+        y,
+        duration: 0.4,
+        ease: 'power2.in',
+        overwrite: 'auto',
+        onComplete,
+      }),
+    );
+  };
   /** 跳捲回到 hero 時重播進場（由下往上淡入，與載入進場一致） */
   const reveal = () =>
     tweens.push(
@@ -167,30 +178,26 @@ onMounted(async () => {
 
   // 載入即播 hero 進場；後面兩塊先藏著等進度線
   if (heroTargets.length) tweens.push(gsap.from(heroTargets, REVEAL));
-  gsap.set(introTarget, { autoAlpha: 0, y: 200 });
+  gsap.set(introTarget, { autoAlpha: 0, y: HIDE_Y.before });
   // 沒有第三拍時 mediaTarget 是空陣列，gsap 會警告 target not found
-  if (mediaTarget.length) gsap.set(mediaTarget, { autoAlpha: 0, y: 200 });
+  if (mediaTarget.length) gsap.set(mediaTarget, { autoAlpha: 0, y: HIDE_Y.before });
 
   /**
    * 舞台 pin 的距離＝拍數 × 一屏：各塊疊在這幾屏內依序交接，
    * 滾動進度只當開關（各 0.4s，回捲反向）。交接發生在原地，
    * 不需要捲過每塊各自的 100vh，就不會有空白捲動段。
+   * 各條線的算式與用意見 utils/subpage-stage-beats。
    */
-  const beats = mediaTarget.length ? 2 : 1;
-  /** 第 beat 拍（0-based）的第 offset 條線，換算成整段 pin 的進度值 */
-  const line = (beat: number, offset: number) => (beat + offset) / beats;
-  const HERO_OUT = line(0, BEAT_OUT);
-  const INTRO_IN = line(0, BEAT_IN);
-  const INTRO_OUT = line(1, BEAT_OUT);
-  const MEDIA_IN = line(1, BEAT_IN);
+  const beats = stageBeats(mediaTarget.length > 0);
+  const lines = stageLines(beats);
 
   // 進 pin 版型後媒體先歸位到「還沒輪到」，由下方進度線接手
   mediaActive.value = false;
 
   let heroShown = true;
-  // 引言有三態：before＝還沒進場（藏在下方）、shown、after＝已被媒體接手（往上送走）
-  let introState: 'before' | 'shown' | 'after' = 'before';
-  let mediaShown = false;
+  // 引言與媒體同為三態（見 blockState）；hero 一開始就在演，只有 shown/退場兩態
+  let introState: StageBlockState = 'before';
+  let mediaState: StageBlockState = 'before';
   // ⚠️ 首頁 → 子頁換的是 layout，Nuxt 的 scrollBehavior 會等 layout 轉場結束才回捲到頂，
   //    同步狀態（不播過場），跳回 hero 則重播進場 → 只留「hero 淡入」。
   let lastScroll: number | null = null; // null = 尚未收到 update，初次一律視為跳捲
@@ -208,33 +215,36 @@ onMounted(async () => {
             lastScroll === null || Math.abs(sc - lastScroll) > window.innerHeight;
           lastScroll = sc;
           const p = self.progress;
-          if (heroShown && p >= HERO_OUT) {
+          if (heroShown && p >= lines.heroOut) {
             heroShown = false;
-            heroFade.hide(-120, jumped);
-          } else if (!heroShown && p < HERO_OUT) {
+            heroFade.hide(HIDE_Y.after, jumped);
+          } else if (!heroShown && p < lines.heroOut) {
             heroShown = true;
             if (jumped) heroFade.reveal();
             else heroFade.show();
           }
 
-          // 沒有第三拍時 INTRO_OUT 落在 1 之後，永遠進不了 after，行為與原本相同
-          const wantIntro =
-            p < INTRO_IN ? 'before' : p >= INTRO_OUT ? 'after' : 'shown';
+          // 沒有第三拍時 introOut 落在 1 之後，永遠進不了 after，行為與加入媒體前相同
+          const wantIntro = blockState(p, lines.introIn, lines.introOut);
           if (wantIntro !== introState) {
             introState = wantIntro;
             if (wantIntro === 'shown') introFade.show(jumped);
-            // before 藏回下方（回捲時原路退回）、after 往上送走（與 hero 退場同向）
-            else introFade.hide(wantIntro === 'before' ? 200 : -120, jumped);
+            else introFade.hide(HIDE_Y[wantIntro], jumped);
           }
 
-          if (!mediaShown && p >= MEDIA_IN) {
-            mediaShown = true;
-            mediaActive.value = true;
-            mediaFade.show(jumped);
-          } else if (mediaShown && p < MEDIA_IN) {
-            mediaShown = false;
-            mediaActive.value = false;
-            mediaFade.hide(200, jumped);
+          const wantMedia = blockState(p, lines.mediaIn, lines.mediaOut);
+          if (wantMedia !== mediaState) {
+            mediaState = wantMedia;
+            if (wantMedia === 'shown') {
+              mediaActive.value = true;
+              mediaFade.show(jumped);
+            } else {
+              // 輪播要等淡出播完才停，否則會在淡出途中倒回第一張（被看見）；
+              // 停播即倒回第一張，回捲重看時才會從頭演（見 SubpageIntroMedia 的 active）
+              mediaFade.hide(HIDE_Y[wantMedia], jumped, () => {
+                mediaActive.value = false;
+              });
+            }
           }
         },
         // pin 結束＝舞台演完 → 錨點列於視窗下緣滑入；回捲進 pin 段則收回

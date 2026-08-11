@@ -45,8 +45,18 @@ interface MediaIntroMotionTargets {
  */
 export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   const route = useRoute();
-  // scrub 行程（px）＝sticky 定住距離＝buffer 高度
-  const HOLD_BUFFER = 2000;
+  // scrub 行程（px）＝sticky 定住距離＝buffer 高度。
+  // 2026-08-11：2000 → 2180。前面插了拍 0（滿版 → BLOCK_VW，長 NARROW_DUR），
+  // timeline 總長 pc 5.1 → 5.55、mob 4.8 → 5.25（mob 無 bar，phase2 少 0.3）。
+  // 等比加長是為了讓既有每一拍的 px 速度不變（pc 原 392 px/單位）；兩個斷點的
+  // px/拍 本來也不相等，這裡不改變那件事。
+  //
+  // ⚠️ 改 NARROW_DUR 要一起改這裡，否則等於連帶改了後面每一拍的速度：
+  //    HOLD_BUFFER ≈ (5.1 + NARROW_DUR) × 392
+  const HOLD_BUFFER = 2180;
+  // 拍 0 的長度，同時是 header 翻 light 的門檻（見 st 的 onUpdate）。
+  // 0.45 ＝ 約 20vh 的收窄行程（0.45 / 5.55 × 2180 ≈ 177px）。
+  const NARROW_DUR = 0.45;
   let tl: gsap.core.Timeline | null = null;
   let st: ScrollTrigger | null = null;
 
@@ -72,7 +82,9 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const isMob = window.matchMedia('(max-width: 767.98px)').matches;
     // 分鏡素材相對定位態標題的放大倍率（mob 素材同寸、定版標題較小 → 倍率較大）
     const SCALE = isMob ? 2.15 : 1.5;
-    const BLOCK_VW = 0.6; // 分鏡 1 色塊寬（vw），三版共用
+    // 拍 0 的**終點**寬／拍 1 的起點寬（vw）＝分鏡 1 的色塊寬，三版共用。
+    // 拍 0 的起點是滿版（＝blessing 的橘底），故它不再是整段 motion 的第一個尺寸。
+    const BLOCK_VW = 0.6;
     const hasBars = !isMob; // 分鏡 4 左右 bar：mob 分鏡無此件
 
     const revealEls = [bg, body, ...rows].filter(Boolean);
@@ -157,6 +169,9 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const MORPH_H = 82;
 
     buffer.style.height = `${HOLD_BUFFER}px`;
+    // progress 0＝滿版橘塊，畫面上緣是整片橘。模板的預設值是 light（給
+    // reduced-motion 與 /#media 兩條降級路徑用），真的要播 motion 才改成 orange。
+    section.dataset.headerTheme = 'orange';
 
     tl = gsap.timeline({ paused: true });
 
@@ -168,19 +183,51 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       end: `+=${HOLD_BUFFER}`,
       animation: tl,
       scrub: true,
+      // header 底色：拍 0 期間畫面上緣是整片橘（blessing 橘底的延續），收到
+      // BLOCK_VW 之後兩側才露白。pickHeaderTheme 只比對縱向 top/bottom、判不出
+      // 橫向寬度，故直接改屬性值 —— AppHeader 只快取元素清單，每次 scroll 都
+      // 重讀 dataset，動態改有效。
+      //
+      // 門檻由 NARROW_DUR / duration 推導、不寫死比例 → 加減拍數不必重算。
+      // 比對 self.progress 而非 tl.time()：不必假設 ScrollTrigger 呼叫 onUpdate
+      // 之前已經推進過 timeline。也不用 tl.set(..., { attr })：那要賭零秒 tween
+      // 在 scrub 倒帶時的 revert 語意，這裡的可逆性是顯而易見的。
+      onUpdate: (self) => {
+        const d = tl?.duration() ?? 0;
+        section.dataset.headerTheme =
+          d > 0 && self.progress >= NARROW_DUR / d ? 'light' : 'orange';
+      },
+      onLeaveBack: () => {
+        section.dataset.headerTheme = 'orange';
+      },
+      onLeave: () => {
+        section.dataset.headerTheme = 'light';
+      },
     });
 
     tl
-      // 1. 色塊（BLOCK_VW×100vh）左右縮成直條
+      // 0. 滿版橘塊左右收到 BLOCK_VW。
+      //    起點是滿版而非 BLOCK_VW，因為 .media__stage 是 absolute top: 0 且塊高
+      //    一個可視高 → 橘塊上緣恆等於 section 上緣（＝與 blessing 的接縫），
+      //    滿版起手在視覺上就是 blessing 橘底的延續，同色、看不出接縫。
+      //    ⚠️ 收窄不能比這一刻更早開始：接縫還在畫面上時收窄，接縫會變成一道看得見
+      //    的橫向缺口（上滿版、下 BLOCK_VW，左右各露一塊白）。這是 start 為什麼是
+      //    'top top' 而不能提早、也是把 morph 往上挪買不到跑道的原因。
       .fromTo(
         morph,
         {
-          scaleX: (window.innerWidth * BLOCK_VW) / MORPH_W,
+          scaleX: window.innerWidth / MORPH_W,
           scaleY: window.innerHeight / MORPH_H,
           autoAlpha: 1,
         },
-        { scaleX: 28 / MORPH_W, duration: 1, ease: 'power3.inOut' },
+        {
+          scaleX: (window.innerWidth * BLOCK_VW) / MORPH_W,
+          duration: NARROW_DUR,
+          ease: 'power2.inOut',
+        },
       )
+      // 1. 色塊左右縮成直條
+      .to(morph, { scaleX: 28 / MORPH_W, duration: 1, ease: 'power3.inOut' })
       // 2→3. 直條縮成短棒；文字貼齊中線淡入
       .to(morph, { scaleX: 1, scaleY: 1, duration: 0.6, ease: 'power3.inOut' })
       .to(sides, { autoAlpha: 1, duration: 0.3 }, '-=0.3')

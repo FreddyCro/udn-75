@@ -18,8 +18,14 @@ const { partner } = str;
 // 下次由上往下進入就重播（重置時面板在畫面外，淡出看不到）。詳見該元件檔頭。
 // 它住在 useOrangeCoreProgress 而非本檔的區域 ref：SEQUENCE 的 blessing.stairs 是
 // 'time' part，除錯 dashboard 要讀它才判得出 idle / done。雙向綁定行為不變。
-const { blessingProgress, blessingFrame, setBlessingProgress, stairsDone } =
-  useOrangeCoreProgress();
+const {
+  blessingProgress,
+  blessingFrame,
+  setBlessingProgress,
+  stairsDone,
+  setBlessingOutProgress,
+  partnersOpacity,
+} = useOrangeCoreProgress();
 
 // 夥伴清單整塊的現身時機。
 //
@@ -41,11 +47,49 @@ watch(blessingProgress, (p) => {
 // 用 vhLength 而非字面 vh：視窗高有單一來源（--vh），見 ~/utils/viewport-height。
 const faceTrackHeight = vhLength(1 + BLESSING_VH);
 
+const { vhPx } = useViewportHeight();
+
+// 夥伴清單的閱讀定格行程。必須是 `.section3` 的**子元素**才算進 sticky 的活動範圍
+//（sticky 看父層的 content box，padding 不算 —— 見 BLESSING_PARTNERS_HOLD_VH 的註解）。
+const partnersHoldHeight = vhLength(BLESSING_PARTNERS_HOLD_VH);
+
 const sectionRef = ref<HTMLElement | null>(null);
 const trackRef = ref<HTMLElement | null>(null);
 const innerRef = ref<HTMLElement | null>(null);
+const partnersRef = ref<HTMLElement | null>(null);
 let faceST: ScrollTrigger | null = null;
+let outroST: ScrollTrigger | null = null;
 let innerRO: ResizeObserver | null = null;
+let partnersRO: ResizeObserver | null = null;
+
+// 夥伴清單塊是否定住閱讀。**只在它塞得進視窗（扣掉 header）時才定住** ——
+// 塊高逐斷點不同（pc 778 / pad 1044 / mob 769），pad 在 1024 高、mob 在 667 高的
+// 視窗都比視窗還高。那種情形定住會讓下緣永久留在畫面外（改成貼底則換成階梯線被切），
+// 使用者反而看得更少，所以退回原本的自然捲動、spacer 收成 0。
+//
+// 用 vhPx() 的凍結值而非 window.innerHeight：後者會隨行動裝置網址列收合而變，
+// 會讓這個判斷在捲動途中翻面 —— 連帶把 100vh 的 spacer 加進／拿掉，版面直接跳。
+const partnersHeld = ref(false);
+const syncPartnersHeld = () => {
+  const el = partnersRef.value;
+  if (!el) return;
+  const headerH =
+    parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        '--header-height',
+      ),
+    ) || 0;
+  partnersHeld.value = el.offsetHeight <= vhPx(1) - headerH;
+};
+
+// spacer 的高度一變，`.section3` 的高度就跟著變 → 兩條 ScrollTrigger 量到的位置全部過期。
+// 必須自己 refresh：spacer 是靠 inline style 長出來的，既不觸發 resize、也不在 GSAP
+// 自動 refresh 的時機上。等 nextTick 是因為 partnersHeld 是 ref，樣式下一個 tick 才進 DOM
+// —— SSR 是 false，hydration 後才翻 true，而那時 ScrollTrigger 已經建好了。
+watch(partnersHeld, async () => {
+  await nextTick();
+  ScrollTrigger.refresh();
+});
 
 // 把臉＋文字這一整塊的實際高度寫進 --face-block-h，供 .section3__partners 的負 margin
 // 與臉屏的 min-height 用。量 offsetHeight 而非寫死數字：pad / mob 是直排，
@@ -71,6 +115,15 @@ onMounted(() => {
     innerRO.observe(innerRef.value);
   }
 
+  // 塊高（斷點、logo 到齊）與視窗高都會變，所以兩個訊號都要聽：
+  // ResizeObserver 只看元素，純粹的視窗變高不會觸發它。
+  syncPartnersHeld();
+  if (partnersRef.value && typeof ResizeObserver !== 'undefined') {
+    partnersRO = new ResizeObserver(syncPartnersHeld);
+    partnersRO.observe(partnersRef.value);
+  }
+  window.addEventListener('resize', syncPartnersHeld, { passive: true });
+
   if (!trackRef.value) return;
   gsap.registerPlugin(ScrollTrigger);
   faceST = ScrollTrigger.create({
@@ -82,13 +135,38 @@ onMounted(() => {
     onLeaveBack: () => setBlessingProgress(0),
     onLeave: () => setBlessingProgress(1),
   });
+
+  // 03 → 04 過場第一拍：夥伴清單淡出。
+  // 終點固定在「section 下緣抵達視窗頂」，也就是 media 那條 ScrollTrigger 的起點
+  //（`top top`）—— 兩段首尾相接、不重疊。起點則往回退 BLESSING_OUT_VH 個視窗高，
+  // 那個常數就是整段退場的長度旋鈕（見 orange-core-config）。
+  //
+  // 百分比先 Math.round：0.6 × 100 在 IEEE754 下是 60.000000000000006，
+  // 直接內插會餵給 ScrollTrigger 一串沒必要的小數。
+  //
+  // trigger 用 sectionRef 而非 trackRef：量的是整段的下緣（＝與 media 的接縫）。
+  const outroBack = Math.round((1 - BLESSING_OUT_VH) * 100);
+  outroST = ScrollTrigger.create({
+    trigger: sectionRef.value,
+    start: `bottom bottom-=${outroBack}%`,
+    end: 'bottom top',
+    invalidateOnRefresh: true,
+    onUpdate: (self) => setBlessingOutProgress(self.progress),
+    onLeaveBack: () => setBlessingOutProgress(0),
+    onLeave: () => setBlessingOutProgress(1),
+  });
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncPartnersHeld);
+  partnersRO?.disconnect();
+  partnersRO = null;
   innerRO?.disconnect();
   innerRO = null;
   faceST?.kill();
   faceST = null;
+  outroST?.kill();
+  outroST = null;
 });
 </script>
 
@@ -120,8 +198,17 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- ② 夥伴清單：整塊在臉的捲動尺跑完、且已貼齊臉的下緣時淡入，
-         接著階梯線逐格畫、畫完面板再淡入 -->
-    <div class="section3__partners" :class="{ 'is-in': partnersIn }">
+         接著階梯線逐格畫、畫完面板再淡入；段落尾端再整塊淡出（過場第一拍） -->
+    <div
+      ref="partnersRef"
+      class="section3__partners"
+      :class="{
+        'is-in': partnersIn,
+        'is-out': partnersOpacity < 1,
+        'is-held': partnersHeld,
+      }"
+      :style="{ '--partners-out': partnersOpacity }"
+    >
       <BlessingStairs v-model:done="stairsDone" :armed="partnersIn" />
 
       <div
@@ -131,6 +218,14 @@ onBeforeUnmount(() => {
         <BlessingPartners />
       </div>
     </div>
+
+    <!-- 閱讀定格行程：撐出 .section3__partners 的 sticky 活動範圍。
+         沒定住（塊比視窗高）時收成 0，否則會多出一段空橘 -->
+    <div
+      class="section3__partners-hold"
+      :style="{ height: partnersHeld ? partnersHoldHeight : '0px' }"
+      aria-hidden="true"
+    />
   </section>
 </template>
 
@@ -179,6 +274,27 @@ onBeforeUnmount(() => {
     pointer-events: auto;
   }
 
+  // 閱讀定格：塊高與視窗高之差就是它「完整在畫面上」的捲動距離（pc ≈122px），
+  // 不定住來不及看。定住行程由後面的 .section3__partners-hold 撐出來。
+  // 由 JS 上 class 而非純 CSS：條件是「塊塞得進視窗」—— 那是量測不是斷點（見 script）。
+  // top 貼 header 底緣，階梯線與第一個分層標題才不會被壓在 header 底下。
+  // 負 margin 不受影響 —— sticky 從正常流位置起算偏移，「貼齊臉下緣」的算式照舊。
+  &.is-held {
+    position: sticky;
+    top: var(--header-height);
+  }
+
+  // 退場（過場第一拍）：scrub 驅動，**必須**關掉 transition —— 0.4s 補間會讓
+  // 每一幀都滯後於捲動，手感發黏。
+  // 與 .is-in 特異度相同（0,2,0），寫在後面所以贏；回捲到 opacity 1 時 class
+  // 被移除、由 .is-in 的 opacity: 1 接上，值相同不會跳。
+  // 刻意不寫 pointer-events：讓它從 .is-in 繼續繼承 auto，淡出過程中面板仍可
+  // 捲動、可聚焦。
+  &.is-out {
+    opacity: var(--partners-out);
+    transition: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
@@ -193,6 +309,9 @@ onBeforeUnmount(() => {
     padding: 27px 48px 60px;
   }
 }
+
+// 閱讀定格行程：高度由 inline style 給（BLESSING_PARTNERS_HOLD_VH），這裡不定樣式。
+// 它是 .section3 的子元素而非 padding，sticky 的活動範圍才算得進去。
 
 // 夥伴清單面板：等階梯線逐格畫完（BlessingStairs 的 done）才淡入。
 // 用 opacity 而非 v-if／display，讓面板一直佔位、版面不會在淡入時跳動；

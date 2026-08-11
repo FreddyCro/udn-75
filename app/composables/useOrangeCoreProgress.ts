@@ -15,7 +15,12 @@
 // 延伸：orange core 走到後續 section 時，於 orange-core-config 新增該段門檻/距離，
 // 再在此加一條 useState progress 軌 + resolver + expose（照 path / symbol 模式），
 // 並在 SEQUENCE 補上對應的 part。
-import { SYMBOL_STOPS, FORUM_HANDOFF, BLESSING_HOLD } from '~/utils/orange-core-config';
+import {
+  SYMBOL_STOPS,
+  FORUM_HANDOFF,
+  BLESSING_HOLD,
+  partnersFadeAt,
+} from '~/utils/orange-core-config';
 import { FACE_FRAME_COUNT } from '~/utils/blessing-face-frames';
 import { slashDrawAt, type SlashWindow } from '~/utils/forum-slash';
 
@@ -85,6 +90,14 @@ export function useOrangeCoreProgress() {
   const blessingProgress = useState<number>('blessing-progress', () => 0);
   const setBlessingProgress = (p: number) =>
     (blessingProgress.value = clamp01(p));
+
+  // 03 → 04 過場第一拍：夥伴清單淡出的捲動進度（0..1）。由 Blessing.vue 的第二條
+  // ScrollTrigger（`.section3` 的 bottom bottom → bottom top）每次 update 寫入，
+  // 故往回捲會自動倒帶。與 blessingProgress 是兩條獨立的軌：那條在段落中段跑完，
+  // 這條在段落尾端才開始。
+  const blessingOutProgress = useState<number>('blessing-out-progress', () => 0);
+  const setBlessingOutProgress = (p: number) =>
+    (blessingOutProgress.value = clamp01(p));
 
   // 階梯線逐格是否已播完（<BlessingStairs> 以 v-model:done 雙向控制，播完才讓夥伴清單淡入）。
   // 提升為全域而非 Blessing.vue 的區域 ref：SEQUENCE 的 blessing.stairs 是 'time' part，
@@ -158,6 +171,14 @@ export function useOrangeCoreProgress() {
     return Math.min(FACE_FRAME_COUNT - 1, i);
   });
 
+  // blessingOutProgress → 夥伴清單的 opacity（曲線見 partnersFadeAt）。
+  // 與 blessingFrame 同一個角色：軌是原始值，這個是給模板消費的衍生值。
+  // 刻意**不**吃 reduceMotion：它是綁在捲動上的 crossfade、不是自走動畫，
+  // 減少動態的使用者一樣需要那個「淡乾淨」的結果，否則收窄時清單還在畫面上。
+  const partnersOpacity = computed(() =>
+    partnersFadeAt(blessingOutProgress.value),
+  );
+
   return {
     pathProgress,
     transitionProgress,
@@ -182,6 +203,9 @@ export function useOrangeCoreProgress() {
     blessingProgress,
     setBlessingProgress,
     blessingFrame,
+    blessingOutProgress,
+    setBlessingOutProgress,
+    partnersOpacity,
     stairsDone,
     reduceMotion,
   };
