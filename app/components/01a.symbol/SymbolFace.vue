@@ -316,6 +316,15 @@ const applyConfig = (next: Record<string, any>) => {
   rebuildParticles?.();
 };
 
+// cfg 的初值是在 setup 抄一次 props，**之後 props 變動不會自動跟上** —— 這是刻意的：
+// cfg 每幀被 animate() 讀很多次，做成 reactive 等於每幀加一整排 proxy trap（見檔尾 defineExpose）。
+// worldScale 是唯一破例追蹤的一項：正式站用它做 RWD（手機的人臉要再縮一號，見 01.hero/Hero.vue
+// 的 SYMBOL_WORLD_SCALE），而那個值會在轉向／跨斷點時才改變 —— 沒有這個 watch，
+// 使用者橫轉直的那一刻人臉就會維持桌機尺寸而被切掉左右。
+// 走 applyConfig ＝ 整組重建（它改的是取樣幾何），故必然伴隨一次 reveal 重跑；
+// 這在「跨斷點」的頻率下可接受，也正是面板 Refresh 走的同一條路。
+watch(() => props.worldScale, (v) => applyConfig({ worldScale: v }));
+
 /** 即時套色：只合併顏色鍵並就地更新 texture / uniform，不重建幾何。 */
 const applyColors = (next: Record<string, any>) => {
   for (const key of SYMBOL_LIVE_COLOR_KEYS) {

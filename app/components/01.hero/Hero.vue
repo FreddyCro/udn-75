@@ -44,6 +44,25 @@ const orangeCoreEl = computed(() => orangeCoreRef.value?.root ?? null);
 const { transitionProgress, setTransitionProgress, symbolMode, symbolLayerDone } =
   useOrangeCoreProgress();
 
+// ── 符號人臉的縮放：手機要再小一號 ──────────────────────────────────
+// SymbolFace 的 world→px 換算只綁**視窗高**（uWorldToPx = 視窗高 / 559.6，見該元件的
+// worldScale 註解），完全不看寬 —— 於是直式手機的「可視 world 寬」只有 559.6 × (390/844)
+// ≈ 258.6，而人臉在 worldScale 0.8 時是 274.2 world 寬 ＝ **超出 106%，左右被裁掉**。
+// 0.6 → 205.6（佔 80%），留出呼吸空間。桌機 1440×900 有 895 world 寬，怎麼放都夠。
+//
+// 斷點 767.98 對齊 mixins.scss 的 rwd-max('tablet')；用 matchMedia 而非 resize，
+// 手機網址列收合不會誤觸（那只改高度）→ 只有真的跨斷點/轉向才重建粒子。
+const SYMBOL_WORLD_SCALE = { pc: 0.8, mob: 0.6 };
+const MOB_QUERY = '(max-width: 767.98px)';
+// client 端在 setup 就同步取值 → 不會先用桌機值建一次粒子再重建。
+// worldScale 不出現在 DOM 上，故 SSR(false) 與 client 首次求值不同也不會 hydration mismatch。
+const isMobWidth = ref(
+  import.meta.client ? window.matchMedia(MOB_QUERY).matches : false,
+);
+const symbolWorldScale = computed(() =>
+  isMobWidth.value ? SYMBOL_WORLD_SCALE.mob : SYMBOL_WORLD_SCALE.pc,
+);
+
 // 引言淡出進度（0..1）：由下方 introFadeST 的 scrub 寫入。
 // 刻意不掛在 pathProgress 的門檻上 —— 那條軌的進度換算成「文字還剩幾行沒被穿過」會隨
 // 視窗高與文字行數浮動，門檻寫死就會像先前那樣在方塊還在字裡時就開始淡。
@@ -148,6 +167,13 @@ onMounted(() => {
   // hero 影片體驗一律從頂端開始：停用瀏覽器捲動位置還原，
   // 避免重整後還原到內容區、卻因 main/loop 狀態把 body 鎖死在中途。
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+  // 轉向／拉視窗跨過 768 時換一組 worldScale（見上方 SYMBOL_WORLD_SCALE）。
+  // addEventListener('change') 而非已棄用的 addListener；Safari 14 起支援。
+  const mq = window.matchMedia(MOB_QUERY);
+  const onMqChange = (e: MediaQueryListEvent) => (isMobWidth.value = e.matches);
+  mq.addEventListener('change', onMqChange);
+  onBeforeUnmount(() => mq.removeEventListener('change', onMqChange));
 
   // hydration 那一輪擋不掉（理由見上方 bypassLoader）：補在這裡，仍搶在 applyScrollLock 之前。
   if (initialHash && !loaderBypass.value) bypassLoader();
@@ -467,7 +493,7 @@ function applyScrollLock() {
           :color="['#000000', '#77c6e0', '#d1f4ff', '#ffffff']"
           :color-stops="[0, 0.4, 0.75, 1]"
           bg-color="#000"
-          :world-scale="0.8"
+          :world-scale="symbolWorldScale"
           :cols="85"
           :char-aspect="0.65"
           :contrast="1.2"

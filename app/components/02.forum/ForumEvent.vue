@@ -611,6 +611,12 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   // pad／mob 退回流排版，但仍要當那一撇的定位基準 → relative 而非 static。
   // relative 且不給位移時的排版結果與 static 完全相同（本身已是 grid，不影響子項）。
   // __venue 是它的**兄弟**、不是子項，故它的絕對定位基準不受影響。
+  //
+  // ⚠️ 「不給位移」要靠下面每個 variant 各自 `inset: auto` 才成立 —— 本規則放不了：
+  //    variant 的 `.forum-event--x .forum-event__date`（0,2,0）贏過這裡的
+  //    `.forum-event__date`（0,1,0），而 media query 不加權重。少了那道重設，
+  //    pc 稿的 top/left 會被 relative 當成**相對位移**吃下去（論壇四是 left:714px）
+  //    → 日期大字被推出視窗右外側，body.scrollWidth 撐到 1063px、整頁被縮成電腦尺寸。
   @include rwd-max('pc') {
     position: relative;
   }
@@ -621,6 +627,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
     // pad／mob 稿改切齊右緣，且緊接在英文引言之後。
     @include rwd-max('pc') {
+      inset: auto; // 見上方 position:relative 的說明
       margin: 88px 0 0 auto;
     }
   }
@@ -634,6 +641,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
     // pad／mob 稿把階梯挪回左緣，地點則絕對定位到右上角（見 __venue）。
     @include rwd-max('pc') {
+      inset: auto; // 見上方 position:relative 的說明
       margin-top: 46px;
     }
 
@@ -647,6 +655,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     right: 108px;
 
     @include rwd-max('pc') {
+      inset: auto; // 見上方 position:relative 的說明
       margin-left: auto;
     }
 
@@ -664,6 +673,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
     // pad／mob：整組切齊右緣（稿的日期組右緣 ＝ 內容欄右界）。
     @include rwd-max('pc') {
+      inset: auto; // 見上方 position:relative 的說明
       margin-left: auto;
     }
   }
