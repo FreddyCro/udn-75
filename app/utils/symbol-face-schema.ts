@@ -219,6 +219,16 @@ export const SYMBOL_CONFIG_SCHEMA: SymbolField[] = [
     group: '場景 / 節奏',
   },
   {
+    // 上界 0.9 不是 UI 保守值：1.0 會讓 shader 裡 per-particle 的 smoothstep 窗寬變 0
+    key: 'convergeStagger',
+    label: '匯聚速差',
+    kind: 'range',
+    min: 0,
+    max: 0.9,
+    step: 0.05,
+    group: '場景 / 節奏',
+  },
+  {
     key: 'inkGamma',
     label: '字墨飽滿度',
     kind: 'range',

@@ -50,13 +50,13 @@
 
 1. v 提供可微調的 dashboard
 2. intro 向上淡入動態、文字亂跳效果、三行時間差出現
-3. 匯聚的效果加上速差，會比較有 figma 設計稿的效果
+3. v 匯聚的效果加上速差，會比較有 figma 設計稿的效果
 4. navbar anchor 已經算論壇了
 5. 臉小一點、下方有 scroll 提示
 
 ## Forum agenda
 
-1. orange core 進出，進入前 arrow 不會出現，出去前 arrow 不會消失
+1. v orange core 進出，進入前 arrow 不會出現，出去前 arrow 不會消失
 
 ### (Y)media
 

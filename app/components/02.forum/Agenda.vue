@@ -2,7 +2,10 @@
   議程表＋段末 CTA 按鈕：分類 × 時間列與兩顆 CTA，資料來自 locales/section2.json 的 agenda。
   顯隱時機（agendaRevealed 淡入）由外層 .sec2__pin 控制。
   mob 版型（分類轉滿版橫幅、時間列平列）純由 CSS 切換，DOM 三斷點共用。
-  data-core-tail-end 是 <ForumCorePath> 尾段的終點錨（核心從此處之上一路藏在議程背後）。
+  核心（orange core）穿過本區時藏在 .agenda__group 背後、畫在 .agenda__actions 之上 ——
+  也就是「穿完整疊群組就現形」。箭頭的判定線是核心自己，不是視窗中央（見 sync 與 SCSS 註解）。
+  data-core-tail-end 是設計線終點（.agenda 底緣）的舊錨名，現由 forum-node-path 的
+  AGENDA_END 直接選 .agenda，屬性本身已無人讀。
 -->
 <script setup lang="ts">
 import { gsap } from 'gsap';
@@ -13,6 +16,11 @@ const { groups, actions } = str.agenda;
 
 // 追上目標的節奏：跟不上時每組至少亮這麼久才走下一步。
 const STEP_MS = 100;
+
+// 判定線是**核心自己**，不是視窗中央 —— 回中節點表只讓核心大致跟著中央（實測 pc −280/+123px，
+// 比議程一組還高），拿中央當播放頭，箭頭就會在核心真正走進第一組之前先亮、在它離開最後一組
+// 之前先熄。這條軌是差值（核心 − 視窗中央），由 ForumCorePath.place() 每幀寫入。
+const { forumCoreCenterOffset } = useOrangeCoreProgress();
 
 const rootEl = ref<HTMLElement | null>(null);
 // 作用中的群組。區域 state：沒有跨元件消費者，故不進 useOrangeCoreProgress。
@@ -43,10 +51,14 @@ function measure() {
   sync();
 }
 
-// 播放頭在議程內的偏移 ＝ 已捲過議程頂端抵達視窗中央的距離。
+// 播放頭在議程內的偏移 ＝ 核心中心到議程頂端的距離。
+// `scrollY − startScroll` ＝ 視窗中央到議程頂端的距離，再加上核心相對中央的偏移即得。
+// 這樣拆而不直接讀核心的絕對座標，是為了保留「主項由 scroll 事件驅動」：偏移只是修正項，
+// 就算某次 tick 沒更新到，主項照樣把每一組都掃過一遍（見下方 onMounted 的註解）。
 function sync() {
   if (bounds.length < 2) return;
-  setTarget(targetIndexAt(bounds, window.scrollY - startScroll));
+  const y = window.scrollY - startScroll + forumCoreCenterOffset.value;
+  setTarget(targetIndexAt(bounds, y));
 }
 
 // 追上目標：立刻走一步，之後每 STEP_MS 走一步。正常捲速下 target 一次只變一格，
@@ -66,6 +78,11 @@ function setTarget(next: number | null) {
 // 用 scroll 事件而非 ScrollTrigger 的 onUpdate 當目標來源：onUpdate 只在 trigger 的
 // 作用區間內發火，若一次 tick 直接從議程上方飛到下方，區間內沒有任何一幀 → 完全不發火。
 // scroll 事件沒有這個死角。ScrollTrigger 仍負責 refresh 時機（resize / 字體 / 斷點）。
+// 偏移軌是另一個獨立的更新來源：ScrollTrigger 走 rAF，故 place() 寫入偏移的時機比 scroll
+// 事件晚一拍，只靠 scroll 事件會讓最後一次判定吃到上一幀的偏移。watch 補這一拍
+//（flush 預設 'pre'，一個 tick 只跑一次，不會逐幀 re-render 什麼）。
+watch(forumCoreCenterOffset, sync);
+
 onMounted(async () => {
   gsap.registerPlugin(ScrollTrigger);
   await nextTick();
@@ -130,28 +147,14 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
-// 核心穿過議程時要藏在議程背後 —— 線從論壇三垂直落下、經過議程這一段看不見，
-// 到議程底緣才續行到論壇四（見 forum-node-path 的 Q13 → S0 → S1 三點同 x）。
-//
-// 為什麼要議程自己出底：核心住在 .sec2__path，而那層帶 z-index: 1、刻意畫在 .sec2__pin
-// 之上，好讓核心在後半段的論壇四／精彩活動看得見（見 Forum.vue）。所以 .sec2__pin 的白底
-// 遮不到它，得由議程再高一層並自備不透明底。z-index 2 仍遠低於 ForumCore 的 20，
-// 交棒的 fixed 黑底照樣蓋得住議程。
-//
-// 底只鋪到欄寬（pc 1064）就夠：線在議程段固定落在箭頭欄 —— 距欄左緣 208px（pad 126px，
-// ＝ .agenda__category 的 192／110 加 16 的 gap），26px 的核心 ±13px 進不到欄外。
-//
-// ⚠️ 這個 z-index 能與 .sec2__path 相比，前提是 .sec2__pin 不自成堆疊脈絡
-//    （它 opacity: 1、position: relative、z-index: auto → 不會）。議程淡入的那 0.4s
-//    內 opacity < 1 會暫時成脈絡、議程被關在裡面，但那時核心還在段落上方，看不到差別。
+// 核心穿過議程的層序：**藏在 .agenda__group 背後、畫在 .agenda__actions 之上**
+// （遮蔽與層序都掛在 .agenda__group 上，不在本層 —— 理由見那裡）。
 .agenda {
   --agenda-line: var(--color-gray-light);
 
   position: relative;
-  z-index: 2;
   max-width: 1064px;
   margin: 0 auto;
-  background: #fff;
 
   @include rwd-max('pc') {
     max-width: 608px;
@@ -163,12 +166,35 @@ onBeforeUnmount(() => {
   }
 }
 
+// 核心穿過議程時**只**藏在群組背後：線從論壇三垂直落下，穿過整疊群組的那一段看不見，
+// 一離開最後一組（進到 CTA 那塊留白）就現形，續行到論壇四（見 forum-node-path 的
+// Q13 → S0 → S1 三點同 x）。相鄰群組的邊界貼齊（下緣線在盒內、組間無間隙），
+// 故整疊群組是連續的一片遮蔽，核心不會在組與組之間閃一下。
+//
+// 為什麼遮蔽要議程自己出底：核心住在 .sec2__path，而那層帶 z-index: 1、刻意畫在 .sec2__pin
+// 之上，好讓核心在後半段的論壇四／精彩活動看得見（見 Forum.vue）。所以 .sec2__pin 的白底
+// 遮不到它，得由「要遮的那一塊」再高一層並自備不透明底 —— 而要遮的就是群組本身。
+// z-index 2 仍遠低於 ForumCore 的 20，交棒的 fixed 黑底照樣蓋得住議程。
+//
+// ⚠️ .agenda__actions 刻意什麼都不掛（static、無底）：它一旦也高過 .sec2__path，核心就會
+//    在 CTA 那塊又消失一次。要讓後半段某一塊擋住核心，就在那一塊上做，別往上掛到 .agenda。
+//
+// 底只鋪到欄寬（pc 1064）就夠：線在議程段固定落在箭頭欄 —— 距欄左緣 208px（pad 126px，
+// ＝ .agenda__category 的 192／110 加 16 的 gap），26px 的核心 ±13px 進不到欄外。
+//
+// ⚠️ 這個 z-index 能與 .sec2__path 相比，前提是 .sec2__pin 與 .agenda 都不自成堆疊脈絡
+//    （兩者都是 position: relative、z-index: auto、opacity: 1 → 不會）。議程淡入的那 0.4s
+//    內 .sec2__pin 的 opacity < 1 會暫時成脈絡、群組被關在裡面，但那時核心還在段落上方，
+//    看不到差別。
 .agenda__group {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 12px 0;
   border-bottom: 1px solid var(--agenda-line);
+  background: #fff;
 
   // 只有第一組帶上緣線，其餘靠前一組的下緣線 → 相鄰處不雙線。
   &:first-child {

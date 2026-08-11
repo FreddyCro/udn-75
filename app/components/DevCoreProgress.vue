@@ -4,7 +4,7 @@
 // 掛在 pages/index.vue 一處而非跟著各 section 走：它顯示的是**跨章節的整條序列**，
 // 跟著某個 section 走就會在別段卸載。fixed 定位，不受任何 pin / transform 影響。
 //
-// 開關：`?pathdebug`（沿用 Forum.vue 既有的同一個參數 —— 那邊是把設計線層提到議程之上，
+// 開關：`?pathdebug`（沿用 Forum.vue 既有的同一個參數 —— 那邊是把設計線上色，
 // 兩者都是「我正在對這條核心軌除錯」的情境，共用一個開關才不會記混）。
 // 刻意**不包 <DevOnly>**：`?pathdebug` 本來就在 production 可用，deploy 出去的 preview
 // 也要能開。要改成僅 dev，在 index.vue 外面包一層 <DevOnly> 即可。

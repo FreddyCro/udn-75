@@ -68,6 +68,18 @@ export function useOrangeCoreProgress() {
   // 寫入，決定橘點是「撐到路徑接手」還是「照舊在 coreOut 淡出」—— 見下方 forumCoreDotVisible。
   const forumPathActive = useState<boolean>('forum-path-active', () => false);
 
+  // 核心中心相對**視窗中央**的縱向偏移（px，正 ＝ 在中央下方）。ForumCorePath.place() 每幀寫入，
+  // 消費者是 <Agenda>：它要判定「核心是不是真的走進了某一組」，而視窗中央不等於核心的位置。
+  // 回中節點表只保證核心**大致**跟著視窗中央（實測 pc −280/+123px，比議程一組還高），
+  // 拿視窗中央當播放頭，箭頭就會早一組亮、晚一組熄（見 forum-core-path.md）。
+  //
+  // 為什麼是「偏移」而不是核心的絕對座標：偏移可以完全由 place() 手上的值算出
+  // （pt.y − rawP × tailEndY，見該處），不必量任何 DOM。絕對座標則只能在 ScrollTrigger
+  // refresh **之後**量（上游 pin spacer 會位移它），Agenda 的 startScroll 已經在處理那件事，
+  // 沒必要再開第二個同型的量測。且議程仍由 scroll 事件驅動 —— 偏移只是修正項，
+  // 就算某次 tick 沒更新到，主項（視窗中央）照樣把每一組都掃過一遍。
+  const forumCoreCenterOffset = useState<number>('forum-core-center-offset', () => 0);
+
   // 論壇二 09/15 那一撇的觸發窗口（forumPath 軌的 0..1）。
   // 由 ForumCorePath.build() 寫入 —— 它是唯一量得到幾何的人；ForumEvent 只是消費者。
   // 兩者是兄弟元件，這條軌是它們唯一的共享通道（同 forumPathProgress 的角色）。
@@ -83,6 +95,8 @@ export function useOrangeCoreProgress() {
   const setForumPathProgress = (p: number) =>
     (forumPathProgress.value = clamp01(p));
   const setForumPathActive = (v: boolean) => (forumPathActive.value = v);
+  const setForumCoreCenterOffset = (v: number) =>
+    (forumCoreCenterOffset.value = v);
   const setForumSlashWindow = (w: SlashWindow | null) => (forumSlashWindow.value = w);
 
   // 永續祝福逐格臉的捲動進度（0..1）：由 Blessing.vue 的 ScrollTrigger 於每次
@@ -194,6 +208,8 @@ export function useOrangeCoreProgress() {
     setForumPathProgress,
     forumPathActive,
     setForumPathActive,
+    forumCoreCenterOffset,
+    setForumCoreCenterOffset,
     forumSlashWindow,
     setForumSlashWindow,
     forumSlashDraw,

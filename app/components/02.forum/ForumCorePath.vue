@@ -30,8 +30,13 @@ const trailMaskPathEl = ref<SVGPathElement | null>(null);
 // 可見線：整條由 waypoint 算出來，故只有一個 <path>。
 const genEl = ref<SVGPathElement | null>(null);
 
-const { setForumPathProgress, setForumPathActive, setForumSlashWindow, forumPathRiding } =
-  useOrangeCoreProgress();
+const {
+  setForumPathProgress,
+  setForumPathActive,
+  setForumSlashWindow,
+  setForumCoreCenterOffset,
+  forumPathRiding,
+} = useOrangeCoreProgress();
 
 // 回中節點的間距吃視窗高 —— 用單一來源，不讓它隨網址列收合而改變密度。
 const { vhPx } = useViewportHeight();
@@ -100,6 +105,7 @@ function reset() {
   setForumPathActive(false);
   setForumPathProgress(0);
   setForumSlashWindow(null);
+  setForumCoreCenterOffset(0);
 }
 
 // 重建回中節點表。必須在 motionLen / tailEndY 都定案之後呼叫。
@@ -260,7 +266,8 @@ function place(rawP: number) {
   if (!core || !motion || !motionLen || !knots.length) return;
   // rawP × tailEndY ＝ 此刻落在視窗中央的容器 y（start / end 都錨在 center，故線性）。
   // 節點表把它換算成弧長 —— 節點上核心精準落在視窗中央，節點之間才照弧長等比走。
-  const len = arcAtCenterY(rawP * tailEndY, knots, easeMove);
+  const centerY = rawP * tailEndY;
+  const len = arcAtCenterY(centerY, knots, easeMove);
   const pt = motion.getPointAtLength(len);
   const d = 1; // 取樣間距（px）
   // 切線只在路徑段取樣：尾段是垂直的（90°），而設計線末端的切線是 112°，若讓尾段參與取樣，
@@ -275,6 +282,11 @@ function place(rawP: number) {
   // 多轉 90° 看起來完全一樣，故不分支。
   gsap.set(core, { x: pt.x, y: pt.y, rotation: angle + 90 });
   planeFrame.value = morphFrame(len, swapLen, FORUM_PLANE.morphLen);
+
+  // 核心相對視窗中央的偏移（正 ＝ 在中央下方）。centerY 就是「此刻在視窗中央的容器 y」，
+  // 故兩者相減即得，不需要量任何 DOM。<Agenda> 用它把箭頭的判定線從視窗中央挪到核心本身
+  // （見 useOrangeCoreProgress 的 forumCoreCenterOffset）。
+  setForumCoreCenterOffset(pt.y - centerY);
 
   const { dash, offset } = trailWindow(
     len, swapLen, FORUM_PLANE.tailLen, FORUM_PLANE.rearOffset,
@@ -426,7 +438,7 @@ onBeforeUnmount(() => {
 
 // ── ?pathdebug：開發時把整條線畫出來 ──────────────────────────────────
 // 設計線平常完全不畫（見上方的 transparent），只有帶參數時才以高對比橘現形。
-// .sec2__path--debug 由 <Forum> 依 query 掛上（同一個 class 也負責把路徑層提到議程之上）。
+// .sec2__path--debug 由 <Forum> 依 query 掛上，只做上色、不改層序（見那裡的 ⚠️）。
 // 選擇器的祖先在本元件之外，但 scoped CSS 只會把 data 屬性加在最後一個選擇器上，故成立。
 .sec2__path--debug {
   .forum-path__gen path {

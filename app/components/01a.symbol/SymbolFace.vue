@@ -100,6 +100,13 @@ const props = defineProps({
     type: String,
     default: `#${CORE.orange.map((v) => v.toString(16).padStart(2, '0')).join('')}`,
   },
+  /** 匯聚的「速差」：每顆粒子起跑點的散佈比例（0..0.9）。
+   *  0 ＝ 全員同步收攏 —— 那等同對原點做等比縮放，看起來是「整張臉變小」而不是
+   *  「符號各自飛進核心」。>0 則把每顆的起跑點依 aSeed 亂序散在 0..此值，
+   *  窗寬固定為 (1 - 此值)，故最慢的那顆仍剛好在 uConverge=1 抵達
+   *  —— 終點全員對齊是硬需求（要與 ForumCore 的橘方塊同尺寸同位置硬切交棒）。
+   *  ⚠️ 不可設到 1：窗寬會變 0，smoothstep 兩端相等＝除以 0。 */
+  convergeStagger: { type: Number, default: 0.5 },
 
   // ---------- 無互動時的整體漂浮 ----------
   /** 整體漂浮幅度（全部 symbol 同步隨機遊走，做出「整片在飄」） */
@@ -572,6 +579,8 @@ onMounted(() => {
         uDisperse: { value: 0 },
         uConverge: { value: 0 },
         uConvergePx: { value: cfg.convergeSize },
+        // clamp 到 0.9：1.0 會讓 per-particle 的 smoothstep 窗寬變 0（見 convergeStagger prop）
+        uConvergeStagger: { value: Math.min(Math.max(cfg.convergeStagger, 0), 0.9) },
         uSolidColor: { value: srgbColor(cfg.convergeColor) },
         uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
         uMouseInfluence: { value: 0 },
@@ -613,6 +622,7 @@ onMounted(() => {
         uniform float uDisperse;
         uniform float uConverge;
         uniform float uConvergePx;
+        uniform float uConvergeStagger;
         uniform vec3 uMouse;
         uniform float uMouseInfluence;
         uniform float uPixelRatio;
@@ -673,13 +683,25 @@ onMounted(() => {
 
           // 匯聚成點：所有粒子收攏到人像中心(原點)近乎完全重疊 → 收成一顆實心點。
           // 與 uDisperse 互斥（同一時間至多一個為 1），故直接再 mix 一層即可。
-          pos = mix(pos, vec3(0.0), uConverge);
+          //
+          // ⚠️ 每顆各自的進度 cConv，而不是直接用全域的 uConverge：全員同步 mix 到原點
+          //    ＝ 對原點做等比縮放，看起來會是「整張臉原封不動地變小」而不是「符號各自
+          //    飛進核心」。起跑點依 aSeed 亂序散在 0..uConvergeStagger，窗寬固定
+          //    (1 - uConvergeStagger) → 最慢的那顆剛好在 uConverge=1 抵達，早到的則先
+          //    停在原點等其餘的。終點全員對齊是硬需求（見下方 solid 與交棒說明）。
+          float cOrder = hash(aSeed * 31.7) * uConvergeStagger;
+          float cConv = smoothstep(cOrder, cOrder + (1.0 - uConvergeStagger), uConverge);
+          pos = mix(pos, vec3(0.0), cConv);
 
-          // 實心化係數：只在 uConverge 的最後 10% 補成不透明方塊（見下方 gl_PointSize 與 fragment）。
+          // 實心化係數：只在最後 10% 補成不透明方塊（見下方 gl_PointSize 與 fragment）。
           // ⚠️ 不能直接用 uConverge —— 收攏途中粒子還散在半個畫面，提早實心化會讓整片人臉
           //    在那 2.2s 裡變成一堆半透明方塊。0.9 時殘餘半徑僅剩人像半寬的 10%（≈ 一顆點的量級），
           //    且 power2.inOut 下這段只佔約 0.2s，看起來就是「那團符號收緊後凝成核心」。
-          float solid = smoothstep(0.9, 1.0, uConverge);
+          // ⚠️ 也不能直接用 cConv —— 有速差之後最早那顆在 uConverge 才 0.5 就抵達，
+          //    會在其餘符號還飄在半空時就先變成橘方塊。取 min ＝「全域 90% 才實心化，
+          //    但還沒到位的不准實心」：交棒時機維持原本的最後 0.2s，落隊的那幾顆則
+          //    等自己到位才轉橘。uConverge=1 時兩者皆為 1 → 全員實心，交棒不漏色。
+          float solid = smoothstep(0.9, 1.0, min(cConv, uConverge));
           vSolid = solid;
 
           // 整體避讓：以游標到群中心(原點)的距離決定整群往反方向(遠離游標)的平移量，
@@ -742,7 +764,9 @@ onMounted(() => {
           // 匯聚：邊長收成 uConvergePx（＝ core 的 26px）→ 那顆點與橘核心同尺寸交棒。
           // 目標值不吃 breath（core 不呼吸）但保留 local，reveal 期間仍是從 0 長大。
           // uPixelRatio 把 CSS px 換成 device px，故最終畫出來就是 uConvergePx 個 CSS px。
-          gl_PointSize = mix(px, uConvergePx * local, uConverge) * uPixelRatio;
+          // 用 cConv 而非 uConverge：字級要跟著**自己**的位移一起收，不然先到原點的粒子
+          // 會頂著原字級卡在中心，中央糊成一坨大字、速差反而看不出來。
+          gl_PointSize = mix(px, uConvergePx * local, cConv) * uPixelRatio;
         }
       `,
       fragmentShader: /* glsl */ `

@@ -5,10 +5,24 @@ metadata:
   type: project
 ---
 
-2026-08-07 完成議程的「orange core 穿透」互動與三斷點對稿校正；2026-08-08 因快捲跳號改寫判定機制。
+2026-08-07 完成議程的「orange core 穿透」互動與三斷點對稿校正；2026-08-08 因快捲跳號改寫判定機制；
+2026-08-11 把判定線從視窗中央改成核心自己、遮蔽粒度從整個議程改成群組。
 
-**判定線 ＝ 視窗中央**，`activeIndex` 是 `Agenda.vue` 的區域 state（沒有跨元件消費者，
-故不進 `useOrangeCoreProgress`）。
+**判定線 ＝ 核心自己**（2026-08-11 起；原本是視窗中央）。`activeIndex` 是 `Agenda.vue` 的區域
+state（沒有跨元件消費者，故不進 `useOrangeCoreProgress`）。
+
+⚠ **視窗中央不等於核心的位置。** 回中節點表只讓核心「大致」跟著中央（pc 實測 −280/+123px，
+比議程一組還高），拿中央當播放頭，第一組的箭頭會在核心真正進入群組**之前**就亮、最後一組會在
+核心離開**之前**就熄（Liu feedback 4-1「進入前 arrow 不會出現，出去前 arrow 不會消失」）。
+修法是 `ForumCorePath.place()` 把 `pt.y − rawP × tailEndY`（＝核心相對視窗中央的偏移，兩個值
+都已在手上、不必量 DOM）寫進共享軌 `forumCoreCenterOffset`，Agenda 的播放頭改成
+`(scrollY − startScroll) + 偏移`。刻意拆成「主項 ＋ 修正項」而不是傳絕對座標：主項仍由
+scroll 事件驅動（見下方的不漏組保證），且絕對座標只能在 `refresh` 之後量。
+
+**遮蔽的粒度是群組，不是整個議程**（同日）：`.agenda__group` 帶 `z-index: 2` ＋ 白底 →
+核心穿過整疊群組看不見；`.agenda__actions` 刻意什麼都不掛 → 核心畫在 CTA **之上**，
+穿完最後一組就現形。組與組邊界貼齊（下緣線在盒內），故不會在組間閃一下。
+⚠ `?pathdebug` 只給設計線上色、不改層序（三處註解曾寫成「把路徑層提到議程之上」，那是錯的）。
 
 ⚠️ **「每 tick 取樣、報告播放頭底下那一組」這個做法在快捲時會跳號，已被換掉。**
 每組的作用區間長度**正好等於它自己的高度**（top 抵達中央 → bottom 抵達中央），而最短的
@@ -28,13 +42,16 @@ metadata:
 反覆套用 `stepToward` 必然走訪每一個中間索引 → 「不跳號」與「每組都觸發一次」同時成立，
 上下兩個方向都成立。
 
-⚠️ **代價（無法兩全）**：快捲時 `activeIndex` 會**落後**於播放頭，不再逐幀等於視窗中央底下
+⚠️ **代價（無法兩全）**：快捲時 `activeIndex` 會**落後**於播放頭，不再逐幀等於核心底下
 那一組。要嘛允許跳號、要嘛允許落後，不可能都要。
 
-⚠️ **目標來源用 `window` 的 scroll 事件，不是 ScrollTrigger 的 `onUpdate`。**
+⚠️ **目標的主項用 `window` 的 scroll 事件，不是 ScrollTrigger 的 `onUpdate`。**
 `onUpdate` 只在 trigger 的作用區間內發火 —— 若一次 tick 直接從議程上方飛到下方，
 區間內沒有任何一幀，完全不發火。scroll 事件沒有這個死角（已實測：單次 tick 飛越整段仍完整補完 `0…6`）。
 ScrollTrigger 仍負責 refresh 時機（resize / 字體 / 斷點）。
+偏移那個修正項來自 `onUpdate`，故有死角 —— 但它只是修正項（±240px 上限），主項照樣把每一組掃過。
+另外掛了 `watch(forumCoreCenterOffset, sync)`：ScrollTrigger 走 rAF，比 scroll 事件晚一拍，
+只靠 scroll 事件會讓最後一次判定吃到上一幀的偏移。
 
 ⚠️ `startScroll`（議程頂端抵達視窗中央時的 scrollY）是**絕對**座標，只能在 `refresh`
 **之後**量，不能在 `refreshInit` —— 上游 SymbolScene 的 pin spacer 那時還在重算。

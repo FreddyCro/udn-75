@@ -34,10 +34,11 @@ const forum = str.forum as {
 const route = useRoute();
 const highlightsVisible = computed(() => route.query.highlights === '1');
 
-// 設計線的後半段（議程之後）平常看不見 —— .sec2__pin 是 .sec2__path 的後續兄弟且有
-// 不透明白底，會整片蓋在路徑層上。那是刻意的：核心要「從議程背後穿過」。
-// 但開發時需要看得到那半條線才能對位，故用 ?pathdebug 把路徑層提到議程之上。
+// 設計線平常完全看不見 —— 它預設 stroke: transparent，開發時要對位才需要看見，
+// 故用 ?pathdebug 把它上色（實際的上色規則在 ForumCorePath 的 .sec2__path--debug）。
 // production 不帶參數 → 行為完全不變。
+// ⚠️ 它**只**上色、不改層序：議程群組那一段的線仍被 .agenda__group 的白底遮住（那是刻意的，
+//    否則就看不出核心該藏在哪裡）。要臨時看穿，把該處的 z-index 調到 2 以上。
 const pathDebug = computed(() => route.query.pathdebug !== undefined);
 </script>
 
@@ -127,9 +128,9 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
   // 路徑層必須畫在 .sec2__pin 之上，否則橘核心走進後半段（論壇四／精彩活動）之後
   // 就被那層的不透明白底整段蓋住、完全看不見。
   //
-  // 唯一的例外是議程：核心該從它**背後**穿過。那是靠 <Agenda> 自己 z-index: 2 ＋ 白底
-  // 再蓋回來處理的（理由寫在 Agenda.vue），不是靠這裡的層序 —— 後半段其餘部分仍要露出核心，
-  // 整層 .sec2__pin 提上來會連論壇四一起遮掉。
+  // 唯一的例外是議程的**群組那一疊**：核心該從它們背後穿過（穿完就現形，CTA 那塊看得見）。
+  // 那是靠 .agenda__group 自己 z-index: 2 ＋ 白底再蓋回來處理的（理由寫在 Agenda.vue），
+  // 不是靠這裡的層序 —— 後半段其餘部分仍要露出核心，整層 .sec2__pin 提上來會連論壇四一起遮掉。
   // 設計線本身不會因此露出來 —— 它預設是 transparent，只有 ?pathdebug 才上色
   //（見 ForumCorePath 的 .forum-path__line / .forum-path__gen）。
   z-index: 1;
@@ -173,7 +174,7 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
 // 白底是本層自身的遮蔽（原本靠 .sec2 的白底，那是祖先遮不到），crossfade 期間也靠它
 // 避免從縫隙露餡。AgendaReport 的灰底是子層，不受影響。
 // ⚠️ 它**遮不住核心** —— .sec2__path 帶 z-index: 1、畫在本層之上（理由寫在那裡）。
-//    「核心從議程背後穿過」是由 <Agenda> 自己 z-index: 2 ＋ 白底達成，不是靠這層。
+//    「核心從議程群組背後穿過」是由 .agenda__group 自己 z-index: 2 ＋ 白底達成，不是靠這層。
 //    要讓後半段某一塊也擋住核心，同樣得在那一塊上做，不能改本層。
 .sec2__pin {
   position: relative;
