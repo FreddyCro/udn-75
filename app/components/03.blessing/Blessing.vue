@@ -324,6 +324,15 @@ onBeforeUnmount(() => {
     var(--color-blue)
   );
   color: #fff;
+
+  // 藍 → 橘的補間交給 CSS：--cover-orange 現在是二元的（見 coverOrangeAt），
+  // 只在接觸點跨越一次，所以 transition 不會有「每一幀追補間」的發黏問題。
+  // 0.4s ease 對齊本檔其他淡入淡出（.section3__partners / .section3__partners-panel）。
+  transition: background-color 0.4s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 .section3__face-track {
@@ -517,8 +526,16 @@ onBeforeUnmount(() => {
   // 進畫面了 —— 比接觸（COVER_CONTACT 0.5）**早**，不擋掉會有一段白字疊在淺藍上。
   // 直接吃 --cover-orange：與換色同一條曲線 → 底色變橘的同時它現身，正是設計師說的
   // 「底色變橘時，會看到原本位置的白字標題和引言」。
-  // scrub 驅動，刻意不加 transition（補間會讓每一幀滯後於捲動，手感發黏）。
+  // --cover-orange 現在是二元的（見 coverOrangeAt），故補間交給下方的 CSS transition。
   opacity: var(--cover-orange, 1);
+
+  // 與換色同一條曲線、同一個補間：--cover-orange 是二元的，所以這裡加 transition 是安全的
+  // （原本的「scrub 驅動不可加 transition」是針對連續映射的量，見 coverOrangeAt 的註解）。
+  transition: opacity 0.4s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 
   @include rwd-max('pc') {
     order: 1;

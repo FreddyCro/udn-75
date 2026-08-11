@@ -18,6 +18,7 @@ const {
   forumCoreDotVisible,
   forumPathRiding,
   agendaRevealed,
+  coverHoldArmed,
 } = useOrangeCoreProgress();
 
 const forum = str.forum as {
@@ -100,7 +101,14 @@ onBeforeUnmount(() => {
     <!-- 議程整組：agendaRevealed（越過 coreOut）才淡入，見下方 .sec2__pin 註解。
          （原本這層同時是 forum pin 的釘住目標，該 pin 已隨 SymbolFace 序列移除 —— <SymbolScene>
            改用「不 pin 的捲動尺」，見該元件註解。） -->
-    <div ref="pinRef" class="sec2__pin" :class="{ 'sec2__pin--revealed': agendaRevealed }">
+    <div
+      ref="pinRef"
+      class="sec2__pin"
+      :class="{
+        'sec2__pin--revealed': agendaRevealed,
+        'sec2__pin--held': coverHoldArmed,
+      }"
+    >
       <Agenda />
       <AgendaReport />
 
@@ -225,34 +233,41 @@ onBeforeUnmount(() => {
 //    「核心從議程群組背後穿過」是由 .agenda__group 自己 z-index: 2 ＋ 白底達成，不是靠這層。
 //    要讓後半段某一塊也擋住核心，同樣得在那一塊上做，不能改本層。
 .sec2__pin {
-  // 覆蓋過場：定住「forum 最後一屏」讓 blessing 的色塊蓋過去（設計師：精彩活動 fix 在
-  // 畫面中心、下個 section 往上蓋）。活動範圍由後面的 .sec2__cover-hold 撐出來，
-  // 所以定住的距離恰好等於色塊上升的 100vh，兩段不需要另一條 trigger 去同步。
-  // 定住的是下緣貼視窗底緣的「最後一屏」，與尾端是精彩活動還是論壇四無關
-  // （靠什麼夾點做到見下方 top 的推導 —— 不是 bottom: 0）。
-  position: sticky;
-  // ⚠️ 用 top 而**不是** bottom —— 這是本段唯一容易寫錯的地方。
-  //   `bottom: 0` 的語意是「不讓下緣掉到視窗底緣**以下**」：它在還沒捲到本塊時先把它
-  //   往**上**拉進畫面，捲過去就放行 —— 永遠不會把元素往**下**推。而「捲過去時原地不動」
-  //   需要的正是往下推。實測 bottom: 0 完全沒有定住效果（下緣以 1:1 跟著捲動走）。
-  //   top 才是往下推的那一側；本塊**比視窗高**，所以夾點要放在 vh() − 塊高 ——
-  //   把「頂端」夾在那裡等價於把「下緣」夾在視窗底緣。實測 cover 全程 100vh 誤差 0px。
-  //
-  //   它也剛好在對的時機開始：夾點觸發的條件是「自然頂端升過 vh() − 塊高」，
-  //   等價於「自然下緣升過視窗底緣」，而自然下緣就是接縫 —— 也就是 cover 的起點，
-  //   不會提早定住。放行則由容器（.sec2）的下緣決定，也就是 .sec2__cover-hold 用完的那一刻。
-  //
-  // --sec2-pin-h 由 JS 量（見 script）。fallback 故意給一個大到不可能的值 ——
-  // 夾點會變成極負數、sticky 永遠不觸發 → 退回「不定住」的原本行為。
-  // 量不到的時候寧可**沒有效果**，也不要一個錯的定住（例如 fallback 給 0 會讓
-  // 夾點變成 100vh，整個 forum 尾段被往下推出畫面）。
-  top: calc(#{vh()} - var(--sec2-pin-h, 100000px));
+  // 平時是 relative，**不是** sticky —— sticky 不論 z-index 都會建立 stacking context，
+  // 會把 .agenda__group 的 z-index: 2 關進來，讓「核心從議程群組背後穿過」失效。
+  // 只有 cover 期間才掛 sticky（--held，由 coverHoldArmed 決定），那時核心早已走完設計線。
+  position: relative;
   background: #fff;
   opacity: 0;
   transition: opacity 0.4s ease;
 
   &--revealed {
     opacity: 1;
+  }
+
+  // 覆蓋過場：定住「forum 最後一屏」讓 blessing 的色塊蓋過去（設計師：精彩活動 fix 在
+  // 畫面中心、下個 section 往上蓋）。活動範圍由後面的 .sec2__cover-hold 撐出來，
+  // 所以定住的距離恰好等於色塊上升的 100vh，兩段不需要另一條 trigger 去同步。
+  // 定住的是下緣貼視窗底緣的「最後一屏」，與尾端是精彩活動還是論壇四無關
+  // （靠什麼夾點做到見下方 top 的推導 —— 不是 bottom: 0）。
+  &--held {
+    position: sticky;
+    // ⚠️ 用 top 而**不是** bottom —— 這是本段唯一容易寫錯的地方。
+    //   `bottom: 0` 的語意是「不讓下緣掉到視窗底緣**以下**」：它在還沒捲到本塊時先把它
+    //   往**上**拉進畫面，捲過去就放行 —— 永遠不會把元素往**下**推。而「捲過去時原地不動」
+    //   需要的正是往下推。實測 bottom: 0 完全沒有定住效果（下緣以 1:1 跟著捲動走）。
+    //   top 才是往下推的那一側；本塊**比視窗高**，所以夾點要放在 vh() − 塊高 ——
+    //   把「頂端」夾在那裡等價於把「下緣」夾在視窗底緣。實測 cover 全程 100vh 誤差 0px。
+    //
+    //   它也剛好在對的時機開始：夾點觸發的條件是「自然頂端升過 vh() − 塊高」，
+    //   等價於「自然下緣升過視窗底緣」，而自然下緣就是接縫 —— 也就是 cover 的起點，
+    //   不會提早定住。放行則由容器（.sec2）的下緣決定，也就是 .sec2__cover-hold 用完的那一刻。
+    //
+    // --sec2-pin-h 由 JS 量（見 script）。fallback 故意給一個大到不可能的值 ——
+    // 夾點會變成極負數、sticky 永遠不觸發 → 退回「不定住」的原本行為。
+    // 量不到的時候寧可**沒有效果**，也不要一個錯的定住（例如 fallback 給 0 會讓
+    // 夾點變成 100vh，整個 forum 尾段被往下推出畫面）。
+    top: calc(#{vh()} - var(--sec2-pin-h, 100000px));
   }
 
   // 量測期間退回一般流：sticky 位移會污染 .sec2__pin **內部**所有錨點的 rect

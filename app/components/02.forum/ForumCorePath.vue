@@ -36,6 +36,7 @@ const {
   setForumSlashWindow,
   setForumCoreCenterOffset,
   forumPathRiding,
+  coverHandedOff,
 } = useOrangeCoreProgress();
 
 // 回中節點的間距吃視窗高 —— 用單一來源，不讓它隨網址列收合而改變密度。
@@ -390,7 +391,11 @@ onBeforeUnmount(() => {
 
     <!-- 尾跡：可見層吃固定 dasharray（＝虛線釘在弧長上），遮罩層滑動開窗。
          遮罩描邊取可見層的 2 倍才蓋得乾淨。 -->
-    <svg class="forum-path__trail" xmlns="http://www.w3.org/2000/svg">
+    <svg
+      class="forum-path__trail"
+      :class="{ 'is-gone': coverHandedOff }"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <mask
         id="forum-trail"
         ref="trailMaskEl"
@@ -416,7 +421,7 @@ onBeforeUnmount(() => {
     <span
       ref="coreEl"
       class="forum-path__core"
-      :class="{ 'is-riding': forumPathRiding }"
+      :class="{ 'is-riding': forumPathRiding, 'is-gone': coverHandedOff }"
       :style="coreStyle"
     >
       <ForumPlaneSprite
@@ -473,6 +478,11 @@ onBeforeUnmount(() => {
   inset: 0;
   overflow: visible;
   color: rgb(255, 127, 0);
+
+  // 同 .forum-path__core.is-gone：機身消失了不該留下彗星尾。
+  &.is-gone {
+    opacity: 0;
+  }
 }
 
 // 位置由 place() 逐幀以 gsap transform 寫入；top/left 只是把 transform 的原點釘在容器左上角。
@@ -487,6 +497,13 @@ onBeforeUnmount(() => {
 
   &.is-riding {
     opacity: 1;
+  }
+
+  // 交棒給白方塊之後立刻消失（見 useOrangeCoreProgress 的 coverHandedOff）。
+  // 刻意不加 transition：白方塊在同一刻從接縫長出來，這是硬切交棒，
+  // 淡出會讓兩者同時半透明地並存一小段（同本檔上方 opacity 的取捨）。
+  &.is-gone {
+    opacity: 0;
   }
 }
 </style>

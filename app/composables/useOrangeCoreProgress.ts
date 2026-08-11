@@ -228,6 +228,20 @@ export function useOrangeCoreProgress() {
     () => reduceMotion.value || coverProgress.value >= 1,
   );
 
+  // 紙飛機是否已交棒給白方塊（＝ 色塊上緣碰到它的那一刻）。
+  // 交棒後飛機必須**立刻**消失：色塊繼續上升時它會一路露在畫面上緣，
+  // 而敘事上它已經「變成」那顆白方塊了，同時存在兩個核心會讀不通。
+  const coverHandedOff = computed(() => coverProgress.value >= COVER_CONTACT);
+
+  // `.sec2__pin` 的 sticky 是否該掛上（＝ 已進入 cover 窗口）。
+  //
+  // 為什麼要開關而不是一直掛著：`position: sticky` **不論 z-index 都會建立 stacking context**，
+  // 會把 `.agenda__group` 的 z-index: 2 關在 `.sec2__pin` 內部 → 它再也升不到
+  // `.sec2__path`（z-index 1，核心在裡面）之上，「核心從議程群組背後穿過」就失效了。
+  // 而核心穿過議程發生在很早的捲動位置，cover 開始時它早已走完設計線 ——
+  // 兩件事在時間上不重疊，所以用開關就能同時成立。
+  const coverHoldArmed = computed(() => coverProgress.value > 0);
+
   return {
     pathProgress,
     transitionProgress,
@@ -263,6 +277,8 @@ export function useOrangeCoreProgress() {
     coverSeed,
     coverSeedVisible,
     coverFaceVisible,
+    coverHandedOff,
+    coverHoldArmed,
     stairsDone,
     reduceMotion,
   };

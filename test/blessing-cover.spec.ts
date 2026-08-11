@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   COVER_CONTACT,
-  COVER_ORANGE_FADE,
   coverContactAlign,
   coverOrangeAt,
   seedTravelAt,
@@ -9,40 +8,30 @@ import {
   TRACK_VH,
 } from '../app/utils/orange-core-config';
 
-// 這支守的是曲線的**形狀**與「接觸點只有一個來源」，不是 0.5 / 0.06 這兩個值 ——
+// 這支守的是曲線的**形狀**與「接觸點只有一個來源」，不是 0.5 這個值 ——
 // 值本來就該能在真實畫面上調，形狀壞了才會出現說不清楚的破圖：
 // 色塊帶著藍進入逐格臉那一屏、或白方塊沒落到格子上就換成臉。
 describe('coverOrangeAt（藍 → 橘，標題／引言淡入共用）', () => {
-  it('接觸前全藍', () => {
+  // 二元階梯：補間交給 CSS transition，不在這裡做（見函式註解）
+  it('接觸前是藍', () => {
     expect(coverOrangeAt(0)).toBe(0);
-    expect(coverOrangeAt(COVER_CONTACT)).toBe(0);
+    expect(coverOrangeAt(COVER_CONTACT * 0.5)).toBe(0);
   });
 
-  it('淡出窗口末端已全橘，其後維持 1', () => {
-    expect(coverOrangeAt(COVER_CONTACT + COVER_ORANGE_FADE)).toBe(1);
+  it('接觸的那一刻就翻橘，其後維持橘', () => {
+    expect(coverOrangeAt(COVER_CONTACT)).toBe(1);
     expect(coverOrangeAt(1)).toBe(1);
   });
 
-  // 取樣點一律用常數推出來，不寫絕對值 —— 那兩個常數要在真實畫面上反覆調，
-  // 寫死的取樣點會在調值後落到曲線的其他區段，測試就失去意義了。
-  it('窗口內單調遞增', () => {
-    const xs = [0.15, 0.3, 0.45, 0.6, 0.75, 0.9].map(
-      (k) => COVER_CONTACT + k * COVER_ORANGE_FADE,
-    );
-    for (let i = 1; i < xs.length; i++) {
-      expect(coverOrangeAt(xs[i]!)).toBeGreaterThan(coverOrangeAt(xs[i - 1]!));
-    }
+  it('只有一個轉換點，就在 COVER_CONTACT', () => {
+    const eps = 1e-6;
+    expect(coverOrangeAt(COVER_CONTACT - eps)).toBe(0);
+    expect(coverOrangeAt(COVER_CONTACT + eps)).toBe(1);
   });
 
   it('定義域外夾住（scrub 會餵進 0..1 之外的值）', () => {
     expect(coverOrangeAt(-1)).toBe(0);
     expect(coverOrangeAt(2)).toBe(1);
-  });
-
-  // 轉橘必須在 cover 結束前完成，否則色塊會帶著藍進入逐格臉那一屏。
-  it('轉橘在 cover 結束前完成', () => {
-    expect(COVER_ORANGE_FADE).toBeGreaterThan(0);
-    expect(COVER_CONTACT + COVER_ORANGE_FADE).toBeLessThan(1);
   });
 });
 

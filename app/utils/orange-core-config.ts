@@ -354,15 +354,17 @@ export function coverContactAlign(): string {
   return `${(1 - COVER_CONTACT) * 100}%`;
 }
 
-// 藍→橘在接觸之後吃掉的 cover 進度（標題／引言的淡入共用同一條曲線）。
-// 設計師的描述是「碰觸時變橘」→ 要短到讀起來像瞬間；但不做成 0：滿版色塊硬切會閃。
-// 0.06 × 100vh，pc 900 高約 54px 捲動 ≈ 一兩格滑鼠滾輪。
-export const COVER_ORANGE_FADE = 0.06;
-
-/** cover 軌 p 時「橘的比例」（0 ＝ 全藍、1 ＝ 全橘）。標題／引言的 opacity 共用。
- *  純函式、不依賴 DOM —— 曲線由 test/blessing-cover.spec.ts 守著。 */
+/** cover 軌 p 是否已越過接觸點（0 ＝ 還是藍、1 ＝ 已翻橘）。標題／引言的 opacity 共用。
+ *
+ *  ⚠️ 這是**二元**的，不是沿捲動內插 —— 換色是「飛機撞上色塊」這個事件的反應，
+ *  補間交給 CSS transition（見 Blessing.vue 的 .section3 background）。
+ *  原本是 smoothstep(COVER_CONTACT, COVER_CONTACT + COVER_ORANGE_FADE, p)，
+ *  2026-08-12 依使用者回饋改為事件觸發 ＋ CSS 補間：在 scrub 上疊 transition 會讓
+ *  每一幀都追一次補間、手感發黏，改成只跨越一次就沒有這個問題。
+ *
+ *  純函式、不依賴 DOM —— 由 test/blessing-cover.spec.ts 守著。 */
 export function coverOrangeAt(p: number): number {
-  return smoothstep(COVER_CONTACT, COVER_CONTACT + COVER_ORANGE_FADE, p);
+  return p >= COVER_CONTACT ? 1 : 0;
 }
 
 /** cover 軌 p 時白方塊走完「接縫 → 臉的第 01 格」的比例（0 ＝ 貼在接縫上、1 ＝ 就位）。
