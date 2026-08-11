@@ -47,7 +47,8 @@ hero 開場的 **body 捲動鎖規則**（2026-08-04 與使用者逐拍確認；
 
 其他不變的邊界規則：
 
-1. **鎖的單一擁有者是 `01.hero/Hero.vue`**（開機腳本只是它 hydration 之前的代班）；`HeroLoader` 不自行改 `body.overflow`（否則它卸載解鎖、父層下一 tick 才重鎖，中間有「瞬間可捲動」破口）。
+1. **`.is-scroll-locked` 這把鎖的單一擁有者是 `01.hero/Hero.vue`**（開機腳本只是它 hydration 之前的代班）；`HeroLoader` 不自行改 `body.overflow`（否則它卸載解鎖、父層下一 tick 才重鎖，中間有「瞬間可捲動」破口）。
+   另有第二把鎖 `.is-menu-locked`（<1280 漢堡選單，`AppHeaderMenu.vue`，2026-08-12 加）：**刻意不共用 `.is-scroll-locked`** —— hero 的 `applyScrollLock()` 只要 `heroState` 一變就會 `remove` class，共用會把選單的鎖一起清掉。兩把鎖的 CSS 宣告相同（`base.scss` 併選擇器），同時成立也沒事。配套：`AppHeader` 用 `matchMedia('(min-width: 1280px)')` 在放大到 pc 時強制 `menuOpen = false`，否則漢堡與選單都 `display:none`、沒人能解鎖 → 整頁鎖死。
 2. 上鎖前先 `window.scrollTo(0, 0)` ＋ `history.scrollRestoration = 'manual'`：否則重整後還原到內容區又處於 `main`，會被 `overflow:hidden` 永久鎖死在中途。
 3. 影片載入失敗或自動播放被封鎖 → 直接進 `gone` → 解鎖，避免整頁鎖死。
 4. **鎖住期間沒有 scroll 事件**，所以離開 `loop` 只能靠 wheel／touchmove／方向鍵手勢（見 `app/utils/hero-scroll-intent.ts`）。

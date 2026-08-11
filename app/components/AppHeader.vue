@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import str from '@/locales/common.json';
 import logoUrl from '@/assets/img/logo.svg';
+import { PC_BREAKPOINTS } from '@/utils/constants';
 import {
   pickHeaderTheme,
   type HeaderTheme,
@@ -45,8 +46,15 @@ const anchors = str.headerAnchors as Anchor[];
 
 let observer: IntersectionObserver | null = null;
 let heroObserver: IntersectionObserver | null = null;
+let mqPc: MediaQueryList | null = null;
 let rafId = 0;
 let heroRafId = 0;
+
+// 放大到 ≥1280 時漢堡與選單都 display:none，menuOpen 若還留著 true，選單的捲動鎖
+// （AppHeaderMenu 的 .is-menu-locked）就沒人來解 → 整頁鎖死且看不到能關的 UI。
+function closeMenuOnPc(e: MediaQueryListEvent) {
+  if (e.matches) menuOpen.value = false;
+}
 
 onMounted(() => {
   updateProgress();
@@ -56,6 +64,9 @@ onMounted(() => {
   updateTheme();
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', onScroll, { passive: true });
+
+  mqPc = window.matchMedia(`(min-width: ${PC_BREAKPOINTS}px)`);
+  mqPc.addEventListener('change', closeMenuOnPc);
 
   // scroll-spy：以各區塊在視窗中央的可見度決定「當前錨點」
   const sections = anchors
@@ -116,6 +127,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', onScroll);
   window.removeEventListener('resize', onScroll);
+  mqPc?.removeEventListener('change', closeMenuOnPc);
   if (rafId) window.cancelAnimationFrame(rafId);
   if (heroRafId) window.cancelAnimationFrame(heroRafId);
   observer?.disconnect();

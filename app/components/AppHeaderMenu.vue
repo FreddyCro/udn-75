@@ -68,10 +68,24 @@ function cancelPendingFocus() {
   focusRaf2 = 0;
 }
 
+// 選單開啟期間鎖住頁面捲動。樣式在 base.scss 的 .is-menu-locked（overflow:hidden ＋
+// padding-right 補回捲軸寬，避免鎖／解鎖時橫向抖動或撐出水平捲軸）。
+//
+// ⚠️ class 必須同時掛在 <html> 與 <body>：html 有 overflow-x: clip，根元素不再是
+//    overflow: visible → body 的 overflow 不會傳播到視窗。原本這裡只寫
+//    body.style.overflow = 'hidden'，等於完全沒鎖（同 hero 那把鎖踩過的坑）。
+//
+// 用獨立的 .is-menu-locked 而非 hero 的 .is-scroll-locked：兩把鎖各自開關，
+// hero 那邊 heroState 一變就會 remove class，共用會把選單的鎖一起清掉。
+function setScrollLock(locked: boolean) {
+  document.documentElement.classList.toggle('is-menu-locked', locked);
+  document.body.classList.toggle('is-menu-locked', locked);
+}
+
 watch(
   () => props.open,
   (open) => {
-    document.body.style.overflow = open ? 'hidden' : '';
+    setScrollLock(open);
     cancelPendingFocus();
 
     if (open) {
@@ -96,7 +110,7 @@ onMounted(() => document.addEventListener('keydown', onKeydown));
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown);
-  document.body.style.overflow = '';
+  setScrollLock(false);
   cancelPendingFocus();
 });
 </script>
