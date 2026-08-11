@@ -53,7 +53,7 @@ V 間距調整(縮小)，上面晚點消失、下免早點出現
 3. v 匯聚的效果加上速差，會比較有 figma 設計稿的效果
 4. navbar anchor 已經算論壇了
 5. v 臉小一點
-6. 下方有 scroll 提示
+6. v 下方有 scroll 提示
 
 ## Forum agenda
 

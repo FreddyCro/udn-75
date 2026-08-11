@@ -38,11 +38,6 @@ const VH_LINE_EXCEPTIONS = [
     snippet: 'height:100vh',
     why: '探測元素本身 —— 它就是在量 CSS 的 100vh',
   },
-  {
-    file: 'app/components/01a.symbol/SymbolFace.vue',
-    snippet: 'max-height: calc(100vh - 68px)',
-    why: 'dev 設定面板的高度上限，不屬於敘事版面；貼合「此刻看得到的範圍」才對',
-  },
 ];
 
 // ── window.innerHeight：整檔放行 ──────────────────────────────────────

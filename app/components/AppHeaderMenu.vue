@@ -194,7 +194,7 @@ onBeforeUnmount(() => {
   background-color: #fff;
 
   @include rwd-min('tablet') {
-    height: calc(100vh - 80px);
+    height: calc(#{vh(1)} - 80px);
     max-height: 793px;
     padding-bottom: 40px; // 793.5 − 753（icon 底緣）
   }
