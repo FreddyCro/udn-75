@@ -178,6 +178,9 @@ onMounted(() => {
     end: 'bottom bottom',
     invalidateOnRefresh: true,
     onUpdate: (self) => setBlessingProgress(self.progress),
+    // 深連結（header 的 #blessing）直接落在段落中段時 onUpdate 不保證發火，
+    // 進度會留在 0 → 臉停在第 0 格。同 coverST 的理由。
+    onRefresh: (self) => setBlessingProgress(self.progress),
     onLeaveBack: () => setBlessingProgress(0),
     onLeave: () => setBlessingProgress(1),
   });
@@ -198,6 +201,7 @@ onMounted(() => {
     end: 'bottom top',
     invalidateOnRefresh: true,
     onUpdate: (self) => setBlessingOutProgress(self.progress),
+    onRefresh: (self) => setBlessingOutProgress(self.progress),
     onLeaveBack: () => setBlessingOutProgress(0),
     onLeave: () => setBlessingOutProgress(1),
   });
@@ -310,6 +314,10 @@ onBeforeUnmount(() => {
   // 設計師：「小飛機碰觸到下方色塊時色塊變橘色」→ 接觸點前是淺藍。
   // fallback 1（純橘）→ SSR 與 trigger 建好之前都不會閃一下藍。
   // 兩個色都是 token，不寫死色值（test/design-tokens.spec.ts 守著）。
+  // 退路：不支援 color-mix 的瀏覽器會整條丟掉下面那個宣告，若沒有這一行，色塊會**沒有背景**
+  // ——變透明、露出底下的 forum，整段覆蓋直接破功。給純橘 ＝ 降級成「全程橘、少了藍色那一拍」，
+  // 那是這段轉場最安全的落點（橘是它最終、也是最長的狀態）。
+  background: var(--color-orange);
   background: color-mix(
     in srgb,
     var(--color-orange) calc(var(--cover-orange, 1) * 100%),
