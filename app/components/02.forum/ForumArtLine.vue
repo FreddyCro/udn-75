@@ -22,6 +22,10 @@ import type { ForumLine, ForumTextArt } from '~/types/forum';
 
 const props = defineProps<{ line: ForumLine }>();
 
+// locales JSON 的路徑是「站台根目錄」寫法（/img/...），塞進 url() 前必須補上
+// APP_ASSETS_PATH，否則子路徑部署（GitHub Pages 的 /udn-75/）會解析到 origin 根而 404。
+const assetUrl = useAssetUrl();
+
 // 物件才是素材；字串一律當活文字。
 const art = computed<ForumTextArt | null>(() =>
   typeof props.line === 'string' ? null : props.line,
@@ -42,7 +46,7 @@ const artClasses = computed(() =>
 const artVars = computed(() =>
   Object.fromEntries(
     Object.entries(art.value?.art ?? {}).flatMap(([bp, src]) => [
-      [`--art-url-${bp}`, `url("${src.src}")`],
+      [`--art-url-${bp}`, `url("${assetUrl(src.src)}")`],
       [`--art-w-${bp}`, src.w],
       [`--art-h-${bp}`, src.h],
     ]),
