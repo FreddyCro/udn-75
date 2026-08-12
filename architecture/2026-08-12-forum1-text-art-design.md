@@ -86,8 +86,13 @@
 **只要每行的行盒高度不變，那些 `dy` 一個都不用重校。**
 
 ```scss
-.forum-art-line {
+// 素材模式（modifier）。活文字模式（.forum-art-line 本體）不加任何規則 ——
+// 論壇二三四要跟改動前**完全一樣**。
+.forum-art-line--art {
   position: relative;
+  display: block;
+  // 行盒寬度也要對 —— 見下方「② 為什麼寬度掛在 span 上」
+  width: calc(var(--art-w) / var(--art-base) * 1em);
 
   // 零寬空格撐出一個正好 = line-height 的行盒。
   // ⚠️ 這一行是整套機制的支點：少了它，行盒塌成 0，
@@ -100,11 +105,16 @@
 .forum-art-line__art {
   position: absolute;
   top: 50%;
-  width: calc(var(--art-w) / var(--art-base) * 1em);
+  left: 0;
+  width: 100%; // ＝ span 的寬，算式只寫一次
   height: auto;
   transform: translateY(-50%);
 }
 ```
+
+⚠️ `::before` **只能掛在 modifier 上，不能掛在 `.forum-art-line` 本體**。活文字模式若也吃到
+ZWSP，它會連帶吃到 `letter-spacing`（大標 0.02em）→ 文字整行往右位移約 1.5px。
+論壇二三四全部靜默偏掉，而且是「看起來沒事」的那種偏。
 
 ### ① 垂直靠置中，不引入逐行常數
 
@@ -117,11 +127,21 @@
 
 不值得為 0.86px 引入一組逐行的垂直常數。
 
-### ② `font-size` 一個旋鈕同時管行高與素材寬
+### ② 為什麼寬度掛在 span 上，而不是只掛在 `<img>` 上
+
+`<img>` 是絕對定位、不進流排版。若寬度只掛在 img 上，行盒的 max-content 寬就只剩 ZWSP 的
+那一點點 —— 而 `.forum-event__head` 在 pc 是**絕對定位、shrink-to-fit**，它的寬度由最寬的子項
+決定。大標從 709 塌到近 0，`__head` 的寬度會跟著從 709 掉到標眉那一行的寬度。
+
+第一批看不出來（大標副標都靠左），但這是**留給第二批的地雷**：英文引言在 pc 稿是
+`text-align: right` 切齊右緣 1172，寬度一塌就整組跑掉。所以寬度從一開始就掛在 span 上，
+img 吃 `width: 100%`。
+
+### ③ `font-size` 一個旋鈕同時管行高與素材寬
 
 - `--art-base`：該組在 **pc 稿**的字級（大標 74、副標 50），掛在 `.forum-event__title` /
-  `.forum-event__subtitle` 上。
-- `--art-w`：該行素材的 Figma 原生寬，由 `ForumArtLine` 用 inline style 掛上。
+  `.forum-event__subtitle` 上（大標的 74 只在 `--quote` 版式底下，故要寫在該層）。
+- `--art-w`：該行素材的 Figma 原生寬，由 `ForumArtLine` 用 inline style 掛在 **span** 上。
 
 ⚠️ 兩者都是**無單位的數字**（`--art-base: 74`，不是 `74px`）—— `calc()` 裡是
 「無單位 ÷ 無單位 × 1em」，任一個帶了 `px` 整個算式就無效（`px / px * em` 不合法）。
@@ -133,7 +153,7 @@ pc 時 `1em = 74px` → 寬度算出 709.285px（＝稿）。pad 的 `font-size:
 CSS 變數會穿過元件邊界繼承，所以 `--art-base` 掛在父層、`--art-w` 掛在子層的 `<img>`，
 兩者在同一個 `calc()` 裡相遇，不需要 prop 傳遞。
 
-### ③ 為什麼高度在數學上不可能變
+### ④ 為什麼高度在數學上不可能變
 
 `font-size` 與 `line-height` 一個都沒動；ZWSP 產生的行盒高度恆等於 `line-height`；
 `<img>` 與 `.visually-hidden` 都是絕對定位、不進流排版。
@@ -169,6 +189,10 @@ export type ForumLine = string | ForumTextArt;
 `title` / `subtitle` / `quoteEn` / `venue` 的元素型別從 `string` **放寬**成 `ForumLine`，
 而不是新開一組欄位 —— 論壇二三四的 `string[]` 仍然合法，一個字都不用改。
 
+⚠️ 放寬**跟著批次走**：第一批只放寬 `title` / `subtitle`（＝這批真的會接上 `<ForumArtLine>`
+的兩個欄位），`quoteEn` / `venue` 留到第二批。提前放寬會讓 `{{ line }}`
+在型別上合法、runtime 卻印出 `[object Object]` —— 型別擋不到的靜默失敗。
+
 ⚠️ 這個放寬只覆蓋**陣列型**的欄位。日期組（`year` / `date` / `weekday` / `time`）是
 scalar `string`，且 `date` 還會被 `split('/')` 拆成兩格 grid 子項、`weekday` 外面套 CSS 圓框
 —— 那組要怎麼吃素材**本文件不涵蓋**，留到第二批單獨設計。
@@ -192,9 +216,11 @@ scalar `string`，且 `date` 還會被 `split('/')` 拆成兩格 grid 子項、`
 ```
 props: { line: ForumLine }
 
+根一律是 <span class="forum-art-line">，素材模式再加 --art modifier 與 --art-w。
+
 line 是 string → 直接輸出文字（等同現在的行為）
 line 是物件    → <span class="visually-hidden">{{ text }}</span>
-                 ＋ <img :src="art" :width="w" :height="h" alt="" :style="{ '--art-w': w }">
+                 ＋ <img class="forum-art-line__art" :src="art" :width="w" :height="h" alt="">
 ```
 
 ⚠️ 刻意**不**叫 `ForumLine` —— 這個 codebase 裡「線」專指橘核心那條設計線，會誤讀。
