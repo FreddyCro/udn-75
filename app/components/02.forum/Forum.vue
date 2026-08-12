@@ -42,6 +42,15 @@ const highlightsVisible = computed(() => route.query.highlights === '1');
 //    否則就看不出核心該藏在哪裡）。要臨時看穿，把該處的 z-index 調到 2 以上。
 const pathDebug = computed(() => route.query.pathdebug !== undefined);
 
+// 講者照的藍塊（見 architecture/2026-08-12-forum-speaker-photo-reveal-design.md）：
+// 本步還沒接上路徑事件，帶 ?photohold 就讓論壇一二停在 inactive 供比稿。
+// 不帶參數 → 傳 undefined → 遮罩不渲染 → 畫面與接這個功能之前完全相同。
+// ⚠️ 這是**暫時的驗收工具**。接上事件（forum1PhotoReveal / forum2PhotoReveal）之後
+//    整段換成 forumPathActive ? forumPathEvents[key] : undefined，並移除本旗標。
+const photoHold = computed(() => route.query.photohold !== undefined);
+const photoRevealOf = (no: string): boolean | undefined =>
+  photoHold.value && photoRevealKeyFor(no) ? false : undefined;
+
 // 覆蓋過場的 sticky 活動範圍高度。`.sec2__pin` 靠它才定得住那 100vh。
 // ⚠️ 必須與 `.section3` 的負 margin-top 同值 —— 兩邊都從 `--vh` 取（這裡是
 //    vhLength(1)、那裡是 SCSS 的 vh()），故恆等。任何一邊寫成字面 100vh 就會
@@ -93,7 +102,15 @@ onBeforeUnmount(() => {
         <span v-for="(line, i) in forum.heading" :key="i">{{ line }}</span>
       </h2>
 
-      <ForumEvent v-for="(e, i) in forum.events" :key="i" :event="e" />
+      <!-- photo-reveal ＝ 講者照的藍塊狀態（三態，見 <ForumEvent> 的 prop 說明）。
+           對照用場次名而非 v-for 索引：論壇三查不到 key ⇒ undefined ⇒ 不渲染遮罩，
+           與它沒有講者的事實自然一致。 -->
+      <ForumEvent
+        v-for="(e, i) in forum.events"
+        :key="i"
+        :event="e"
+        :photo-reveal="photoRevealOf(e.no)"
+      />
 
       <ForumCorePath />
     </div>

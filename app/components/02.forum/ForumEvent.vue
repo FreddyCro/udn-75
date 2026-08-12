@@ -12,7 +12,26 @@
 <script setup lang="ts">
 import type { ForumEvent } from '~/types/forum';
 
-const props = defineProps<{ event: ForumEvent }>();
+const props = withDefaults(
+  defineProps<{
+    event: ForumEvent;
+    /**
+     * 講者照的藍塊狀態，三態：
+     *   undefined → 這一場不做這個效果，**遮罩連 DOM 都不渲染**（論壇三沒有講者、論壇四不做）
+     *   false     → 藍塊蓋住整張照片（inactive）
+     *   true      → 藍塊帶著橘色上緣往下退出（active）
+     *
+     * 一個值管同場所有講者照 —— 論壇二的兩張卡同時開始刷，不做逐張錯開。
+     * 場次與事件 key 的對照在 ~/utils/forum-photo-reveal。
+     */
+    photoReveal?: boolean;
+  }>(),
+  // ⚠️ 這個 default 是必要的，不是贅寫。Vue 對宣告成 Boolean 型別的 prop 有 absence
+  //    casting：沒傳且**沒有 default** 時值會被轉成 false，三態就塌成兩態 ——
+  //    論壇四會變成「有遮罩且蓋住」，講者照直接消失在藍塊底下。
+  //    明寫 default 讓 hasDefault 為真，resolvePropValue 便不再轉（見 Vue 的 props.ts）。
+  { photoReveal: undefined },
+);
 
 const dateParts = computed(() => props.event.date.split('/'));
 
@@ -106,7 +125,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
         <!-- 照片框：尺寸與版位全在這一層（見 SCSS），內層的實圖與 placeholder 只負責填滿它。
              photo 未填時顯示帶編號的 placeholder；填了路徑就自動換成實圖，不需改程式碼。
              講者照只有一張正方圖（無 _pc/_pad/_mob 後綴）→ srcset 收成單一組、use-prefix 關掉。 -->
-        <span class="forum-event__photo-box">
+        <span class="forum-event__photo-box" :class="{ 'is-revealed': photoReveal }">
           <UPic
             v-if="sp.photo"
             :src="sp.photo"
@@ -116,6 +135,15 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
             classname="forum-event__photo"
           />
           <span v-else class="forum-event__photo-slot" aria-hidden="true">{{ sp.photoNo }}</span>
+
+          <!-- 藍塊：只在 photoReveal 不是 undefined 時渲染。
+               「線量好那一刻元素才掛上」是刻意的 —— CSS transition 不會在首次渲染跑，
+               所以不會出現「照片閃一下 → 藍塊由下往上蓋回去」的反向動畫。 -->
+          <i
+            v-if="photoReveal !== undefined"
+            class="forum-event__photo-mask"
+            aria-hidden="true"
+          />
         </span>
 
         <p class="forum-event__speaker-name">
@@ -1081,6 +1109,10 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 //    於本層 → rect 等於本層的 rect。動本層的尺寸就等於動那四個節點的錨點，
 //    見 architecture/forum-node-path.md。
 .forum-event__photo-box {
+  // 刷過去時那條橘色前緣的粗細。從稿的附圖量的：橘帶約佔照片寬 4.8%（268 → 約 13）。
+  // ⚠️ 參考影片（Google Drive）讀不到，這三個數字是估計值 —— 要對稿就改這裡。
+  --photo-mask-edge: 12px;
+
   position: absolute;
   top: 0;
   left: 0;
@@ -1088,6 +1120,14 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   width: 268px;
   aspect-ratio: 1 / 1;
   overflow: hidden;
+
+  @include rwd-max('pc') {
+    --photo-mask-edge: 10px;
+  }
+
+  @include rwd-max('tablet') {
+    --photo-mask-edge: 8px;
+  }
 
   // 論壇一在 pad／mob 退回流排版：照片排第一個，與下方的「講者介紹」標籤留 28 間距。
   .forum-event--quote & {
@@ -1139,6 +1179,27 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   color: var(--accent);
   font-size: 32px;
   letter-spacing: 0.1em;
+}
+
+// 藍塊：inactive 時蓋住整張照片，active 時帶著橘色上緣往下退出照片框外
+// （由 .forum-event__photo-box 的 overflow: hidden 裁掉）。稿的說法是「色塊刷過」——
+// 橘線從上緣一路走到下緣然後消失，那條線就是橘核心撞上來把藍塊推下去的前緣。
+//
+// ⚠️ 一定要用 translateY，不能改 scaleY 或 height：scaleY 會把 border-top 的橘線
+//    一起壓扁（越刷越細），height 動畫又不吃合成器。
+// 0.6s cubic-bezier(0.22, 1, 0.36, 1) ＝ 稿寫的「timing function smooth」：起步快、尾端漸止，
+// 對得上「橘方塊撞上來把藍塊推下去」的因果感。
+.forum-event__photo-mask {
+  position: absolute;
+  inset: 0;
+  border-top: var(--photo-mask-edge) solid var(--accent);
+  background: var(--color-blue);
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.forum-event__photo-box.is-revealed .forum-event__photo-mask {
+  transform: translateY(100%);
 }
 
 // 論壇一：姓名字面落在講者組頂端下方 112.7（那 102 的位移在 .forum-event__speaker 的
