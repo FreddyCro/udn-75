@@ -1181,17 +1181,21 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   letter-spacing: 0.1em;
 }
 
-// 藍塊：inactive 時蓋住整張照片，active 時帶著橘色上緣往下退出照片框外
+// 藍塊：inactive 時蓋住整張照片，active 時帶著橘色前緣往下退出照片框外
 // （由 .forum-event__photo-box 的 overflow: hidden 裁掉）。稿的說法是「色塊刷過」——
-// 橘線從上緣一路走到下緣然後消失，那條線就是橘核心撞上來把藍塊推下去的前緣。
+// 那條橘線就是橘核心撞上來把藍塊推下去的前緣。
 //
-// ⚠️ 一定要用 translateY，不能改 scaleY 或 height：scaleY 會把 border-top 的橘線
-//    一起壓扁（越刷越細），height 動畫又不吃合成器。
+// ⚠️ 橘線刻意**擺在照片框之外**（top 負一個線寬），故 inactive 是**純藍方塊、沒有橘線**
+//    （＝稿上最右邊那一格）；橘線是一開始位移才從上方帶進來的，也在走完時一起被裁掉。
+//    因此 translateY(100%) 就夠：本層比照片框高了正好一個線寬（top 負、bottom 0），
+//    100% 會把藍塊與橘線一起送出框外。改成 inset: 0 的話 inactive 就會露出橘線。
+// ⚠️ 一定要用 translateY，不能改 scaleY 或 height：scaleY 會把橘線一起壓扁（越刷越細），
+//    height 動畫又不吃合成器。
 // 0.6s cubic-bezier(0.22, 1, 0.36, 1) ＝ 稿寫的「timing function smooth」：起步快、尾端漸止，
 // 對得上「橘方塊撞上來把藍塊推下去」的因果感。
 .forum-event__photo-mask {
   position: absolute;
-  inset: 0;
+  inset: calc(-1 * var(--photo-mask-edge)) 0 0;
   border-top: var(--photo-mask-edge) solid var(--accent);
   background: var(--color-blue);
   transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);

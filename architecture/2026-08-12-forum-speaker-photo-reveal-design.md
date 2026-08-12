@@ -130,13 +130,14 @@ Vue 對**宣告成 `Boolean` 型別**的 prop 有特殊的 absence casting：沒
 ## 四、視覺
 
 ```scss
-.forum-event {
+.forum-event__photo-box {
   --photo-mask-edge: 12px;                  // pad 10px / mob 8px（rwd 覆寫）
 }
 
 .forum-event__photo-mask {
   position: absolute;
-  inset: 0;
+  // top 負一個線寬 → 橘線待在照片框之外，被 overflow: hidden 裁掉
+  inset: calc(-1 * var(--photo-mask-edge)) 0 0;
   border-top: var(--photo-mask-edge) solid var(--accent);
   background: var(--color-blue);            // #9fd6ff，既有色票
   transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
@@ -148,9 +149,26 @@ Vue 對**宣告成 `Boolean` 型別**的 prop 有特殊的 absence casting：沒
 }
 ```
 
+### inactive 是**純藍方塊、沒有橘線**
+
+稿上最右邊那一格就是純藍的 —— 橘線是「開始刷」才出現的前緣，不是 inactive 的一部分。
+做法是把橘線擺到**照片框之外**：本層 `top` 負一個線寬、`bottom: 0`，所以它比照片框高了正好
+一個線寬；靜止時橘線落在框外被 `overflow: hidden` 裁掉，藍色的 padding box 則剛好蓋滿照片。
+一開始位移，橘線就從上方帶進來，走完時也一起被裁掉。
+
+⚠️ 因此 `translateY(100%)` 剛好夠用（100% ＝ 照片高 ＋ 一個線寬），**不要**把 `inset` 改回 `0`
+—— 那會讓 inactive 露出橘線，而且 `100%` 會少走一個線寬、末端留一條橘線在下緣。
+
+實測（三個狀態的可見高度，照片框 268）：
+
+| 狀態 | 照片 | 橘線 | 藍塊 |
+| --- | --- | --- | --- |
+| inactive | 0 | **0** | 268 |
+| 刷到 40% | 100 | 12 | 156 |
+| active | 268 | 0 | 0 |
+
 **用 `translateY` 而不是 `scaleY` 或 `height`**：`scaleY` 會把 `border-top` 的粗細一起壓扁
-（橘線越刷越細），`height` 動畫不吃合成器。藍塊滑出照片下緣後由 box 的 `overflow: hidden`
-裁掉，橘線就從上緣一路走到下緣然後消失 —— 稿上的「色塊刷過」。
+（橘線越刷越細），`height` 動畫不吃合成器。
 
 `0.6s cubic-bezier(0.22, 1, 0.36, 1)` ＝ 稿寫的「timing function smooth」：起步快、尾端漸止，
 對得上「橘方塊撞上來把藍塊推下去」的因果感。
@@ -173,7 +191,7 @@ Vue 對**宣告成 `Boolean` 型別**的 prop 有特殊的 absence casting：沒
 | 項目 | 結果 |
 | --- | --- |
 | 三態 prop | 遮罩數 quote **1**／stair **2**／right **0**／youth **0**（youth 仍有 2 個照片框）—— `undefined` 那一態確實不渲染 |
-| inactive 外觀 | 淺藍 `#9fd6ff` 滿版 ＋ 橘 `#ff7f00` 上緣，與遮罩框、照片框三者 rect 完全重合（dx/dy/dw/dh 全 0） |
+| inactive 外觀 | 淺藍 `#9fd6ff` 滿版、**沒有橘線**（可見高 0），藍色 padding box 與照片框重合 |
 | 橘線粗細 | pc 12px（照片 268 → 4.5%）、卡片 250 → 4.8%；mob 8px。刷到 40% 時仍是 8px（**沒被壓扁** ＝ 沒誤用 `scaleY`） |
 | 刷過的中間態 | 照片上段可見、橘線、下方藍塊 —— 與稿的中間那一格一致 |
 | active 外觀 | 藍塊與橘線完全離開照片框 |
