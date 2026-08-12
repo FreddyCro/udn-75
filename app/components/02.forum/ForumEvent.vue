@@ -103,17 +103,20 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
         class="forum-event__speaker"
         :class="{ 'forum-event__speaker--card': isSpeakerCards }"
       >
-        <!-- photo 未填時顯示帶編號的 placeholder；填了路徑就自動換成實圖，不需改程式碼。
+        <!-- 照片框：尺寸與版位全在這一層（見 SCSS），內層的實圖與 placeholder 只負責填滿它。
+             photo 未填時顯示帶編號的 placeholder；填了路徑就自動換成實圖，不需改程式碼。
              講者照只有一張正方圖（無 _pc/_pad/_mob 後綴）→ srcset 收成單一組、use-prefix 關掉。 -->
-        <UPic
-          v-if="sp.photo"
-          :src="sp.photo"
-          :use-prefix="false"
-          :srcset="['mob']"
-          :alt="sp.name"
-          classname="forum-event__photo"
-        />
-        <span v-else class="forum-event__photo-slot" aria-hidden="true">{{ sp.photoNo }}</span>
+        <span class="forum-event__photo-box">
+          <UPic
+            v-if="sp.photo"
+            :src="sp.photo"
+            :use-prefix="false"
+            :srcset="['mob']"
+            :alt="sp.name"
+            classname="forum-event__photo"
+          />
+          <span v-else class="forum-event__photo-slot" aria-hidden="true">{{ sp.photoNo }}</span>
+        </span>
 
         <p class="forum-event__speaker-name">
           <span>{{ sp.name }}</span>
@@ -1063,79 +1066,42 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   }
 }
 
-// UPic 把 classname 掛在內層 <img>，scoped 選不到，故用 :deep。
-// 外層還多一個 <picture>：img 脫離文件流後它會塌成零高，所以卡片版式一定要改回 static，
-// 否則補上真圖的當下照片會疊到頭銜／姓名上（placeholder 看不出問題，見下方 __photo-slot）。
-:deep(.forum-event__photo) {
+// 照片框：尺寸、版位、flex／grid 指派全部收斂到這一層 —— 底下的實圖與 placeholder 因此
+// 各只需要一條「填滿它」的規則。原本這組數字（268 / 233 / 250 / 210 / 180）散在
+// :deep(.forum-event__photo) 的三組覆寫、.u-pic 的兩條 order／grid-row，外加
+// .forum-event__photo-slot 鏡射一份，共六處。
+//
+// ⚠️ 靜態版式必須寫 position: relative —— 內層照片改絕對定位後，它的 containing block 是
+//    「最近的定位祖先」；<picture>（.u-pic）不帶 position，所以基準會落在本層身上。
+//    本層忘了定位的話照片會一路錨到 .forum-event__speakers 去。
+// ⚠️ overflow: hidden 做兩件事：裁掉刷過去的藍塊（見 .forum-event__photo-mask），
+//    以及擋掉 aspect-ratio 的 content-based 最小高度（<picture> 是 inline 的）。
+// ⚠️ 本層是 ForumCorePath 那四個照片錨點（pc W5／W17、pad Q5、mob P5）的**新家**：
+//    它們讀 `.forum-event__photo, .forum-event__photo-slot` 的 rect，而那兩者現在 inset: 0
+//    於本層 → rect 等於本層的 rect。動本層的尺寸就等於動那四個節點的錨點，
+//    見 architecture/forum-node-path.md。
+.forum-event__photo-box {
   position: absolute;
   top: 0;
   left: 0;
   display: block;
   width: 268px;
   aspect-ratio: 1 / 1;
-  object-fit: cover;
-}
+  overflow: hidden;
 
-// :deep() 內不能再接 &，故卡片版式的覆寫獨立寫一條。
-.forum-event__speaker--card :deep(.forum-event__photo) {
-  position: static;
-  width: 250px;
-
-  @include rwd-max('pc') {
-    width: 210px;
-  }
-
-  @include rwd-max('tablet') {
-    width: 180px;
-  }
-}
-
-// UPic 外層的 <picture> 才是 flex／grid item，故 order 與欄列指派掛它身上，不是內層 <img>。
-.forum-event--quote :deep(.u-pic) {
-  @include rwd-max('pc') {
-    order: 1;
-    margin-bottom: 28px;
-  }
-}
-
-.forum-event--quote :deep(.forum-event__photo) {
-  @include rwd-max('pc') {
-    position: static;
-    width: 233px;
-  }
-}
-
-.forum-event__speaker--card :deep(.u-pic) {
-  @include rwd-max('tablet') {
-    grid-row: 1 / -1;
-  }
-}
-
-// 照片 placeholder：尺寸與實圖一致（設計稿講者圖為正方形），中央印編號方便日後對照補圖。
-.forum-event__photo-slot {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: grid;
-  place-items: center;
-  width: 268px;
-  aspect-ratio: 1 / 1;
-  border: 1px dashed var(--accent);
-  color: var(--accent);
-  font-size: 32px;
-  letter-spacing: 0.1em;
-
+  // 論壇一在 pad／mob 退回流排版：照片排第一個，與下方的「講者介紹」標籤留 28 間距。
   .forum-event--quote & {
     @include rwd-max('pc') {
-      position: static;
+      position: relative;
       order: 1;
       width: 233px;
       margin-bottom: 28px;
     }
   }
 
+  // 卡片版式（論壇二／四）：照片在流內、寬度等於卡片；mob 改橫列，照片跨滿四列。
   .forum-event__speaker--card & {
-    position: static;
+    position: relative;
     width: 250px;
 
     @include rwd-max('pc') {
@@ -1147,6 +1113,32 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
       width: 180px;
     }
   }
+}
+
+// UPic 把 classname 掛在內層 <img>，scoped 選不到，故用 :deep。
+// 尺寸與版位都在 .forum-event__photo-box 上，這裡只負責填滿它 —— 故一條規則走完三個斷點
+// 與兩種版式。外層 <picture> 塌成零高也不再有影響（盒子自帶尺寸）。
+// height: 100% 要壓過 UPic 全域的 .u-pic-img { height: auto }：:deep 編出來是
+// [data-v-x] .forum-event__photo（0,2,0），贏過 .u-pic-img（0,1,0）。
+:deep(.forum-event__photo) {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+// 照片 placeholder：與實圖同框（兩者都 inset: 0 於照片框），中央印編號方便日後對照補圖。
+.forum-event__photo-slot {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--accent);
+  color: var(--accent);
+  font-size: 32px;
+  letter-spacing: 0.1em;
 }
 
 // 論壇一：姓名字面落在講者組頂端下方 112.7（那 102 的位移在 .forum-event__speaker 的
