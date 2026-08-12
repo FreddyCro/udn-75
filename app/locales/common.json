@@ -3,6 +3,12 @@
   "navbarMenu1Link": "#",
   "navbarMenu2Text": "更多數位專題",
   "navbarMenu2Link": "https://udn.com/newmedia/office/",
+  "header": {
+    "logoLabel": "聯合七五・智慧未來",
+    "logoAlt": "聯合七五・智慧未來 UDN 75 — Shaping An Intelligent Future",
+    "menuOpenLabel": "開啟選單",
+    "menuCloseLabel": "關閉選單"
+  },
   "headerAnchors": [
     { "title": "論壇", "target": "forum" },
     { "title": "永續祝福", "target": "blessing" },

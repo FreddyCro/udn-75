@@ -44,6 +44,10 @@ let themeEls: HTMLElement[] = [];
 // autoHide=true 時初始隱藏，待 hero 完全捲離視窗才顯示。
 const isVisible = ref(!props.autoHide);
 const anchors = str.headerAnchors as Anchor[];
+// logo 的替代文字與漢堡的 aria-label 一律走文案檔（locales/common.json 的 header），
+// 元件內不寫死中文 —— 校稿時只需要改 JSON。
+// 刻意不取名 header：模板根節點是 <header>，同名讀起來會混淆（原生標籤不受影響，純為可讀性）。
+const labels = str.header;
 
 let observer: IntersectionObserver | null = null;
 let heroObserver: IntersectionObserver | null = null;
@@ -230,16 +234,11 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     <!-- 頂部列（≥1280：logo ＋ 錨點列 ＋ 音效 ＋ share；<1280：logo ＋ 音效 ＋ 漢堡） -->
     <div class="app-header__bar-wrap">
       <div class="app-header__bar">
-        <a
-          class="app-header__logo"
-          href="#"
-          aria-label="聯合七五・智慧未來"
-          @click="scrollToTop"
-        >
+        <a class="app-header__logo" href="/" :aria-label="labels.logoLabel">
           <img
             class="app-header__logo-img"
             :src="logoUrl"
-            alt="聯合七五・智慧未來 UDN 75 — Shaping An Intelligent Future"
+            :alt="labels.logoAlt"
           />
           <span class="app-header__logo-mask" aria-hidden="true" />
         </a>
@@ -262,7 +261,9 @@ const effectiveTheme = computed<HeaderTheme>(() =>
             <button
               class="app-header__menu-toggle"
               type="button"
-              :aria-label="menuOpen ? '關閉選單' : '開啟選單'"
+              :aria-label="
+                menuOpen ? labels.menuCloseLabel : labels.menuOpenLabel
+              "
               :aria-expanded="menuOpen"
               @click="menuOpen = !menuOpen"
             >

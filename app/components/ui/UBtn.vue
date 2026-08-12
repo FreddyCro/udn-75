@@ -91,7 +91,8 @@ const tag = computed(() => (props.href ? 'a' : 'button'));
   transition:
     background-color 0.2s ease,
     color 0.2s ease,
-    border-color 0.2s ease;
+    border-color 0.2s ease,
+    transform 0.2s ease;
 
   @include rwd-min('tablet') {
     font-size: 18px;
@@ -107,6 +108,12 @@ const tag = computed(() => (props.href ? 'a' : 'button'));
     border-color: var(--u-btn-border-hover);
     background: var(--u-btn-bg-hover);
     color: var(--u-btn-color-hover);
+
+    // 放大只給 pc 以上（pad／mob 是觸控，hover 不成立）。
+    // transform 不改 layout 盒子，ForumCorePath 的量測錨點不受影響。
+    @include rwd-min('pc') {
+      transform: scale(1.03);
+    }
   }
 
   // --accent 只定義在 Forum.vue 的 .sec2 上，故一律帶 --color-orange 當 fallback，
@@ -149,6 +156,13 @@ const tag = computed(() => (props.href ? 'a' : 'button'));
 
   @media (prefers-reduced-motion: reduce) {
     transition: none;
+
+    // 關掉 transition 只會讓縮放變成瞬間跳動，動態本身要一併拿掉。
+    // 寫在同層 media 內、且排在原 hover 規則之後，特異度相同故後者勝出。
+    &:hover,
+    &:focus-visible {
+      transform: none;
+    }
   }
 }
 </style>

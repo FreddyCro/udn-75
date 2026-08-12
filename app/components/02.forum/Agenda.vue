@@ -16,6 +16,10 @@ import type { UBtnVariant } from '~/types/ui';
 
 const { groups, actions } = str.agenda;
 
+// 兩顆 CTA 的點擊音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
+// 見 useSfx.ts）；音效池由 pages/index.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
+const { play } = useSfx();
+
 // 追上目標的節奏：跟不上時每組至少亮這麼久才走下一步。
 const STEP_MS = 100;
 
@@ -156,6 +160,7 @@ onBeforeUnmount(() => {
         class="agenda__action"
         :variant="action.variant as UBtnVariant"
         :href="action.href"
+        @click="play('sfx01')"
       >
         {{ action.label }}
       </UBtn>

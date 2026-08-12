@@ -16,8 +16,9 @@
   `GlitchImage`、`AwardTimeline`、`PhotoPanels`、`ShowcaseGallery`、`PixelRail`、`PixelBranch`、
   `AiImageQuiz` 是功能區塊，也留原地。
   例外：`AppHeader`、`AppFooter` 是所有 layout 都掛的跨頁共用外框，已移入 `app/components/ui/`。
-  兩者的下游 `AppHeaderIcon` / `AppHeaderMenu` / `AppHeaderNav` / `AppHeaderShare` / `AppHeaderSound`
-  仍留根目錄（只有 `AppHeader` 用得到，不是共用件）。
+  `AppHeader` 的下游 `AppHeaderIcon` / `AppHeaderMenu` / `AppHeaderNav` / `AppHeaderShare` /
+  `AppHeaderSound` 也一併移入（2026-08-13）：它們只有 `AppHeader` 用得到，跟上游放同一層比散在
+  根目錄好找。搬動不影響用法 —— `ui/` 在 `nuxt.config.ts` 是 `pathPrefix: false`，元件名只取檔名。
 
 ### 不改的範圍
 

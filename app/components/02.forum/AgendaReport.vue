@@ -8,6 +8,10 @@
 import str from '@/locales/section2.json';
 
 const { heading, body, cta } = str.report;
+
+// CTA 的點擊音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，見 useSfx.ts）；
+// 音效池由 pages/index.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
+const { play } = useSfx();
 </script>
 
 <template>
@@ -18,7 +22,12 @@ const { heading, body, cta } = str.report;
 
     <p class="agenda-report__body">{{ body }}</p>
 
-    <UBtn variant="gray" class="agenda-report__cta" :href="cta.href">
+    <UBtn
+      variant="gray"
+      class="agenda-report__cta"
+      :href="cta.href"
+      @click="play('sfx01')"
+    >
       {{ cta.label }}
     </UBtn>
   </section>
