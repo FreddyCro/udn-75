@@ -72,8 +72,8 @@ export type ForumEvent = {
   layout: ForumLayout;
   /** 「大師談媒體」 */
   tag: string;
-  /** 主標上方的品牌行（僅論壇二的「台積電」有） */
-  brand?: string;
+  /** 主標上方的品牌行（論壇二「台積電」、論壇四「台積電文教基金會」） */
+  brand?: ForumLine;
   /** 主標，可多行。論壇一是 ForumTextArt（稿字形素材），其餘場次是字串 */
   title: ForumLine[];
   /** 主標下的副標，可多行。同 title */

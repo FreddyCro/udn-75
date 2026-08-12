@@ -63,7 +63,9 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
         <span class="forum-event__tag-name">{{ event.tag }}</span>
       </p>
 
-      <p v-if="event.brand" class="forum-event__brand">{{ event.brand }}</p>
+      <p v-if="event.brand" class="forum-event__brand">
+        <ForumArtLine :line="event.brand" />
+      </p>
 
       <!-- 逐行交給 <ForumArtLine>：字串照舊輸出文字，物件則換成稿字形 SVG（論壇一）。
            見 architecture/2026-08-12-forum1-text-art-design.md。
@@ -384,18 +386,29 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 }
 
 // 「台積電」：設計稿字面 y=70、寬 161。
+//
+// ⚠️ 論壇四 pad 稿的 brand 反推字級約 38（素材 302 寬 ÷ 8 字 ＝ 37.75、字高 30.99），
+//    與這裡的 49 不符 —— 稿與程式的既有落差，同標眉那條註解記的情形。
+//    素材會照稿寬渲染，但行盒仍是 49 撐出來的 58.8，故幾何不變。
 .forum-event__brand {
+  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+  --art-base: 56;
+
   margin: 21px 0 0;
   font-size: 56px;
   font-weight: 300;
   line-height: 1.2;
 
   @include rwd-max('pc') {
+    --art-base: 49;
+
     margin: 0 0 24px;
     font-size: 49px;
   }
 
   @include rwd-max('tablet') {
+    --art-base: 35;
+
     margin-bottom: 20px;
     font-size: 35px;
   }
@@ -404,6 +417,10 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 // 大標：論壇二／三為 5~6 個 CJK 字、字面寬 520／621，反推 96px ＋ 0.1em 字距、行距 118。
 // 論壇一是長英文名，設計稿字面寬 709，故縮到 74px ＋ 0.02em。
 .forum-event__title {
+  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+  // 這一組是論壇二／三／四共用的基底；論壇一（--quote）在下面另有一組。
+  --art-base: 96;
+
   display: flex;
   flex-direction: column;
   margin: 0;
@@ -413,11 +430,18 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   letter-spacing: 0.1em;
 
   @include rwd-max('pc') {
+    --art-base: 67;
+
     font-size: 67px;
     line-height: 78px;
   }
 
+  // ⚠️ mob 稿的大標列距實測約 54（論壇二 53.75／論壇三 54.32／論壇四 54.27），
+  //    這裡是 56 —— 既有的 2px 落差。刻意不改：動 line-height 會改行盒高度，
+  //    連帶偏掉 forum-node-path 的 dy（見 architecture/forum-node-path.md）。
   @include rwd-max('tablet') {
+    --art-base: 48;
+
     font-size: 48px;
     line-height: 56px;
   }

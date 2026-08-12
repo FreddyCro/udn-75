@@ -14,7 +14,8 @@
           {
             "text": "Dr. Mario García 演講",
             "art": {
-              "pc": { "src": "/img/forum/forum1-title-pc.svg", "w": 709.285, "h": 61.6624 }
+              "pc": { "src": "/img/forum/forum1-title-pc-1.svg", "w": 709.285, "h": 61.6624 },
+              "mob": { "src": "/img/forum/forum1-title-mob-1.svg", "w": 362.0002, "h": 30.9816 }
             }
           }
         ],
@@ -22,13 +23,15 @@
           {
             "text": "手機與AI如何改變",
             "art": {
-              "pc": { "src": "/img/forum/forum1-sub-1-pc.svg", "w": 401.58, "h": 39.6317 }
+              "pc": { "src": "/img/forum/forum1-sub-pc-1.svg", "w": 401.58, "h": 39.6317 },
+              "pad": { "src": "/img/forum/forum1-sub-pad-1.svg", "w": 351.9585, "h": 34.735 }
             }
           },
           {
             "text": "我們說故事的方式",
             "art": {
-              "pc": { "src": "/img/forum/forum1-sub-2-pc.svg", "w": 394.085, "h": 39.8362 }
+              "pc": { "src": "/img/forum/forum1-sub-pc-2.svg", "w": 394.085, "h": 39.8362 },
+              "pad": { "src": "/img/forum/forum1-sub-pad-2.svg", "w": 345.3905, "h": 34.914 }
             }
           }
         ],
@@ -65,8 +68,32 @@
         "no": "論壇二",
         "layout": "stair",
         "tag": "青年對談（一）",
-        "brand": "台積電",
-        "title": ["跨世代共問", "AI時代共答"],
+        "brand": {
+          "text": "台積電",
+          "art": {
+            "pc": { "src": "/img/forum/forum2-brand-pc-1.svg", "w": 160.9937, "h": 43.997 },
+            "pad": { "src": "/img/forum/forum2-brand-pad-1.svg", "w": 146.6802, "h": 40.0008 },
+            "mob": { "src": "/img/forum/forum2-brand-mob-1.svg", "w": 105.2689, "h": 28.5634 }
+          }
+        },
+        "title": [
+          {
+            "text": "跨世代共問",
+            "art": {
+              "pc": { "src": "/img/forum/forum2-title-pc-1.svg", "w": 513.2843, "h": 82.6996 },
+              "pad": { "src": "/img/forum/forum2-title-pad-1.svg", "w": 333.4, "h": 54.0009 },
+              "mob": { "src": "/img/forum/forum2-title-mob-1.svg", "w": 237.0263, "h": 38.0301 }
+            }
+          },
+          {
+            "text": "AI時代共答",
+            "art": {
+              "pc": { "src": "/img/forum/forum2-title-pc-2.svg", "w": 520.001, "h": 82.8816 },
+              "pad": { "src": "/img/forum/forum2-title-pad-2.svg", "w": 339.0041, "h": 54.0011 },
+              "mob": { "src": "/img/forum/forum2-title-mob-2.svg", "w": 240.9985, "h": 38.1127 }
+            }
+          }
+        ],
         "body": "站在AI時代的轉捩點，聯合報系攜手各界領袖凝聚共識，從國家韌性、數位轉型、公平教育到高齡安老，全面回應AI浪潮的結構變革，實踐安全、信任、多元的前瞻台灣。",
         "cta": "立即報名",
         "year": "2026",
@@ -97,7 +124,24 @@
         "no": "論壇三",
         "layout": "right",
         "tag": "AI永續",
-        "title": ["AI時代", "永續未來共識"],
+        "title": [
+          {
+            "text": "AI時代",
+            "art": {
+              "pc": { "src": "/img/forum/forum3-title-pc-1.svg", "w": 311.1191, "h": 82.3334 },
+              "pad": { "src": "/img/forum/forum3-title-pad-1.svg", "w": 194.6634, "h": 54.0008 },
+              "mob": { "src": "/img/forum/forum3-title-mob-1.svg", "w": 144.6932, "h": 38.3566 }
+            }
+          },
+          {
+            "text": "永續未來共識",
+            "art": {
+              "pc": { "src": "/img/forum/forum3-title-pc-2.svg", "w": 620.9977, "h": 83.0541 },
+              "pad": { "src": "/img/forum/forum3-title-pad-2.svg", "w": 402.0441, "h": 54.0005 },
+              "mob": { "src": "/img/forum/forum3-title-mob-2.svg", "w": 286.9942, "h": 38.6859 }
+            }
+          }
+        ],
         "body": "站在AI時代的轉捩點，聯合報系攜手各界領袖凝聚共識，從國家韌性、數位轉型、公平教育到高齡安老，全面回應AI浪潮的結構變革，實踐安全、信任、多元的前瞻台灣。",
         "year": "2026",
         "date": "09/18",
@@ -110,8 +154,22 @@
       "no": "論壇四",
       "layout": "youth",
       "tag": "青年對談（二）",
-      "brand": "台積電文教基金會",
-      "title": ["青年永續築夢論壇"],
+      "brand": {
+        "text": "台積電文教基金會",
+        "art": {
+          "pc": { "src": "/img/forum/forum4-brand-pc-1.svg", "w": 430.0036, "h": 43.9853 },
+          "pad": { "src": "/img/forum/forum4-brand-pad-1.svg", "w": 302.0028, "h": 30.9896 }
+        }
+      },
+      "title": [
+        {
+          "text": "青年永續築夢論壇",
+          "art": {
+            "pc": { "src": "/img/forum/forum4-title-pc-1.svg", "w": 785.0073, "h": 79.9987 },
+            "pad": { "src": "/img/forum/forum4-title-pad-1.svg", "w": 552.0056, "h": 56.2552 }
+          }
+        }
+      ],
       "body": "邀請到台積電文教基金會等產官學研界代表齊聚，透過跨世代對話與標竿分享，探討在AI浪潮與急遽變遷的時代下，如何賦能青年扎根在地、跨域創新，共同擘畫兼具環境韌性與社會共好的永續未來藍圖。",
       "cta": "立即報名",
       "year": "2026",
