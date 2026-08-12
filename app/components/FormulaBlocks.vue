@@ -216,10 +216,7 @@ function build() {
   if (!root) return;
   st = ScrollTrigger.create({
     trigger: root,
-    // 不 pin：以區塊自身的捲動行程當進度。
-    // start 早（頂緣進到視窗 3/4 處即起演）、end 晚（中心略過視窗中線才定版），
-    // 把 scrub 行程拉長近一倍，分鏡演久一點、不會一捲就散開完
-    start: 'top bottom',
+    start: 'top 80%',
     end: 'bottom 70%',
     scrub: true,
     invalidateOnRefresh: true,
@@ -358,12 +355,12 @@ onBeforeUnmount(() => {
 <style lang="scss" scoped>
 // 像素外框：4px 線、角落缺 8px 再於 4px 內縮處補一格 4px 方塊；
 // 多重背景繪製 → 盒子伸縮時線寬與角點恆為 4px
-@mixin pixel-frame($c) {
+@mixin pixel-frame($c, $bg: null) {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
+  $frame:
     linear-gradient($c, $c) left 8px top 0 / calc(100% - 16px) 4px no-repeat,
     linear-gradient($c, $c) left 8px bottom 0 / calc(100% - 16px) 4px no-repeat,
     linear-gradient($c, $c) left 0 top 8px / 4px calc(100% - 16px) no-repeat,
@@ -372,6 +369,10 @@ onBeforeUnmount(() => {
     linear-gradient($c, $c) right 4px top 4px / 4px 4px no-repeat,
     linear-gradient($c, $c) left 4px bottom 4px / 4px 4px no-repeat,
     linear-gradient($c, $c) right 4px bottom 4px / 4px 4px no-repeat;
+  background:
+    $frame,
+    linear-gradient($bg, $bg) left 4px top 4px / calc(100% - 8px)
+      calc(100% - 8px) no-repeat;
 }
 
 .formula {
@@ -446,7 +447,7 @@ onBeforeUnmount(() => {
   }
 
   &::before {
-    @include pixel-frame(var(--color-orange));
+    @include pixel-frame(var(--color-orange), #fff);
   }
 
   &::after {
@@ -578,7 +579,7 @@ onBeforeUnmount(() => {
   }
 
   &::before {
-    @include pixel-frame(var(--box-c));
+    @include pixel-frame(var(--box-c), #fff);
   }
 
   .formula.is-settled & {
