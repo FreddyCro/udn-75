@@ -154,8 +154,16 @@ export const FORUM_HANDOFF = {
 //
 // ⚠️ out 必須早於 SYMBOL_STOPS[0].until（＝ disperse→face 的交界）——
 //    文字要在粒子開始集合成人像之前淡乾淨，兩件事同時發生會互相搶焦點。
-//    改吃時間軸後這條**不再自動成立**（時間軸不知道捲動位置），全靠 out 這道閘門補回，
-//    所以它比改版前更重要，不是比較不重要。test/symbol-sequence.spec.ts 守著。
+//    改吃時間軸後這條**不再自動成立**（時間軸不知道捲動位置），out 這道閘門是把它補回來的
+//    唯一手段 —— 所以它比改版前更重要，不是比較不重要。
+//
+//    ⚠️ 但補回來的是「條件保證」，不是改版前那種**構造上**的保證：清場自己要花 clearDur
+//    （0.3s），而越過 out 之後使用者還在往下捲。out 到人像集合只有
+//    (0.28 − 0.26) × 400vh ＝ 8vh，換算：捲速 ≲ 27vh/s 時 8vh 走得比 0.3s 慢 → 淡乾淨；
+//    **更快的捲速仍會短暫重疊**，而且沒有任何門檻安排救得回來（要救只能縮短 clearDur）。
+//    這是已接受的殘留風險：那個速度的人是「一路往下滑」而不是在讀，本來就看不到內容。
+//    守著這件事的不是 `out < until` 這個大小比較（清場改吃時間後它已不蘊含該性質），
+//    而是 ASSUMED_READING_VH_PER_S 那條換算關係，見 test/symbol-sequence.spec.ts。
 //
 // 決策紀錄：architecture/2026-08-12-symbol-intro-timeline-design.md
 //   （它推翻了前一版 architecture/2026-08-12-symbol-intro-stagger-design.md 第一節的 scrub 結論）
@@ -167,6 +175,17 @@ export const SYMBOL_INTRO = {
   in: 0.02,
   out: 0.26,
 } as const;
+
+// 「一邊讀一邊往下捲」的假設捲速上限（vh/s）。
+//
+// ⚠️ 這是**假設，不是量測** —— 它描述我們願意為哪種使用者保證「文字在人像集合前淡乾淨」。
+//    25vh/s 在 1080 高的螢幕上約 270px/s。實際觀察到的「穩定往下讀」約 170–200px/s
+//    （16–19vh/s），故 25 已經是閱讀行為的上緣；再快的就是在滑過去、不是在讀。
+//
+// 用途只有一個：把「out 到人像集合的 8vh」換算成秒數，跟 clearDur 比大小
+//（見 test/symbol-sequence.spec.ts）。調大它＝宣稱要保證更快的捲速，那條測試就會要求
+// 更短的 clearDur 或更寬的 margin —— 這正是它存在的意義：讓那個取捨顯式化，不能默默劣化。
+export const ASSUMED_READING_VH_PER_S = 25;
 
 // 開場三行的時間軸（ms）。整段長度與各拍起點由行數推導，見 symbolIntroTotal /
 // symbolIntroOutPhase —— 行數若從三行變四行，時間軸自己變長，不必手改。
@@ -212,7 +231,12 @@ function introOutStart(index: number, count: number): number {
 }
 
 /** 時間軸進入退場段的時刻（ms）＝ 第一行開始退場。
- *  保底清場在這之後不再介入（讓它自己跑完，見 symbolIntroGate）。 */
+ *
+ *  ⚠️ 這支**沒有 app/ 內的消費端**（2026-08-13 起保底清場不再看它，見 symbolIntroGate 的
+ *     那段註解）。留著是因為它是時間軸的**地標**：測試與文件要指涉「退場段」這個區間時
+ *     需要一個定址點，刪掉的話那些測試就得在自己那邊重寫
+ *     `(count−1)·inStagger + inDur + hold`，把公式抄成兩份 —— 而那份抄寫壞掉時
+ *     測試會安靜地開始取樣錯誤的時刻。故它是刻意保留的測試／文件用 API，不是死程式碼。 */
 export function symbolIntroOutPhase(count: number): number {
   return introOutStart(0, count);
 }
@@ -286,8 +310,13 @@ export function symbolIntroGate(
 ): SymbolIntroState {
   if (p >= SYMBOL_INTRO.out) {
     if (s.clearElapsed !== null) return s; // 已在清場（或已清完）
-    // 已自行進入退場段 → 讓它跑完。疊一層更快的淡出看起來是斷掉而不是收尾。
-    if (s.elapsed !== null && s.elapsed >= symbolIntroOutPhase(count)) return s;
+    // ⚠️ 這裡**沒有**「已進入退場段就讓它自己跑完」的例外（2026-08-13 移除）。
+    //    疊清場不會看起來斷掉：清場乘數乘在逐行 opacity 之上，兩條都是兩端一階導數為 0
+    //    的遞減 smoothstep，相乘仍然單調遞減、兩端仍然平滑 —— 唯一的效果是**收得更快**，
+    //    而收得更快正是 out 存在的目的。有那個例外時最壞情況要多留
+    //    outDur + (count−1)·outStagger ＝ 1.4s 的尾巴，而 out 到人像集合只有 8vh
+    //    （16–19vh/s 的閱讀捲速走完只要 0.42–0.5s）—— 於是最常見的捲速反而是唯一
+    //    會撞上人像集合的一段。移除後最壞情況變成 clearDur ＝ 0.3s。
     // 從未起播就越過（重新整理落在符號段中段：progress 初值 0，
     // ScrollTrigger refresh 後才寫入真值）→ 直接跳到清場終點，
     // 否則畫面上會無故閃一下文字。

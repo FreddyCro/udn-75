@@ -94,7 +94,12 @@ watch(() => symbolTarget.value.enter, (e) => (symbolLayerDone.value = e), {
        底色翻白之後還宣告 dark 的話，header 的內容會白對白看不見。
        （屬性本身在 SSR 就存在，符合 AppHeader onMounted 收集 [data-header-theme] 的前提；
          值由 dataset 每次捲動即時讀取，故動態綁定有效，見 AppHeader 的 updateTheme。）
-       （進度除錯已整合成跨章節的 <DevCoreProgress>，掛在 pages/index.vue，?pathdebug 開啟。） -->
+       （進度除錯已整合成跨章節的 <DevCoreProgress>，掛在 pages/index.vue，?pathdebug 開啟。）
+
+       data-anchor-target：本段是論壇章節的開場（見檔頭：對應 Figma「智慧論壇05–08」），
+       故錨點列在這整段就該亮「論壇」。它有 SYMBOL_VH 個視窗高，不宣告的話 header 剛滑入
+       就會有那麼長一段三個錨點全不亮。宣告權在段落自己，AppHeader 只讀屬性、不認得
+       .sec-symbol —— 同 data-header-theme 的分工。值是靜態的，SSR 就在。 -->
   <section
     ref="sceneRef"
     class="sec-symbol"
@@ -102,6 +107,7 @@ watch(() => symbolTarget.value.enter, (e) => (symbolLayerDone.value = e), {
     :style="{ height: sceneHeight }"
     aria-hidden="true"
     :data-header-theme="symbolMode === 'converge' ? 'light' : 'dark'"
+    data-anchor-target="forum"
   />
 </template>
 

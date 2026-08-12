@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ASSUMED_READING_VH_PER_S,
   FORUM_HANDOFF,
   INTRO_LINE_SHIFT,
   INTRO_REVEAL_SPAN,
@@ -41,6 +42,25 @@ describe('符號段序列門檻', () => {
   it('開場文案的保底清場必須早於進入 face', () => {
     expect(SYMBOL_INTRO.in).toBeLessThan(SYMBOL_INTRO.out);
     expect(SYMBOL_INTRO.out).toBeLessThan(SYMBOL_STOPS[0]!.until);
+  });
+
+  // ⚠️ 上面那條 `out < until` **本身不足以**保證「文字在人像集合前淡乾淨」——
+  // 清場改成吃時間（clearDur）之後，越過 out 那一刻文字還在，要再 0.3s 才淡完，
+  // 而這段時間使用者仍在往下捲。真正該守的是**距離換算成時間後還夠不夠清完**：
+  //   marginVh / ASSUMED_READING_VH_PER_S ≥ clearDur
+  // 這條會在有人「把 clearDur 調長」或「把 out 往後推 / 把 until 往前拉」時大聲壞掉，
+  // 而 `out < until` 在那兩種情況下都還是綠的 —— 那正是它給假保證的地方。
+  it('out 到人像集合的距離，換算成閱讀捲速下的秒數要夠跑完清場', () => {
+    const marginVh = (SYMBOL_STOPS[0]!.until - SYMBOL_INTRO.out) * SYMBOL_VH * 100;
+    const marginSec = marginVh / ASSUMED_READING_VH_PER_S;
+    // 容差 1e-9：吸收 0.28 − 0.26 的 IEEE754 誤差，不是放寬門檻。
+    expect(marginSec).toBeGreaterThanOrEqual(INTRO_TIMELINE.clearDur / 1000 - 1e-9);
+  });
+
+  // 「清場一定比自然退場快」是整個保底機制的前提：清場的意義就是把最壞情況從
+  // 「一行一行退完」壓成單一次整組淡出。這條翻過來的話，越過 out 反而變慢。
+  it('清場比自然退場快（clearDur < outDur）', () => {
+    expect(INTRO_TIMELINE.clearDur).toBeLessThan(INTRO_TIMELINE.outDur);
   });
 
   // agendaIn 的作用是讓議程那 0.4s 的淡入發生在畫面外，判準是「符號段底緣還在
@@ -129,9 +149,33 @@ describe('symbolIntroLineAt（逐行進場 / 逐行退場的時間軸）', () =>
     expect(line(t, 0).opacity).toBeLessThan(1);
   });
 
-  it('相鄰兩行重疊一半（進場與退場都是）', () => {
-    expect(INTRO_TIMELINE.inStagger * 2).toBe(INTRO_TIMELINE.inDur);
-    expect(INTRO_TIMELINE.outStagger * 2).toBe(INTRO_TIMELINE.outDur);
+  // 守「重疊一半」這條關係要看**行為**，不是把常數的算式抄一遍（`inStagger * 2 === inDur`
+  // 只是把設定值重寫成斷言，改設定就一起改，守不住任何東西）。
+  // smoothstep 在窗的正中央恰為 0.5 ⇒ 下一行起跑那一刻，前一行剛好升到一半。
+  it('相鄰兩行重疊一半：後一行起跑時前一行正好半亮（進場）', () => {
+    expect(line(INTRO_TIMELINE.inStagger, 0).opacity).toBeCloseTo(0.5);
+    expect(line(INTRO_TIMELINE.inStagger, 1).opacity).toBe(0); // 這一刻才起跑
+  });
+
+  it('相鄰兩行重疊一半：後一行開始退場時前一行正好半亮（退場）', () => {
+    const t = symbolIntroOutPhase(COUNT) + INTRO_TIMELINE.outStagger;
+    expect(line(t, 0).opacity).toBeCloseTo(0.5);
+    expect(line(t, 1).opacity).toBe(1); // 這一刻才開始退
+  });
+
+  // 進場／停留分支與退場分支在自己那條接縫上必須接得起來，否則越過那一幀會跳一下。
+  // ⚠️ 退場分支在 k = 0 時 shift 是 **−0**，而 expect(-0).toBe(0) 會失敗
+  //    （Object.is(-0, 0) 為 false）—— 故用 toBeCloseTo。
+  it('進場→退場的接縫不跳（每行在自己的退場起點兩側值相同）', () => {
+    for (let i = 0; i < COUNT; i++) {
+      const seam = symbolIntroOutPhase(COUNT) + i * INTRO_TIMELINE.outStagger;
+      const holdEnd = line(seam - 1, i); // 停留段末值
+      const exitStart = line(seam, i); //   退場段首值
+      expect(holdEnd).toEqual({ opacity: 1, shift: 0, reveal: 1 });
+      expect(exitStart.opacity).toBe(holdEnd.opacity);
+      expect(exitStart.shift).toBeCloseTo(holdEnd.shift);
+      expect(exitStart.reveal).toBe(holdEnd.reveal);
+    }
   });
 
   it('換行數時退場起點與 total 跟著推導，不寫死', () => {
@@ -229,9 +273,25 @@ describe('symbolIntroGate（閘門：progress → 狀態轉換）', () => {
     });
   });
 
-  it('越過 out：已進入退場段就讓它自己跑完，不疊清場', () => {
+  // 2026-08-13 反轉：原本「已進入退場段就讓它自己跑完」的例外已移除。
+  // 那個例外讓最壞情況多留 outDur + (count−1)·outStagger ＝ 1.4s 的尾巴，
+  // 而 out 到人像集合只有 8vh（約 0.42–0.5s @16–19vh/s）—— 於是最常見的閱讀捲速
+  // 反而是唯一會撞到人像集合的一段。清場乘數乘在逐行 opacity 之上，兩條都是
+  // 兩端導數為 0 的遞減 smoothstep，疊起來仍然平滑，只是收得更快 —— 而收得更快正是 out 的目的。
+  it('越過 out：即使已進入退場段也照樣啟動清場（不留 1.4s 的尾巴）', () => {
     const exiting = { elapsed: symbolIntroOutPhase(COUNT), clearElapsed: null };
-    expect(gate(exiting, after)).toBe(exiting);
+    const next = gate(exiting, after);
+    expect(next).not.toBe(exiting);
+    expect(next).toEqual({ elapsed: symbolIntroOutPhase(COUNT), clearElapsed: 0 });
+  });
+
+  // 退場段更後面（只剩最後一行在退）也一樣要清場
+  it('越過 out：退場段末尾也啟動清場', () => {
+    const late = { elapsed: symbolIntroTotal(COUNT) - 1, clearElapsed: null };
+    expect(gate(late, after)).toEqual({
+      elapsed: symbolIntroTotal(COUNT) - 1,
+      clearElapsed: 0,
+    });
   });
 
   it('越過 out：從未起播（如重新整理落在段落中段）直接跳到清場終點，不閃文字', () => {
@@ -249,6 +309,22 @@ describe('symbolIntroGate（閘門：progress → 狀態轉換）', () => {
   it('清場後往前捲回窗內不會重播（要退到 in 之前才重置）', () => {
     const cleared = { elapsed: 1234, clearElapsed: INTRO_TIMELINE.clearDur };
     expect(gate(cleared, inside)).toBe(cleared);
+  });
+
+  // 兩個門檻都是 `>=`，上面的案例卻刻意取嚴格內／外側 —— 邊界值本身也要守，
+  // 否則有人改成 `>` 這批測試全部照樣綠。
+  it('門檻邊界：p 恰等於 in 就起播', () => {
+    expect(gate(SYMBOL_INTRO_IDLE, SYMBOL_INTRO.in)).toEqual({
+      elapsed: 0,
+      clearElapsed: null,
+    });
+  });
+
+  it('門檻邊界：p 恰等於 out 就清場', () => {
+    expect(gate({ elapsed: 1234, clearElapsed: null }, SYMBOL_INTRO.out)).toEqual({
+      elapsed: 1234,
+      clearElapsed: 0,
+    });
   });
 });
 

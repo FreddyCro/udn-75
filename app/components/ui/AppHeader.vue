@@ -7,6 +7,7 @@ import {
   type HeaderTheme,
   type ThemeSpan,
 } from '@/utils/header-theme';
+import { pickActiveAnchor } from '@/utils/anchor-spy';
 
 /**
  * AppHeader — 底色隨捲動段落切換白／黑／橘（見 data-header-theme、updateTheme）。
@@ -68,30 +69,51 @@ onMounted(() => {
   mqPc = window.matchMedia(`(min-width: ${PC_BREAKPOINTS}px)`);
   mqPc.addEventListener('change', closeMenuOnPc);
 
-  // scroll-spy：以各區塊在視窗中央的可見度決定「當前錨點」
-  const sections = anchors
-    .map((a) => document.getElementById(a.target))
-    .filter((el): el is HTMLElement => !!el);
+  // scroll-spy：以各區塊在視窗中央的可見度決定「當前錨點」。
+  // 觀察對象有兩種來源：錨點本體的 id，以及用 data-anchor-target 宣告「我屬於哪個錨點」
+  // 的前導段落 —— 01a.symbol 是論壇章節的開場（Figma 智慧論壇05–08）且高達 SYMBOL_VH 個
+  // 視窗高，不納進來的話 header 一滑入就有整整數個螢幕高沒有任何錨點是 active。
+  // 宣告權在段落自己（同 data-header-theme 的分工），header 不認得任何 section class。
+  const anchorOrder = anchors.map((a) => a.target);
+  const sectionTargets = new Map<HTMLElement, string>();
 
-  if (sections.length) {
+  anchors.forEach((a) => {
+    const el = document.getElementById(a.target);
+    if (el) sectionTargets.set(el, a.target);
+  });
+  document
+    .querySelectorAll<HTMLElement>('[data-anchor-target]')
+    .forEach((el) => {
+      const target = el.dataset.anchorTarget;
+      if (target && anchorOrder.includes(target)) sectionTargets.set(el, target);
+    });
+
+  if (sectionTargets.size) {
     // 維護「目前與中央帶重疊的區塊」集合，再由它推導 activeTarget。
     // 只在 isIntersecting 時設值（不處理離開）會讓錨點永遠停在第一個曾命中的區塊上：
     // hero 期間 ScrollTrigger 還沒建立 pin spacer，文件較短、#forum 位置偏高會誤觸一次，
     // 之後就再也清不掉 —— 表現就是 hero 時「論壇」已經是 active。
-    const visible = new Set<string>();
+    //
+    // 集合存元素而非 target 字串：symbol 與 #forum 共用 'forum'，交界處兩段會同時落在
+    // 中央帶，存字串的話 symbol 離開時會把還在場的 #forum 一起刪掉、錨點閃斷一下。
+    const visible = new Set<HTMLElement>();
     observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) visible.add(entry.target.id);
-          else visible.delete(entry.target.id);
+          const el = entry.target as HTMLElement;
+          if (entry.isIntersecting) visible.add(el);
+          else visible.delete(el);
         });
         // 同時命中兩區塊時取文件順序較前者（＝ anchors 的順序）。
-        activeTarget.value =
-          anchors.find((a) => visible.has(a.target))?.target ?? '';
+        activeTarget.value = pickActiveAnchor(
+          anchorOrder,
+          sectionTargets,
+          visible,
+        );
       },
       { rootMargin: '-45% 0px -45% 0px', threshold: 0 },
     );
-    sections.forEach((el) => observer?.observe(el));
+    sectionTargets.forEach((_, el) => observer?.observe(el));
   }
 
   // autoHide=false 的頁面：header 常駐顯示（isVisible 初始已為 true），不需監看 hero。
