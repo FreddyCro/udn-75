@@ -77,6 +77,6 @@ CSS 用 `border-left` 做不出這 2px 差。維持 12 讓 `.agenda__rows` 高�
 mob 作用中是橫幅底色轉橘 ＋ 該組線色轉橘（覆寫 `--agenda-line`）；**pc / pad 不轉線色**，
 稿上那兩個斷點只有豎線換成箭頭。這個不對稱是稿本身的。
 
-核心的延續見 `architecture/forum-core-path.md` 的「隱形尾段」一節。
+核心的延續見 `architecture/forum-node-path.md` 第五節的「隱形尾段」。
 
 相關：[[forum-rwd]]、[[rwd-breakpoint-mapping]]、[[hero-core-screen-locked]]

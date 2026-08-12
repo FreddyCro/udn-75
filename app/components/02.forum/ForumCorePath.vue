@@ -19,6 +19,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { ForumPathMeasure, ForumPathNode } from '~/utils/forum-node-path';
 import type { ArcKnot } from '~/utils/forum-path-geometry';
 import { nearestArcLength, type SlashWindow } from '~/utils/forum-slash';
+import { refreshScrollTriggers } from '~/utils/scroll-trigger';
 
 const rootEl = ref<HTMLElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
@@ -72,33 +73,39 @@ const coreStyle = computed(() => {
 });
 
 let st: ScrollTrigger | null = null;
-// 驅動線總長（含尾段）：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用。
-let motionLen = 0;
-// 設計線的長度。切線只在這一段取樣，也用來換算 forumPathProgress。
+// 驅動線（＝設計線）的總弧長：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用。
+// 定位、切線取樣、forumPathProgress 換算都吃這一個值。
+// ⚠ 2026-08-12 之前另有 motionLen（含隱形尾段的總長）與 pathLen（設計線長）兩個變數，
+//   後半段改走 waypoint、尾段退場後兩者恆等 → 收成一個。日後真的要補回尾段，得**同時**
+//   拆回兩個值並改 place() 的切線取樣（見該處的 ⚠），只改一半會靜默錯開整段交棒時機。
 let pathLen = 0;
-// 設計線末端的容器 y（＝路徑段的終點）。
-let lineEndY = 0;
-// ScrollTrigger 的 end 讀它。整條 waypoint 已走到段落底，故等於 lineEndY。
+// 驅動線末端的容器 y。ScrollTrigger 的 end 讀它，place() 也用它把捲動進度換算成
+// 「此刻位於視窗中央的容器 y」。名稱沿用 tailEndY（architecture/forum-node-path.md 與
+// .claude/memory 都以此稱呼）：有尾段的年代它是尾段末端，現在就是設計線末端。
 let tailEndY = 0;
 // 回中節點表（容器 y ↔ 弧長）：place() 靠它把核心留在視窗中央附近，見 buildArcKnots。
-// 與 motionLen 同時在 build() 建立一次，scrub 每幀只做內插。
+// 與 pathLen 同時在 build() 建立一次，scrub 每幀只做內插。
 let knots: ArcKnot[] = [];
 // 變身點的弧長。量不到 → null → 全程維持橘方塊、不畫尾跡，但整條線照跑。
 let swapLen: number | null = null;
 
 // 沒有可跑的驅動線時清空：核心藏起來，橘點回到原本的 coreOut 淡出（見 forumCoreDotVisible）。
 // ⚠ progress 也要歸零，不能只清 active：從 pc 切到 pad/mob 時它會留著上一個斷點的殘值，
-//   forumPathRiding 因此卡在 true —— 路徑核心保持可見，而 place() 已因 motionLen=0 提早
+//   forumPathRiding 因此卡在 true —— 路徑核心保持可見，而 place() 已因 pathLen=0 提早
 //   return，方塊就停在最後一次的 transform 上，變成論壇段裡一顆不會動的橘方塊。
 //   planeFrame 是同一型事故：不清的話會停在舊格數（可能是 8），且 coreStyle 在
 //   planeFrame > 0 時不輸出 background，殘影會是一架不會動的紙飛機而非橘方塊。
+// ⚠ 四條 d 與遮罩尺寸都要清：genEl 在 v-if="nodes" 之下、斷點切換時不會重建，
+//   留著上一版的 d 會讓 ?pathdebug 看到兩個斷點的線疊在一起；遮罩尺寸則是 build()
+//   依當前幾何寫上去的，不還原會用舊框裁掉新線（移除屬性即退回 SVG 預設的 ±10%）。
 function reset() {
+  genEl.value?.removeAttribute('d');
   motionEl.value?.removeAttribute('d');
   trailEl.value?.removeAttribute('d');
   trailMaskPathEl.value?.removeAttribute('d');
-  motionLen = 0;
+  trailMaskEl.value?.removeAttribute('width');
+  trailMaskEl.value?.removeAttribute('height');
   pathLen = 0;
-  lineEndY = 0;
   tailEndY = 0;
   knots = [];
   swapLen = null;
@@ -109,12 +116,12 @@ function reset() {
   setForumCoreCenterOffset(0);
 }
 
-// 重建回中節點表。必須在 motionLen / tailEndY 都定案之後呼叫。
+// 重建回中節點表。必須在 pathLen / tailEndY 都定案之後呼叫。
 // 間距吃視窗高：畫面越矮，容許的偏移越小，節點就越密（見 FORUM_CENTER_KNOT_VH）。
 // 取樣 512 點 ＝ 每 ~26px 弧長一點（mob 最長 13429），只在 build() 跑，不在熱路徑上。
 function syncKnots(motion: SVGPathElement) {
   knots = buildArcKnots(
-    motionLen,
+    pathLen,
     tailEndY,
     vhPx(FORUM_CENTER_KNOT_VH),
     (len) => motion.getPointAtLength(len).y,
@@ -196,7 +203,7 @@ function buildNodesD(list: ForumPathNode[]) {
   const measure: ForumPathMeasure = (a) => {
     // 限定在某一場之內時，以該場的日期錨點往上找 .forum-event 當 scope ——
     // 用具名的 data-forum-anchor 而非 querySelectorAll 索引，增刪／重排場次都不會錯位
-    // （理由同 forum-core-path.md「錨點是具名的，不是索引」）。
+    // （理由見 architecture/forum-node-path.md 第四節：錨點是具名的，不是索引）。
     const base = a.event
       ? scope
           .querySelector(`[data-forum-anchor="${a.event}"]`)
@@ -209,6 +216,13 @@ function buildNodesD(list: ForumPathNode[]) {
       : base.querySelectorAll<HTMLElement>(a.sel)[a.nth ?? 0];
     if (!el) return null;
     const r = el.getBoundingClientRect();
+    // 0×0 ＝ 這個元素沒有 box（display: none / contents）→ 當成量不到。
+    // 不擋掉的話 rect 全 0 會被解成「y=0 的合法錨點」，必要錨點的 fail-loud 保證就失效，
+    // 整條線靜默接到容器頂端。本專案至少有兩處 display: contents（.forum-event__head
+    // 在 stair/youth @mob、.forum-event--quote .forum-event__speaker @pad/mob），
+    // forum-node-path 的 P6 註解也已假設這種情形「量不到」。
+    // ⚠ 用 && 而不是 ||：零高度的標記元素（.sec2__seam，SEAM_END 錨在它上）寬度不為 0。
+    if (!r.width && !r.height) return null;
     return {
       top: r.top - rootRect.top,
       height: r.height,
@@ -250,15 +264,17 @@ function build() {
     trailMaskEl.value?.setAttribute('width', `${out.width + 200}`);
     trailMaskEl.value?.setAttribute('height', `${out.endY + 200}`);
     pathLen = motion.getTotalLength();
-    motionLen = pathLen;
-    lineEndY = out.endY;
     // 後半段的 waypoint 已經走到段落底（.sec2__pin 的下緣），故不再需要隱形尾段；
     // 「核心留在視窗中央」改由回中節點表保證（見 syncKnots / buildArcKnots）。
     // ⚠ tailEndY 不能留 0 —— ScrollTrigger 的 end 讀它，0 會被 GSAP 夾成 start + 0.01，
     //   捲動尺變零長度、核心一進場就跳到路徑末端。
-    tailEndY = lineEndY;
+    tailEndY = out.endY;
     swapLen = syncSwapLen(motion, out.points);
     syncKnots(motion);
+    // 節點表建不出來（pathLen 或 tailEndY ≤ 0）就整條放棄，**不能**只讓 place() 提早
+    // return：下面的 setForumPathActive(true) ＋ 殘留的 forumPathProgress 會讓
+    // forumPathRiding 卡在 true —— 正是 reset() 註解說「不可發生」的那顆不會動的橘方塊。
+    if (!knots.length) return reset();
     syncSlashWindow(motion);
 
     setForumPathActive(true);
@@ -274,19 +290,19 @@ function build() {
 function place(rawP: number) {
   const core = coreEl.value;
   const motion = motionEl.value;
-  if (!core || !motion || !motionLen || !knots.length) return;
+  if (!core || !motion || !pathLen || !knots.length) return;
   // rawP × tailEndY ＝ 此刻落在視窗中央的容器 y（start / end 都錨在 center，故線性）。
   // 節點表把它換算成弧長 —— 節點上核心精準落在視窗中央，節點之間才照弧長等比走。
   const centerY = rawP * tailEndY;
   const len = arcAtCenterY(centerY, knots, easeMove);
   const pt = motion.getPointAtLength(len);
   const d = 1; // 取樣間距（px）
-  // 切線只在路徑段取樣：尾段是垂直的（90°），而設計線末端的切線是 112°，若讓尾段參與取樣，
-  // 核心會在接縫處約 2px 捲動內轉正 22° —— 而那正是它唯一露臉的時刻（交接窗 43.5px）。
-  // 尾段全程被議程遮住，旋轉停在設計線末端的角度即可。無尾段時 pathLen === motionLen，逐字等價。
-  const tanLen = Math.min(len, pathLen || motionLen);
-  const behind = motion.getPointAtLength(Math.max(0, tanLen - d));
-  const ahead = motion.getPointAtLength(Math.min(pathLen || motionLen, tanLen + d));
+  // 取樣點夾在 [0, pathLen] 內，故切線在兩端也穩定（不會因 eps=0 而歸零）。
+  // ⚠ 日後若又在設計線之後追加隱形尾段，這裡必須改回「只在設計線那一段取樣」：
+  //   尾段是垂直的（90°）而設計線末端的切線是 112°，讓尾段參與取樣會使核心在接縫處
+  //   約 2px 捲動內轉正 22° —— 而那正是它唯一露臉的時刻（交接窗 43.5px）。
+  const behind = motion.getPointAtLength(Math.max(0, len - d));
+  const ahead = motion.getPointAtLength(Math.min(pathLen, len + d));
   const angle =
     (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
   // 一律 +90：sprite 機鼻朝 −y，而 angle 是「朝右為 0°」。第 0 格是正方形，
@@ -309,7 +325,8 @@ function place(rawP: number) {
   }
 
   // 語意維持「設計線走完的比例」，下游的 forumPathRiding 因此不變。
-  setForumPathProgress(pathLen ? Math.min(1, len / pathLen) : 0);
+  // pathLen > 0 由上方的 guard 保證。
+  setForumPathProgress(Math.min(1, len / pathLen));
 }
 
 let mqPc: MediaQueryList | null = null;
@@ -322,7 +339,7 @@ async function onBpChange() {
   if (next === bp.value) return;
   bp.value = next;
   await nextTick();
-  ScrollTrigger.refresh();
+  refreshScrollTriggers();
 }
 
 onMounted(async () => {
@@ -335,36 +352,46 @@ onMounted(async () => {
 
   await nextTick(); // 等第一次把 svg 渲染出來再量
   gsap.set(coreEl.value, { xPercent: -50, yPercent: -50 }); // 讓 (x,y) 對齊核心中心
-  build();
+
+  // 幾何重建掛在 refreshInit 上，且**先註冊再建 trigger**：
+  //   1. 下面的 refreshScrollTriggers() 會觸發它，故不必再單獨呼叫一次 build()
+  //      （原本 mount 時會跑三次：直接呼叫 → refresh → fonts.ready，每次都是 1100+ 次
+  //      getPointAtLength ＋ 全部錨點的 forced layout）。
+  //   2. 萬一找不到 trigger（見下），可見線與核心定位仍會隨每次 refresh 更新，
+  //      而不是「只建一次、之後永不重算」還不報錯。
+  ScrollTrigger.addEventListener('refreshInit', build);
 
   // 用 .sec2__path 當 trigger 而非 .forum-path：後者未來若被斷點收掉就量不到 rect。
   // 兩者的 top 相同（.forum-path 是 inset: 0 的絕對定位子元素）。
+  // 理論上不會找不到；真的找不到就只保留可見線定位，不建 scrub。
   const trigger = rootEl.value?.closest('.sec2__path') as HTMLElement | null;
-  if (!trigger) return; // 理論上不會發生；真的找不到就只保留可見線定位，不建 scrub。
 
-  st = ScrollTrigger.create({
-    trigger,
-    // 路徑起點在容器 (640, 0)＝黑白接縫，而 ForumCore 的橘點釘在視窗正中央 ——
-    // 「容器頂端抵達視窗中央」的那一刻兩者是同一點，交棒不需要任何補償值。
-    start: 'top center',
-    // 終點：接縫抵達「接觸點」的視窗位置。對齊字串由 COVER_CONTACT 導出
-    // （coverContactAlign()），與 blessing 的色塊換色共用同一個來源 ——
-    // 飛機走完路徑的那一刻就是色塊碰到它的那一刻，兩邊不可能脫鉤。
-    // COVER_CONTACT = 0.5 → '50%'，與改動前的 `center` 完全相同。
-    // tailEndY 由 build() 從實際幾何算出，refreshInit → build() 先跑，故每次 refresh 都是最新值。
-    // ⚠ 刻意不掛 endTrigger：.forum-event__date 是 position: absolute，量不到有效高度；
-    //   也刻意不碰 .sec2 的 bottom —— 上游 SymbolScene 的 pin-spacer 會撐高它，變成循環依賴。
-    end: () => `top+=${tailEndY} ${coverContactAlign()}`,
-    scrub: true,
-    invalidateOnRefresh: true,
-    onUpdate: (self) => place(self.progress),
-  });
+  if (trigger) {
+    st = ScrollTrigger.create({
+      trigger,
+      // 路徑起點在容器 (640, 0)＝黑白接縫，而 ForumCore 的橘點釘在視窗正中央 ——
+      // 「容器頂端抵達視窗中央」的那一刻兩者是同一點，交棒不需要任何補償值。
+      start: 'top center',
+      // 終點：接縫抵達「接觸點」的視窗位置。對齊字串由 COVER_CONTACT 導出
+      // （coverContactAlign()），與 blessing 的色塊換色共用同一個來源 ——
+      // 飛機走完路徑的那一刻就是色塊碰到它的那一刻，兩邊不可能脫鉤。
+      // COVER_CONTACT = 0.5 → '50%'，與改動前的 `center` 完全相同。
+      // tailEndY 由 build() 從實際幾何算出，refreshInit → build() 先跑，故每次 refresh
+      // 都是最新值（建立當下它還是 0，但緊接著的 refresh 會重評這個函式）。
+      // ⚠ 刻意不掛 endTrigger：.forum-event__date 是 position: absolute，量不到有效高度；
+      //   也刻意不碰 .sec2 的 bottom —— 上游 SymbolScene 的 pin-spacer 會撐高它，變成循環依賴。
+      end: () => `top+=${tailEndY} ${coverContactAlign()}`,
+      scrub: true,
+      invalidateOnRefresh: true,
+      onUpdate: (self) => place(self.progress),
+    });
+  }
 
-  ScrollTrigger.addEventListener('refreshInit', build);
   // 字體載入會改變文字高度 → 錨點位移 → 重新量測。resize 由 ScrollTrigger 自己的
   // autoRefreshEvents 涵蓋（預設含 resize），故不另外掛 resize 監聽。
-  document.fonts?.ready.then(() => ScrollTrigger.refresh());
-  ScrollTrigger.refresh();
+  // refresh 一律走 refreshScrollTriggers()（先 sort 再 refresh）—— 見 utils/scroll-trigger。
+  document.fonts?.ready.then(() => refreshScrollTriggers());
+  refreshScrollTriggers(); // ← 這一次同時完成首次 build()（refreshInit）
 });
 
 onBeforeUnmount(() => {

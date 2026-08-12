@@ -140,7 +140,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 // 但資料漏填 layout 時（型別擋不到 runtime JSON）至少日期不會失去字級。
 // 階梯式日期（論壇二）逐行的位移與行進距抽成變數：三斷點各給一組 px。
 // 不改用 em 換算是為了不讓 pc 的值產生零點幾 px 的位移 —— 那條設計線靠它對位
-// （見 architecture/forum-core-path.md）。
+// （見 architecture/forum-node-path.md）。
 .forum-event {
   --date-size: 105px;
   --date-lh: 98px;

@@ -157,7 +157,7 @@ onBeforeUnmount(() => {
 // 白底：新版議程段為淺色稿；水平 padding 收掉，讓 <AgendaReport> 的灰底能滿版。
 // 段落頂端的 140 留白掛在 .sec2__path 而非這裡：核心的設計線要從「黑白接縫」進場，
 // 而它的座標原點是 .sec2__path 的 padding box —— 留白掛在 .sec2 會讓原點下沉 140，
-// 線就少了那一段。見 architecture/forum-core-path.md。
+// 線就少了那一段。見 architecture/forum-node-path.md 第五節。
 .sec2 {
   --accent: var(--color-orange);
 
@@ -271,9 +271,11 @@ onBeforeUnmount(() => {
   }
 
   // 量測期間退回一般流：sticky 位移會污染 .sec2__pin **內部**所有錨點的 rect
-  // （論壇四的 tag／cta／speakers、精彩活動的 item）—— 不會報錯，整條線靜默歪掉。
-  // 屬性由 ForumCorePath.build() 在量測前後開關，設值 → 量測 → 還原都在同一個 task 內
-  // 完成，中間不會 paint，畫面不會跳。見設計稿第八節。
+  // （論壇四的 tag／cta／speakers、精彩活動的 item、議程本身）—— 不會報錯，
+  // 整條線／議程的判定線靜默歪掉。見設計稿第八節。
+  // 屬性由**兩個**量測者各自在前後開關：ForumCorePath.build()（設計線錨點，掛 refreshInit）
+  // 與 Agenda.measure()（群組邊界與 startScroll，掛 refresh）。兩者都是設值 → 量測 → 還原
+  // 在同一個 task 內完成，中間不會 paint，畫面不會跳；巢狀設定同一個屬性也無害。
   .sec2[data-path-measuring] & {
     position: static;
   }

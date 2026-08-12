@@ -1,12 +1,8 @@
-# 論壇段設計線 · waypoint 路徑產生器（pc / pad / mob）
+# 論壇段設計線與橘核心（waypoint 產生器 ＋ 核心對位）
 
-三個斷點的線都**由程式依版面即時算出來**。pad / mob 從一開始就是（理由見第一節）；
-pc 前半段原本是「手貼 Figma 匯出的 `d` ＋ 單點平移對位」（見
-[`forum-core-path.md`](./forum-core-path.md)，已成歷史文件），2026-08-08 一併遷過來 ——
-少一套機制，也不必再為了「標題行數變了」重算平移的 `offset.y`（歷史上改過兩次）。
-
-這份文件管三件事：**線是怎麼算出來的**、**每個點掛在哪個 element 上**、
-以及**你想調整時要怎麼跟我說**。
+三個斷點的線都**由程式依版面即時算出來**。這份文件管四件事：
+**線為什麼要用產生器**、**資料模型與規則**、**你想調整時要怎麼跟我說**、
+以及**橘核心怎麼沿著它跑**。
 
 | | 全部三個斷點 |
 | --- | --- |
@@ -17,37 +13,39 @@ pc 前半段原本是「手貼 Figma 匯出的 `d` ＋ 單點平移對位」（�
 | 前半段編號 | pc `W0–W28` / pad `Q0–Q13` / mob `P0–P13` |
 | 後半段編號 | pc `R0–R6` / pad `S0–S6` / mob `T0–T7` |
 
-> pc 的節點是從舊的手貼中心線抽出來的（不必回 Figma —— 那份 `motion` 本來就是中心線）。
-> 抽法與實測誤差見 `app/utils/forum-node-path.ts` 的 `PC_FRONT_NODES` 檔頭註解：
-> 擬合偏差 2.36px、新舊線實測最大差 2.55px／平均 1.21px。
+> **歷史**：2026-08-08 之前 pc 前半段是「手貼 Figma 匯出的 `d` ＋ 整段平移對位」
+> （`FORUM_PATH` / `ForumPathSeg` / `layout()` / `scripts/extract-centerline.mjs`），
+> 該機制已整組移除，三個斷點統一走本文的產生器。第五節那些對位規則就是從那套機制推導出來、
+> 在新機制下仍然成立的部分。舊程式碼 `git show fbaa59e`、
+> 舊文件 `git show e0840bd:architecture/forum-core-path.md`。
 
 相關檔案：
 
 | 檔案 | 角色 |
 | --- | --- |
-| `app/utils/forum-node-path.ts` | 型別 ＋ `FORUM_PATH_NODES`（waypoint 資料）＋ `FORUM_PATH_STROKE` ＋ `buildNodePathD()` |
-| `app/components/02.forum/ForumCorePath.vue` | 該斷點有 waypoint 就走 `buildFromNodes()`，否則走既有 `segs` 分支 |
+| `app/utils/forum-node-path.ts` | 型別 ＋ `FORUM_PATH_NODES`（waypoint 資料，**每列都帶稿座標與理由註解**）＋ `FORUM_PATH_STROKE` ＋ `buildNodePathD()` |
+| `app/components/02.forum/ForumCorePath.vue` | 量測、建線、`place()`（核心沿線走）、回中節點表 |
+| `app/utils/forum-path-geometry.ts` | `buildArcKnots()` 等純幾何 |
 | `test/forum-node-path.spec.ts` | 兩個斷點的黃金樣本 ＋ 各旋鈕的單元測試 |
 | `temp/pad.svg` | pad 稿的中心線（真描邊，`stroke-width 4` / `stroke-opacity 0.1`）|
 | Figma（file `HOt7xNcSTpina7WqNv9MVn`）| 線稿：pad `2679:90235`＋`Vector 276`、mob `2584:35109`；<br>版面：pad `2652:53307`、mob `2566:84799` |
 
 ---
 
-## 一、為什麼 pad / mob 不能寫死
+## 一、為什麼三個斷點都不能寫死
 
 1. **稿的寬度只是一個點，斷點是一段區間。** mob 稿 414、斷點 ≤767；pad 稿 768、
    斷點 768–1279。兩張稿的線本來就撞到左右緣（mob P5/P6/P7、pad Q10），
-   而現有機制**只平移不縮放** —— mob 實測在 320 寬會超出畫面約 94px。
-2. **這兩個斷點的版面是流排版。** `.forum-event` 在 pad / mob 被整組退回 flex 直排
+   而舊機制**只平移不縮放** —— mob 實測在 320 寬會超出畫面約 94px。
+2. **pad / mob 的版面是流排版。** `.forum-event` 在這兩個斷點被整組退回 flex 直排
    （`position: static` ＋ `display: flex`），只有 pc 是絕對定位釘死在 1280 座標。
-   所以垂直位置隨字數、字體 fallback、視窗寬一起變 —— 寫死的 y 一定會飄。
+   垂直位置隨字數、字體 fallback、視窗寬一起變 —— 寫死的 y 一定會飄。
    實測：同一份內容在 pad 1279 寬時容器高 4768，768 寬時 5164（差 396px）。
 3. **稿本身就是照版面拉的。** 兩張稿各 14 個轉折點，y 幾乎都落在某個版面區塊的
-   上緣或下緣（mob 誤差 1–6px、pad 2–34px，見第四節）。既然設計意圖是「貼著區塊」，
+   上緣或下緣（mob 誤差 1–6px、pad 2–34px）。既然設計意圖是「貼著區塊」，
    就該直接量那個區塊，而不是把量測結果的快照抄成常數。
 4. **pad 的線更是非做不可。** `Vector 276` 是一條跨越三場的連續線，**必須同時咬住
-   多個位置**；單點平移只能釘住一個點，其餘會慢慢飄掉
-   （`forum-core-path.md:217` 早已預告過這件事）。
+   多個位置**；單點平移只能釘住一個點，其餘會慢慢飄掉。
 
 ---
 
@@ -56,63 +54,9 @@ pc 前半段原本是「手貼 Figma 匯出的 `d` ＋ 單點平移對位」（�
 線 ＝ **有序的 waypoint 陣列**。每個點自己決定橫向位置與縱向錨點，
 點與點之間用「直線」或「彎」連起來。整條線是單一連續 `d`（只有一個 `M`）。
 
-```ts
-/** 錨點的查找方式（縱橫共用） */
-export type ForumPathTarget = {
-  /** 限定在哪一場之內（＝ data-forum-anchor 的值）；省略則全域查 */
-  event?: string;
-  /** 在上述 scope 內的選擇器 */
-  sel: string;
-  /** 同一選擇器命中多個時取第幾個（預設 0） */
-  nth?: number;
-};
-
-/** 縱向錨點：掛哪個 element 的哪一邊 */
-export type ForumPathAnchor = ForumPathTarget & {
-  /** top＝上緣、bottom＝下緣、fraction＝元素高度的 t 處 */
-  edge: 'top' | 'bottom' | 'fraction';
-  /** edge 為 'fraction' 時的比例（0–1） */
-  t?: number;
-  /** 再往下偏移幾 px（可負） */
-  dy?: number;
-};
-
-/** 橫向錨點：把 x 也掛在某個 element 上（見下方「x 也可以掛 element」） */
-export type ForumPathXAnchor = ForumPathTarget & {
-  edge: 'left' | 'center' | 'right';
-  dx?: number;
-  /** 量不到時退回容器寬的比例（0–1） */
-  fallback: number;
-};
-
-/** 橫向位置：釘左右緣／中心、容器寬的比例（0–1），或掛在某個 element 上 */
-export type ForumPathX = 'left' | 'center' | 'right' | number | ForumPathXAnchor;
-
-/** 到下一點的連法 */
-export type ForumPathJoin =
-  | 'line'
-  | {
-      /** 出發角：相對兩點連線的夾角（度） */
-      relIn: number;
-      /** 到達角：同上 */
-      relOut: number;
-      /** 出發側 handle 長度 ÷ 兩點距離 */
-      hIn: number;
-      /** 到達側 handle 長度 ÷ 兩點距離 */
-      hOut: number;
-    };
-
-export type ForumPathNode = {
-  /** 穩定編號，永不重排（要插入就用 P7a）。溝通時直接喊這個。 */
-  id: string;
-  x: ForumPathX;
-  anchor: ForumPathAnchor;
-  /** 到下一點的連法；最後一點省略 */
-  join?: ForumPathJoin;
-  /** 刻意偏離設計稿時寫理由（同步記到第七節） */
-  note?: string;
-};
-```
+型別（`ForumPathNode` / `ForumPathAnchor` / `ForumPathXAnchor` / `ForumPathJoin`）
+直接讀 `app/utils/forum-node-path.ts` 的檔頭，不在這裡抄第二份。以下只記
+**型別讀不出來的規則與推導**。
 
 ### 兩個公式
 
@@ -127,53 +71,15 @@ edge 'fraction' → y = m.top + m.height × t + dy
 **橫向位置**（`W` ＝ 容器寬，`amplitude` 預設 1）：
 
 ```
-'left'   → 2
-'right'  → W − 2
-'center' → W / 2
-數字 t   → t × W
-
+'left' → 2      'right' → W − 2      'center' → W / 2      數字 t → t × W
 以上一律再過 amplitude：x = W/2 + (x − W/2) × amplitude
 
-ForumPathXAnchor（m ＝ 量到的元素矩形）：
-  edge 'left'   → m.left + dx
-  edge 'center' → m.left + m.width / 2 + dx
-  edge 'right'  → m.left + m.width + dx
-  量不到        → 退回 fallback × W
+ForumPathXAnchor：m.left / m.left + m.width/2 / m.left + m.width，各 + dx
+  量不到 → 退回 fallback × W
   ⚠️ 這一種**不過 amplitude**
 ```
 
 `'left'` / `'right'` 取 ±2 而不是 0 / W，是為了讓 4px 描邊剛好齊邊不被裁掉。
-
-### x 也可以掛 element
-
-比例（`t × W`）的前提是「要咬住的東西隨容器等比縮放」。**不成立時就得量。**
-
-實例 —— pad 穿過議程的那條垂直線（`Q13` / `S0` / `S1`）：
-`.agenda` 是**定寬 608 置中**，`.forum-path` 卻是流動的（`.sec2__path` 上限 1280）。
-稿寬 768 時箭頭欄在 202.5、比例 0.262 剛好對上（稿的頂點就是 201.4 ——
-設計本來就把線畫在箭頭上），但視窗一寬兩者就分家：
-
-| 視窗寬 | 箭頭 x | `0.262 × W` | 差 |
-|---|---|---|---|
-| 768 | 194.8 | 197.2 | 2.4 |
-| 1021 | 321.5 | 263.6 | **57.9** |
-| 1279 | 450.5 | 331.2 | **119.3** |
-
-改掛 `AGENDA_ARROW_X`（`.agenda__rows` 左緣 ＋ 0.5）後三個寬度都是 **0**。
-
-兩個實作決定：
-
-- **掛 `.agenda__rows` 而非 `.agenda__arrow`。** 那條 1px 的 `border-left` 就是箭頭的中軸
-  （箭頭是 `absolute`、`left: −0.5px − u/2`、寬 `u`，中心正好落在 border 中心），
-  而箭頭平常 `opacity: 0`、mob 更是 `display: none` —— 掛在會消失的東西上不穩。
-- **量不到退回 `fallback`，不整條放棄。** 橫向錯位只是線歪掉，比整條消失好；
-  而且退路值就是原本寫死的稿比例，行為等同改動前。這與縱向錨點「大聲失敗」的規則
-  不同 —— 縱向少一個點會讓後面全部接到錯的鄰居身上（見下一節）。
-
-**三點要一起改。** `Q13 → S0 → S1` 是一條垂直線，只改中間一點會變成斜線。
-
-pc / mob 不需要：pc 的 `.agenda`（1064）與 `.forum-path`（1280 上限）同樣置中於視窗，
-相對位移是常數；mob 沒有豎線也沒有箭頭。
 
 **彎的重建**（`L` ＝ 兩點距離，`chord` ＝ 兩點連線的角度）：
 
@@ -186,82 +92,74 @@ c2 = p1 − hOut × L × unit(chord + relOut)
 角度是**相對 chord** 的，所以視窗變寬變窄、文字撐高撐矮時 chord 跟著旋轉縮放，
 **彎的形狀不會變形**。螢幕座標 y 向下，故正角度＝順時針。
 
-### 產生器的介面
+### x 也可以掛 element
 
-量測與計算刻意分開：**產生器是純函式，DOM 只出現在注入的 `measure` 裡。**
-這樣 vitest 可以直接餵假的量測值跑黃金樣本，不需要 jsdom。
+比例（`t × W`）的前提是「要咬住的東西隨容器等比縮放」。**不成立時就得量。**
 
-```ts
-/** 量測介面：吃錨點吐「相對容器的 border box」；量不到回 null */
-export type ForumPathMeasure = (
-  t: ForumPathTarget
-) => { top: number; height: number; left: number; width: number } | null;
+實例 —— pad 穿過議程的那條垂直線（`Q13` / `S0` / `S1`）：
+`.agenda` 是**定寬 608 置中**，`.forum-path` 卻是流動的（`.sec2__path` 上限 1280）。
+稿寬 768 時箭頭欄在 202.5、比例 0.262 剛好對上，但視窗一寬兩者就分家：
 
-/**
- * 依 waypoint 與量測值算出整條線。
- * 回傳的 d 已在 .forum-path 座標系（＝ .sec2__path 的 padding box），
- * 只有一個 M，可直接同時餵給可見線與驅動線。
- * 任何一個錨點量不到 → 回 null（見下）。
- */
-export function buildNodePathD(
-  nodes: ForumPathNode[],
-  ctx: { width: number; measure: ForumPathMeasure; amplitude?: number }
-): { d: string; endY: number } | null;
-```
+| 視窗寬 | 箭頭 x | `0.262 × W` | 差 |
+|---|---|---|---|
+| 768 | 194.8 | 197.2 | 2.4 |
+| 1021 | 321.5 | 263.6 | **57.9** |
+| 1279 | 450.5 | 331.2 | **119.3** |
 
-`endY` ＝ 最後一點的 y，給 `ScrollTrigger` 的 `end` 用（取代 `lastPoint(d)`）。
+改掛 `AGENDA_ARROW_X`（`.agenda__rows` 左緣 ＋ 0.5）後三個寬度都是 **0**。
+
+- **掛 `.agenda__rows` 而非 `.agenda__arrow`。** 那條 1px 的 `border-left` 就是箭頭的中軸，
+  而箭頭平常 `opacity: 0`、mob 更是 `display: none` —— 掛在會消失的東西上不穩。
+- **量不到退回 `fallback`，不整條放棄。** 橫向錯位只是線歪掉，比整條消失好；
+  退路值就是原本寫死的稿比例，行為等同改動前。這與縱向錨點「大聲失敗」的規則**相反**，
+  因為縱向少一個點會讓後面全部接到錯的鄰居身上。
+- **`Q13 → S0 → S1` 三點要一起改。** 那是一條垂直線，只改中間一點會變成斜線。
+
+pc / mob 不需要：pc 的 `.agenda`（1064）與 `.forum-path`（1280 上限）同樣置中於視窗，
+相對位移是常數；mob 沒有豎線也沒有箭頭。
+
+### 產生器是純函式
+
+量測與計算刻意分開：**DOM 只出現在注入的 `measure` 裡**，vitest 可以直接餵假的量測值跑
+黃金樣本，不需要 jsdom。`buildNodePathD()` 回傳的 `d` 已在 `.forum-path` 座標系
+（＝ `.sec2__path` 的 padding box）、只有一個 `M`，可直接同時餵給可見線與驅動線；
+`endY` ＝ 最後一點的 y，給 ScrollTrigger 的 `end` 用。
 
 ### 一個必須「大聲失敗」的規則，與它的例外
 
 **任何一個錨點量不到（`measure` 回 `null`）→ 整條線放棄，不要跳過那個點。**
-
 跳過一個 waypoint 會讓後面所有點的連法接到錯的鄰居身上，線會靜默變形。
-這與 `forum-core-path.md` 裡 `layout()` 回傳定長陣列的理由相同：
 寧可什麼都不畫（走 `reset()`），也不要畫一條錯的。
 
 **例外：標了 `optional: true` 的點。** 那是「可能整塊不存在」的區域 ——
 例如 `?highlights=1` 沒帶時整個精彩活動段落不渲染。這種點量不到就跳過，
 由前一個存活點直接連到下一個存活點；因為角度是 chord 相對的，chord 變長時
-彎會自然拉開、不變形。
+彎會自然拉開、不變形。（存活點少於 2 個時一樣回 `null` —— 兩點才成線。）
 
-判準很簡單：**這個 element 有沒有可能合法地不存在？**
-有 → `optional`；沒有 → 不標，量不到就是 bug，該讓它整條停掉。
-（存活點少於 2 個時一樣回 `null` —— 兩點才成線。）
+判準：**這個 element 有沒有可能合法地不存在？** 有 → `optional`；沒有 → 不標。
 
-### ⚠️ 事故回顧：必要錨點不可只靠會消失的 placeholder（2026-08-09，`280e727`）
+**「量不到」也包含 0×0 的 rect。** `display: none` 與 `display: contents` 的元素**存在**於
+DOM、`querySelector` 找得到，但沒有 box → `getBoundingClientRect()` 全是 0。
+`ForumCorePath` 的 `measure` 因此在 `!r.width && !r.height` 時回 `null`（2026-08-12 補）——
+不擋掉的話那是一個「y = 0 的合法錨點」，上面的大聲失敗保證直接失效，線會靜默接到容器頂端。
+用 `&&` 而不是 `||`：零高度的標記元素（`.sec2__seam`，`SEAM_END` 錨在它上）寬度不為 0。
 
-上面那條「大聲失敗」規則曾經**不夠大聲** —— 量不到時是靜默 `return null`，直到下面這個事故
-發生才補上 `console.warn`。
+### ⚠️ 事故：必要錨點不可只靠會消失的節點（2026-08-09，`280e727`）
 
-**起因**：`ForumEvent.vue` 的講者照片欄位在講者**沒有**照片時渲染
-`.forum-event__photo-slot` 佔位符；補上真實照片後改渲染 `.forum-event__photo`，
-`-slot` 那個節點整個從 DOM 消失。pc 前半段的節點 `W5`／`W17`（`PC_FRONT_NODES`）當初卻只寫死
-`.forum-event__photo-slot` 一種選擇器當**必要**（非 `optional`）錨點。pad／mob 的對應節點
-一開始就寫成 `'.forum-event__photo, .forum-event__photo-slot'`（兩者其一存在即可），只有
-pc 這兩點漏改。
+講者照片欄位在**沒有**照片時渲染 `.forum-event__photo-slot` 佔位符；補上真實照片後
+改渲染 `.forum-event__photo`，`-slot` 整個從 DOM 消失。pc 的 `W5`／`W17` 當初只寫死
+`-slot` 一種選擇器當**必要**錨點（pad／mob 一開始就寫成兩者其一），於是整條線放棄 →
+`forumPathActive` 變 false → 橘核心 dot 在 `symbolProgress = 1.0` 精準消失、之後永遠不回來。
+**因為失敗是靜默的，定位耗了不少時間。**
 
-**症狀**：講者照片補齊之後，`.forum-event__photo-slot` 不再出現 → `measure()` 回 `null`
-→ `buildNodePathD` 依規則整條放棄 → `ForumCorePath.build()` 呼叫 `reset()` →
-`forumPathActive` 變 false → `forumCoreDotVisible` 退化成 `symbolProgress < coreOut`
-這條備援判斷 —— 結果是橘核心 dot 在 `symbolProgress = 1.0` 精準消失、之後永遠不回來，
-論壇段設計線整段空白。因為失敗是靜默的，定位耗了不少時間。
+修法：① pc 兩點改成 `'.forum-event__photo, .forum-event__photo-slot'`；
+② `buildNodePathD` 的必要錨點量不到分支補 `console.warn`（點名節點 id 與選擇器），
+讓「大聲失敗」名符其實；③ 測試守著「非 `optional` 節點若提到 `-slot` 就必須同時涵蓋
+獨立的 `.forum-event__photo`」。
 
-**修法（`280e727`）**：
-
-1. 把 pc 的 `W5`／`W17` 改成與 pad／mob 同構的 `'.forum-event__photo, .forum-event__photo-slot'`，
-   兩種寫法在 pc 版式下量到的方框一致，講者有沒有照片都能量到。
-2. 在 `buildNodePathD` 的必要錨點量不到分支補一行 `console.warn`（點名節點 id 與選擇器），
-   把本節開頭那條規則的「大聲失敗」名符其實。
-3. `test/forum-node-path.spec.ts` 新增回歸測試：三個斷點的 `FORUM_PATH_NODES` 中，任何
-   **非 `optional`** 節點若選擇器提到 `.forum-event__photo-slot`，必須同時涵蓋獨立的
-   `.forum-event__photo`（正則排除掉 `-slot` 這個前綴本身，避免天真的字串比對測不出東西）。
-
-**要記住的不變量**：**必要錨點不可以只綁定一個「有可能合法消失」的 DOM 節點** ——
-`.forum-event__photo-slot` 是不是存在完全是資料驅動的（有沒有講者照片），這與 `optional`
-節點「整塊可能不存在」是同一類風險，差別只在於這裡有備援選擇器可以涵蓋兩種情況，不必整段標
-`optional`。新增節點、或稿改版要換錨點時，先問一句：**這個 class 會不會因為資料變了就從 DOM
-消失？** 會 → 要嘛涵蓋所有可能渲染出來的變體（像這次的修法），要嘛老實標 `optional`；
-絕對不要賭它「現在都有值」。
+**不變量**：新增節點、或稿改版要換錨點時先問一句 ——
+**這個 class 會不會因為資料變了就從 DOM 消失？**
+會 → 要嘛涵蓋所有可能渲染出來的變體，要嘛老實標 `optional`；絕對不要賭它「現在都有值」。
 
 ---
 
@@ -269,181 +167,228 @@ pc 這兩點漏改。
 
 線寬全程 4.0px 等寬（實測稿的 outline 帶寬），故：
 
-- `kind` 相當於 `'stroke'` —— **驅動線 ＝ 可見線**，同一個 `d`
-- **不需要跑 `scripts/extract-centerline.mjs`**，也不會有可見線與驅動線分家的問題
-- 產生器吐出的座標已經在 `.forum-path` 座標系（`inset: 0` of `.sec2__path`），
-  不需要 `translateD`
+- **驅動線 ＝ 可見線**，同一個 `d`；不需要抽中心線，也不會有兩者分家的問題
+- 產生器吐出的座標已經在 `.forum-path` 座標系，不需要平移
 - 單一連續路徑（只有一個 `M`）→ `getPointAtLength` 不會跳點
 
-### ⚠️ 一定要設 `tailEndY`，不只是 `lineEndY`
+### ⚠️ 一定要設 `tailEndY`
 
-`ForumCorePath` 的 ScrollTrigger 是 `end: () => \`top+=${tailEndY} center\``，讀的是
-**`tailEndY`（隱形尾段末端＝議程底緣）**，不是 `lineEndY`（設計線末端）。
-mob 分支必須跟 pc 分支一樣走完整套：
+`ForumCorePath` 的 ScrollTrigger 讀的是 **`tailEndY`（驅動線末端的容器 y）**：
 
 ```
-pathLen  = 追加尾段前的弧長
-lineEndY = 產生器回傳的 endY
-tailEndY = measureTailEndY() ?? lineEndY   ← 沒設它就是 0
-motionLen= 追加尾段後的總弧長
+pathLen  = motion.getTotalLength()        ← 驅動線總弧長
+tailEndY = 產生器回傳的 endY               ← 沒設它就是 0
 ```
 
-**漏設的後果是靜默的**：`end` 解析成 `top+=0 center`，GSAP 把它夾成 `start + 0.01`
+尾段年代這裡有四個變數（`pathLen`／`motionLen`／`lineEndY`／`tailEndY`，前兩個是
+「設計線長」對「含尾段總長」，後兩個同理）。後半段改走 waypoint、尾段退場後
+四者兩兩恆等，2026-08-12 收成上面兩個 —— 真要補回尾段，**兩對都要一起拆回**
+並改 `place()` 的切線取樣，只改一半會靜默錯開整段交棒時機。
+
+**漏設的後果是靜默的**：`end` 解析成 `top+=0 …`，GSAP 把它夾成 `start + 0.01`
 → 捲動尺零長度 → 核心一進場就跳到路徑末端，看起來像「線畫好了但核心不動」。
-2026-08-07 的 prototype 就踩了這個，花了不少時間才定位 —— 徵狀是
-`st.end - st.start === 0.01`，那個 `0.01` 就是 GSAP 的夾值指紋。
+徵狀是 `st.end - st.start === 0.01`，那個 `0.01` 就是 GSAP 的夾值指紋。
 
-可見線只吃**路徑段**（`out.d`），尾段只加到驅動線上 —— 尾段全程被議程的不透明白底
-遮住，畫出來反而會從縫隙露餡。
+可見線只吃**路徑段**，尾段只加到驅動線上 —— 尾段全程被議程的不透明白底遮住，
+畫出來反而會從縫隙露餡。
 
-**那一撇（論壇二 09/15）在 mob 不畫。** `build()` 只在 `list2.length === 2` 時
-畫連接段斜線；mob 是單段，`slash.len` 自然為 0。稿的 09/15 斜線是靜態圖稿
-（Figma `2574:87050`，在 `Group 12892` 內），而路徑在那個 y 帶只走到 x 108–148、
-不經過它 —— mob 刻意不沿用 pc 的「核心經過時補那一撇」機制。
+**那一撇（論壇二 09/15）在 mob 不畫。** `build()` 只在 `list2.length === 2` 時畫連接段斜線；
+mob 是單段，`slash.len` 自然為 0。稿的 09/15 斜線是靜態圖稿（Figma `2574:87050`），
+而路徑在那個 y 帶只走到 x 108–148、不經過它。
 
-**稿末端的箭頭（邊長 23.1 的正三角形）不畫。** 它在稿裡是獨立的填色三角形、
-不在驅動線上。
+**稿末端的箭頭（邊長 23.1 的正三角形）不畫。** 它在稿裡是獨立的填色三角形、不在驅動線上。
 
 ---
 
-## 四、waypoint 表
+## 四、waypoint 與 join 參數
 
-`dy` 由設計稿反推（換算方式見第九節）。⚠️ 標記的項目見第七節。
+**資料的唯一真值是 `app/utils/forum-node-path.ts`**，每一列都帶著稿座標
+（`// 稿 (207.0, 376.5)；標眉上緣 375.4`）、錨點選擇的理由與 ⚠️ 陷阱註解。
+本文不再抄一份表 —— 抄了就會有兩份真值，而漂掉的那份不會有人發現。
 
-### pad（`Q0–Q13`，768 稿）
+稿上讀得到、但程式碼裡看不出來的三件事：
 
-pad 稿是**真描邊**（`stroke-width 4`、單一 `M`、指令只有 `MVCL`），中心線就是 `d` 本身，
-控制點直接讀得到 —— 不必像 mob 那樣做 outline 擬合。
+- **直線佔線長 59%**（稿上 5 段：`P0→P1`、`P5→P6`、`P6→P7`、`P7→P8`、`P10→P11`），
+  而且正好落在文字高度最會變動的區域。**直線天生吃得下高度變化，這是整套做法能成立的主因。**
+- **髮夾彎不可用自動平滑取代。** `P3→P4`（`relIn +111°`）與 `P11→P12`（`+82°`）是
+  「線先往回上走再折下來」，Catmull-Rom 之類的只會「順順地通過」，設計語彙就沒了。
+  pad 的 `Q9→Q10→Q11` 則是**兩側 handle 各為 0 的硬轉角**（撞左牆的尖角），
+  mob 對應的 `P6` 是平滑通過 —— 兩個斷點的語彙刻意不同。
+- **`Q5→Q6` 是 chord 1912 的大弧**，橫跨論壇一整段長 bio；高度變動最大的區域交給它吸收，
+  與 mob 用長直線吃掉同一段的作法同構。
 
-| id | x | 錨點 element | 邊 | dy / t | 到下一點 |
-| --- | --- | --- | --- | --- | --- |
-| **Q0** | `center` | `.sec2__path` | top | **0** ⚠️ | 直線（垂直）|
-| **Q1** | `center` | 論壇一 `.forum-event__tag` | bottom | +17 | 彎 |
-| **Q2** | 0.744 | 論壇一 `.forum-event__tag` | top | −9 | 彎 |
-| **Q3** | 0.867 | 論壇一 `.forum-event__head` | bottom | +64 | 彎（髮夾）|
-| **Q4** | 0.303 | 論壇一 `.forum-event__meta` | bottom | −34 | 彎 |
-| **Q5** | 0.716 | 論壇一 `.forum-event__photo(-slot)` | top | +208 | 大弧（跨整段 bio）|
-| **Q6** | 0.807 | 論壇二 `.forum-event__meta` | top | −7 | 彎 |
-| **Q7** | 0.496 | 論壇二 `.forum-event__meta` | top | +86 | 直線 |
-| **Q8** | 0.320 | 論壇二 `.forum-event__speakers` | top | +2 | 彎 |
-| **Q9** | 0.142 | 論壇二 `.forum-event__speakers` | top | +34 | **硬轉角**（hOut 0）|
-| **Q10** | `left` | 論壇二 `.forum-event__speakers` | fraction | **0.7294** | **硬轉角**（hIn 0）|
-| **Q11** | 0.160 | 論壇三 `.forum-event__tag` | top | −8 | 彎 |
-| **Q12** | 0.820 | 論壇三 `.forum-event__meta` | top | −5 | 彎 |
-| **Q13** | `AGENDA_ARROW_X` ⚠️ | 論壇三 `.forum-event__meta` | bottom | +25 | —（終點）|
+### 三個不能當錨點的東西（實測踩過）
 
-`Q13` 的 x 掛在議程箭頭欄上（不是比例）—— 稿的 201.4 就是箭頭位置，
-但 `.agenda` 定寬置中而容器流動，比例只在 768 稿寬對得上。見第二節「x 也可以掛 element」。
-`Q13 → S0 → S1` 三點共用同一個 x，那條垂直線整段落在箭頭上，核心穿過議程時正好接到箭頭。
-
-`Q5→Q6` 是一段 chord 1912 的大弧，橫跨論壇一整段長 bio —— 高度變動最大的區域
-交給它吸收，與 mob 用長直線吃掉同一段的作法同構。
-
-`Q9→Q10→Q11` 是**撞左牆的尖角**：兩側 handle 各為 0，退化成硬轉角。
-這是 pad 稿特有的語彙（mob 的 P6 是平滑通過）。
-
-### mob（`P0–P13`，414 稿）
-
-| id | x | 錨點 element | 邊 | dy / t | 到下一點 |
-| --- | --- | --- | --- | --- | --- |
-| **P0** | `center` | `.sec2__path` | top | **0** ⚠️ | 直線（垂直）|
-| **P1** | `center` | 論壇一 `.forum-event__tag` | top | +1 | 彎 |
-| **P2** | 0.704 | 論壇一 `.forum-event__tag` | top | −7 | 彎 |
-| **P3** | 0.829 | 論壇一 `.forum-event__head` | bottom | −6 | 彎（髮夾）|
-| **P4** | 0.143 | 論壇一 `.forum-event__venue` | bottom | −4 | 彎 |
-| **P5** | `right` | 論壇一 `.forum-event__photo(-slot)` | top | +102 | 直線 |
-| **P6** | `left` | 論壇一 `.forum-event__speakers` | fraction | **0.4704** | 直線 |
-| **P7** | `right` | `[data-forum-anchor="論壇二"]` | top | +38 | 直線 |
-| **P8** | 0.259 | 論壇二 `.forum-event__speaker-label` | top | +22 | 彎 |
-| **P9** | 0.713 | 論壇二 `.forum-event__speaker`（nth 0）| top | +54 | 彎 |
-| **P10** | 0.781 | 論壇二 `.forum-event__speaker`（nth 1）| bottom | +12 | 直線（垂直）|
-| **P11** | 0.781 | 論壇三 `.forum-event__meta` | top | −3 | 彎（髮夾）|
-| **P12** | 0.261 | 論壇三 `.forum-event__meta` | fraction | **0.4574** | 彎 |
-| **P13** | `center` | 論壇三 `.forum-event__meta` | fraction | **0.7439** | —（終點）|
-
-### ⚠️ 三個不能當錨點的東西（實測踩過）
-
-1. **`.forum-event__bio`** —— 它是 `v-for` 出來的多個 `<p>`（論壇一有 5 段），
+1. **`.forum-event__bio`** —— `v-for` 出來的多個 `<p>`（論壇一有 5 段），
    `querySelectorAll(...)[0]` 只會抓到第一段（實測 216 高，整組 1905）。
-   P6 因此改掛 `.forum-event__speakers`。
-2. **論壇一的 `.forum-event__speaker`** —— pad / mob 用 `display: contents` 攤平重排
-   （見 `forum-rwd` memory），**rect 全部是 0**，`getBoundingClientRect()` 量不到。
-   論壇二的是 `--card`、有正常 box，所以 P9 / P10 可以掛。
+2. **論壇一的 `.forum-event__speaker`、論壇二的 `.forum-event__head`** ——
+   pad / mob 用 `display: contents` 攤平重排（見 `forum-rwd` memory），
+   **rect 全部是 0**，`getBoundingClientRect()` 量不到。
 3. **`.forum-event__date`（論壇三）** —— 稿的 `time` 組是 199 高（日期＋時間），
-   而實作的 `__date` 只有日期（實測 112）、時間在 `__venue` 裡。
-   對應那一組的是 `__meta`（實測 204）。
+   而實作的 `__date` 只有日期（實測 112）、時間在 `__venue` 裡；對應的是 `__meta`（實測 204）。
 
-同理，**論壇二的 `.forum-event__head` 也是 `display: contents`** —— 只有論壇一的可以掛（P3）。
-
-「論壇一 / 二」等前綴的實作方式：以 `[data-forum-anchor="論壇N"]` 的
+**「論壇一 / 二」等前綴一律用具名錨點**：以 `[data-forum-anchor="論壇N"]` 的
 `closest('.forum-event')` 為 scope 再往下查，**不用文件順序索引** ——
-理由同 `forum-core-path.md`「錨點是具名的，不是索引」。
-
-`P13` 是終點，`lineEndY` ＝ 它的 y，`ScrollTrigger` 的 `end` 自動跟著變。
-
-### 為什麼 P2 掛在 P1 的元素上
-
-P2 是彎的**肩點**，沒有對應的版面區塊。掛在跟 P1 同一個 element（`dy: −7`），
-它就永遠跟 P1 一起移動、不會被拉開成兩截。
-
-### 為什麼 P6 用 fraction
-
-P6 落在論壇一那段長 bio 裡（稿上是上緣 +457）。bio 是整段裡高度變動最大的東西
-（稿上 1431px，字數一改就整段位移），寫死 457 沒有視覺意義 →
-改成「bio 高度的 0.32 處」，bio 撐高撐矮它都待在同一個相對位置。
+增刪場次、重排順序都不會讓線靜默錨到別場身上。
 
 ---
 
-## 五、join 參數表
+## 五、核心怎麼跑這條線
 
-這些數字是**從設計稿抽出來的形狀不變量**，不是量測到的座標 —— 換視窗寬不必重算。
+線只負責「被看到」；橘核心（`.forum-path__core`）沿同一條 `d` 走，
+由 `ForumCorePath.place()` 每幀寫 transform。
 
-### pad
+### 座標系與量測時機
 
-| join | 長度（稿）| chord° | relIn° | relOut° | hIn | hOut |
-| --- | --- | --- | --- | --- | --- | --- |
-| Q0→Q1 | 208 | 90.0 | — | — | — | — |
-| Q1→Q2 | 194 | −17.9 | −47.8 | +58.8 | 0.300 | 0.516 |
-| Q2→Q3 | 463 | 78.2 | −37.3 | +11.8 | 0.257 | 0.229 |
-| Q3→Q4 | 513 | 147.7 | **+95.2** | −47.2 | 0.347 | 0.661 |
-| Q4→Q5 | 399 | 37.3 | −76.8 | +42.2 | 0.359 | 0.672 |
-| Q5→Q6 | 1912 | 87.9 | −8.4 | +2.1 | 0.194 | 0.225 |
-| Q6→Q7 | 256 | 158.8 | **+90.9** | −44.5 | 0.395 | 0.936 |
-| Q7→Q8 | 314 | 115.5 | — | — | — | — |
-| Q8→Q9 | 141 | 166.9 | +68.2 | −47.4 | 0.434 | 0.632 |
-| Q9→Q10 | 271 | 112.4 | +7.0 | （無意義）| 0.487 | **0** |
-| Q10→Q11 | 240 | 60.7 | （無意義）| −0.6 | **0** | 0.668 |
-| Q11→Q12 | 666 | 40.5 | −81.8 | +40.1 | 0.476 | 0.453 |
-| Q12→Q13 | 500 | 148.9 | +78.1 | −47.2 | 0.283 | 0.688 |
+`.sec2__path` 是 `max-width: 1280px; margin: 0 auto; position: relative`，
+**它就是設計稿座標系**（pc 稿寬 1280，Figma 的 x 可以直接當 px 用）。
+`.forum-path` 以 `inset: 0` 疊在其上。
 
-handle 為 0 的那一側，控制點與端點重合 → 該側的角度不影響結果，填 0 即可。
+⚠️ 段落頂端那 140px 留白**必須掛在 `.sec2__path` 上，不能掛回 `.sec2`**。
+線的座標原點是 `.sec2__path` 的 padding box，留白掛在 `.sec2` 會讓原點下沉 140，
+線就不是從黑白接縫進場、而是從主標高度才開始。
 
-### mob
+重新量測的時機：`onMounted`、`document.fonts.ready`、ScrollTrigger 的 `refreshInit`
+（涵蓋 resize —— `autoRefreshEvents` 預設含它，故不另外掛 resize 監聽）、斷點改變
+（`await nextTick()` 等 `v-for` 換完 DOM 後再 `refresh()`）。
+**刻意不逐幀量測** —— 錨點捲離視窗後逐幀讀 rect 會讓圖層跟著跑掉。
 
-| join | 長度（稿）| chord° | relIn° | relOut° | hIn | hOut |
-| --- | --- | --- | --- | --- | --- | --- |
-| P0→P1 | 334 | 90.0 | — | — | — | — |
-| P1→P2 | 83 | −4.7 | −54.2 | +57.4 | 0.41 | 0.57 |
-| P2→P3 | 398 | 82.8 | −23.7 | +7.2 | 0.07 | 0.75 |
-| P3→P4 | 419 | 133.1 | **+111.2** | −35.8 | 0.23 | 1.01 |
-| P4→P5 | 365 | 17.0 | −55.9 | +42.5 | 0.22 | 0.70 |
-| P5→P6 | 866 | 118.4 | — | — | — | — |
-| P6→P7 | 1273 | 71.2 | — | — | — | — |
-| P7→P8 | 710 | 115.3 | — | — | — | — |
-| P8→P9 | 204 | 24.1 | −69.0 | +53.2 | 0.43 | 0.69 |
-| P9→P10 | 334 | 85.5 | −6.4 | +4.1 | 0.34 | 0.17 |
-| P10→P11 | 665 | 90.0 | — | — | — | — |
-| P11→P12 | 237 | 156.7 | **+81.9** | −51.8 | 0.41 | 0.53 |
-| P12→P13 | 105 | 32.8 | −62.0 | +53.2 | 0.29 | 0.69 |
+`bp` 初值是 `null`：SSR 與 client 首次渲染都不出線，掛載後才量測並渲染。
+這層純裝飾且位置全靠 JS 量測，各斷點段數不同，SSR 猜錯就 hydration mismatch。
 
-`chord°` 只是稿上的實際值，**不是資料**（執行時由兩點算出）；列在這裡是為了讓
-`relIn` / `relOut` 的正負號可以回頭對照。
+### 起訖：兩端都由幾何推導，不掛任何 DOM `endTrigger`
 
-**P3→P4 與 P11→P12 是髮夾彎**（`relIn` 是 +111° / +82°：線先往回上走再折下來）。
-這是設計語彙的關鍵，不能用 Catmull-Rom 之類的自動平滑取代 —— 那只會「順順地通過」。
+| | 設定 | 意義 |
+| --- | --- | --- |
+| start | `'top center'` | `.sec2__path` 頂端抵達視窗中央 → 路徑起點 (640, 0) 正好在視窗正中央 |
+| end | `` () => `top+=${tailEndY} ${coverContactAlign()}` `` | 驅動線末端（＝接縫）抵達「接觸點」的視窗位置 |
 
-稿上 5 段直線（P0→P1、P5→P6、P6→P7、P7→P8、P10→P11）合計約佔線長 59%，
-而且正好落在文字高度最會變動的區域。直線天生吃得下高度變化，這是這套做法能成立的主因。
+刻意避開兩個陷阱：`.forum-event__date` 是 `position: absolute`，當 `endTrigger` 量不到
+有效高度；而 `.sec2` 的 bottom 會被上游 `SymbolScene` 的 pin-spacer 撐高，用它當基準是
+循環依賴。
+
+⚠️ `end` 的對齊位置由 `coverContactAlign()`（`orange-core-config.ts`）導出，**不可各寫一份**
+—— 它與 `COVER_CONTACT` 是同一個來源，那是 forum → blessing 過場「飛機碰到色塊」的時機。
+`COVER_CONTACT = 0.5` ⇒ `'50%'` ⇒ 等同舊的 `center`。詳見
+`architecture/2026-08-12-forum-blessing-transition-design.md`。
+
+### 隱形尾段（穿過議程）
+
+設計線末端之後追加一段**垂直尾段**，直下到議程底緣（`[data-core-tail-end]` ＝ `.agenda`
+的根節點），ScrollTrigger 的 `end` 因此改讀 `tailEndY`。
+
+補上後半段設計線之後尾段本身已退場（`tailEndY` 就是設計線末端）；留這一節是為了記住
+**當初為什麼不能用單一比例**：ST 把捲動跨距線性對應到**弧長**（比例 1.68），
+垂直尾段若吃同一個比例，核心每捲 1px 會下沉 1.68px，走完議程就沉出畫面 908px。
+這條規則已被下一節的「回中節點表」概括掉 —— 節點照 **y** 等距佈，垂直段上
+「弧長增量 ＝ y 增量」自然成立，不需要為尾段寫特例。
+
+### 回中節點表（核心不會滑出畫面）
+
+只用「捲動進度 → 弧長」等比是不夠的，因為**驅動線是蛇行的**：弧長比垂直跨距長
+（pc 1.50 倍、pad 1.41、mob 1.16）。橫向繞路多的地方核心落後於視窗中央、近垂直的地方超前，
+誤差還會一路累積 —— 實測 pc **−689/+445px**，900 高的螢幕半屏只有 450，核心整顆滑出畫面。
+
+`buildArcKnots()` 在 `build()` 時沿驅動線取樣 512 點、把 y 單調化，再**每
+`FORUM_CENTER_KNOT_VH × 視窗高` 的 y 反查一個節點**。`place()` 的 `arcAtCenterY()`
+只在節點之間做線性內插：
+
+| | 行為 |
+| --- | --- |
+| 節點上 | y 精準等於視窗中央 → 偏移歸零，誤差不跨段累積 |
+| 節點之間 | 仍照弧長等比 → 「橫向繞路時衝得快」的手感完全保留 |
+
+節點間距吃視窗高（不是固定 px）：螢幕越矮容許的偏移越小，節點就自動越密。
+經驗法則 **偏移 ≲ 間距的一半**（`test/forum-path-geometry.spec.ts` 守著這條）。
+
+⚠ **不要把間距縮到 0**（＝把 y 硬釘在視窗中央）。線上有近水平的段（pc 在 y≈7400 有 340px
+弧長、dy≈0），y 一被釘住，那段就得在幾 px 的捲動內走完 —— 實測橫向速度飆到 **77 px/px**，
+看起來就是核心瞬移。節點式的重點正是「粗尺度對齊、細尺度放行」。
+
+逐格捲動實測（核心中心相對視窗中央，括號是橫向速度上限）：
+
+| 視窗 | 偏移 | 橫向速度 |
+| --- | --- | --- |
+| 1440×900 `?highlights=1` | −280 / +123 | 2.70 px/px |
+| 1024×900 `?highlights=1` | −198 / +170 | 2.30 |
+| 414×896 `?highlights=1` | −138 / +88 | 1.54 |
+| 1440×700 `?highlights=1` | −204 / +142 | 3.16 |
+| 375×667 `?highlights=1` | −119 / +63 | 1.62 |
+
+`forumPathProgress` 的語意刻意維持「**設計線**走完的比例」（尾段一律 1），
+故下游的 `forumPathRiding` 不受影響。
+
+### 核心穿過議程：遮到哪、露在哪
+
+遮蔽的粒度是**群組**，不是整個議程：
+
+| 區塊 | 層序 | 核心 |
+| --- | --- | --- |
+| `.agenda__group`（整疊） | `position: relative; z-index: 2; background: #fff` | **看不見**（藏在背後） |
+| `.agenda__actions`（CTA） | 什麼都不掛（static、無底） | **看得見**（畫在它之上） |
+
+也就是「穿完整疊群組就現形」。相鄰群組的邊界貼齊（下緣線在盒內、組間無間隙），
+故整疊是連續的一片遮蔽，核心不會在組與組之間閃一下。
+
+為什麼底與層序掛在群組而不是 `.agenda` 或 `.sec2__pin`：核心住在 `.sec2__path`，那層帶
+`z-index: 1`、**刻意畫在 `.sec2__pin` 之上**，好讓核心在後半段的論壇四／精彩活動看得見。
+所以 `.sec2__pin` 的白底遮不到它，得由「要遮的那一塊」自己再高一層並自備不透明底。
+要讓後半段某一塊也擋住核心，同樣得在那一塊上做。
+
+⚠ 這個 `z-index: 2` 能與 `.sec2__path` 相比，前提是 `.sec2__pin` 與 `.agenda` 都不自成堆疊
+脈絡（兩者都是 `position: relative` + `z-index: auto` + `opacity: 1` → 不會）。
+
+⚠ `?pathdebug` 只給設計線上色、**不改層序** —— 群組那一段的線照樣被遮住
+（否則就看不出核心該藏在哪裡）。
+
+### 議程箭頭的判定線 ＝ 核心，不是視窗中央
+
+作用中群組的判定（`Agenda.vue`）必須拿**核心自己**當播放頭。上一節的實測表就是原因：
+核心只是「大致」跟著視窗中央（pc −280/+123px），而議程一組才 ~262px（最短 101px）——
+用視窗中央當播放頭，第一組的箭頭會在核心真正走進群組**之前**就亮、最後一組會在核心
+離開**之前**就熄。
+
+```
+偏移 = pt.y − rawP × tailEndY        // 兩個值都已在手上，不必量任何 DOM
+播放頭 = (scrollY − startScroll) + 偏移   // 前項 ＝ 視窗中央到議程頂端的距離
+```
+
+刻意拆成「主項 ＋ 修正項」而不是直接傳核心的絕對座標：主項仍由 `scroll` 事件驅動，
+就算某次 tick 沒吃到最新的偏移，每一組照樣會被掃過一遍（那個「不能漏組」的理由見
+`~/utils/agenda-active`）；絕對座標則只能在 ScrollTrigger `refresh` **之後**量
+（上游 pin spacer 會位移它）。
+
+### 從符號段交棒
+
+`ForumCore` 的黑底與橘點吃兩個不同條件：黑底在 `[coreIn, coreOut)`，橘點則從 `coreIn`
+一路撐到路徑接手（`forumPathProgress > 0`）。交棒那一刻兩顆在同一點（實測相差 1.6px）、
+同尺寸、同色，故一幀重疊也看不出來；往回捲時 `p` 回到 0，橘點在視窗中央原地出現。
+
+橘點在交棒時的消失是**瞬間**的（`is-instant-hide`）：兩顆重合但路徑核心隨即沿線離開，
+若還淡出 0.4s，中央會留一顆停著的殘影。只在「已交棒且該消失」時關掉 transition，
+所以 `coreIn` 的淡入（與 SymbolFace 的 crossfade）仍是 0.4s。
+
+⚠️ `coreOut`（符號段捲完）與交棒點之間有 **50vh** 的「懸停期」，橘點在那段期間停在視窗
+中央不動（背景從 `.sec-symbol` 的黑換成 `.sec2` 的白，接縫升上來咬住它）。
+**50vh 是幾何下限，不能再縮** —— 交棒點被「路徑起點必須落在視窗正中央」的零跳點幾何鎖死，
+`coreOut` 已經推到 1.0。要更短就得動交棒幾何、犧牲零跳點保證。
+
+也因為 `coreOut` 推到 1.0，議程的淡入拆成獨立的 `FORUM_HANDOFF.agendaIn`——
+`coreOut` 那一刻符號段底緣剛好抵達視窗底，若淡入跟著它，那 0.4s 會在畫面底緣被看見。
+
+### 兩個容易漏掉的顯隱規則
+
+**路徑核心在 `p = 0` 時必須藏著**（`.forum-path__core` 的 `is-riding`）。它是隨頁面捲動的
+absolute 元素，若一直可見，段落進場到交棒點之間（50vh）畫面上會同時有它與中央那顆固定橘點
+—— 實測相距 200px。顯隱刻意不加 transition：交棒點兩顆重合，瞬切看不出來，淡入反而會閃。
+
+**`reset()` 要把 `forumPathProgress` 一併歸零**，不能只清 `forumPathActive`。切斷點時它會
+留著殘值，`forumPathRiding` 卡在 true，而 `place()` 已因 `pathLen = 0` 提早 return，
+方塊就停在最後一次的 transform 上 —— 變成論壇段裡一顆不會動的橘方塊。
+
+同一型事故的另一個入口：`build()` 走到 `setForumPathActive(true)` **之前**必須確認
+`knots` 不是空表（`buildArcKnots` 在 `pathLen`／`tailEndY` ≤ 0 時回空陣列）——
+只靠 `place()` 提早 return 是不夠的，`active` 已經翻上去了。
 
 ---
 
@@ -472,47 +417,49 @@ handle 為 0 的那一側，控制點與端點重合 → 該側的角度不影�
 | 「線要**橫向**咬住某個 element」 | `x` 改成 `ForumPathXAnchor`（見第二節）|
 | 「整條線橫向擺幅太大」 | 全域 `amplitude`（把比例型 x 往中心收；掛 element 的 x 不受影響）|
 
-**編號永不重排。** 要插入新點就用 `P7a`，不重編號 —— 這樣「P4 往右一點」
-永遠指同一個點。理由同 `data-forum-anchor` 用具名而非索引。
+**編號永不重排。** 要插入新點就用 `P7a`，不重編號 —— 這樣「P4 往右一點」永遠指同一個點。
+理由同 `data-forum-anchor` 用具名而非索引。
 
 ### dev overlay：`?pathdebug`
 
 疊在畫面上顯示：每個 waypoint 的**編號標籤 ＋ 實測座標**、它綁的 element 外框、
-以及設計稿原線（半透明對照）。
-
-有了它，溝通就是「**P9 要跟講者照片下緣對齊**」，不必猜座標。
+以及設計稿原線（半透明對照）。有了它，溝通就是「**P9 要跟講者照片下緣對齊**」，不必猜座標。
 
 ---
 
 ## 七、與設計稿的已知差異
 
-每一條都是刻意的。改動時連同 `note` 欄位一起更新。
+每一條都是刻意的。改動時連同節點的 `note` 欄位一起更新。
 
-1. **P0 的 dy 是 0，不是稿的 +43。**
-   稿的線從容器 y ＝ 41 才開始，但交棒點幾何要求「路徑起點落在視窗正中央」
-   ＝ 容器 y ＝ 0（見 `forum-core-path.md` 的 `start: 'top center'`）。
-   照稿會在交棒瞬間產生 43px 跳點。P0→P1 是垂直線，多 43px 看不出來。
+1. **起點（`W0` / `Q0` / `P0`）的 dy 一律歸零，稿上不是 0**（pc +191、mob +43）。
+   交棒點幾何要求「路徑起點落在視窗正中央」＝ 容器 y ＝ 0（見第五節的 `start: 'top center'`），
+   照稿會在交棒瞬間產生同等大小的跳點。三個斷點的第一段都是垂直線，補上那段看不出來。
 
 2. **P5 / P6 / P7 釘在容器邊緣 ±2，稿上是 0.5 / 409 / 411。**
    差 1–3px，換來的是「撞牆反彈」在任何視窗寬都成立，且描邊不被裁掉。
 
 3. **P13 的 x 釘中心（容器 207），稿上是 198.5。**
-   差 8.5px。收尾回到中心語意乾淨，且 mob 不畫箭頭（見第三節），
-   稿上 P13 之後那一段拱與三角形一併省略 —— 線比稿短 93px。
+   差 8.5px。收尾回到中心語意乾淨，且 mob 不畫箭頭 —— 稿上 P13 之後那一段拱與三角形
+   一併省略，線比稿短 93px。
 
-4. **P6 用 fraction 0.32 取代稿的「上緣 +457」。** 理由見第四節。
+4. **P6 用 fraction 0.32 取代稿的「上緣 +457」。** bio 是整段裡高度變動最大的東西
+   （稿上 1431px，字數一改就整段位移），寫死 457 沒有視覺意義。
 
 5. **那一撇與箭頭不畫、core dot 尺寸不動。** 見第三節。
-   （稿的 core dot 標記是 14×14，`CORE.dotSize` 是 26。沒有跟進 ——
-   它同時被 `SymbolFace` / `HeroSymbolTransition` 讀，改它要重驗交棒重合。）
+   （稿的 core dot 標記是 14×14，`CORE.dotSize` 是 26。沒有跟進 —— 它同時被
+   `SymbolFace` / `HeroSymbolTransition` 讀，改它要重驗交棒重合。）
 
-6. **實作版面本來就與稿不同，線因此不會與稿重疊。** 2026-08-07 實測（414 視窗、
+6. **後半段末節點的 x 為了對上「臉的第 01 格」再往左挪過**
+   （pc `R6.x = 0.2316`、pad `S6` / mob `T7` 改 `'center'`）。
+   推導見 `architecture/2026-08-12-forum-blessing-transition-design.md`。
+
+7. **實作版面本來就與稿不同，線因此不會與稿重疊。** 2026-08-07 實測（414 視窗、
    容器 398.67）：論壇一標眉在 445（稿 375.4）、論壇二日期組在 3783.7（稿 3105.5）、
    論壇三 `__meta` 在 5190.7（稿 4870.5）—— 累積差最大約 680px。
 
    **這是預期的，不是 bug。** 線的職責是「貼著實際版面」，不是「重現稿的絕對座標」。
    要驗對位就驗相對關係（線是否從標眉旁出來、是否在講者組下緣轉彎），
-   不要拿稿的絕對數字去比對實測值 —— 同 `forum-core-path.md` 那條規則。
+   不要拿稿的絕對數字去比對實測值。
 
    ⚠️ 也**不要為了對上稿去硬調 dy** —— 那等於把量測快照又寫回常數，這條線就白改了。
 
@@ -522,36 +469,23 @@ handle 為 0 的那一側，控制點與端點重合 → 該側的角度不影�
 
 ### 黃金樣本（`test/forum-node-path.spec.ts`）
 
-1. 把 Figma `2584:35109` 的 outline 用 `extract-centerline.mjs` 抽成真中心線
-   （腳本目前把來源寫死成 `ForumCorePath.vue`，要加一個路徑參數），存成 fixture
-2. 餵給產生器一組「稿的 element 位置」（＝第四節反推用的那些數字）
-3. 比對兩條線的取樣點距離，**容差 1px**
-   （pc 實測是中位 0.59 / 最大 2.05px，同一個量級）
-
-好處是**調 P9 不會靜默弄壞 P3**。
+把稿的 outline 抽成真中心線存成 fixture，餵給產生器一組「稿的 element 位置」，
+比對兩條線的取樣點距離，**容差 1px**。好處是**調 P9 不會靜默弄壞 P3**。
 
 刻意偏離稿時：更新 fixture、在該 node 寫 `note`、並補進第七節。
 **偏離永遠是明寫的，不是靜默的。**
 
-### 單元測試
-
-- 五個旋鈕各自的效果（改 `hOut` 只影響那一段、`amplitude` 等比收斂…）
-- 錨點量不到時回 `null`（不是回一條少一個點的線）
-- 五種 x 的解析：`'left'` / `'right'` / `'center'` / 數字 / `ForumPathXAnchor`
-  （含「不吃 amplitude」與「量不到退回 fallback」兩條）
-- `edge` 三種模式的 y 解析
-- pad 的 `Q13 / S0 / S1` 同 x 且都掛在 `.agenda__rows` 左緣（那條垂直線落在箭頭上）
+單元測試另外守：五個旋鈕各自的效果、錨點量不到時回 `null`（不是回一條少一個點的線）、
+五種 x 的解析（含「不吃 amplitude」與「量不到退回 fallback」）、`edge` 三種模式、
+以及 `Q13 / S0 / S1` 同 x 且都掛在 `.agenda__rows` 左緣。
 
 ### 瀏覽器實測
-
-沿用 `forum-core-path.md` 的驗證方式，於 dev server 實測：
 
 | 項目 | pad（1024）| mob（414）| pc 參考值 |
 | --- | --- | --- | --- |
 | 核心到可見線 中位 | **0.629px** | **0.415px** | 0.59px |
 | 核心到可見線 最大 | **0.975px** | **0.815px** | 2.05px |
 | 往回捲 drift | **0px** | **0px** | 0px |
-| 線寬／線色 | 4px / `rgba(0,0,0,.1)` | 同左 | outline / `rgba(0,0,0,.03)` |
 
 pad / mob 比 pc 準，是因為**驅動線 ＝ 可見線**（同一個 `d`），沒有中心線抽取的誤差。
 
@@ -569,17 +503,10 @@ pad / mob 比 pc 準，是因為**驅動線 ＝ 可見線**（同一個 `d`）�
 mob 從 414 縮到 375 時 **5427 → 5777（+350px）**，線全程自己跟著長。
 這正是寫死 `d` 做不到的兩件事：窄視窗不溢出、文字變高不飄。
 
-**議程箭頭對位**（2026-08-09，`AGENDA_ARROW_X` 之後）——
-量「線穿過議程上／下緣時的 x」與「`.agenda__rows` 的 border 中心」之差：
-
-| 視窗 | 容器寬 | 箭頭 x | 進議程 Δ | 出議程 Δ | 舊比例 `0.262×W` 會落在 |
-| --- | --- | --- | --- | --- | --- |
-| pad 768 | 752.7 | 194.83 | **0** | **0** | 197.2 |
-| pad 1021 | 1006 | 321.50 | **0** | **0** | 263.6 |
-| pad 1279 | 1264 | 450.50 | **0** | **0** | 331.2 |
-
-核心自身（`.forum-path__core` 的中心）在 1021 寬實測也是 **Δ 0**。
-同批次的自交掃描（4000 取樣點）：pad 768 / 1021 / 1279、pc 1440、mob 414 皆 **0 次相交**。
+**議程箭頭對位**（`AGENDA_ARROW_X` 之後）：pad 768 / 1021 / 1279 三個寬度，
+線穿過議程上／下緣時的 x 與 `.agenda__rows` border 中心之差皆為 **0**
+（舊比例 `0.262×W` 會分別落在 197.2 / 263.6 / 331.2）。
+同批次的自交掃描（4000 取樣點）：pad 三寬、pc 1440、mob 414 皆 **0 次相交**。
 
 **待補的實測**：真機（無捲軸）、320 寬下限、字體 fallback 時的表現。
 
@@ -611,15 +538,19 @@ mob 從 414 縮到 375 時 **5427 → 5777（+350px）**，線全程自己跟著
 
 5. **x 轉比例**：`inner_x / 414`。落在 ±3px 內就釘 `'left'` / `'right'` / `'center'`。
 
+pad 稿是**真描邊**（`stroke-width 4`、單一 `M`、指令只有 `MVCL`），中心線就是 `d` 本身、
+控制點直接讀得到 —— 不必像 mob 那樣做 outline 擬合。
+pc 的節點則是從舊的手貼中心線抽出來的（那份 `motion` 本來就是中心線），
+擬合偏差 2.36px、新舊線實測最大差 2.55px／平均 1.21px。
+
 ---
 
 ## 十、pad / mob 之外
 
-**pc 不需要，也不要動。** 它是絕對定位釘死在 1280 座標，且現有的 `d` 已手工校正到
-中位誤差 0.59px。加新斷點時，只要在 `FORUM_PATH_NODES` 填一組 waypoint 陣列就會生效，
+加新斷點時，只要在 `FORUM_PATH_NODES` 填一組 waypoint 陣列就會生效，
 產生器與元件都不必動。
 
 **論壇段後半段（論壇四／議程／精彩活動）另有一條線**，三個斷點的稿分別是
 pad `2679:90235`、mob `2584:35141`、pc `2584:35143`。⚠️ 那三條在 Figma 上是**頁面層的
 孤兒 vector**，沒有 artboard 座標可對 —— 稿只給形狀、不給位置，頂點掛哪個區塊必須自己決定
-（做的時候用第六節那套 P 編號協定微調）。前半段這兩條則都對得到稿，別把兩者混為一談。
+（做的時候用第六節那套編號協定微調）。前半段這兩條則都對得到稿，別把兩者混為一談。

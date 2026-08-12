@@ -48,7 +48,7 @@ const INNER_HEIGHT_ALLOWED: Record<string, string> = {
     '--chrome-inset ＝ large viewport − 此刻可視高，後者本來就得是活值',
   'app/components/01.hero/Hero.vue': 'isVerticallyOnScreen：影片現在在不在畫面上',
   'app/components/01.hero/HeroLoader.vue': '磁磚格數，且元素框優先、innerHeight 只是 fallback',
-  'app/components/AppHeader.vue': '捲動進度條分母＝真實最大可捲距離',
+  'app/components/ui/AppHeader.vue': '捲動進度條分母＝真實最大可捲距離',
   'app/components/DevCoreProgress.vue': 'dashboard 要顯示真相',
   'app/components/02.forum/Agenda.vue': '播放頭的「視窗中央」；且只在 measure() 跑',
 };

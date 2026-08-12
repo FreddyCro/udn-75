@@ -7,7 +7,7 @@ metadata:
 
 ## 動任何 02.forum 版面之前
 
-**先讀 [`architecture/forum-core-path.md`](../../architecture/forum-core-path.md)。**
+**先讀 [`architecture/forum-node-path.md`](../../architecture/forum-node-path.md)。**
 橘核心蛇行路徑靠版面座標對位，會影響它的改動不只「改路徑」本身——下列任何一項都算：
 
 - 換／調整 `ForumCorePath.vue` 的可見線 svg，或 `FORUM_PATH` 的任何欄位

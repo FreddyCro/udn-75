@@ -95,4 +95,14 @@ describe('資料層', () => {
       expect(w[0]).toBeLessThanOrEqual(w[1]);
     }
   });
+
+  // 2026-08-12 的實際事故：三個斷點初值都填了 pc 實測的 [0.40, 0.41] —— override 分支
+  // 因此永遠先返回，幾何推導在 production 完全跑不到，而 pad / mob 是流排版，
+  // 那一撇會在核心根本不在 09/15 的位置畫出來。指紋就是「三個斷點同一組數字」。
+  it('override 是逐斷點的例外，不可三個斷點填同一組數字', () => {
+    const filled = Object.values(FORUM_SLASH_AT).filter((w) => w !== null);
+    if (filled.length < 3) return; // 至少有一個走推導 → 沒有這個問題
+    const uniq = new Set(filled.map((w) => w!.join(',')));
+    expect(uniq.size).toBeGreaterThan(1);
+  });
 });

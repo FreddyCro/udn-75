@@ -379,7 +379,7 @@ const effectiveTheme = computed<HeaderTheme>(() =>
 .app-header__logo-mask {
   display: none;
   background-color: #fff;
-  mask-image: url('../assets/img/logo.svg');
+  mask-image: url('../../assets/img/logo.svg');
   mask-repeat: no-repeat;
   mask-size: contain;
 }

@@ -74,7 +74,7 @@ export function useOrangeCoreProgress() {
   // 核心中心相對**視窗中央**的縱向偏移（px，正 ＝ 在中央下方）。ForumCorePath.place() 每幀寫入，
   // 消費者是 <Agenda>：它要判定「核心是不是真的走進了某一組」，而視窗中央不等於核心的位置。
   // 回中節點表只保證核心**大致**跟著視窗中央（實測 pc −280/+123px，比議程一組還高），
-  // 拿視窗中央當播放頭，箭頭就會早一組亮、晚一組熄（見 forum-core-path.md）。
+  // 拿視窗中央當播放頭，箭頭就會早一組亮、晚一組熄（見 forum-node-path.md 第五節）。
   //
   // 為什麼是「偏移」而不是核心的絕對座標：偏移可以完全由 place() 手上的值算出
   // （pt.y − rawP × tailEndY，見該處），不必量任何 DOM。絕對座標則只能在 ScrollTrigger
@@ -177,12 +177,23 @@ export function useOrangeCoreProgress() {
 
   // 使用者要求減少動態時，逐格臉不隨捲動變化，直接停在完成的笑臉。
   // 用 useState 讓 SSR 與 client 一致（初值 false，client 掛載後才量測）。
+  //
+  // ⚠ 探測掛 onMounted 是為了避開 hydration mismatch（首次 client render 必須與 SSR 同值），
+  //   但 onMounted 只能在 setup 內註冊 —— 本 composable 是共享狀態的入口，論壇段就有 7 個
+  //   元件各叫一次，未來也可能從 watcher／event handler 裡叫。故：
+  //     有元件實例 → 照舊掛 onMounted（保 hydration 一致）
+  //     沒有實例   → 直接探測一次（此時已在 client、不在 render 路徑上，不影響 hydration）
+  //   不加這層判斷的話，非 setup 的呼叫會噴 Vue 警告並**靜默**拿到 reduceMotion = false。
   const reduceMotion = useState<boolean>('blessing-reduce-motion', () => false);
-  onMounted(() => {
-    reduceMotion.value = window.matchMedia(
-      '(prefers-reduced-motion: reduce)',
-    ).matches;
-  });
+  if (import.meta.client) {
+    const probeReduceMotion = () => {
+      reduceMotion.value = window.matchMedia(
+        '(prefers-reduced-motion: reduce)',
+      ).matches;
+    };
+    if (getCurrentInstance()) onMounted(probeReduceMotion);
+    else probeReduceMotion();
+  }
 
   // blessingProgress → 逐格臉的格號（0-based，整數；逐格＝不做補間）。
   // 尾端 BLESSING_HOLD 這段停在最後一格；因 blessingProgress 每次 update 都重讀

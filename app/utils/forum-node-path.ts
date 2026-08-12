@@ -9,7 +9,7 @@
 //   2. 這兩個斷點的版面是流排版（.forum-event 退回 flex 直排），垂直位置隨字數、
 //      字體 fallback、視窗寬一起變 —— 寫死的 y 一定會飄。
 //   3. pad 的線（Vector 276）是一條跨越三場的連續線，必須同時咬住多個位置；
-//      單點平移只能釘住一個點，其餘會慢慢飄掉（forum-core-path.md 早已預告）。
+//      單點平移只能釘住一個點，其餘會慢慢飄掉。
 //
 // ⚠ 完整規則（每個點掛哪個 element、五個可調旋鈕、與稿的已知差異）見
 //   architecture/forum-node-path.md。改動前先讀。
@@ -137,7 +137,7 @@ const PAD_NODES: ForumPathNode[] = [
     id: 'Q0',
     x: 'center',
     // 稿是 artboard y=191，這裡刻意歸零：交棒點幾何要求路徑起點落在視窗正中央
-    // ＝ 容器 y=0（見 forum-core-path.md 的 start: 'top center'）。照稿會跳 191px。
+    // ＝ 容器 y=0（見 forum-node-path.md 第五節的 start: 'top center'）。照稿會跳 191px。
     anchor: { sel: '.sec2__path', edge: 'top', dy: 0 },
     note: '刻意偏離稿 +191 → 0，保交棒零跳點',
     join: 'line',
@@ -736,8 +736,8 @@ function resolveY(a: ForumPathAnchor, m: { top: number; height: number }): numbe
  * 只有一個 M → getPointAtLength 不會跳點，可同時餵給可見線與驅動線。
  *
  * ⚠ 必要錨點量不到就整條放棄（回 null），**不跳過那個點** ——
- *   跳過會讓後面所有點接到錯的鄰居身上，線靜默變形。同 forum-core-path.md
- *   裡 layout() 回傳定長陣列的理由。
+ *   跳過會讓後面所有點接到錯的鄰居身上，線靜默變形。完整規則與事故見
+ *   architecture/forum-node-path.md 第二節。
  *
  * 標了 optional 的點是例外：那是「可能整塊不存在」的區域（例如 ?highlights 關掉時
  * 的精彩活動）。量不到就跳過，由前一個存活點直接連到下一個存活點；因為角度是

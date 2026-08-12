@@ -11,6 +11,7 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section2.json';
+import { refreshScrollTriggers } from '~/utils/scroll-trigger';
 import type { UBtnVariant } from '~/types/ui';
 
 const { groups, actions } = str.agenda;
@@ -39,16 +40,28 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 // 所以只在 refresh **之後**（GSAP 已把 pin spacer 算完）量，不在 refreshInit。
 // 用 querySelectorAll 而非 v-for 的 ref 陣列：Vue 不保證 ref 陣列順序與來源陣列一致，
 // 而這裡的索引必須精準對應群組（錯位會靜默點亮別組）。DOM 順序就是 v-for 順序。
+//
+// ⚠ 量測期間要讓 .sec2__pin 退回一般流（同 ForumCorePath.build()）：本區塊住在那層裡面，
+//   而它在 cover 窗口內是 sticky —— 若此刻 sticky 已 engage，rootTop 是位移後的值，
+//   startScroll 會偏掉最多 100vh，捲回議程時亮錯組。本函式掛的是 `refresh`（不是
+//   refreshInit），那時 ForumCorePath 早已把屬性還原，所以必須自己再設一次。
+//   設值 → 量測 → 還原之間沒有 yield，故不會 paint、畫面不跳（開關的 SCSS 見 Forum.vue）。
 function measure() {
   const root = rootEl.value;
   if (!root) return;
-  const rootTop = root.getBoundingClientRect().top;
-  const next = [0];
-  root.querySelectorAll<HTMLElement>('.agenda__group').forEach((el) => {
-    next.push(el.getBoundingClientRect().bottom - rootTop);
-  });
-  bounds = next;
-  startScroll = rootTop + window.scrollY - window.innerHeight / 2;
+  const scope = root.closest('.sec2') as HTMLElement | null;
+  scope?.setAttribute('data-path-measuring', '');
+  try {
+    const rootTop = root.getBoundingClientRect().top;
+    const next = [0];
+    root.querySelectorAll<HTMLElement>('.agenda__group').forEach((el) => {
+      next.push(el.getBoundingClientRect().bottom - rootTop);
+    });
+    bounds = next;
+    startScroll = rootTop + window.scrollY - window.innerHeight / 2;
+  } finally {
+    scope?.removeAttribute('data-path-measuring');
+  }
   sync();
 }
 
@@ -90,7 +103,8 @@ onMounted(async () => {
   measure();
   window.addEventListener('scroll', sync, { passive: true });
   ScrollTrigger.addEventListener('refresh', measure);
-  document.fonts?.ready.then(() => ScrollTrigger.refresh());
+  // refresh 一律走 refreshScrollTriggers()（先 sort 再 refresh）—— 見 utils/scroll-trigger。
+  document.fonts?.ready.then(() => refreshScrollTriggers());
 });
 
 onBeforeUnmount(() => {
