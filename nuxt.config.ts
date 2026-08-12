@@ -7,11 +7,17 @@ export default defineNuxtConfig({
 
   modules: ['@nuxt/fonts'],
 
-  // Figma 規格：Noto Sans TC 300 / 400 / 500。
+  // Figma 規格：300 / 400 / 500。
   // @nuxt/fonts 在 build 時把字體檔下載到本地自架，不依賴外部 CDN，
   // 並自動產生帶 unicode-range 的分段 @font-face。
+  //
+  // 兩份都要宣告：CSS fallback 是「逐字符」比對，第一順位有該碼位的 glyph 才輪不到第二順位。
+  // 英數走西文版 Noto Sans、中文落到 Noto Sans TC（見 assets/styles/base.scss 的 html 字體堆疊）。
+  // ⚠️ 兩邊 weights 必須一致 —— 缺哪個字重，該字重的英數會被瀏覽器合成或退到鄰近字重，
+  //    中英就會看起來不同粗。
   fonts: {
     families: [
+      { name: 'Noto Sans', provider: 'google', weights: [300, 400, 500] },
       { name: 'Noto Sans TC', provider: 'google', weights: [300, 400, 500] },
     ],
   },

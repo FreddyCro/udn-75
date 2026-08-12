@@ -23,7 +23,7 @@ withDefaults(
 <template>
   <!--
     type 寫死 button：本元件不做表單送出，也避免落在 <form> 內時誤觸 submit。
-    aria-label / tabindex / aria-hidden / @click 都靠 fallthrough 落在這顆 <button> 上，
+    aria-label / tabindex / inert / @click 都靠 fallthrough 落在這顆 <button> 上，
     不另外宣告成 prop —— 根節點就是按鈕本體，轉一手只會多一層要維護的對照表。
   -->
   <button class="u-btn-skip" type="button">

@@ -37,10 +37,10 @@ export type ForumPathAnchor = ForumPathTarget & {
 /**
  * 橫向錨點：把 x 掛在某個 element 上，而不是容器寬的比例。
  *
- * 什麼時候需要：線要咬住的版面元素**不隨容器等比縮放**時。
- * pad 的議程就是這種 —— `.agenda` 是定寬 608 置中，而 `.forum-path` 是流動的
- * （`.sec2__path` 上限 1280），兩者的比例只在 768 稿寬那一刻相等，視窗一寬就分家
- * （實測 1021 寬差 61px、1279 寬差 123px）。
+ * pad 的議程用這招 —— `.agenda`（608 置中）與 `.sec2__path`（固定 768 置中）
+ * 相對位移恆為 80px，比例已經很接近了，仍掛 element 是因為：
+ *   1. 視窗 768 帶傳統捲軸時容器吃不滿 768（實測 ~753），比例值會跟著偏；
+ *   2. 讓線與 `.agenda` 的 608 解耦 —— `.agenda` 改寬度時這裡不用跟著重算比例。
  *
  * fallback 是量不到時的退路（容器寬的比例，語意同數字型的 x）—— 刻意不整條放棄：
  * 橫向錯位只是線歪掉，比整條消失好；而且退路值就是原本寫死的稿比例，行為等同改動前。
@@ -110,9 +110,11 @@ const EDGE_INSET = FORUM_PATH_STROKE / 2;
  * 平常 opacity: 0、mob 更是 display: none —— 掛在會消失的東西上不穩。
  * dx 0.5 ＝ 半個 border，把 border box 左緣推到 border 中心。
  *
- * 為什麼非量不可：pad 的 `.agenda` 是定寬 608 置中，`.forum-path` 卻是流動的 ——
- * 稿寬 768 時箭頭在 202.5、比例 0.262 剛好對上（稿的頂點是 201.4，設計本來就畫在箭頭上），
- * 但視窗一寬兩者就分家（實測 1021 寬差 61px、1279 寬差 123px）。見 ForumPathXAnchor。
+ * pad 的 `.agenda`（608 置中）與 `.sec2__path`（固定 768 置中）相對位移恆為 80 →
+ * 箭頭中軸 x = 202.5；`fallback` 0.262 × 768 = 201.2，只差 1.3px。視窗 768 帶傳統
+ * 捲軸時容器吃不滿 768（實測 ~753），箭頭落在 195、fallback 197.3 → 差 2.3px。
+ * 仍掛 element 是因為：① 上述捲軸情境比例值會偏；② 讓線與 `.agenda` 的 608 解耦，
+ * 那邊改寬度時這裡不用跟著重算。見 ForumPathXAnchor。
  *
  * 只有 pad 掛它：pc 的 `.agenda`（1064）與 `.forum-path`（1280 上限）同樣置中於視窗，
  * 相對位移是常數、不會隨寬度飄；mob 沒有豎線也沒有箭頭（見 Agenda.vue）。
@@ -204,8 +206,11 @@ const PAD_NODES: ForumPathNode[] = [
     join: { relIn: 7, relOut: 0, hIn: 0.487, hOut: 0 },
   },
   {
-    id: 'Q10', // 稿 (5.5, 3877.5)＝容器左緣的硬轉角；講者組高度的 0.729 處
-    x: 'left',
+    id: 'Q10', // 稿 (5.5, 3877.5)＝撞左牆的硬轉角；講者組高度的 0.729 處
+    // 5.5 / 768 ＝ 稿的精確 x。容器在 pad 固定 768 之後（見
+    // architecture/2026-08-12-forum-pad-container-design.md），4px 描邊落在
+    // 3.5–7.5、本來就在容器內，不需要再用 'left' 的 EDGE_INSET 保護。
+    x: 0.00716,
     anchor: {
       event: '論壇二',
       sel: '.forum-event__speakers',

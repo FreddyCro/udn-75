@@ -28,8 +28,14 @@ body {
 }
 
 html {
-  // Figma design system：主字體 Noto Sans TC（weight 300 / 400 / 500）
-  font-family: 'Noto Sans TC', sans-serif;
+  // Figma design system：主字體 Noto Sans TC（weight 300 / 400 / 500）。
+  // 前面再疊一層西文版 Noto Sans —— fallback 逐字符生效，英數與西文標點會落在
+  // 第一順位的 Noto Sans，其餘（中文、全形標點 U+3000–303F／U+FF00–FFEF，
+  // Noto Sans 沒有這些碼位）自然掉到 Noto Sans TC。
+  // ⚠️ 這也把 — – ' ' " " … 這類 General Punctuation 一併交給西文版了：
+  //    中文段落裡的破折號／引號／刪節號會改用半形字幅，比 TC 版窄。這是刻意的取捨。
+  // 字體來源見 nuxt.config.ts 的 fonts.families（@nuxt/fonts 本地自架）。
+  font-family: 'Noto Sans', 'Noto Sans TC', sans-serif;
   font-style: normal;
   line-height: 150%;
 

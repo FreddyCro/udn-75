@@ -191,8 +191,19 @@ onBeforeUnmount(() => {
   //（見 ForumCorePath 的 .forum-path__line / .forum-path__gen）。
   z-index: 1;
 
+  // pad 稿是 768 畫布，內容欄 608（＝768 − 80×2，視窗 ≥783 或無捲軸時；768 帶傳統
+  // 捲軸時容器吃不滿，內容欄約 593）。固定成 768 置中之後，內容與設計線落在同一個
+  // 「稿座標系」上，線的 x 比例（＝稿座標 ÷ 768）就是 1:1 重現。
+  // 流動容器的代價見 architecture/2026-08-12-forum-pad-container-design.md 第一節：
+  // 1279 時內容欄撐到 1119、容器高度還會隨寬度差 396px，線在每個寬度都長得不一樣。
   @include rwd-max('pc') {
+    max-width: 768px;
     padding-top: 120px;
+  }
+
+  // ⚠️ rwd-max('pc') 涵蓋 mob，故這裡必須把上限寫回 none（同 .agenda 的作法）。
+  @include rwd-max('tablet') {
+    max-width: none;
   }
 }
 
@@ -292,10 +303,19 @@ onBeforeUnmount(() => {
 
 // 論壇四的容器：<ForumEvent> 的 pc 版位是絕對定位到 1280 設計稿座標，
 // 而 .sec2__pin 沒有限寬（它要讓 <AgendaReport> 的灰底滿版）→ 這層補上與
-// .sec2__path 相同的 1280 置中，論壇四的座標才對得上。
-// pad／mob 不需要限寬：那兩個斷點的 <ForumEvent> 已退回流排版、自帶左右 padding。
+// .sec2__path 相同的置中容器，論壇四的座標才對得上。
+// pad 同樣要跟著收成 768 —— 後半段設計線的 x 是 .sec2__path 寬度的比例，
+// 兩層不同寬的話線與論壇四會分家。mob 才退回不限寬（那個斷點自帶左右 padding）。
 .sec2__forum4 {
   max-width: 1280px;
   margin: 0 auto;
+
+  @include rwd-max('pc') {
+    max-width: 768px;
+  }
+
+  @include rwd-max('tablet') {
+    max-width: none;
+  }
 }
 </style>

@@ -19,10 +19,20 @@ metadata:
 那份文件有定位模型、「什麼會自動跟上」對照表、重新對位的逐步流程（含可貼 console 的量測片段），
 以及三個降低維護成本的提案。
 
-## 三斷點版型（2026-08-07 完成）
+## 三斷點版型（2026-08-07 完成，2026-08-12 pad 改固定容器）
 
-依 mob（Figma `2566-84799`）與 pad（`2652-53307`）稿補齊。
-Figma fileKey：`HOt7xNcSTpina7WqNv9MVn`（此檔為 Copy；舊主檔 `eTBurp9FALjEEgmeVyMEya` 是改版前的稿，勿混用）。
+依 mob（Figma `2566-84799`）與 pad（`2652-53305`）稿補齊。
+Figma fileKey：`Rv5FZniHD1NErLTtsPSSm8`（舊 Copy `HOt7xNcSTpina7WqNv9MVn` 內容相同；
+更舊的主檔 `eTBurp9FALjEEgmeVyMEya` 是改版前的稿，勿混用）。
+
+**pad 是固定寬容器**：`.sec2__path` / `.sec2__forum4` 上限 768 置中，內容欄 608
+（視窗 ≥783 或無捲軸時；768 帶傳統捲軸時容器吃不滿，內容欄約 593——`.agenda` /
+`.highlights` 早就是硬 608）。內容相對位置因此不隨視窗寬變動，
+設計線的 x 比例 1:1 對上稿。見
+[`architecture/2026-08-12-forum-pad-container-design.md`](../../architecture/2026-08-12-forum-pad-container-design.md)。
+
+⚠️ 凡在 `rwd-max('pc')` 設寬度，都要想 `rwd-max('tablet')` 要不要重設 ——
+它涵蓋 mob，漏寫就把 mob 一起綁死。
 
 **覆蓋策略刻意用 desktop-first（`rwd-max('pc')` / `rwd-max('tablet')`）**，不是 mixins.scss 建議的
 mobile-first。原因：pc 版是「整段絕對定位到 1280 設計稿座標」且橘核心設計線靠它對位，

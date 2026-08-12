@@ -328,6 +328,9 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   // letter-spacing 會在最後一字後多留一格，補回它的一半才視覺置中。
   text-indent: 0.075em;
 
+  // ⚠ pad 稿的論壇四標眉是 113×38／24px（＝pc 的值），與論壇一~三的 113×34／18px 不同，
+  //   判定為稿把 pc 的標眉貼進 pad frame 沒縮，四場統一吃 34 / 18 ——
+  //   同一頁面上四個標眉不該大小不一。
   @include rwd-max('pc') {
     height: 34px;
     font-size: 18px;
@@ -448,9 +451,10 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   line-height: 44px;
   text-align: justify;
 
+  // pad：論壇二稿 461。論壇三另有自己的 407（見下方版式限定規則）。
   @include rwd-max('pc') {
     width: auto;
-    max-width: 460px;
+    max-width: 461px;
     margin-top: 32px;
     font-size: 20px;
     line-height: 36px;
@@ -469,6 +473,20 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
     @include rwd-max('pc') {
       width: auto;
+      max-width: none;
+    }
+  }
+
+  // 論壇三的 pad 內文比論壇二窄：稿 407（4 行 × 36 ＝ 144 高）。
+  // ⚠ 這一層是 0,2,0，會壓過基底 rwd 區塊（0,1,0）裡的值 —— 包含 tablet 那條
+  //   `max-width: none`。少了下面這個重設，mob 會被 407 綁死（同 __body 對
+  //   論壇四踩過的那個坑）。
+  .forum-event--right & {
+    @include rwd-max('pc') {
+      max-width: 407px;
+    }
+
+    @include rwd-max('tablet') {
       max-width: none;
     }
   }

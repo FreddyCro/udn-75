@@ -26,14 +26,16 @@ const { heading, body, cta } = str.report;
 
 <style lang="scss" scoped>
 // 滿版灰底、內容置中；總高約 490（設計稿反推值 ≈473）由上下 padding 撐出。
-// pad／mob 沒有對應設計稿，僅按各斷點的內容寬度（608／26 邊界）等比收斂。
+// pad 稿：上下 padding 64、內容欄 440 置中。
+// ⚠ 水平 padding 在 pad 收成 0 —— 440 是掛在三個子項上的（見下方各自的 max-width），
+//   不是靠這層內縮。灰底要滿版，這層不能有水平內縮以外的限寬。
 .agenda-report {
   padding: 72px 0 80px;
   background: #ebebeb;
   text-align: center;
 
   @include rwd-max('pc') {
-    padding: 64px 80px 72px;
+    padding: 64px 0;
   }
 
   @include rwd-max('tablet') {
@@ -41,7 +43,7 @@ const { heading, body, cta } = str.report;
   }
 }
 
-// 兩行標題：設計稿字級 40、行進距 56。
+// 兩行標題：設計稿字級 40、行進距 56（pad 稿 32／48，欄寬 440）。
 .agenda-report__heading {
   display: flex;
   flex-direction: column;
@@ -51,17 +53,20 @@ const { heading, body, cta } = str.report;
   line-height: 56px;
 
   @include rwd-max('pc') {
+    max-width: 440px;
+    margin-inline: auto;
     font-size: 32px;
     line-height: 48px;
   }
 
   @include rwd-max('tablet') {
+    max-width: none;
     font-size: 24px;
     line-height: 36px;
   }
 }
 
-// 內文：設計稿欄寬 633 置中，剛好兩行。
+// 內文：設計稿欄寬 633 置中，剛好兩行（pad 稿 440、3 行）。
 .agenda-report__body {
   width: 633px;
   margin: 40px auto 0;
@@ -72,19 +77,22 @@ const { heading, body, cta } = str.report;
 
   @include rwd-max('pc') {
     width: auto;
-    margin-top: 32px;
+    max-width: 440px;
+    margin-top: 8px;
     font-size: 20px;
     line-height: 36px;
   }
 
   @include rwd-max('tablet') {
+    max-width: none;
+    margin-top: 32px;
     font-size: 18px;
     line-height: 32px;
   }
 }
 
 // CTA：設計稿 422×74 深灰底白字（非橘色，與議程的 primary 按鈕區隔）——
-// 配色在 <UBtn variant="gray">，這裡只給尺寸與版位。
+// 配色在 <UBtn variant="gray">，這裡只給尺寸與版位。pad 稿 440×80。
 // margin 的 auto 置中吃得到，是因為 UBtn 的根節點是 display: grid（block-level）。
 .agenda-report__cta {
   --u-btn-w: 422px;
@@ -93,14 +101,17 @@ const { heading, body, cta } = str.report;
   margin: 40px auto 0;
 
   @include rwd-max('pc') {
-    --u-btn-w: 296px;
-    --u-btn-h: 70px;
+    --u-btn-w: 440px;
+    --u-btn-h: 80px;
 
-    margin-top: 32px;
+    margin-top: 24px;
   }
 
   @include rwd-max('tablet') {
     --u-btn-w: 100%;
+    --u-btn-h: 70px;
+
+    margin-top: 32px;
   }
 }
 </style>

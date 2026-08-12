@@ -40,6 +40,16 @@ const showSkip = computed(
   () => heroState.value === 'main' && currentTime.value >= HERO_SKIP_APPEAR_AT,
 );
 
+// 按下 skip 前先把 focus 交還：skip() 會讓 heroState 離開 main → showSkip 轉 false，
+// 按鈕當下就要消失，focus 沒有留在原處的理由，直接退回 body。
+// 不倚賴 inert 幫忙：實測 Chrome 的 inert 是「下一個 frame」才把 focus 移出（設下去的那個
+// tick 仍是 activeElement），中間那段空窗期不該存在 —— 這裡同步做掉。
+// ⚠️ 順序不可換：先 blur 再改狀態。
+function onSkipClick(e: MouseEvent) {
+  (e.currentTarget as HTMLElement | null)?.blur();
+  skip();
+}
+
 // 全站音效開關：開啟時本影片不 muted（見 composables/useAppSound）。
 const { soundOn } = useAppSound();
 
@@ -403,7 +413,14 @@ onBeforeUnmount(() => {
       本檔的 .sec1__hero-skip 只給版位與「現不現身」。
       刻意不用 v-if + <Transition>：常駐 DOM 只切 class，淡出期間 hover 規則已隨
       .is-visible 一起失效（不會卡在 100% 又被瞬間移除）。
-      隱藏時 pointer-events: none ＋ tabindex -1 ＋ aria-hidden → 看不見就完全不可及。
+      隱藏時（含淡出中）用 inert：一個屬性同時做掉「不進無障礙樹、不可 focus、不吃指標」，
+      而且它會把已經在身上的 focus 逼出去（下一個 frame）—— 這是 tabindex -1 ＋ aria-hidden
+      做不到的：那兩者只管「之後還能不能被 tab 到」，已握著的 focus 會留在原處，於是
+      aria-hidden 蓋住 focus 元素，瀏覽器警告。
+      這條路徑不只有點擊：使用者 tab 到按鈕後正片自然播完（→ loop）也會走到，
+      所以 onSkipClick 的 blur 不能替代 inert，兩者各補一半。
+      tabindex 仍保留：inert 未支援時至少不會被 tab 進看不見的按鈕。
+      pointer-events: none 也留在 scss，那是淡入淡出版位的一部分，不倚賴 inert。
     -->
     <UBtnSkip
       class="sec1__hero-skip"
@@ -411,8 +428,8 @@ onBeforeUnmount(() => {
       :label="str.hero.skipLabel"
       :aria-label="str.hero.skipAria"
       :tabindex="showSkip ? 0 : -1"
-      :aria-hidden="!showSkip"
-      @click="skip()"
+      :inert="!showSkip"
+      @click="onSkipClick"
     />
 
     <!--

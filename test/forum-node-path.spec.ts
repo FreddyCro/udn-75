@@ -70,7 +70,7 @@ const MOB_VERTICES: [number, number][] = [
   [323.5, 4202], [323.5, 4867.5], [108.0, 4961.5], [198.5, 5018.5],
 ];
 
-// pad：768 稿的 論壇一二三 frame（Figma 2652:53307）內座標
+// pad：768 稿的 論壇一二三 frame 內座標（node id 見 architecture/forum-node-path.md 的相關檔案表）
 const PAD_RECTS: Record<string, { top: number; height: number }> = {
   '.sec2__path': { top: 0, height: 6145 },
   '論壇一/.forum-event__tag': { top: 348, height: 34 }, // 標眉 348–382
@@ -103,11 +103,9 @@ const MOB_TOL: Record<string, Tol> = {
 };
 //   Q0 ：稿 y=191 → 歸零；x 釘中心（384），稿是 386.9
 //   Q1 ：x 同樣釘中心
-//   Q10：釘容器左緣（EDGE_INSET 2），稿是 5.5
 const PAD_TOL: Record<string, Tol> = {
   Q0: { x: 3, y: 192 },
   Q1: { x: 3 },
-  Q10: { x: 4 },
 };
 
 describe.each([
