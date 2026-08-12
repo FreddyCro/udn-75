@@ -100,9 +100,17 @@ export type ForumEvent = {
   slash?: boolean | 'core';
   /** 星期單字（「三」），渲染時外面套設計稿的圓框 */
   weekday: string;
-  /** 地點，可多行 */
-  venue: string[];
-  time: string;
+  /**
+   * 地點，可多行。
+   *
+   * ⚠️ 稿的地點**逐斷點的斷行與文案都不同**（實測：論壇一 pad 併成一行、論壇三 mob 拆成
+   *    三行、論壇四 mob 拆兩行且兩行不同字級；論壇二三的場地名 pc 與 pad／mob 互不相同）。
+   *    這個欄位只有一份文字（＝ SEO 的唯一來源），故素材只給「斷行與文案都對得上」的斷點，
+   *    其餘維持活文字。要逐斷點各有文案就得把這個欄位本身改成逐斷點 —— 尚未做。
+   */
+  venue: ForumLine[];
+  /** 時間（論壇三為空字串＝不渲染）。在 __venue 之內，故沿用它的 --art-base */
+  time: ForumLine;
   /** 講者區塊標題（「講者介紹」） */
   speakerLabel?: string;
   speakers?: ForumSpeaker[];

@@ -92,8 +92,29 @@
         "year": "2026",
         "date": "09/09",
         "weekday": "三",
-        "venue": ["台北漢來大飯店", "3樓鉑金C廳"],
-        "time": "2:00 PM – 4:30 PM",
+        "venue": [
+          {
+            "text": "台北漢來大飯店",
+            "art": {
+              "pc": { "src": "/img/forum/forum1-venue-pc-1.svg", "w": 364.789, "h": 34.5368 },
+              "mob": { "src": "/img/forum/forum1-venue-mob-1.svg", "w": 214.6602, "h": 22.9983 }
+            }
+          },
+          {
+            "text": "3樓鉑金C廳",
+            "art": {
+              "pc": { "src": "/img/forum/forum1-venue-pc-2.svg", "w": 364.789, "h": 34.7213 },
+              "mob": { "src": "/img/forum/forum1-venue-mob-2.svg", "w": 214.6602, "h": 23 }
+            }
+          }
+        ],
+        "time": {
+          "text": "2:00 PM – 4:30 PM",
+          "art": {
+            "pc": { "src": "/img/forum/forum1-time-pc-1.svg", "w": 364.789, "h": 28 },
+            "mob": { "src": "/img/forum/forum1-time-mob-1.svg", "w": 214.6602, "h": 17.001 }
+          }
+        },
         "speakerLabel": "講者介紹",
         "speakers": [
           {
@@ -194,7 +215,20 @@
         "year": "2026",
         "date": "09/18",
         "weekday": "五",
-        "venue": ["台灣大學集思會館", "蘇格拉底廳"],
+        "venue": [
+          {
+            "text": "集思台大會議中心",
+            "art": {
+              "pc": { "src": "/img/forum/forum3-venue-pc-1.svg", "w": 421.8854, "h": 43.1674 }
+            }
+          },
+          {
+            "text": "蘇格拉底廳",
+            "art": {
+              "pc": { "src": "/img/forum/forum3-venue-pc-2.svg", "w": 421.8854, "h": 41.1882 }
+            }
+          }
+        ],
         "time": ""
       }
     ],
@@ -224,8 +258,23 @@
       "date": "09/30",
       "slash": true,
       "weekday": "三",
-      "venue": ["成功大學國際會議中心"],
-      "time": "12PM.－5PM.",
+      "venue": [
+        {
+          "text": "成功大學國際會議中心",
+          "art": {
+            "pc": { "src": "/img/forum/forum4-venue-pc-1.svg", "w": 457.76, "h": 35.777 },
+            "pad": { "src": "/img/forum/forum4-venue-pad-1.svg", "w": 367, "h": 28.6828 }
+          }
+        }
+      ],
+      "time": {
+        "text": "12PM.－5PM.",
+        "art": {
+          "pc": { "src": "/img/forum/forum4-time-pc-1.svg", "w": 457.76, "h": 42.063 },
+          "pad": { "src": "/img/forum/forum4-time-pad-1.svg", "w": 367, "h": 33.724 },
+          "mob": { "src": "/img/forum/forum4-time-mob-1.svg", "w": 356.003, "h": 18.531 }
+        }
+      },
       "speakerLabel": "講者介紹",
       "speakers": [
         {

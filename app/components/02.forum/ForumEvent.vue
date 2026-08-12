@@ -114,9 +114,14 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
       </div>
 
       <p class="forum-event__venue">
-        <span v-for="(line, i) in event.venue" :key="i">{{ line }}</span>
-        <!-- 時間預設排在地點之後；論壇四的稿相反（時間在上），由 SCSS 用 order 換位。 -->
-        <span v-if="event.time" class="forum-event__time">{{ event.time }}</span>
+        <ForumArtLine v-for="(line, i) in event.venue" :key="i" :line="line" />
+        <!-- 時間預設排在地點之後；論壇四的稿相反（時間在上），由 SCSS 用 order 換位。
+             時間在 __venue 之內，故 --art-base 直接沿用它的（時間沒有自己的 font-size）。 -->
+        <ForumArtLine
+          v-if="event.time"
+          :line="event.time"
+          class="forum-event__time"
+        />
       </p>
     </div>
 
@@ -898,6 +903,12 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   // 字級都寫在各版式底下：pc 的 .forum-event--x .forum-event__venue 特異度較高，
   // 寫在這一層的 rwd 字級會被它蓋掉。
   .forum-event--quote & {
+    // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+    // __time 是本層的子項、沒有自己的 font-size，故它直接繼承這個值。
+    // ⚠️ pad 刻意沒有 —— pad 稿把地點兩行併成一行，與這裡的兩個 span 對不起來
+    //    （見 ForumEvent type 的 venue 說明），那個斷點維持活文字。
+    --art-base: 43;
+
     top: 776px;
     left: 108px;
     font-size: 43px;
@@ -913,6 +924,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     }
 
     @include rwd-max('tablet') {
+      --art-base: 28;
+
       margin-top: 8px;
       font-size: 28px;
       line-height: 39px;
@@ -943,6 +956,10 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   }
 
   .forum-event--right & {
+    // 同 --quote 的說明。pad／mob 稿的場地名與 pc 不同（pc「集思台大會議中心」、
+    // pad「台灣大學集思會館」、mob 拆三行），故只有 pc 有素材。
+    --art-base: 52;
+
     top: 654px;
     right: 108px;
     align-items: flex-end;
@@ -972,6 +989,11 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   // 論壇四：接在日期兩行之下，整組切齊右緣。字級由稿反推 —— pc 的地點 10 個字寬 438.85
   // → 43.9/字；行距取兩行的實際間距（pc 70、pad 56、mob 35）。
   .forum-event--youth & {
+    // 同 --quote 的說明。mob 刻意沒有 —— mob 稿把地點拆成兩行、且兩行字級不同
+    // （「成功大學」字高 28.9、「國際會議中心」20.6），與這裡的單一 span 對不起來；
+    // 時間那一行在 mob 有素材，它吃的是下面 tablet 區塊的 --art-base。
+    --art-base: 44;
+
     top: 904px;
     right: 108px;
     align-items: flex-end;
@@ -980,6 +1002,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     text-align: right;
 
     @include rwd-max('pc') {
+      --art-base: 35;
+
       position: static;
       margin: 12px 0 0 auto;
       font-size: 35px;
@@ -987,6 +1011,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     }
 
     @include rwd-max('tablet') {
+      --art-base: 28;
+
       font-size: 28px;
       line-height: 35px;
     }
