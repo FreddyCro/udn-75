@@ -6,6 +6,7 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section1.json';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
+import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 import {
   coverAnchorToScreen,
   isVerticallyOnScreen,
@@ -216,12 +217,14 @@ onMounted(() => {
   if (initialHash) scrollToInitialHash(initialHash);
 });
 
-// 帶 hash 進站時的落點。必須等 pin 的 pin-spacer 撐開文件（ScrollTrigger.refresh()）
+// 帶 hash 進站時的落點。必須等 pin 的 pin-spacer 撐開文件（refreshScrollTriggers()）
 // 之後才量位置，否則量到的是沒有 spacer 的舊高度、會落在段落上方數個視窗。
 // nextTick 等後續段落（Forum / Blessing / Media）掛載完成，它們的 ScrollTrigger 才在。
+// ⚠ 這裡最需要 sort()：整份文件的高度是所有 pin 的佔位疊起來的，而各 pin 分散在不同
+//   元件、建立順序不保證由上到下 —— 漏算任何一段佔位，落點就少捲那一段的距離。
 function scrollToInitialHash(hash: string) {
   nextTick(() => {
-    ScrollTrigger.refresh();
+    refreshScrollTriggers();
 
     const target = document.getElementById(hash);
     if (!target) return;

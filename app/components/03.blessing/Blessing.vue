@@ -11,6 +11,7 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section3.json';
+import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 const { partner } = str;
 // 階梯線的逐格進場是否已播完（stairsDone）—— 播完才讓夥伴清單面板淡入。
@@ -94,9 +95,12 @@ const syncPartnersHeld = () => {
 // 必須自己 refresh：spacer 是靠 inline style 長出來的，既不觸發 resize、也不在 GSAP
 // 自動 refresh 的時機上。等 nextTick 是因為 partnersHeld 是 ref，樣式下一個 tick 才進 DOM
 // —— SSR 是 false，hydration 後才翻 true，而那時 ScrollTrigger 已經建好了。
+// 走 refreshScrollTriggers()（先 sort 再 refresh）而非裸 refresh：spacer 改變的是
+// `.section3` 的高度，下游 Media 段的 pin 起點全部跟著移動 —— 那些 pin 的建立順序
+// 與位置順序無關，不先 sort 就可能用舊的佔位重算（見 utils/scroll-trigger）。
 watch(partnersHeld, async () => {
   await nextTick();
-  ScrollTrigger.refresh();
+  refreshScrollTriggers();
 });
 
 // 把臉＋文字這一整塊的實際高度寫進 --face-block-h，供 .section3__partners 的負 margin

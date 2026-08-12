@@ -28,8 +28,8 @@
 // 上面那套「凍結」讓滿版區塊比此刻看得到的範圍高一截（網址列展開時）。底部錨定的
 // UI 要的是相反的東西 —— 工具列吃掉多少。理由與用法見 ~/utils/viewport-height 的
 // chromeInset()。它是**活值**，故刻意繞過上面的重量門檻，每次 resize 都跟上。
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { chromeInset } from '~/utils/viewport-height';
+import { refreshScrollTriggers } from '~/utils/scroll-trigger';
 
 /** 高度變動超過這個比例才視為真實版面改變（網址列收合遠低於此）。 */
 const RESIZE_EPS = 0.25;
@@ -82,7 +82,9 @@ export default defineNuxtPlugin(() => {
     commitInset();
     // 尺長吃 --vh 的元素剛換了高度 → 主動重算，不等 GSAP 自己的 resize 處理，
     // 免得它先用舊值刷一次（ignoreMobileResize 也可能讓它整個跳過）。
-    ScrollTrigger.refresh();
+    // 走 refreshScrollTriggers()（先 sort 再 refresh）—— 這是全站規模的重算，
+    // 吃 --vh 的尺散在各 section，最需要照位置順序算（見 utils/scroll-trigger）。
+    refreshScrollTriggers();
   });
 
   // iOS Safari 的網址列收合有時只發 visualViewport 的事件、不發 window resize

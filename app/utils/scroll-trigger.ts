@@ -11,7 +11,11 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
  *
  * 因此凡是「手動 refresh」或「teardown 後重建 pin」，一律呼叫本函式：
  * 先 sort()（把重算順序改成照觸發點位置由上到下，與建立順序脫鉤）再 refresh()。
- * 不要在元件內直接呼叫 ScrollTrigger.refresh()。
+ *
+ * ⚠ 本檔以外**不該**出現裸的 `ScrollTrigger.refresh()` —— 元件、composable、plugin 都算。
+ *   2026-08-12 補完最後 5 處（hero 的 OrangeCorePath ×2 與 Hero 的 hash 落點、blessing 的
+ *   partners spacer、viewport-height plugin 的 --vh 重算），現在整份 app/ 只有這一個入口。
+ *   漏掉的症狀是靜默的：pin 起點少算了上游某段佔位，那條尺提早觸發，但不會報錯。
  */
 export function refreshScrollTriggers() {
   ScrollTrigger.sort();

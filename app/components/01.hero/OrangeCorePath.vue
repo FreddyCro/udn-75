@@ -22,6 +22,7 @@
 <script setup lang="ts">
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 const props = defineProps<{
   /** .sec1：core / path 的座標範圍，也是 ScrollTrigger 的 trigger */
@@ -115,11 +116,14 @@ function init() {
     onUpdate: (self) => place(self.progress),
   });
   ScrollTrigger.addEventListener('refreshInit', build);
-  ScrollTrigger.refresh();
+  // 手動 refresh 一律走 refreshScrollTriggers()（先 sort 再 refresh）—— 見 utils/scroll-trigger。
+  // 這裡尤其需要 sort：本元件的 trigger 在 .sec1 頂端，而 Hero 的 transition pin 就在它下方
+  // 同一個 section 裡，兩者的建立順序取決於誰先 onMounted。
+  refreshScrollTriggers();
 
   // 字體載入會改變引言文字高度 → section 高度變動 → 重新量測。
   if (typeof document !== 'undefined' && document.fonts?.ready) {
-    document.fonts.ready.then(() => ScrollTrigger.refresh());
+    document.fonts.ready.then(() => refreshScrollTriggers());
   }
 }
 
