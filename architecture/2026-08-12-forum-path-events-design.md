@@ -54,7 +54,7 @@ export type ForumPathEvent = {
   key: string;                                   // 事件鍵，consumer 用它取 boolean
   label: string;                                 // dashboard 顯示的一句話
   at: Record<'pc' | 'pad' | 'mob', string | null>; // 觸發節點（null ＝ 該斷點不觸發）
-  dLen?: number;                                 // 沿線再往前（正）／往後（負）偏移幾 px 弧長
+  dLen?: number | Partial<Record<'pc' | 'pad' | 'mob', number>>; // 沿線偏移 px 弧長（正 ＝ 晚）
 };
 ```
 
@@ -65,6 +65,13 @@ export type ForumPathEvent = {
 
 **`dLen` 是弧長 px，不是比例。** 與 `FORUM_PLANE.morphLen` / `tailLen` 同單位，專案裡已經用這個
 單位思考沿線距離。正 ＝ 晚一點觸發（核心要多走 `dLen` px），負 ＝ 提前。
+
+**`dLen` 逐斷點是常態，不是例外。** 給單一數字 ＝ 三斷點共用；給
+`Partial<Record<ForumBp, number>>` ＝ 各斷點吃自己的值（缺的視為 0，由 `dLenFor()` 解析）。
+理由是 `at` 本來就指向三個不同節點，而那些節點離「真正想觸發的位置」的距離自然不同 ——
+2026-08-12 的講者照刷開就踩到：同一個語意（核心碰到照片上緣）在 pc 需要 −199、在 pad 需要
+**+152**，方向相反，一個共用值不可能都對。逐斷點的實測值與量法見
+`2026-08-12-forum-speaker-photo-reveal-design.md` 第六節。
 
 ### 刻意不做的兩件事
 
@@ -185,7 +192,8 @@ transition 會讓每一幀都追一次補間、手感發黏**；改成「只跨�
 
 1. 開 `?pathdebug`，捲到想觸發的位置，看設計線上哪個節點編號最近（面板會印每個事件的節點與 %）。
 2. 在 `FORUM_PATH_EVENTS` 加一列，三個斷點各填一個節點編號（不觸發就填 `null`）。
-3. 需要微調就加 `dLen`（px 弧長，正 ＝ 晚一點）。
+3. 需要微調就加 `dLen`（px 弧長，正 ＝ 晚一點）。**三個斷點通常要各給一個** ——
+   節點不同，離想觸發的位置的距離也不同，先照第二節的量法各量一次再填。
 4. 消費端讀 `forumPathEvents.<key>` 當 class 條件，補間寫在該元件的 SCSS。
 5. 跑 `pnpm test` —— 節點 id 打錯會被測試擋下來。
 

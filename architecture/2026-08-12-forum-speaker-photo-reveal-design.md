@@ -5,18 +5,18 @@
 撞的是橘核心，所以這個效果**最終要綁在論壇段設計線的節點事件上**。
 
 這份文件管三件事：**元件的 prop 介面為什麼是三態**、**遮罩的盒子從哪裡來**、
-以及**之後接上路徑事件時要改哪裡**。
-
-本次實作**只做元件層 ＋ 一個 dev 旗標**，路徑事件綁定是下一步（見第六節）。
+以及**時機怎麼綁到節點事件上**（第六節，含實測出來的偏移值）。
 
 相關檔案：
 
 | 檔案 | 角色 |
 | --- | --- |
 | `app/components/02.forum/ForumEvent.vue` | `photoReveal` prop、`.forum-event__photo-box` 包裝層、遮罩與 transition |
-| `app/components/02.forum/Forum.vue` | 傳 prop；`?photohold` dev 旗標（暫時的，見第六節） |
-| `app/utils/forum-path-events.ts` | 下一步要加的兩個事件 key |
+| `app/components/02.forum/Forum.vue` | 把事件值傳給 `<ForumEvent>` |
+| `app/utils/forum-photo-reveal.ts` | 場次名 → 事件 key 的具名對照 |
+| `app/utils/forum-path-events.ts` | `forum1PhotoReveal` / `forum2PhotoReveal` 兩個事件與逐斷點的 `dLen` |
 | `app/utils/forum-node-path.ts` | `W5` / `Q5` / `P5`（論壇一照片錨點）、`W17`（論壇二照片錨點） |
+| `test/forum-photo-reveal.spec.ts` | 對照表健檢 ＋ 與 `section2.json`、事件表的交叉比對 |
 
 ---
 
@@ -164,54 +164,79 @@ Vue 對**宣告成 `Boolean` 型別**的 prop 有特殊的 absence casting：沒
 
 ---
 
-## 五、驗收
+## 五、驗收（實測結果）
 
-沒有自動化測試：這一層是純 CSS 幾何，專案的 vitest 只跑純函式（同 `forum-node-path` 的切法）。
+外觀與 DOM 這一層沒有自動化測試：純 CSS 幾何，專案的 vitest 只跑純函式（同 `forum-node-path`
+的切法）。純函式那半 —— 場次對照、與 `section2.json` 與事件表的交叉比對、`dLen` 的兩種形式
+—— 由 `test/forum-photo-reveal.spec.ts` 與 `test/forum-path-events.spec.ts` 守著。
 
-| 項目 | 方法 |
+| 項目 | 結果 |
 | --- | --- |
-| inactive 外觀 | `?photohold` → 論壇一二停在藍塊，三斷點各截一張比稿 |
-| 刷過的中間態 | devtools 手動 toggle `.is-revealed`，錄一段或截中間幀 |
-| active 外觀 | 不帶 `?photohold` → 與今天的畫面**逐像素相同**（遮罩不渲染） |
-| 論壇四未受影響 | 同上，且 DOM 裡不該出現 `.forum-event__photo-mask` |
-| **錨點沒偏** | `?pathdebug` 目視 `W5`／`W17`（pc）、`Q5`（pad）、`P5`（mob）的錨點框仍貼著照片 |
+| 三態 prop | 遮罩數 quote **1**／stair **2**／right **0**／youth **0**（youth 仍有 2 個照片框）—— `undefined` 那一態確實不渲染 |
+| inactive 外觀 | 淺藍 `#9fd6ff` 滿版 ＋ 橘 `#ff7f00` 上緣，與遮罩框、照片框三者 rect 完全重合（dx/dy/dw/dh 全 0） |
+| 橘線粗細 | pc 12px（照片 268 → 4.5%）、卡片 250 → 4.8%；mob 8px。刷到 40% 時仍是 8px（**沒被壓扁** ＝ 沒誤用 `scaleY`） |
+| 刷過的中間態 | 照片上段可見、橘線、下方藍塊 —— 與稿的中間那一格一致 |
+| active 外觀 | 藍塊與橘線完全離開照片框 |
+| 不帶事件時 | 遮罩 **0** 個、照片框 5 個、`is-revealed` 0 個 |
+| **錨點沒偏** | 三斷點 × 三場講者組的完整幾何指紋（標籤／照片／姓名／頭銜／5 段 bio 的相對 x/y/w/h ＋ 組尺寸）逐項比對**全部相同**；四個照片錨點在 `.sec2__path` 座標系下的 rect 亦相同 |
 
-最後一項是這次唯一有回歸風險的地方。`W5` / `W17` / `Q5` / `P5` 都掛
-`.forum-event__photo, .forum-event__photo-slot`；照片改成「在同尺寸盒子內 `inset: 0`」後
-rect 理論上不變，也不會變成 0×0（那會觸發
-[forum-node-path.md](forum-node-path.md) 第二節的整條放棄）。理論歸理論，要看過。
+最後一項是整件事唯一有回歸風險的地方（`W5` / `W17` / `Q5` / `P5` 都掛
+`.forum-event__photo, .forum-event__photo-slot`）。照片改成「在同尺寸盒子內 `inset: 0`」後
+rect 不變，也不會變成 0×0（那會觸發
+[forum-node-path.md](forum-node-path.md) 第二節的整條放棄）。
+
+⚠️ 量測方法值得留著重用：**與其目視比截圖，不如把整組相對幾何抓成指紋再逐項 diff**。
+`.u-pic` 的 `order` / `margin-bottom` 被搬走會不會影響姓名與 bio，用眼睛看不出 1px 的差別。
 
 ---
 
-## 六、下一步：接上路徑事件（不在本次範圍）
+## 六、時機：綁在節點上，偏移逐斷點
 
-三個動作：
-
-**① `app/utils/forum-path-events.ts` 加兩個 key**：
-
-| key | pc | pad | mob | 備註 |
-| --- | --- | --- | --- | --- |
-| `forum1PhotoReveal` | `W5` | `Q5` | `P5` | 三個斷點的節點**本來就錨在論壇一的照片上**，直接可用 |
-| `forum2PhotoReveal` | `W17` | `Q8` | `P9` | pc 的 `W17` 錨在論壇二照片的 0.4674 處；pad／mob 沒有照片錨點，最近的是 `Q8`（講者組上緣 +2）與 `P9`（講者一組上緣 +54） |
-
-時機微調用 `dLen`（px 弧長，正 ＝ 晚），不要改節點的 `dy` —— 那是設計線的幾何。
-
-**② `Forum.vue` 把 `?photohold` 換成事件**：
+`Forum.vue` 傳的是：
 
 ```ts
-:photo-reveal="forumPathActive ? forumPathEvents[photoRevealKey(e.no)] : undefined"
+const photoRevealOf = (no: string): boolean | undefined => {
+  const key = photoRevealKeyFor(no);
+  if (!key || !forumPathActive.value) return undefined;
+  return forumPathEvents[key] === true;
+};
 ```
 
-`e.no` → key 的對照要**具名**（`論壇一` → `forum1PhotoReveal`），不用 `v-for` 的索引 ——
+場次 → key 的對照**具名**（`論壇一` → `forum1PhotoReveal`），不用 `v-for` 的索引 ——
 理由同 `data-forum-anchor` 與節點編號永不重排。論壇三查不到 key ⇒ `undefined` ⇒ 不渲染遮罩，
 與它沒有講者的事實自然一致。
 
-**③ 移除 `?photohold`。** 它只是本次的驗收工具，不是要長住的 dev 旗標。
+⚠️ `forumPathActive` 那道**不是多餘的**。`forumPathEvents` 在 marks 還沒建起來時本來就回
+`false`，但 `false` 正是「該蓋住」的值 —— 這道守的是「遮罩存不存在」，不是「蓋不蓋住」。
+
+### `dLen` 為什麼必須逐斷點
+
+想要的語意三個斷點是同一件事：**核心碰到講者照上緣的那一刻，藍塊開始往下退**。
+但 `at` 本來就指向三個不同節點，而那些節點離照片上緣的距離差很多 ——
+一個共用的 `dLen` 不可能同時修好（實測 `forum2PhotoReveal` 的 pc 要 −199、pad 要 **+152**，
+方向相反）。故 `ForumPathEvent.dLen` 除了單一數字，也接受逐斷點的 `Partial<Record<ForumBp, number>>`。
+
+實測（逐格捲動：先二分找出事件翻轉的 `scrollY`，再二分找出「核心中心正好落在照片上緣」的
+`scrollY`，兩者之差 × 該斷點的 progress／px 斜率 × `pathLen` ＝ 需要的弧長偏移）：
+
+| key | 斷點 | 節點 | 節點落在哪 | 翻轉時核心相對照片上緣 | `dLen` |
+| --- | --- | --- | --- | --- | --- |
+| `forum1PhotoReveal` | pc | `W5` | 照片上緣 +15 | +13.8 | **0**（稿的意圖就是「彎頂進到照片裡」） |
+| | pad | `Q5` | 照片上緣 +208 | +208.1（照片 233 高 → 89%，太晚） | **−205** |
+| | mob | `P5` | 照片上緣 +102 | +103.9（233 高 → 45%） | **−81** |
+| `forum2PhotoReveal` | pc | `W17` | 照片 0.4674 處 | +117.2（250 高 → 46.9%） | **−199** |
+| | pad | `Q8` | 講者組上緣 +2 | **−42.4**（照片在「講者介紹」標籤下面 → 提前） | **+152** |
+| | mob | `P9` | 講者一組上緣 +54 | +55.9（180 高 → 31%） | **−46** |
+
+`W17` 之所以落在照片中段純屬順帶 —— 它在節點表裡是**補點**
+（「原本 `W16`→`W18` 一段 chord 668、偏差 3.02px」），不是設計上的觸碰點。
+
+⚠️ 要調時機**只動 `dLen`**，不要回頭改節點的 `dy` —— 那是設計線的幾何，一動整條線就偏。
+
+⚠️ 這些值量在 pc 1440、pad 1024、mob 414。pad 的容器已固定 768 置中，故 pad 值與視窗寬無關；
+mob 仍是流動容器（414 vs 375 弧長分佈會小幅移動），數十 px 的誤差在 0.6s 的刷過裡看不出來。
 
 **探針事件（`probe*`）先留著。** `forum-path-events.ts` 的註解說真實事件進來後可以整段刪掉，
-但那六個探針目前是「某斷點不觸發（`null`）」「`dLen` 偏移」「`optional` 節點被跳過」三種情形
-在**真實事件表**裡的唯一活體樣本，而這兩個新事件都不涵蓋（三斷點皆有節點、無 `dLen`、
-不掛 optional 節點）。清理是獨立的一件事，要做就單獨開一個 commit。
-
-⚠️ `Q8` / `P9` 是「最近的節點」而不是照片本身 —— 綁上去之後要實際看橘核心撞到照片上緣的那一刻
-是否就是藍塊開始退的那一刻。差太多就換節點或調 `dLen`，**不要**回頭改節點的錨點。
+但那六個探針目前是「某斷點不觸發（`null`）」與「`optional` 節點被跳過」在**真實事件表**裡的
+唯一活體樣本，而這兩個新事件都不涵蓋（三斷點皆有節點、不掛 optional 節點）。
+`dLen` 那一項現在由這兩個事件涵蓋了。清理是獨立的一件事，要做就單獨開一個 commit。

@@ -77,6 +77,32 @@ describe('resolveForumEventMarks', () => {
     expect(resolveForumEventMarks('pc', lenAt, 1000, early).e).toBeCloseTo(0.1, 10);
   });
 
+  it('dLen 逐斷點給：各斷點吃自己的值，缺的視為 0', () => {
+    // 這是常態而非例外：at 本來就指向三個不同節點，離「想觸發的位置」的距離自然不同。
+    // 實例 forum2PhotoReveal —— pc 要 −199、pad 要 +152（反向），共用一個數字不可能都對。
+    const perBp: ForumPathEvent[] = [
+      {
+        key: 'p',
+        label: 'P',
+        at: { pc: 'W1', pad: 'Q1', mob: 'P1' },
+        dLen: { pc: -100, pad: 250 }, // mob 沒給 → 0
+      },
+    ];
+    expect(resolveForumEventMarks('pc', lenAt, 1000, perBp).p).toBeCloseTo(0.15, 10);
+    expect(resolveForumEventMarks('pad', lenAt, 1000, perBp).p).toBeCloseTo(0.5, 10);
+    expect(resolveForumEventMarks('mob', lenAt, 1000, perBp).p).toBeCloseTo(0.25, 10);
+  });
+
+  it('dLen 給 0 與不給 dLen 等價（別把 0 當成沒設）', () => {
+    const zero: ForumPathEvent[] = [
+      { key: 'z', label: 'Z', at: { pc: 'W1', pad: null, mob: null }, dLen: 0 },
+      { key: 'zb', label: 'ZB', at: { pc: 'W1', pad: null, mob: null }, dLen: { pc: 0 } },
+    ];
+    const marks = resolveForumEventMarks('pc', lenAt, 1000, zero);
+    expect(marks.z).toBeCloseTo(0.25, 10);
+    expect(marks.zb).toBeCloseTo(0.25, 10);
+  });
+
   it('at[bp] 為 null → 該斷點不進表（不是 0，而是根本沒有這個 key）', () => {
     const marks = resolveForumEventMarks('mob', lenAt, 1000, events);
     expect('b' in marks).toBe(false);

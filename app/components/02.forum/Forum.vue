@@ -19,6 +19,8 @@ const {
   forumPathRiding,
   agendaRevealed,
   coverHoldArmed,
+  forumPathActive,
+  forumPathEvents,
 } = useOrangeCoreProgress();
 
 const forum = str.forum as {
@@ -42,14 +44,21 @@ const highlightsVisible = computed(() => route.query.highlights === '1');
 //    否則就看不出核心該藏在哪裡）。要臨時看穿，把該處的 z-index 調到 2 以上。
 const pathDebug = computed(() => route.query.pathdebug !== undefined);
 
-// 講者照的藍塊（見 architecture/2026-08-12-forum-speaker-photo-reveal-design.md）：
-// 本步還沒接上路徑事件，帶 ?photohold 就讓論壇一二停在 inactive 供比稿。
-// 不帶參數 → 傳 undefined → 遮罩不渲染 → 畫面與接這個功能之前完全相同。
-// ⚠️ 這是**暫時的驗收工具**。接上事件（forum1PhotoReveal / forum2PhotoReveal）之後
-//    整段換成 forumPathActive ? forumPathEvents[key] : undefined，並移除本旗標。
-const photoHold = computed(() => route.query.photohold !== undefined);
-const photoRevealOf = (no: string): boolean | undefined =>
-  photoHold.value && photoRevealKeyFor(no) ? false : undefined;
+// 講者照的藍塊：由橘核心走到照片時刷開（事件表的 forum1PhotoReveal / forum2PhotoReveal）。
+// 完整設計見 architecture/2026-08-12-forum-speaker-photo-reveal-design.md。
+//
+// ⚠️ 設計線還沒量好、或整條線放棄時（forumPathActive 為 false）一律傳 undefined ——
+//    遮罩連 DOM 都不渲染，照片直接看得到。兩個理由：
+//    ① 線量好那一刻元素才掛上，CSS transition 不會在首次渲染跑（不會反向刷一次給人看）
+//    ② 錨點量不到會讓整條線放棄、事件恆 false；預設蓋住的話照片會永久停在藍塊底下，
+//       而且是靜默的（同 2026-08-09 那次 photo-slot 事故的形狀）
+//    forumPathEvents 在 marks 還沒建起來時本來就回 false，但那正是「該蓋住」的值 ——
+//    所以這道 forumPathActive 不是多餘的，它管的是「遮罩存不存在」而非「蓋不蓋住」。
+const photoRevealOf = (no: string): boolean | undefined => {
+  const key = photoRevealKeyFor(no);
+  if (!key || !forumPathActive.value) return undefined;
+  return forumPathEvents[key] === true;
+};
 
 // 覆蓋過場的 sticky 活動範圍高度。`.sec2__pin` 靠它才定得住那 100vh。
 // ⚠️ 必須與 `.section3` 的負 margin-top 同值 —— 兩邊都從 `--vh` 取（這裡是
