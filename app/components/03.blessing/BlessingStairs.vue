@@ -91,7 +91,12 @@ const play = () => {
   playing = true;
   const startT = performance.now();
   const tick = (now: number) => {
-    const i = Math.floor(((now - startT) / 1000) * FPS);
+    // ⚠️ Math.max(0)不可省：rAF 回呼收到的是**該幀的起始時刻**，若 play() 是在同一幀的
+    //    scroll 步驟裡被呼叫（ScrollTrigger onUpdate → armed watcher），startT 會晚於
+    //    那個時刻 → now - startT 為負 → i 為負 → frame 為負 → visibleDiagonal 為負，
+    //    而 v-for="i in 負數" 會讓 Vue 的 renderList 做 new Array(-1)，
+    //    直接丟 RangeError: Invalid array length，整條階梯線當幀渲染失敗。
+    const i = Math.max(0, Math.floor(((now - startT) / 1000) * FPS));
     if (i >= FRAME_COUNT - 1) {
       finish();
       return;

@@ -61,6 +61,10 @@ export default defineNuxtConfig({
     public: {
       APP_MODE: '',
       APP_ASSETS_PATH: '',
+      // 站台首頁網址，值就是 .env 的 NUXT_URL（同一個值下面的 app.baseURL 也拿去取 pathname）。
+      // NUXT_URL 沒有 NUXT_PUBLIC_ 前綴，Nuxt 不會自動注入 public，故在此明確帶入；
+      // 放 public 才能在瀏覽器端讀到（如 AppHeader 的 logo 連結）。
+      APP_URL: process.env.NUXT_URL || '/',
     },
   },
 

@@ -37,6 +37,10 @@ const props = withDefaults(
   },
 );
 
+// 年份圖是 runtime 才組出來的路徑，Vite 編譯期無法改寫成 base 感知的 URL，
+// 得自己補 APP_ASSETS_PATH（同 useAssetUrl.ts 的說明）。
+const assetUrl = useAssetUrl();
+
 const rootRef = ref<HTMLElement | null>(null);
 const stageRef = ref<HTMLElement | null>(null);
 const trackRef = ref<HTMLElement | null>(null);
@@ -186,7 +190,7 @@ onBeforeUnmount(() => {
           >
             <img
               class="award-timeline__year"
-              :src="`/img/news/${item.year}.svg`"
+              :src="assetUrl(`/img/news/${item.year}.svg`)"
               :alt="item.year"
             />
             <div

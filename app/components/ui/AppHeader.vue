@@ -35,6 +35,10 @@ const props = defineProps({
 const route = useRoute();
 const showNav = computed(() => route.path === '/');
 
+// logo 連回站台首頁。硬寫 "/" 在子路徑部署（GitHub Pages 的 /udn-75/、nmdap 的 /test/udn75/）
+// 會連到網域根，故改取 .env 的 NUXT_URL（見 nuxt.config 的 runtimeConfig.public.APP_URL）。
+const homeUrl = useRuntimeConfig().public.APP_URL;
+
 const progress = ref(0);
 const activeTarget = ref<string>('');
 const menuOpen = ref(false);
@@ -234,7 +238,11 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     <!-- 頂部列（≥1280：logo ＋ 錨點列 ＋ 音效 ＋ share；<1280：logo ＋ 音效 ＋ 漢堡） -->
     <div class="app-header__bar-wrap">
       <div class="app-header__bar">
-        <a class="app-header__logo" href="/" :aria-label="labels.logoLabel">
+        <a
+          class="app-header__logo"
+          :href="homeUrl"
+          :aria-label="labels.logoLabel"
+        >
           <img
             class="app-header__logo-img"
             :src="logoUrl"
