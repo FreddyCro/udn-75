@@ -8,23 +8,32 @@
      粒子場上、與它同生共死，就必須進同一個 slot。
      「目錄歸屬 ≠ 渲染位置」是本段的既定架構，SymbolScene.vue 檔頭有同樣的說明。
 
-  進度來源與 SymbolScene 相同：自己讀 useOrangeCoreProgress 的 symbolProgress，不透過 props 接線。
-  三行**依序向上淡入 + 逐字亂碼落定**，全部掛在 scrub 上（往回捲自動倒退）—— 不用時間軸：
-  本段從粒子到底色到文案都是 scrub，混時間軸會出現「捲回去了、文字還在自己跑完」的不一致。
+  ⚠️ 本層 absolute inset: 0 且**整個符號段（400vh）都在場** —— 從 hero 轉場就已經在視窗內了，
+     所以「滑到位置」判不得用 IntersectionObserver 看自己，只能用 symbolProgress 的門檻。
+
+  三行**依序向上淡入 + 逐字亂碼落定 → 全亮停留 → 依序繼續往上淡出**，全部吃**時間軸**：
+  滑到 SYMBOL_INTRO.in 就自己跑完整段 6.4s，停在原地不動也看得完整。
+  symbolProgress 只當**觸發器**（不逐幀驅動任何值）：退回 in 之前 → 重置成未播狀態、
+  再進來從頭播一次（不是倒帶）；越過 out → 保底清場。
+  ⚠️ 這推翻了本檔 2026-08-12 早先那版「全部掛 scrub」的結論，理由（scrub 把「讀完三行」
+     的責任推給使用者的捲動速度）見 architecture/2026-08-12-symbol-intro-timeline-design.md。
+
+  **判斷全在純函式、本檔只有狀態與寫入**：曲線 symbolIntroLineAt() / symbolIntroClear()、
+  閘門 symbolIntroGate()（皆在 ~/utils/orange-core-config，有單元測試）、
+  亂碼 scrambleText()（~/utils/symbol-scramble，與 SymbolFace 的宮格彩蛋共用）。
   opacity / transform / textContent 都直接寫 DOM（不觸發 Vue re-render），同 HeroSymbolTransition 的 apply()。
-  曲線在 symbolIntroOutOpacity() / symbolIntroLine()（~/utils/orange-core-config，有單元測試）、
-  亂碼在 scrambleText()（~/utils/symbol-scramble，與 SymbolFace 的宮格彩蛋共用），本檔只負責寫入。
 -->
 <script setup lang="ts">
 import str from '~/locales/section1.json';
 
-const { symbolProgress } = useOrangeCoreProgress();
+const { symbolProgress, reduceMotion } = useOrangeCoreProgress();
 
 const rootRef = ref<HTMLElement | null>(null);
 const lines = str.symbol.intro;
+const TOTAL = symbolIntroTotal(lines.length);
 
 // 逐幀要寫的三個值（每行的 opacity / transform / 亂碼字串）一律**直接寫 DOM**，
-// 不經 Vue 響應式 —— 同本檔原本的 opacity 寫法與 HeroSymbolTransition 的 apply()。
+// 不經 Vue 響應式 —— 同 HeroSymbolTransition 的 apply()。
 // 亂碼每幀重擲，走 vdom 的話等於每幀 diff 三個文字節點。
 //
 // ⚠️ 行元素在 onMounted 用 querySelectorAll 取一次，而不是 v-for 的 template ref 陣列：
@@ -32,59 +41,100 @@ const lines = str.symbol.intro;
 //    錯位會讓 stagger 亂掉。文案是靜態的（來自 locale JSON），查一次就夠。
 let lineEls: HTMLElement[] = [];
 
-/** 只重擲亂碼字（rAF 迴圈每幀呼叫；opacity / transform 不在這裡動）。 */
-const applyText = (p: number) => {
+// 播放狀態（兩把獨立的尺，語意見 SymbolIntroState）。所有轉換都經 symbolIntroGate()，
+// 本檔不自己判斷「該不該起播」。
+let state: SymbolIntroState = SYMBOL_INTRO_IDLE;
+let raf = 0;
+let lastFrame = 0;
+
+// 單幀 delta 上限。切分頁時瀏覽器停掉 rAF，回來的第一幀 delta 會是好幾秒 ——
+// clamp 之後 elapsed 在背景等於凍結、切回來從原處續播。
+// 三行文案是**資訊**不只是質感，不能因為切了一下分頁就被跳過。
+const MAX_DELTA = 100;
+
+/** 每行當前該有的值。reduce-motion 時退化成「未起播 → 藏、已起播 → 全亮」的兩態：
+ *  改吃時間軸後這是本頁唯一一段自走播放的動畫（捲動動畫由使用者的手控制，自走的不是），
+ *  落在 WCAG 2.2.2 的範疇，故此分支不算 YAGNI —— 前一版把它列為 YAGNI 的理由已失效。 */
+const lineStateAt = (i: number) => {
+  if (reduceMotion.value) {
+    return state.elapsed === null
+      ? { opacity: 0, shift: INTRO_LINE_SHIFT, reveal: 0 }
+      : { opacity: 1, shift: 0, reveal: 1 };
+  }
+  return symbolIntroLineAt(state.elapsed ?? 0, i, lines.length);
+};
+
+/** 把當前狀態寫進 DOM。冪等（純函式輸出），重複呼叫無副作用。 */
+const paint = () => {
+  const root = rootRef.value;
+  if (!root) return;
+  // 根層只承載**保底清場**的整組乘數；進退場都是逐行的，寫在下面。
+  root.style.opacity = String(
+    state.clearElapsed === null ? 1 : symbolIntroClear(state.clearElapsed),
+  );
   for (let i = 0; i < lineEls.length; i++) {
-    const { reveal } = symbolIntroLine(p, i, lines.length);
-    lineEls[i]!.textContent = scrambleText(lines[i]!, reveal);
+    const { opacity, shift, reveal } = lineStateAt(i);
+    const el = lineEls[i]!;
+    el.style.opacity = String(opacity);
+    el.style.transform = `translateY(${shift}px)`;
+    el.textContent = scrambleText(lines[i]!, reveal);
   }
 };
 
-/** 任一行正在落字（reveal 落在開區間 (0,1)）＝ 亂碼需要自轉。 */
-const isScrambling = (p: number) =>
-  lines.some((_, i) => {
-    const { reveal } = symbolIntroLine(p, i, lines.length);
-    return reveal > 0 && reveal < 1;
-  });
-
-// 亂碼的 rAF 閘門：watch(symbolProgress) 只在**捲動時**觸發，使用者停在窗內時
-// 畫面會定格在半亂碼狀態，看起來像壞掉。故在落字期間自轉，落定或尚未進場就停。
-// 捲出視窗時 progress 必然離開該窗、迴圈自己會停 —— 不需要另接 IntersectionObserver。
-let scrambleRaf = 0;
-const tick = () => {
-  const p = symbolProgress.value;
-  if (!isScrambling(p)) {
-    scrambleRaf = 0;
-    return;
-  }
-  applyText(p);
-  scrambleRaf = requestAnimationFrame(tick);
+/** 還有東西需要逐幀推進嗎（兩把尺任一未跑完）。 */
+const isRunning = () => {
+  const { elapsed, clearElapsed } = state;
+  if (clearElapsed !== null && clearElapsed < INTRO_TIMELINE.clearDur) return true;
+  if (reduceMotion.value) return false; // 兩態切換，沒有補間要跑
+  return elapsed !== null && elapsed < TOTAL;
 };
 
-const apply = (p: number) => {
-  const el = rootRef.value;
-  if (!el) return;
-  // 根層只負責整組退場；進場是逐行的，寫在下面。
-  el.style.opacity = String(symbolIntroOutOpacity(p));
-  for (let i = 0; i < lineEls.length; i++) {
-    const { opacity, shift } = symbolIntroLine(p, i, lines.length);
-    const lineEl = lineEls[i]!;
-    lineEl.style.opacity = String(opacity);
-    lineEl.style.transform = `translateY(${shift}px)`;
-  }
-  applyText(p);
-  if (!scrambleRaf && isScrambling(p)) scrambleRaf = requestAnimationFrame(tick);
+const tick = (now: number) => {
+  const delta = Math.min(MAX_DELTA, now - lastFrame);
+  lastFrame = now;
+  const { elapsed, clearElapsed } = state;
+  state = {
+    elapsed: elapsed === null ? null : Math.min(TOTAL, elapsed + delta),
+    clearElapsed:
+      clearElapsed === null
+        ? null
+        : Math.min(INTRO_TIMELINE.clearDur, clearElapsed + delta),
+  };
+  paint();
+  raf = isRunning() ? requestAnimationFrame(tick) : 0;
+};
+
+const run = () => {
+  if (raf || !isRunning()) return;
+  lastFrame = performance.now();
+  raf = requestAnimationFrame(tick);
+};
+
+// 閘門只在門檻翻轉時動一次（判斷全在 symbolIntroGate）。狀態沒變就不重繪 ——
+// 這也是 gate 在無變化時回傳同一個 reference 的用途。
+const gate = (p: number) => {
+  const next = symbolIntroGate(state, p, lines.length);
+  if (next === state) return;
+  state = next;
+  paint();
+  run();
 };
 
 // watch 不能用 immediate：setup 階段 rootRef 還是 null，第一次要等 onMounted。
-watch(symbolProgress, apply);
+watch(symbolProgress, gate);
 onMounted(() => {
   lineEls = Array.from(
     rootRef.value?.querySelectorAll<HTMLElement>('.symbol-intro__line') ?? [],
   );
-  apply(symbolProgress.value);
+  paint();
+  // 重新整理落在符號段中段時 symbolProgress 初值仍是 0（ScrollTrigger refresh 後才寫入
+  // 真值 → 由 watch 接手），故這裡多半是 no-op；留著是為了不假設那個順序。
+  gate(symbolProgress.value);
 });
-onBeforeUnmount(() => cancelAnimationFrame(scrambleRaf));
+onBeforeUnmount(() => {
+  cancelAnimationFrame(raf);
+  raf = 0;
+});
 </script>
 
 <template>
