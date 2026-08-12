@@ -19,7 +19,7 @@ pad 768 `2065:124197`（`2065:124199`）／mob 414 `2065:120218`（`2065:120221`
 
 | 檔案 | 角色 |
 | --- | --- |
-| `app/utils/orange-core-config.ts` | `SYMBOL_INTRO`、`INTRO_TIMELINE`、`symbolIntroLineAt()`、`symbolIntroClear()`、`symbolIntroGate()`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`SEQUENCE` |
+| `app/utils/orange-core-config.ts` | `SYMBOL_INTRO`、`INTRO_TIMELINE`、`symbolIntroLineAt()`、`symbolIntroClear()`、`symbolIntroGate()`、`symbolIntroLineState()`、`symbolIntroRunning()`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`SEQUENCE` |
 | `app/components/01a.symbol/SymbolIntro.vue` | 開場文案元件（渲染於 `01.hero` 的轉場層 slot） |
 | `app/components/01a.symbol/SymbolScene.vue` | 符號段捲動尺；檔內的「symbolProgress 時序表」是第三節數字的來源 |
 | `app/locales/section1.json` | `symbol.intro`（三行文案） |

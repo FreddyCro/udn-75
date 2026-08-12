@@ -1,7 +1,7 @@
 # SymbolIntro 三行改吃時間軸 — 決策紀錄
 
 日期：2026-08-12
-狀態：**設計定案、待實作**
+狀態：**已實作**
 相關檔案：`app/components/01a.symbol/SymbolIntro.vue`、`app/components/01a.symbol/SymbolScene.vue`、
 `app/utils/orange-core-config.ts`、`test/symbol-sequence.spec.ts`
 前置文件：`architecture/symbol-intro.md`（此段的既有規格）、
