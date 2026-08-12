@@ -107,8 +107,11 @@ onBeforeUnmount(() => {
         'sec2__path--debug': pathDebug,
       }"
     >
+      <!-- 逐行交給 <ForumArtLine>：稿字形素材（橘色）＋ visually-hidden 的真文字。
+           見 architecture/2026-08-12-forum1-text-art-design.md。
+           ⚠️ 素材寬要靠下方 SCSS 的 --art-base（＝該斷點的 font-size）才算得出來。 -->
       <h2 class="sec2__heading">
-        <span v-for="(line, i) in forum.heading" :key="i">{{ line }}</span>
+        <ForumArtLine v-for="(line, i) in forum.heading" :key="i" :line="line" />
       </h2>
 
       <!-- photo-reveal ＝ 講者照的藍塊狀態（三態，見 <ForumEvent> 的 prop 說明）。
@@ -235,6 +238,10 @@ onBeforeUnmount(() => {
 
 // 段落主標：pc 左右 108 ＝ 設計稿內容邊界，與 <ForumEvent> 對齊；pad／mob 稿改置中。
 .sec2__heading {
+  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+  // 素材本身是橘的（#ff7f00 ＝ --color-orange），故這裡的 color 只服務活文字 fallback。
+  --art-base: 56;
+
   display: flex;
   flex-direction: column;
   margin: 0 0 120px;
@@ -244,7 +251,11 @@ onBeforeUnmount(() => {
   font-weight: 400;
   line-height: 1.22;
 
+  // pad／mob 置中：素材那一層不必特別處理 —— span 帶明確寬度，
+  // 由 align-items: center 把整個 span 置中，img 在 span 內 left: 0 即可。
   @include rwd-max('pc') {
+    --art-base: 54;
+
     align-items: center;
     margin-bottom: 88px;
     padding: 0 80px;
@@ -253,6 +264,8 @@ onBeforeUnmount(() => {
   }
 
   @include rwd-max('tablet') {
+    --art-base: 40;
+
     margin-bottom: 140px;
     padding: 0 26px;
     font-size: 40px;

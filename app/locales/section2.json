@@ -4,7 +4,24 @@
     "body": "（人物牆內文待補）"
   },
   "forum": {
-    "heading": ["聯合七五・智慧未來", "四場系列論壇"],
+    "heading": [
+      {
+        "text": "聯合七五・智慧未來",
+        "art": {
+          "pc": { "src": "/img/forum/sec2-heading-pc-1.svg", "w": 491.9997, "h": 46.374 },
+          "pad": { "src": "/img/forum/sec2-heading-pad-1.svg", "w": 467.0274, "h": 44.0007 },
+          "mob": { "src": "/img/forum/sec2-heading-mob-1.svg", "w": 347.5811, "h": 32.7469 }
+        }
+      },
+      {
+        "text": "四場系列論壇",
+        "art": {
+          "pc": { "src": "/img/forum/sec2-heading-pc-2.svg", "w": 491.9997, "h": 46.1739 },
+          "pad": { "src": "/img/forum/sec2-heading-pad-2.svg", "w": 467.0274, "h": 43.9991 },
+          "mob": { "src": "/img/forum/sec2-heading-mob-2.svg", "w": 347.5811, "h": 32.6615 }
+        }
+      }
+    ],
     "events": [
       {
         "no": "論壇一",
@@ -15,6 +32,7 @@
             "text": "Dr. Mario García 演講",
             "art": {
               "pc": { "src": "/img/forum/forum1-title-pc-1.svg", "w": 709.285, "h": 61.6624 },
+              "pad": { "src": "/img/forum/forum1-title-pad-1.svg", "w": 519.0004, "h": 44.9994 },
               "mob": { "src": "/img/forum/forum1-title-mob-1.svg", "w": 362.0002, "h": 30.9816 }
             }
           }
@@ -24,14 +42,16 @@
             "text": "手機與AI如何改變",
             "art": {
               "pc": { "src": "/img/forum/forum1-sub-pc-1.svg", "w": 401.58, "h": 39.6317 },
-              "pad": { "src": "/img/forum/forum1-sub-pad-1.svg", "w": 351.9585, "h": 34.735 }
+              "pad": { "src": "/img/forum/forum1-sub-pad-1.svg", "w": 351.9585, "h": 34.735 },
+              "mob": { "src": "/img/forum/forum1-sub-mob-1.svg", "w": 265.9897, "h": 25.9056 }
             }
           },
           {
             "text": "我們說故事的方式",
             "art": {
               "pc": { "src": "/img/forum/forum1-sub-pc-2.svg", "w": 394.085, "h": 39.8362 },
-              "pad": { "src": "/img/forum/forum1-sub-pad-2.svg", "w": 345.3905, "h": 34.914 }
+              "pad": { "src": "/img/forum/forum1-sub-pad-2.svg", "w": 345.3905, "h": 34.914 },
+              "mob": { "src": "/img/forum/forum1-sub-mob-2.svg", "w": 257.3829, "h": 26.0966 }
             }
           }
         ],
