@@ -56,10 +56,38 @@
           }
         ],
         "quoteEn": [
-          "Two Revolutions",
-          "in the Newsroom Today:",
-          "Mobile Storytelling",
-          "and Artificial Intelligence."
+          {
+            "text": "Two Revolutions",
+            "art": {
+              "pc": { "src": "/img/forum/forum1-quote-pc-1.svg", "w": 454.006, "h": 27.9527 },
+              "pad": { "src": "/img/forum/forum1-quote-pad-1.svg", "w": 317, "h": 19.4384 },
+              "mob": { "src": "/img/forum/forum1-quote-mob-1.svg", "w": 250.53, "h": 15.37 }
+            }
+          },
+          {
+            "text": "in the Newsroom Today:",
+            "art": {
+              "pc": { "src": "/img/forum/forum1-quote-pc-2.svg", "w": 454.006, "h": 35.2258 },
+              "pad": { "src": "/img/forum/forum1-quote-pad-2.svg", "w": 317, "h": 24.5351 },
+              "mob": { "src": "/img/forum/forum1-quote-mob-2.svg", "w": 250.53, "h": 19.4 }
+            }
+          },
+          {
+            "text": "Mobile Storytelling",
+            "art": {
+              "pc": { "src": "/img/forum/forum1-quote-pc-3.svg", "w": 454.006, "h": 35.2322 },
+              "pad": { "src": "/img/forum/forum1-quote-pad-3.svg", "w": 317, "h": 24.5225 },
+              "mob": { "src": "/img/forum/forum1-quote-mob-3.svg", "w": 250.53, "h": 19.39 }
+            }
+          },
+          {
+            "text": "and Artificial Intelligence.",
+            "art": {
+              "pc": { "src": "/img/forum/forum1-quote-pc-4.svg", "w": 454.006, "h": 35.437 },
+              "pad": { "src": "/img/forum/forum1-quote-pad-4.svg", "w": 317, "h": 24.687 },
+              "mob": { "src": "/img/forum/forum1-quote-mob-4.svg", "w": 250.53, "h": 19.52 }
+            }
+          }
         ],
         "year": "2026",
         "date": "09/09",

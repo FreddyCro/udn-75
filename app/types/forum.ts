@@ -78,8 +78,8 @@ export type ForumEvent = {
   title: ForumLine[];
   /** 主標下的副標，可多行。同 title */
   subtitle?: ForumLine[];
-  /** 右側英文引言，可多行 */
-  quoteEn?: string[];
+  /** 右側英文引言，可多行（論壇一） */
+  quoteEn?: ForumLine[];
   /** 段落內文 */
   body?: string;
   /** CTA 按鈕文字（僅論壇二有） */

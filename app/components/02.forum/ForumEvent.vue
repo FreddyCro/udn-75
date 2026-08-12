@@ -89,8 +89,11 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
     <!-- 日期／地點／引言：三場的排列差很多，故整層攤平成設計稿座標，各群組自行定位。 -->
     <div class="forum-event__meta">
+      <!-- pc 稿是右對齊、欄寬 454。素材用「整組共用畫布」切（每列同寬 ＝ 群組寬 454.006
+           ≒ 下方 SCSS 的欄寬 454），墨跡落在稿的真實 x，所以右對齊靠畫布本身成立 ——
+           不必為素材另外改 text-align／align-items（text-align 對絕對定位的 img 無效）。 -->
       <p v-if="event.quoteEn" class="forum-event__quote">
-        <span v-for="(line, i) in event.quoteEn" :key="i">{{ line }}</span>
+        <ForumArtLine v-for="(line, i) in event.quoteEn" :key="i" :line="line" />
       </p>
 
       <!-- data-forum-anchor：ForumCorePath 依這個值（＝場次名）選錨點，不靠文件順序索引，
@@ -653,6 +656,9 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
 // 英文引言（論壇一）：設計稿 x=718 / 字面 y=720.9，欄寬 454 切齊右緣 1172、右對齊。
 .forum-event__quote {
+  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+  --art-base: 40;
+
   position: absolute;
   top: 470px;
   left: 718px;
@@ -667,6 +673,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
   // pad／mob 稿把引言收回副標下方、改靠左。
   @include rwd-max('pc') {
+    --art-base: 28;
+
     position: static;
     width: auto;
     margin-top: 32px;
@@ -676,6 +684,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   }
 
   @include rwd-max('tablet') {
+    --art-base: 22;
+
     margin-top: 28px;
     font-size: 22px;
     line-height: 28px;
