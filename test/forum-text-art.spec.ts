@@ -1,0 +1,75 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import section2 from '../app/locales/section2.json';
+
+// vitest 沒設 alias（見 vitest.config.ts），故一律相對路徑 import；
+// 檔案路徑相對 cwd（＝專案根，同 design-tokens.spec.ts 的做法）。
+//
+// 這支守的是「素材與文案對得上」。失敗方向本來就溫和 —— 素材缺檔只會讓
+// 那一行看不見（真文字仍在 .visually-hidden 裡、行盒仍由 ZWSP 撐住），
+// 所以缺檔在畫面上是靜默的，只有這支會爆。
+// 機制見 architecture/2026-08-12-forum1-text-art-design.md
+
+// 稿字形素材的一筆（＝ app/types/forum.ts 的 ForumTextArt）。
+// 這裡刻意不 import 那個型別：要驗的正是「JSON 長得對不對」，
+// 拿型別來斷言等於用假設驗假設。
+type Art = { text: string; art: string; w: number; h: number };
+
+const isArt = (v: unknown): v is Art =>
+  typeof v === 'object'
+  && v !== null
+  && !Array.isArray(v)
+  && typeof (v as Art).art === 'string';
+
+/** 深走訪整棵 JSON，撈出所有物件形式的「一行」 */
+const collectArts = (node: unknown, out: Art[] = []): Art[] => {
+  if (isArt(node)) {
+    out.push(node);
+    return out;
+  }
+  if (Array.isArray(node)) {
+    node.forEach((n) => collectArts(n, out));
+    return out;
+  }
+  if (typeof node === 'object' && node !== null) {
+    Object.values(node).forEach((n) => collectArts(n, out));
+  }
+  return out;
+};
+
+/** 從 SVG 取畫布尺寸：優先 viewBox，退回 width/height 屬性 */
+const svgSize = (src: string): { w: number; h: number } => {
+  const vb = src.match(/viewBox="([\d.\s-]+)"/);
+  if (vb?.[1]) {
+    const nums = vb[1].trim().split(/\s+/).map(Number);
+    return { w: nums[2]!, h: nums[3]! };
+  }
+  return {
+    w: Number(src.match(/\bwidth="([\d.]+)"/)?.[1]),
+    h: Number(src.match(/\bheight="([\d.]+)"/)?.[1]),
+  };
+};
+
+const arts = collectArts(section2);
+
+describe('論壇稿字形素材（ForumTextArt）與 section2.json 對帳', () => {
+  // 這一道是「別的斷言別被空陣列蒙過去」的守門員：
+  // 若哪天論壇一的 title 被改回純字串，下面的 it.each 會一條都不跑而全綠。
+  it('至少有三筆素材（論壇一的大標 ＋ 副標兩行）', () => {
+    expect(arts.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it.each(arts.map((a) => [a.art, a] as const))('%s 的素材與資料對得上', (_name, a) => {
+    // 真文字是 SEO / SR 的唯一來源，空的話畫面有字、機器讀不到
+    expect(a.text.trim().length).toBeGreaterThan(0);
+
+    const file = join('public', a.art.replace(/^\//, ''));
+    expect(existsSync(file), `素材不存在：${file}`).toBe(true);
+
+    // w / h 拿來算 em 寬與預留空間；與素材畫布不一致就會擠壓或留白
+    const size = svgSize(readFileSync(file, 'utf8'));
+    expect(size.w).toBeCloseTo(a.w, 2);
+    expect(size.h).toBeCloseTo(a.h, 2);
+  });
+});

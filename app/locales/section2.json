@@ -10,8 +10,28 @@
         "no": "論壇一",
         "layout": "quote",
         "tag": "大師談媒體",
-        "title": ["Dr. Mario García 演講"],
-        "subtitle": ["手機與AI如何改變", "我們說故事的方式"],
+        "title": [
+          {
+            "text": "Dr. Mario García 演講",
+            "art": "/img/forum/forum1-title.svg",
+            "w": 709.285,
+            "h": 61.6624
+          }
+        ],
+        "subtitle": [
+          {
+            "text": "手機與AI如何改變",
+            "art": "/img/forum/forum1-sub-1.svg",
+            "w": 401.58,
+            "h": 39.6317
+          },
+          {
+            "text": "我們說故事的方式",
+            "art": "/img/forum/forum1-sub-2.svg",
+            "w": 394.085,
+            "h": 39.8362
+          }
+        ],
         "quoteEn": [
           "Two Revolutions",
           "in the Newsroom Today:",
