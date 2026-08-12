@@ -3,6 +3,7 @@ import {
   FORUM_PHOTO_REVEAL_KEYS,
   photoRevealKeyFor,
 } from '../app/utils/forum-photo-reveal';
+import { FORUM_PATH_EVENTS } from '../app/utils/forum-path-events';
 import section2 from '../app/locales/section2.json';
 
 // vitest 沒設 alias（見 vitest.config.ts），故一律相對路徑 import。
@@ -57,5 +58,29 @@ describe('對照表 vs section2.json', () => {
       (no) => !events.find((e) => e.no === no)?.speakers?.length,
     );
     expect(noSpeakers, noSpeakers.join(',')).toEqual([]);
+  });
+});
+
+// ── 與事件表的對照 ────────────────────────────────────────────────────
+// 對照表寫了一個事件表裡不存在的 key，消費端讀到的永遠是 undefined ⇒ 效果永不觸發，
+// 而畫面上少一塊藍不會有人立刻發現。這是這套機制最靜默的失敗，故用測試釘死。
+// （節點編號本身有沒有打錯由 forum-path-events.spec.ts 的「引用的節點編號全部存在於
+//   節點表」那一組守著，這裡不重複。）
+describe('對照表 vs FORUM_PATH_EVENTS', () => {
+  it('對照表的每個 key 都存在於事件表', () => {
+    const known = new Set(FORUM_PATH_EVENTS.map((e) => e.key));
+    const missing = Object.values(FORUM_PHOTO_REVEAL_KEYS).filter((k) => !known.has(k));
+    expect(missing, missing.join(',')).toEqual([]);
+  });
+
+  it('兩個刷開事件在三個斷點都有節點 —— 任一斷點漏掉就是那個斷點沒效果', () => {
+    const byKey = new Map(FORUM_PATH_EVENTS.map((e) => [e.key, e]));
+    for (const key of Object.values(FORUM_PHOTO_REVEAL_KEYS)) {
+      const ev = byKey.get(key);
+      expect(ev, key).toBeDefined();
+      for (const bp of ['pc', 'pad', 'mob'] as const) {
+        expect(ev?.at[bp], `${key}.${bp}`).not.toBeNull();
+      }
+    }
   });
 });

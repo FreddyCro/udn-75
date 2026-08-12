@@ -45,6 +45,23 @@ export type ForumEventMarks = Record<string, number>;
 //    某斷點不觸發（null）、以及 dLen 偏移。真實事件進來之後可以整段刪掉。
 export const FORUM_PATH_EVENTS: readonly ForumPathEvent[] = [
   {
+    // 論壇一的講者照：三個斷點的節點本來就錨在照片上（W5 上緣 +15、Q5 +208、P5 +102），
+    // 所以「核心走到照片」與「藍塊開始退」是同一件事，不需要 dLen。
+    // 場次 → key 的對照在 ~/utils/forum-photo-reveal，外觀在 ForumEvent 的 SCSS。
+    key: 'forum1PhotoReveal',
+    label: '論壇一講者照：藍塊刷開',
+    at: { pc: 'W5', pad: 'Q5', mob: 'P5' },
+  },
+  {
+    // 論壇二的兩張講者卡（同場一起刷）。pc 的 W17 錨在照片的 0.4674 處；
+    // pad／mob 沒有照片錨點，取最近的 Q8（講者組上緣 +2）與 P9（講者一組上緣 +54）。
+    // ⚠️ 後兩者是「最近的節點」而不是照片本身 —— 時機要微調就動 dLen，
+    //    **不要**回頭改節點的 dy，那是設計線的幾何。
+    key: 'forum2PhotoReveal',
+    label: '論壇二講者卡：藍塊刷開（兩張一起）',
+    at: { pc: 'W17', pad: 'Q8', mob: 'P9' },
+  },
+  {
     key: 'probeForum1Turn',
     label: '探針：論壇一髮夾彎',
     at: { pc: 'W3', pad: 'Q3', mob: 'P3' },
