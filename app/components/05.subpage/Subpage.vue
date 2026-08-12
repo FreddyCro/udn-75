@@ -289,7 +289,7 @@ onBeforeUnmount(() => {
         />
         <div
           ref="heroInnerRef"
-          class="subpage__col subpage__col--wide subpage__hero-inner"
+          class="subpage__col subpage__col--hero subpage__hero-inner"
         >
           <h1 class="subpage__title">
             <img
@@ -305,7 +305,7 @@ onBeforeUnmount(() => {
               :alt="content.hero.subtitle"
             />
           </p>
-          <p class="subpage__unit">{{ content.hero.unit }}／{{ content.hero.author }}</p>
+          <!-- <p class="subpage__unit">{{ content.hero.unit }}／{{ content.hero.author }}</p> -->
         </div>
       </header>
 
@@ -358,15 +358,23 @@ onBeforeUnmount(() => {
   padding: 0 20px;
 }
 
-.subpage__col--wide {
+.subpage__col--hero {
   padding: 0 26px;
-  
+
   @include rwd-min('tablet') {
     padding: 0 20px;
-    max-width: 694px;
+    max-width: min(79vw, 1104px);
   }
-  @include rwd-min('pc') {
-    max-width: var(--subpage-wide-w);
+}
+
+// 寬欄（hero／引言）：pad 起照 pc 稿比例流體縮放，≥1280 錨定回定寬。
+// min() 取兩者較小 → 1280 以下走 84.375vw（= 1080/1280，與視窗等比），
+.subpage__col--wide {
+  padding: 0 26px;
+
+  @include rwd-min('tablet') {
+    padding: 0 20px;
+    max-width: min(85vw, var(--subpage-wide-w));
   }
 }
 
@@ -433,12 +441,12 @@ onBeforeUnmount(() => {
   pointer-events: none;
 
   @include rwd-min('tablet') {
-    bottom: 26%;
+    bottom: calc(265 / 1024 * 100%);
     width: 428px;
   }
   @include rwd-min('pc') {
     right: 8vw;
-    bottom: 11%;
+    bottom: 10vh;
     left: auto;
     width: min(428px, 34vw);
     transform: none;

@@ -4,11 +4,11 @@
 2. V 小標空格希望是全形的
 3. V anchor 應該被全部遮住，hero/intro 以上都蓋住 anchor
 4. V anchor hover 放大效果(bug)
-5. intro hero 標題和圖片重心偏右
-6. intro desc 等比例放大(切板問題)(1280以下 clamp，以上維持)
+5. V intro hero 標題和圖片重心偏右
+6. V intro desc 等比例放大(切板問題)(1280以下 clamp，以上維持)
 7. intro desc 消失後，原地淡入 intro media，intro media 也和 desc 一樣原地滾動淡出，內文在往上滾進來
 8. MacBook pro 遇到 intro 太晚出來，調成早一點出來停久一點(遇到空白)
-9. publish x 換素材(加背景顏色避免漏餡)
+9. V publish x 換素材(加背景顏色避免漏餡)
 10. V publish x scroll distance 久一點
 11. V 獲獎歷程箭頭走過底色都橘色
 12. V next page button hover 維持放大，漣漪消失，文字不要底線
