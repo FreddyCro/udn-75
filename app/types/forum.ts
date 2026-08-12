@@ -13,6 +13,31 @@ export type ForumSpeaker = {
 };
 
 /**
+ * 稿上 outline 過的展示型文字：畫面吃 SVG 素材，真文字留給 SR / SEO。
+ * 機制（行盒為什麼要保留、寬度為什麼掛在 span 上）見
+ * architecture/2026-08-12-forum1-text-art-design.md
+ */
+export type ForumTextArt = {
+  /** 真文字。同時餵給 .visually-hidden 與工程對稿 */
+  text: string;
+  /** SVG 路徑（public 下，如 /img/forum/forum1-title.svg） */
+  art: string;
+  /** 素材在 Figma 的原生寬高。w 用來算 em 寬，兩者一起讓瀏覽器預留空間 */
+  w: number;
+  h: number;
+};
+
+/**
+ * 一行文字：字串＝活文字，物件＝SVG 素材（由 <ForumArtLine> 渲染）。
+ *
+ * ⚠️ 放寬**跟著批次走** —— 只有真的接上 <ForumArtLine> 的欄位才改成這個型別。
+ *    提前放寬會讓 `{{ line }}` 在型別上合法、runtime 印出 [object Object]。
+ *    目前已放寬：title、subtitle（論壇一第一批）。
+ *    quoteEn、venue 留到第二批（英文引言／日期地點）。
+ */
+export type ForumLine = string | ForumTextArt;
+
+/**
  * 日期／地點／引言那一落的設計稿版式：
  * quote＝日期靠左＋右側英文引言（論壇一）；stair＝三行階梯式日期、地點在右上（論壇二）；
  * right＝日期與地點整組切齊右緣（論壇三）；
@@ -29,10 +54,10 @@ export type ForumEvent = {
   tag: string;
   /** 主標上方的品牌行（僅論壇二的「台積電」有） */
   brand?: string;
-  /** 主標，可多行 */
-  title: string[];
-  /** 主標下的副標，可多行 */
-  subtitle?: string[];
+  /** 主標，可多行。論壇一是 ForumTextArt（稿字形素材），其餘場次是字串 */
+  title: ForumLine[];
+  /** 主標下的副標，可多行。同 title */
+  subtitle?: ForumLine[];
   /** 右側英文引言，可多行 */
   quoteEn?: string[];
   /** 段落內文 */

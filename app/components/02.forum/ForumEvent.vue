@@ -65,12 +65,15 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
       <p v-if="event.brand" class="forum-event__brand">{{ event.brand }}</p>
 
+      <!-- 逐行交給 <ForumArtLine>：字串照舊輸出文字，物件則換成稿字形 SVG（論壇一）。
+           見 architecture/2026-08-12-forum1-text-art-design.md。
+           ⚠️ 素材模式要靠祖先的 --art-base（見下方 SCSS）才算得出寬度。 -->
       <h3 class="forum-event__title">
-        <span v-for="(line, i) in event.title" :key="i">{{ line }}</span>
+        <ForumArtLine v-for="(line, i) in event.title" :key="i" :line="line" />
       </h3>
 
       <p v-if="event.subtitle" class="forum-event__subtitle">
-        <span v-for="(line, i) in event.subtitle" :key="i">{{ line }}</span>
+        <ForumArtLine v-for="(line, i) in event.subtitle" :key="i" :line="line" />
       </p>
 
       <p v-if="event.body" class="forum-event__body">{{ event.body }}</p>
@@ -420,6 +423,11 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   }
 
   .forum-event--quote & {
+    // 稿字形素材的寬度基準：<ForumArtLine> 用 calc(--art-w / --art-base * 1em) 算寬。
+    // ⚠️ 必須與下面那個 font-size **同值且無單位** —— 帶了 px 整個 calc() 無效，
+    //    素材寬會塌成 0。三個斷點共用這一個值，逐斷點的縮放由 font-size 自己帶。
+    --art-base: 74;
+
     margin-top: 10px;
     font-size: 74px;
     line-height: 1.22;
@@ -452,6 +460,9 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
 // 副標（論壇一）：設計稿字面 y=155.7、行距 62.9。
 .forum-event__subtitle {
+  // 同 .forum-event__title 的說明：無單位，＝下面那個 font-size。
+  --art-base: 50;
+
   display: flex;
   flex-direction: column;
   margin: 7px 0 0;
