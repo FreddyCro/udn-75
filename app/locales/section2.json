@@ -119,8 +119,18 @@
         "speakers": [
           {
             "role": "",
-            "name": "Dr. Mario García",
-            "nameZh": "馬力歐・賈西亞博士",
+            "name": {
+              "text": "Dr. Mario García",
+              "art": {
+                "pc": { "src": "/img/forum/forum1-name-pc-1.svg", "w": 396, "h": 38.8359 }
+              }
+            },
+            "nameZh": {
+              "text": "馬力歐・賈西亞博士",
+              "art": {
+                "pc": { "src": "/img/forum/forum1-name-pc-2.svg", "w": 396, "h": 35.8329 }
+              }
+            },
             "photoNo": "01",
             "photo": "/img/udn75_pic01_01",
             "bio": [

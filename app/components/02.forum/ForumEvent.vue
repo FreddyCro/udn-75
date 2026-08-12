@@ -10,7 +10,7 @@
      2026-08-10 修講者組的 margin collapse（照片上移 102）時，W5／W7 就是這樣被帶偏的。
 -->
 <script setup lang="ts">
-import type { ForumEvent } from '~/types/forum';
+import type { ForumEvent, ForumLine } from '~/types/forum';
 
 const props = withDefaults(
   defineProps<{
@@ -53,6 +53,10 @@ const { forumSlashDraw } = useOrangeCoreProgress();
 
 // 設計稿的講者版式分兩種：單人是「照片左／文字右」，多人（論壇二）是並排卡片。
 const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
+
+// ForumLine 的純文字。姓名可能是素材物件，但照片的 alt 需要字串 ——
+// 直接綁物件會印出 [object Object]。
+const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.text);
 </script>
 
 <template>
@@ -144,7 +148,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
             :src="sp.photo"
             :use-prefix="false"
             :srcset="['mob']"
-            :alt="sp.name"
+            :alt="lineText(sp.name)"
             classname="forum-event__photo"
           />
           <span v-else class="forum-event__photo-slot" aria-hidden="true">{{ sp.photoNo }}</span>
@@ -160,8 +164,8 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
         </span>
 
         <p class="forum-event__speaker-name">
-          <span>{{ sp.name }}</span>
-          <span v-if="sp.nameZh">{{ sp.nameZh }}</span>
+          <ForumArtLine :line="sp.name" />
+          <ForumArtLine v-if="sp.nameZh" :line="sp.nameZh" />
         </p>
         <p v-if="sp.role" class="forum-event__speaker-role">{{ sp.role }}</p>
         <p v-for="(para, j) in sp.bio ?? []" :key="j" class="forum-event__bio">
@@ -1295,6 +1299,10 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 // 論壇一：姓名字面落在講者組頂端下方 112.7（那 102 的位移在 .forum-event__speaker 的
 // padding-top，見該處說明）。卡片版式改排在頭銜之後（設計稿是頭銜在上）。
 .forum-event__speaker-name {
+  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+  // 只有論壇一有姓名素材（pc），pad／mob 尚未匯出，故那兩層不掛。
+  --art-base: 42;
+
   display: flex;
   flex-direction: column;
   margin: 0;

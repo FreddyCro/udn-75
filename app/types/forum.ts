@@ -6,9 +6,10 @@ import type { ForumBp } from '~/utils/forum-path-events';
 
 export type ForumSpeaker = {
   role: string;
-  name: string;
+  /** 姓名。論壇一在稿上是 outline 過的 vector，故可帶素材（見 ForumTextArt） */
+  name: ForumLine;
   /** 中文全名（Dr. Mario García 有中譯名，台積電講者無） */
-  nameZh?: string;
+  nameZh?: ForumLine;
   /** 照片編號（'01' 起跳，全段唯一）：photo 未填時顯示帶此編號的 placeholder 方塊 */
   photoNo: string;
   /** UPic 路徑，不含副檔名與裝置後綴；空＝顯示 placeholder */
