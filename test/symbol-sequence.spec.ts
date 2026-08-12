@@ -11,7 +11,9 @@ import {
   symbolIntroClear,
   symbolIntroGate,
   symbolIntroLineAt,
+  symbolIntroLineState,
   symbolIntroOutPhase,
+  symbolIntroRunning,
   symbolIntroTotal,
   type SymbolIntroState,
 } from '../app/utils/orange-core-config';
@@ -247,5 +249,95 @@ describe('symbolIntroGate（閘門：progress → 狀態轉換）', () => {
   it('清場後往前捲回窗內不會重播（要退到 in 之前才重置）', () => {
     const cleared = { elapsed: 1234, clearElapsed: INTRO_TIMELINE.clearDur };
     expect(gate(cleared, inside)).toBe(cleared);
+  });
+});
+
+// 判斷搬回純函式（review 裁定 constraint 優先）：元件不該再有動畫語意的條件判斷，
+// symbolIntroRunning / symbolIntroLineState 才是唯一的判斷所在。
+describe('symbolIntroRunning（還要不要再排下一個 rAF）', () => {
+  const COUNT = 3;
+  const TOTAL = symbolIntroTotal(COUNT);
+  const running = (s: SymbolIntroState, reduceMotion = false) =>
+    symbolIntroRunning(s, reduceMotion, COUNT);
+
+  it('未播（IDLE）→ false', () => {
+    expect(running(SYMBOL_INTRO_IDLE)).toBe(false);
+  });
+
+  it('已起播、時間軸中段 → true', () => {
+    expect(running({ elapsed: TOTAL / 2, clearElapsed: null })).toBe(true);
+  });
+
+  it('elapsed 已到 total → false', () => {
+    expect(running({ elapsed: TOTAL, clearElapsed: null })).toBe(false);
+  });
+
+  it('清場中（clearElapsed < clearDur）→ true', () => {
+    expect(
+      running({ elapsed: TOTAL / 2, clearElapsed: INTRO_TIMELINE.clearDur / 2 }),
+    ).toBe(true);
+  });
+
+  // ⚠️ 這是 Finding 1 的 bug：清場已跑完是**終態**，不論 elapsed 停在哪都該停 rAF——
+  // 舊的判斷（`clearElapsed !== null && clearElapsed < clearDur` 才 return true，
+  // 否則落到 elapsed < total）在這個 case 會誤判成 true，讓迴圈對著一個已經
+  // opacity 0 的元素空轉到 total（實測約多跑 4.9 秒 ≈ 290 幀）。
+  it('清場已完成（clearElapsed === clearDur）但 elapsed 還在時間軸中段 → false（終態，不空轉）', () => {
+    expect(
+      running({ elapsed: TOTAL / 4, clearElapsed: INTRO_TIMELINE.clearDur }),
+    ).toBe(false);
+  });
+
+  it('reduce-motion ＋ 已起播 ＋ 未清場 → false（兩態切換沒有補間要跑）', () => {
+    expect(running({ elapsed: 1234, clearElapsed: null }, true)).toBe(false);
+  });
+
+  it('reduce-motion ＋ 清場中 → true（清場本身不受 reduce-motion 影響）', () => {
+    expect(
+      running(
+        { elapsed: 1234, clearElapsed: INTRO_TIMELINE.clearDur / 2 },
+        true,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('symbolIntroLineState（逐行當前值，含 reduce-motion 退化）', () => {
+  const COUNT = 3;
+
+  it('reduce-motion ＋ elapsed === null → 未起播的藏狀態', () => {
+    expect(symbolIntroLineState(SYMBOL_INTRO_IDLE, 0, COUNT, true)).toEqual({
+      opacity: 0,
+      shift: INTRO_LINE_SHIFT,
+      reveal: 0,
+    });
+  });
+
+  it('reduce-motion ＋ 已起播 → 全亮，且與 elapsed 的值無關', () => {
+    const expected = { opacity: 1, shift: 0, reveal: 1 };
+    expect(
+      symbolIntroLineState({ elapsed: 0, clearElapsed: null }, 1, COUNT, true),
+    ).toEqual(expected);
+    expect(
+      symbolIntroLineState(
+        { elapsed: 999999, clearElapsed: null },
+        1,
+        COUNT,
+        true,
+      ),
+    ).toEqual(expected);
+  });
+
+  it('非 reduce-motion → 與 symbolIntroLineAt(elapsed ?? 0, i, count) 逐欄相等', () => {
+    const s = { elapsed: 850, clearElapsed: null };
+    expect(symbolIntroLineState(s, 2, COUNT, false)).toEqual(
+      symbolIntroLineAt(s.elapsed ?? 0, 2, COUNT),
+    );
+  });
+
+  it('非 reduce-motion ＋ elapsed === null → 視為 0', () => {
+    expect(symbolIntroLineState(SYMBOL_INTRO_IDLE, 0, COUNT, false)).toEqual(
+      symbolIntroLineAt(0, 0, COUNT),
+    );
   });
 });

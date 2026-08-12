@@ -52,18 +52,6 @@ let lastFrame = 0;
 // 三行文案是**資訊**不只是質感，不能因為切了一下分頁就被跳過。
 const MAX_DELTA = 100;
 
-/** 每行當前該有的值。reduce-motion 時退化成「未起播 → 藏、已起播 → 全亮」的兩態：
- *  改吃時間軸後這是本頁唯一一段自走播放的動畫（捲動動畫由使用者的手控制，自走的不是），
- *  落在 WCAG 2.2.2 的範疇，故此分支不算 YAGNI —— 前一版把它列為 YAGNI 的理由已失效。 */
-const lineStateAt = (i: number) => {
-  if (reduceMotion.value) {
-    return state.elapsed === null
-      ? { opacity: 0, shift: INTRO_LINE_SHIFT, reveal: 0 }
-      : { opacity: 1, shift: 0, reveal: 1 };
-  }
-  return symbolIntroLineAt(state.elapsed ?? 0, i, lines.length);
-};
-
 /** 把當前狀態寫進 DOM。冪等（純函式輸出），重複呼叫無副作用。 */
 const paint = () => {
   const root = rootRef.value;
@@ -73,20 +61,17 @@ const paint = () => {
     state.clearElapsed === null ? 1 : symbolIntroClear(state.clearElapsed),
   );
   for (let i = 0; i < lineEls.length; i++) {
-    const { opacity, shift, reveal } = lineStateAt(i);
+    const { opacity, shift, reveal } = symbolIntroLineState(
+      state,
+      i,
+      lines.length,
+      reduceMotion.value,
+    );
     const el = lineEls[i]!;
     el.style.opacity = String(opacity);
     el.style.transform = `translateY(${shift}px)`;
     el.textContent = scrambleText(lines[i]!, reveal);
   }
-};
-
-/** 還有東西需要逐幀推進嗎（兩把尺任一未跑完）。 */
-const isRunning = () => {
-  const { elapsed, clearElapsed } = state;
-  if (clearElapsed !== null && clearElapsed < INTRO_TIMELINE.clearDur) return true;
-  if (reduceMotion.value) return false; // 兩態切換，沒有補間要跑
-  return elapsed !== null && elapsed < TOTAL;
 };
 
 const tick = (now: number) => {
@@ -101,11 +86,13 @@ const tick = (now: number) => {
         : Math.min(INTRO_TIMELINE.clearDur, clearElapsed + delta),
   };
   paint();
-  raf = isRunning() ? requestAnimationFrame(tick) : 0;
+  raf = symbolIntroRunning(state, reduceMotion.value, lines.length)
+    ? requestAnimationFrame(tick)
+    : 0;
 };
 
 const run = () => {
-  if (raf || !isRunning()) return;
+  if (raf || !symbolIntroRunning(state, reduceMotion.value, lines.length)) return;
   lastFrame = performance.now();
   raf = requestAnimationFrame(tick);
 };
@@ -126,6 +113,11 @@ onMounted(() => {
   lineEls = Array.from(
     rootRef.value?.querySelectorAll<HTMLElement>('.symbol-intro__line') ?? [],
   );
+  // ⚠️ 這裡讀 reduceMotion.value 時它已經是正確值，但**只是因為**本檔開頭
+  //    useOrangeCoreProgress() 那一行比本元件更早呼叫 onMounted 去偵測
+  //    prefers-reduced-motion —— Vue 的 onMounted 依註冊順序執行，兩者剛好卡對。
+  //    這是隱性依賴，不是顯性保證：若那行被搬到生命週期鉤子之下，reduce-motion
+  //    使用者會靜默地看到完整動畫首幀（見 useOrangeCoreProgress 對這件事的另一段說明）。
   paint();
   // 重新整理落在符號段中段時 symbolProgress 初值仍是 0（ScrollTrigger refresh 後才寫入
   // 真值 → 由 watch 接手），故這裡多半是 no-op；留著是為了不假設那個順序。

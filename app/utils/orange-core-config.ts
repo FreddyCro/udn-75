@@ -304,6 +304,40 @@ export function symbolIntroGate(
   return s.elapsed === null && s.clearElapsed === null ? s : SYMBOL_INTRO_IDLE;
 }
 
+/** 第 index 行在狀態 s 下該有的值（含 reduce-motion 的退化）。
+ *
+ *  reduce-motion：改吃時間軸後這三行是本頁唯一一段**自走播放**的動畫
+ *  （捲動動畫由使用者的手控制，自走的不是），落在 WCAG 2.2.2 的範疇 ——
+ *  故退化成「未起播 → 藏、已起播 → 全亮」的兩態，無 stagger、無亂碼、無位移。 */
+export function symbolIntroLineState(
+  s: SymbolIntroState,
+  index: number,
+  count: number,
+  reduceMotion: boolean,
+): { opacity: number; shift: number; reveal: number } {
+  if (reduceMotion) {
+    return s.elapsed === null
+      ? { opacity: 0, shift: INTRO_LINE_SHIFT, reveal: 0 }
+      : { opacity: 1, shift: 0, reveal: 1 };
+  }
+  return symbolIntroLineAt(s.elapsed ?? 0, index, count);
+}
+
+/** 還有東西需要逐幀推進嗎（兩把尺任一未跑完）。
+ *
+ *  ⚠️ 清場跑完就是**終態**（直到 gate 重置回 SYMBOL_INTRO_IDLE），此時不論 elapsed
+ *     到哪都要停 —— 否則整組已經看不見了，rAF 還會為它空轉到 total，
+ *     而那段時間正是粒子集合成人像那一拍（頁面最重的一刻），清場的目的就是讓路。 */
+export function symbolIntroRunning(
+  s: SymbolIntroState,
+  reduceMotion: boolean,
+  count: number,
+): boolean {
+  if (s.clearElapsed !== null) return s.clearElapsed < INTRO_TIMELINE.clearDur;
+  if (reduceMotion) return false; // 兩態切換，沒有補間要跑
+  return s.elapsed !== null && s.elapsed < symbolIntroTotal(count);
+}
+
 export const SYMBOL_STOPS: readonly {
   until: number;
   mode: 'disperse' | 'face' | 'converge' | 'enter';
