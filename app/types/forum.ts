@@ -1,4 +1,9 @@
 // 論壇場次（section2.json 的 forum.events[]）。bio / photo 為空即不渲染該區塊。
+//
+// ForumBp 從 utils 借過來，不在這裡另立一份 'pc' | 'pad' | 'mob' ——
+// 斷點名稱在專案裡只該有一個真值（見 ~/utils/forum-path-events）。
+import type { ForumBp } from '~/utils/forum-path-events';
+
 export type ForumSpeaker = {
   role: string;
   name: string;
@@ -12,19 +17,34 @@ export type ForumSpeaker = {
   bio?: string[];
 };
 
+/** 一個斷點的稿字形素材 */
+export type ForumTextArtSrc = {
+  /** SVG 路徑（public 下，如 /img/forum/forum1-title-pc.svg） */
+  src: string;
+  /** 素材在 Figma 的原生寬高。w 用來算 em 寬，兩者一起讓瀏覽器預留空間 */
+  w: number;
+  h: number;
+};
+
 /**
- * 稿上 outline 過的展示型文字：畫面吃 SVG 素材，真文字留給 SR / SEO。
+ * 稿上 outline 過的展示型文字：畫面吃 SVG 素材，真文字留在 DOM 給 SR / SEO。
  * 機制（行盒為什麼要保留、寬度為什麼掛在 span 上）見
  * architecture/2026-08-12-forum1-text-art-design.md
  */
 export type ForumTextArt = {
-  /** 真文字。同時餵給 .visually-hidden 與工程對稿 */
+  /** 真文字。素材斷點下轉為 visually-hidden，其餘斷點就是畫面上的字 */
   text: string;
-  /** SVG 路徑（public 下，如 /img/forum/forum1-title.svg） */
-  art: string;
-  /** 素材在 Figma 的原生寬高。w 用來算 em 寬，兩者一起讓瀏覽器預留空間 */
-  w: number;
-  h: number;
+  /**
+   * 逐斷點的素材。
+   *
+   * ⚠️ **逐斷點各一份，不是等比縮放** —— 三個斷點的稿是不同的 SVG。
+   *    早期版本只做了一份 pc 素材、靠 font-size 等比縮放，pad／mob 會偏約 2.7%
+   *    （Noto 在 pc 74px 的渲染寬 728.98 比稿寬 709.285 寬 2.8%，逐斷點字級是
+   *    照那個渲染寬反推的，故 pad 稿寬並不等於 pc 稿寬 × 54/74）。
+   *
+   * 沒填的斷點**退回活文字**（Noto Sans TC），與改動前完全相同。
+   */
+  art: Partial<Record<ForumBp, ForumTextArtSrc>>;
 };
 
 /**

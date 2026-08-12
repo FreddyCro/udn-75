@@ -423,9 +423,10 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   }
 
   .forum-event--quote & {
-    // 稿字形素材的寬度基準：<ForumArtLine> 用 calc(--art-w / --art-base * 1em) 算寬。
-    // ⚠️ 必須與下面那個 font-size **同值且無單位** —— 帶了 px 整個 calc() 無效，
-    //    素材寬會塌成 0。三個斷點共用這一個值，逐斷點的縮放由 font-size 自己帶。
+    // 稿字形素材的寬度基準：<ForumArtLine> 用 calc(--art-w-<斷點> / --art-base * 1em) 算寬。
+    // ⚠️ **恆等於同一區塊的 font-size，且無單位** —— 帶了 px 整個 calc() 無效、素材寬塌成 0。
+    //    逐斷點各給一次（不是共用 pc 的值再等比縮放）：三個斷點的稿是不同的 SVG，
+    //    素材原生寬各自不同，只有「該斷點的字級」才是正確的換算基準。
     --art-base: 74;
 
     margin-top: 10px;
@@ -434,12 +435,16 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
     letter-spacing: 0.02em;
 
     @include rwd-max('pc') {
+      --art-base: 54;
+
       margin-top: 0;
       font-size: 54px;
     }
 
     // 35：設計稿這行剛好切齊 362 的內容寬，再大一級就會斷成兩行。
     @include rwd-max('tablet') {
+      --art-base: 35;
+
       font-size: 35px;
     }
   }
@@ -460,7 +465,7 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
 // 副標（論壇一）：設計稿字面 y=155.7、行距 62.9。
 .forum-event__subtitle {
-  // 同 .forum-event__title 的說明：無單位，＝下面那個 font-size。
+  // 同 .forum-event__title 的說明：無單位，逐斷點恆等於同一區塊的 font-size。
   --art-base: 50;
 
   display: flex;
@@ -472,12 +477,16 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   letter-spacing: 0.02em;
 
   @include rwd-max('pc') {
+    --art-base: 43;
+
     margin-top: 28px;
     font-size: 43px;
     line-height: 51px;
   }
 
   @include rwd-max('tablet') {
+    --art-base: 32;
+
     margin-top: 16px;
     font-size: 32px;
     line-height: 41px;

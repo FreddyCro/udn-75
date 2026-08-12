@@ -7,20 +7,24 @@ import section2 from '../app/locales/section2.json';
 // 檔案路徑相對 cwd（＝專案根，同 design-tokens.spec.ts 的做法）。
 //
 // 這支守的是「素材與文案對得上」。失敗方向本來就溫和 —— 素材缺檔只會讓
-// 那一行看不見（真文字仍在 .visually-hidden 裡、行盒仍由 ZWSP 撐住），
-// 所以缺檔在畫面上是靜默的，只有這支會爆。
-// 機制見 architecture/2026-08-12-forum1-text-art-design.md
+// 那一行看不見（真文字仍在、行盒仍由 ZWSP 撐住），所以缺檔在畫面上是靜默的，
+// 只有這支會爆。機制見 architecture/2026-08-12-forum1-text-art-design.md
 
 // 稿字形素材的一筆（＝ app/types/forum.ts 的 ForumTextArt）。
 // 這裡刻意不 import 那個型別：要驗的正是「JSON 長得對不對」，
 // 拿型別來斷言等於用假設驗假設。
-type Art = { text: string; art: string; w: number; h: number };
+type ArtSrc = { src: string; w: number; h: number };
+type Art = { text: string; art: Record<string, ArtSrc> };
+
+const BPS = ['pc', 'pad', 'mob'];
 
 const isArt = (v: unknown): v is Art =>
   typeof v === 'object'
   && v !== null
   && !Array.isArray(v)
-  && typeof (v as Art).art === 'string';
+  && typeof (v as Art).text === 'string'
+  && typeof (v as Art).art === 'object'
+  && (v as Art).art !== null;
 
 /** 深走訪整棵 JSON，撈出所有物件形式的「一行」 */
 const collectArts = (node: unknown, out: Art[] = []): Art[] => {
@@ -52,24 +56,43 @@ const svgSize = (src: string): { w: number; h: number } => {
 };
 
 const arts = collectArts(section2);
+// 攤平成 (斷點, 素材) —— 逐筆斷言用
+const entries = arts.flatMap((a) =>
+  Object.entries(a.art).map(([bp, src]) => ({ text: a.text, bp, src })),
+);
 
 describe('論壇稿字形素材（ForumTextArt）與 section2.json 對帳', () => {
   // 這一道是「別的斷言別被空陣列蒙過去」的守門員：
   // 若哪天論壇一的 title 被改回純字串，下面的 it.each 會一條都不跑而全綠。
   it('至少有三筆素材（論壇一的大標 ＋ 副標兩行）', () => {
-    expect(arts.length).toBeGreaterThanOrEqual(3);
+    expect(entries.length).toBeGreaterThanOrEqual(3);
   });
 
-  it.each(arts.map((a) => [a.art, a] as const))('%s 的素材與資料對得上', (_name, a) => {
-    // 真文字是 SEO / SR 的唯一來源，空的話畫面有字、機器讀不到
-    expect(a.text.trim().length).toBeGreaterThan(0);
-
-    const file = join('public', a.art.replace(/^\//, ''));
-    expect(existsSync(file), `素材不存在：${file}`).toBe(true);
-
-    // w / h 拿來算 em 寬與預留空間；與素材畫布不一致就會擠壓或留白
-    const size = svgSize(readFileSync(file, 'utf8'));
-    expect(size.w).toBeCloseTo(a.w, 2);
-    expect(size.h).toBeCloseTo(a.h, 2);
+  it('每一筆都有真文字（SEO / SR 的唯一來源）', () => {
+    const empty = arts.filter((a) => a.text.trim().length === 0);
+    expect(empty).toEqual([]);
   });
+
+  it('每一筆至少填一個斷點 —— art: {} 會讓那一行永遠是活文字，是資料錯誤', () => {
+    const noBp = arts.filter((a) => Object.keys(a.art).length === 0).map((a) => a.text);
+    expect(noBp).toEqual([]);
+  });
+
+  it('斷點名稱只能是 pc / pad / mob（拼錯會靜默沒有效果）', () => {
+    const bad = entries.filter((e) => !BPS.includes(e.bp)).map((e) => `${e.text} → ${e.bp}`);
+    expect(bad).toEqual([]);
+  });
+
+  it.each(entries.map((e) => [`${e.bp} ${e.src.src}`, e] as const))(
+    '%s 的素材與資料對得上',
+    (_name, e) => {
+      const file = join('public', e.src.src.replace(/^\//, ''));
+      expect(existsSync(file), `素材不存在：${file}`).toBe(true);
+
+      // w / h 拿來算 em 寬與預留空間；與素材畫布不一致就會擠壓或留白
+      const size = svgSize(readFileSync(file, 'utf8'));
+      expect(size.w).toBeCloseTo(e.src.w, 2);
+      expect(size.h).toBeCloseTo(e.src.h, 2);
+    },
+  );
 });
