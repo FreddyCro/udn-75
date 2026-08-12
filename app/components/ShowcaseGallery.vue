@@ -11,7 +11,11 @@
         :key="i"
         ref="cardRefs"
         class="showcase-gallery__card"
-        :style="{ width: `${(c.w / designW) * 100}%`, aspectRatio: `${c.w} / ${c.h}` }"
+        :class="{ 'showcase-gallery__card--blank': c.src === '' }"
+        :style="{
+          width: `${((c.w * (c.scale ?? 1)) / designW) * 100}%`,
+          aspectRatio: `${c.w} / ${c.h}`,
+        }"
       >
         <UPic
           v-if="c.src"
@@ -36,26 +40,30 @@
 export interface ShowcaseSlide {
   w: number;
   h: number;
+  /** 圖片路徑。有值＝顯示圖；'' ＝留白（佔位但不畫）；省略＝只有灰底 backdrop */
   src?: string;
   alt?: string;
+  /** 卡片放大倍率（預設 1）；只放大版面盒子，不影響路徑上的動態縮放與疊層 */
+  scale?: number;
 }
 
 // 「綁滾動多圖輪播」正式素材 udn75_pic30_01~15：寬度沿用設計稿的大小分佈（94~273 @1280 stage），
 // 高度依各圖實際比例（3:2 / 4:5 / 1:1）換算，避免 cover 裁切
 // （module scope：defineProps 的 default 會被 hoist，不能引用 setup 區域變數）
+// 留白（src: ''）＝該張抽掉不顯示，但保留原尺寸佔位撐開節奏；scale 為校稿指定的放大倍率
 const DESIGN_SLIDES: ShowcaseSlide[] = [
-  { w: 273, h: 182, src: '/img/data/udn75_pic30_01' },
+  { w: 273, h: 182, src: '/img/data/udn75_pic30_01', scale: 1.1 },
   { w: 208, h: 139, src: '/img/data/udn75_pic30_02' },
-  { w: 241, h: 161, src: '/img/data/udn75_pic30_03' },
+  { w: 241, h: 161, src: '' }, // 留白（原 udn75_pic30_03）
   { w: 173, h: 216, src: '/img/data/udn75_pic30_04' },
-  { w: 237, h: 158, src: '/img/data/udn75_pic30_05' },
-  { w: 141, h: 141, src: '/img/data/udn75_pic30_06' },
-  { w: 214, h: 143, src: '/img/data/udn75_pic30_07' },
+  { w: 237, h: 158, src: '/img/data/udn75_pic30_05', scale: 1.2 },
+  { w: 141, h: 141, src: '' }, // 留白（原 udn75_pic30_06）
+  { w: 214, h: 143, src: '/img/data/udn75_pic30_07', scale: 1.1 },
   { w: 94, h: 94, src: '/img/data/udn75_pic30_08' },
-  { w: 241, h: 161, src: '/img/data/udn75_pic30_09' },
+  { w: 241, h: 161, src: '' }, // 留白（原 udn75_pic30_09）
   { w: 190, h: 127, src: '/img/data/udn75_pic30_10' },
   { w: 273, h: 182, src: '/img/data/udn75_pic30_11' },
-  { w: 161, h: 201, src: '/img/data/udn75_pic30_12' },
+  { w: 161, h: 201, src: '/img/data/udn75_pic30_12', scale: 1.2 },
   { w: 225, h: 150, src: '/img/data/udn75_pic30_13' },
   { w: 120, h: 120, src: '/img/data/udn75_pic30_14' },
   { w: 173, h: 173, src: '/img/data/udn75_pic30_15' },
@@ -272,6 +280,12 @@ onMounted(() => {
     height: 100%;
     object-fit: cover;
   }
+}
+
+// 留白卡：src 給 '' 時只佔位（照樣跑路徑、撐開間距），但不畫灰底與陰影
+.showcase-gallery__card--blank {
+  background: none;
+  filter: none;
 }
 
 // 【測試用】卡片左上角的順序編號；不需要時連同 template 內的 DEBUG_SHOW_INDEX 區塊一起刪除
