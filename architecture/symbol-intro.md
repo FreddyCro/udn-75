@@ -12,7 +12,14 @@
 >    `SYMBOL_INTRO` 收成 `{ in, out }`，曲線改成 `symbolIntroLineAt()` / `symbolIntroClear()`，
 >    新增閘門 `symbolIntroGate()`（`architecture/2026-08-12-symbol-intro-timeline-design.md`）。
 >
-> 本文第四節的序列節奏（`SYMBOL_VH` / `FORUM_HANDOFF` 等門檻）不受影響，仍成立。
+> 上述兩次改版不影響本文第四節的序列節奏。
+>
+> ⚠️ **但第四節的數字已於 2026-08-13 被取代**（`converge` 88 → 56vh、`handoff` 64 → 40vh、
+> `SYMBOL_VH` 4.0 → **3.44**），且門檻改由 `SYMBOL_BEAT_VH` 推導、不再手寫小數。
+> 第四節保留為 2026-08-09 那次決策的紀錄；**現況一律看
+> `app/utils/orange-core-config.ts` 的 `SYMBOL_BEAT_VH` 與 `architecture/PRD.md` Section 1a**。
+> 第四節的三條**理由**（face 不該被波及、converge 縮放無風險、`agendaIn` 用絕對距離定錨）
+> 仍然成立 —— 2026-08-13 那次改動正是靠它們才敢動。
 
 對應 Figma「智慧論壇05」：pc 1280 `2065:139729`（內文 `2065:139731`）／
 pad 768 `2065:124197`（`2065:124199`）／mob 414 `2065:120218`（`2065:120221`）。

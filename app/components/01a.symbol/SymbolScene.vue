@@ -11,8 +11,13 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
-const { symbolMode, symbolTarget, setSymbolProgress, symbolLayerDone } =
-  useOrangeCoreProgress();
+const {
+  symbolMode,
+  symbolTarget,
+  setSymbolProgress,
+  symbolLayerDone,
+  symbolConvergeLight,
+} = useOrangeCoreProgress();
 
 // 段落高度 ＝ SYMBOL_VH × 視窗高（見 ~/utils/orange-core-config）＝ 序列的捲動長度。
 // 用 vhLength 而非字面 `320vh`：視窗高在本專案有單一來源（--vh），見 ~/utils/viewport-height。
@@ -26,29 +31,36 @@ const sceneHeight = vhLength(SYMBOL_VH);
 //     不是 scrub —— 本 trigger 沒有掛動畫，沒有東西需要被 scrub 平滑補間。
 //
 // ── symbolProgress 時序表 ────────────────────────────────────────────────
-// ⚠️ 這是換算結果、不是資料來源：門檻在 SYMBOL_STOPS / SYMBOL_INTRO / FORUM_HANDOFF，
-//    距離＝門檻 × SYMBOL_VH。改動那些常數後要回來手動同步這張表。
-//    下表為 SYMBOL_VH = 4.0（總長 400vh），括號內 px 是視窗高 1080 的換算。
+// ⚠️ 這是換算結果、不是資料來源：**唯一來源是 SYMBOL_BEAT_VH**（四拍各吃多少 vh），
+//    progress 門檻與本表都是它的換算結果。改動那個常數後要回來手動同步這張表。
+//    下表為 SYMBOL_VH = 3.44（總長 344vh），括號內 px 是視窗高 1080 的換算。
 //
-//   step  mode / 事件                              progress    累計距離（起→迄）        該段距離
-//   ①     disperse 分散（前段疊開場三行文案）        0 → 28%     0    → 112vh   (0→1210px)     112vh
+//   step  mode / 事件                              progress      累計距離（起→迄）        該段距離
+//   ①     disperse 分散（前段疊開場三行文案）        0 → 32.56%    0    → 112vh   (0→1210px)     112vh
 //         └ 文案 8vh 起播 → 自走 6.4s 時間軸（2.0s 三行到位／停留 3.0s／1.4s 依序退場）
 //           104vh 保底清場（越過就強制淡出）。門檻在 SYMBOL_INTRO、節奏在 INTRO_TIMELINE
-//   ②     face 集合（人像）＝最長的一拍              28% → 62%   112  → 248vh   (1210→2678px)  136vh
-//   ③     converge 匯聚成點                         62% → 84%   248  → 336vh   (2678→3629px)  88vh
-//   ④     coreIn 交棒：本層淡出＋ForumCore 硬切上場  84%         336vh          (3629px)        —
-//   ⑤     enter 橘核心停在黑畫面（原地停住）          84% → 92%   336  → 368vh   (3629→3974px)  32vh
-//   ⑥     agendaIn 議程 reveal（仍在畫面外）         92%         368vh          (3974px)        —
-//   ⑦     coreOut 黑底淡出、段落捲完（onLeave→鎖 1） 100%        400vh          (4320px)        32vh
+//   ②     face 集合（人像）＝最長的一拍              32.56 → 72.09%  112 → 248vh (1210→2678px)  136vh
+//   ③     converge 匯聚成點                         72.09 → 88.37%  248 → 304vh (2678→3283px)   56vh
+//   ④     coreIn 交棒：本層淡出＋ForumCore 硬切上場  88.37%        304vh          (3283px)        —
+//   ⑤     enter 橘核心停在黑畫面（原地停住）          88.37 → 90.70%  304 → 312vh (3283→3370px)    8vh
+//   ⑥     agendaIn 議程 reveal（仍在畫面外）         90.70%        312vh          (3370px)        —
+//   ⑦     coreOut 黑底淡出、段落捲完（onLeave→鎖 1） 100%          344vh          (3715px)        32vh
+//
+// ⑤＋⑦ ＝ handoff 那一拍的 40vh。⑦ 的 32vh 是 AGENDA_OFFSCREEN_VH 的硬下限（議程淡入必須
+// 發生在畫面外），故 handoff 再縮就只能吃掉 ⑤ 的 8vh 停留 —— 見 FORUM_HANDOFF 的註解。
 //
 // ⑦ 之後還有一段「懸停期」不在本尺內：黑白接縫要再升 50vh 才抵達視窗中央，橘點在那段期間
 // 停在中央不動，然後由論壇段路徑接手（見 ForumCorePath 的 start: 'top center'）。
 // 那 50vh 是零跳點幾何的下限，見 FORUM_HANDOFF 的註解。
 //
-// 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本段合計 520vh。
+// 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本段合計 464vh。
 //
-// ⚠️ SymbolFace 內部並不吃 scroll：上表的 mode 切換只是「觸發」它 2.2s 的 gsap 補間
-//    （disperseDuration）。本表只管門檻位置。
+// ⚠️ ① 與 ② 的交界（mode 切換）只是「觸發」SymbolFace 那 2.2s 的 gsap 補間
+//    （disperseDuration），本表只管門檻位置、不管補間跑多久。
+//    ③ converge **是例外**：2026-08-13 起它綁 scrub —— uConverge 與整片底色都由
+//    convergeAmountAt(symbolProgress) 逐幀決定（Hero 以 converge-amount 餵進去）。
+//    改的理由是往回捲：定時補間永遠貼在區段前緣，往回滑時 ③ 整拍靜止、補間要到離開
+//    這一拍才跑，於是 ③＋⑤＋⑦ 連續 96vh 一片白什麼都不動。推導見 convergeAmountAt。
 // ⚠️ reveal（粒子淡入）不在本表內：它由 SymbolFace 的執行閘門啟動 ——
 //    ＝ 轉場層 active（transitionProgress > 0，比本段的起點更早）＋ 進入視口 ＋ 分頁在前景。
 //    也就是說 reveal 發生在前一軌（hero 轉場的拉長段）裡，本段接手時粒子已在場。
@@ -103,10 +115,10 @@ watch(() => symbolTarget.value.enter, (e) => (symbolLayerDone.value = e), {
   <section
     ref="sceneRef"
     class="sec-symbol"
-    :class="{ 'sec-symbol--light': symbolMode === 'converge' }"
+    :class="{ 'sec-symbol--light': symbolConvergeLight }"
     :style="{ height: sceneHeight }"
     aria-hidden="true"
-    :data-header-theme="symbolMode === 'converge' ? 'light' : 'dark'"
+    :data-header-theme="symbolConvergeLight ? 'light' : 'dark'"
     data-anchor-target="forum"
   />
 </template>
@@ -116,9 +128,12 @@ watch(() => symbolTarget.value.enter, (e) => (symbolLayerDone.value = e), {
 // ForumCore 的滿版白底已淡出、.sec2 還沒捲上來，露出來的就是本段。
 // 故它必須跟著序列翻面，否則往下捲會在 forum 前面插一段黑（白 → 黑 → 白）。
 //
-// 綁 symbolMode === 'converge' 而不是自己算門檻：resolveSymbol 在越過 enter 之後回傳的
-// mode 仍是 'converge'（見 useOrangeCoreProgress），故這個條件涵蓋「converge 起一路到段落結束」，
-// 且往回捲到人臉時自動翻回黑 —— 與 SymbolFace 的 convergeBgColor 是同一條規則的兩半。
+// 綁 symbolConvergeLight（＝ 收攏量過半）而不是 symbolMode === 'converge'：
+// converge 改綁 scrub 之後，mode 仍在那一拍的**起點**就翻面，底色卻要走完整拍才變白 ——
+// 綁 mode 的話這裡會提早 56vh 翻白，而 header 也會跟著提早宣告自己站在淺色底上、改用
+// 深色內容，但底下其實還是全黑（那 56vh 的 header 等於看不見）。
+// convergeAmountAt 在越過交棒點之後恆為 1，故這個條件照樣涵蓋「一路到段落結束」，
+// 往回捲也自動翻回黑 —— 與 SymbolFace 的 convergeBgColor 仍是同一條規則的兩半。
 //
 // 不做 transition：切換的那一刻本段一定被不透明的轉場層（含滿版 canvas）蓋著，看不到；
 // 補一段時間曲線只會多一個要和 disperseDuration 對齊的數字。

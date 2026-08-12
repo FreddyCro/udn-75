@@ -24,6 +24,13 @@ import {
   unknownEventNodes,
   type ForumEventMarks,
 } from '~/utils/forum-path-events';
+import {
+  FORUM_TURN_SAMPLE_LEN,
+  FORUM_TURN_SFX,
+  pickTurns,
+  turnAngleDeg,
+  type ForumTurn,
+} from '~/utils/forum-path-turns';
 import { refreshScrollTriggers } from '~/utils/scroll-trigger';
 
 const rootEl = ref<HTMLElement | null>(null);
@@ -43,10 +50,14 @@ const {
   setForumPathActive,
   setForumSlashWindow,
   setForumPathMarks,
+  setForumTurns,
   setForumCoreCenterOffset,
   forumPathRiding,
   coverHandedOff,
 } = useOrangeCoreProgress();
+
+// 轉折音效。play() 在音效總開關關著時本身就是 no-op（見 useSfx），故這裡不必再加閘門。
+const { play } = useSfx();
 
 // 回中節點的間距吃視窗高 —— 用單一來源，不讓它隨網址列收合而改變密度。
 const { vhPx } = useViewportHeight();
@@ -96,6 +107,12 @@ let tailEndY = 0;
 let knots: ArcKnot[] = [];
 // 變身點的弧長。量不到 → null → 全程維持橘方塊、不畫尾跡，但整條線照跑。
 let swapLen: number | null = null;
+// 轉折的弧長（升冪，見 ~/utils/forum-path-turns）＋ 上一幀核心走到的弧長。
+// ⚠ lastTurnLen 為 null ＝ **尚未定錨**，下一次 place() 只記位置、不出聲。
+//   每次幾何重建（build / 斷點切換）都要歸 null：弧長全部換算過了，拿舊值比會噴一串音效
+//   —— 而 refresh 在本專案很常發生（視窗改變、字體載入、?highlights 切換）。
+let turnLens: number[] = [];
+let lastTurnLen: number | null = null;
 
 // 沒有可跑的驅動線時清空：核心藏起來，橘點回到原本的 coreOut 淡出（見 forumCoreDotVisible）。
 // ⚠ progress 也要歸零，不能只清 active：從 pc 切到 pad/mob 時它會留著上一個斷點的殘值，
@@ -124,6 +141,9 @@ function reset() {
   setForumSlashWindow(null);
   // 路徑事件的門檻表 —— 整套機制刻意只有這一條軌要清，事件表加到幾十個也一樣。
   setForumPathMarks(null);
+  turnLens = [];
+  lastTurnLen = null;
+  setForumTurns(null);
   setForumCoreCenterOffset(0);
 }
 
@@ -201,16 +221,13 @@ function syncSwapLen(
 //   實作），不會有兩套長度分歧 —— 而所有門檻最終都要跟 place() 的 len 比大小。
 // ⚠ 為什麼另開一個 <path> 而不是複用 motionEl：驅動線必須全程持有完整的 d。量尺放在同一個
 //   <svg> 內是為了保證它有 layout box（detached 元素的 getTotalLength 跨瀏覽器行為不一致）。
-function syncEventMarks(
-  list: ForumPathNode[],
+// 量出**每個節點在驅動線上的弧長**。路徑事件的門檻與轉折清單都吃這一份，故獨立成一支
+// —— 兩邊各量一次會是 70 次 getTotalLength，而且兩份值萬一分歧會靜默錯開其中一邊。
+function measureNodeLens(
   segs: { id: string; d: string }[],
-): ForumEventMarks | null {
-  const b = bp.value;
+): Map<string, number> | null {
   const probe = probeEl.value;
-  if (!b || !probe || !pathLen || !segs.length) {
-    setForumPathMarks(null);
-    return null;
-  }
+  if (!probe || !pathLen || !segs.length) return null;
 
   const lenAt = new Map<string, number>();
   let acc = '';
@@ -222,12 +239,24 @@ function syncEventMarks(
   probe.removeAttribute('d'); // 量完就清，別讓它以完整長度留在 DOM 上
 
   // 末端必須等於驅動線總長。不符 ＝ segs 與 d 已經對不上（產生器改動最可能的破法），
-  // 那會**靜默錯開所有事件** —— 故大聲說出來。門檻仍照算，少一點總比整段停掉好。
+  // 那會**靜默錯開所有事件與轉折** —— 故大聲說出來。門檻仍照算，少一點總比整段停掉好。
   const tail = lenAt.get(segs[segs.length - 1]!.id) ?? 0;
   if (Math.abs(tail - pathLen) > 0.5) {
     console.warn(
       `[forum-path-events] 量尺末端 ${tail.toFixed(2)} ≠ pathLen ${pathLen.toFixed(2)}，事件門檻不可信`,
     );
+  }
+  return lenAt;
+}
+
+function syncEventMarks(
+  list: ForumPathNode[],
+  lenAt: Map<string, number> | null,
+): ForumEventMarks | null {
+  const b = bp.value;
+  if (!b || !lenAt) {
+    setForumPathMarks(null);
+    return null;
   }
 
   // 事件表打錯節點編號是本機制最容易犯、最靜默的錯（事件永遠不觸發，而畫面上少一個效果
@@ -245,6 +274,64 @@ function syncEventMarks(
   return marks;
 }
 
+// 轉折清單（＝音效的觸發點）。篩選規則見 ~/utils/forum-path-turns，這裡只負責量。
+//
+// 量法：在節點弧長的前後各 FORUM_TURN_SAMPLE_LEN 處對**驅動線**取樣，用三點夾角量
+// 「線在那裡折了多少」。不是拿相鄰節點的座標算折線轉角 —— 那在 pad / mob 會失準，
+// 理由見 turnAngleDeg 的 ⚠（節點密度是實作分工，不該決定音效密度）。
+// 成本：每個前半段節點 2 次 getPointAtLength（pc 最多 58 次），只在 build() 跑。
+//
+// 範圍取 FORUM_FRONT_NODES ＝ **議程之前**那一段：後半段（論壇四、精彩活動）不出聲。
+// 那個常數原本只給黃金樣本測試用（前半段才對得到設計稿），語意正好就是這裡要的範圍。
+function syncTurns(
+  motion: SVGPathElement,
+  lenAt: Map<string, number> | null,
+): ForumTurn[] | null {
+  const b = bp.value;
+  turnLens = [];
+  // ⚠ 一併歸 null：弧長剛剛全部重算過，拿上一次的位置比大小會噴一串音效。
+  lastTurnLen = null;
+  if (!b || !lenAt) {
+    setForumTurns(null);
+    return null;
+  }
+
+  const d = FORUM_TURN_SAMPLE_LEN;
+  const angleAt = (id: string): number | undefined => {
+    const len = lenAt.get(id);
+    // 兩端取樣會越界 → 不給角度 → pickTurns 直接剔除（首尾本來就不該出聲）。
+    if (len == null || len - d < 0 || len + d > pathLen) return undefined;
+    const p = motion.getPointAtLength(len);
+    const before = motion.getPointAtLength(len - d);
+    const after = motion.getPointAtLength(len + d);
+    return turnAngleDeg([before.x, before.y], [p.x, p.y], [after.x, after.y]);
+  };
+
+  const turns = pickTurns({
+    order: FORUM_FRONT_NODES[b].map((n) => n.id),
+    angleAt,
+    lenAt: (id) => lenAt.get(id),
+    pathLen,
+  });
+  turnLens = turns.map((t) => t.len);
+  setForumTurns(turns);
+  return turns;
+}
+
+// 核心從 lastTurnLen 走到 len 之間跨過任何轉折 → 出一聲。
+//
+// ・往回捲不出聲（只更新位置）—— 來回微調捲動位置時不該被轟炸，「核心往前跑」的方向感
+//   也因此更明確。回頭再往下捲會再響一次，那與 useSfx 的重複觸發語意一致。
+// ・一幀跨過多個轉折（快速捲動）合併成一聲：some() 短路，且 play() 本身不疊音。
+// ・首次呼叫（lastTurnLen 為 null）只定錨。這是「重新載入時捲動位置被瀏覽器還原到論壇段
+//   中段」不會一次噴完前面所有轉折的原因。
+function playTurnsCrossed(len: number) {
+  const prev = lastTurnLen;
+  lastTurnLen = len;
+  if (prev == null || len <= prev || !turnLens.length) return;
+  if (turnLens.some((t) => t > prev && t <= len)) play(FORUM_TURN_SFX);
+}
+
 // ?pathdebug 才掛：外部量測腳本（Playwright）要驗「事件門檻是否精準落在節點上」，
 // 而 out.points 與 marks 都是本元件的區域值，從外面取不到 —— 這一層的自動化覆蓋率是 0
 // （vitest 只跑純函式），沒有它就只能靠肉眼比對，而 1px 的錯位肉眼看不出來。
@@ -256,6 +343,7 @@ const pathDebug = computed(() => route.query.pathdebug !== undefined);
 function exposeDebug(
   points: Map<string, [number, number]>,
   marks: ForumEventMarks | null,
+  turns: ForumTurn[] | null,
 ) {
   if (!pathDebug.value) return;
   (window as unknown as Record<string, unknown>).__udnForumPath = {
@@ -264,6 +352,7 @@ function exposeDebug(
     tailEndY,
     nodes: Object.fromEntries(points),
     marks,
+    turns,
   };
 }
 
@@ -365,10 +454,13 @@ function build() {
     syncSlashWindow(motion);
     // 事件門檻要在 pathLen 定案之後算（它是分母）。放在 setForumPathActive(true) 之前：
     // active 翻上去的同一幀消費端就會讀 marks，晚一步會有一幀讀到上一個斷點的表。
-    const marks = syncEventMarks(list, out.segs);
+    const lenAt = measureNodeLens(out.segs);
+    const marks = syncEventMarks(list, lenAt);
+    // 也要在下面 place() 之前：place() 會拿 turnLens 比大小並定錨 lastTurnLen。
+    const turns = syncTurns(motion, lenAt);
 
     setForumPathActive(true);
-    exposeDebug(out.points, marks);
+    exposeDebug(out.points, marks, turns);
     place(st ? st.progress : 0);
   } finally {
     scope?.removeAttribute('data-path-measuring');
@@ -386,6 +478,9 @@ function place(rawP: number) {
   // 節點表把它換算成弧長 —— 節點上核心精準落在視窗中央，節點之間才照弧長等比走。
   const centerY = rawP * tailEndY;
   const len = arcAtCenterY(centerY, knots, easeMove);
+  // 音效掛在 len 上而不是 forumPathProgress 上：轉折本身就是弧長，同一個量比大小
+  // 不必再換算，也不會受 progress 那層 clamp 影響。
+  playTurnsCrossed(len);
   const pt = motion.getPointAtLength(len);
   const d = 1; // 取樣間距（px）
   // 取樣點夾在 [0, pathLen] 內，故切線在兩端也穩定（不會因 eps=0 而歸零）。

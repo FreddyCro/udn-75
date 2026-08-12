@@ -5,10 +5,13 @@ import {
   INTRO_LINE_SHIFT,
   INTRO_REVEAL_SPAN,
   INTRO_TIMELINE,
+  SYMBOL_BEAT_VH,
   SYMBOL_INTRO,
   SYMBOL_INTRO_IDLE,
   SYMBOL_STOPS,
   SYMBOL_VH,
+  convergeAmountAt,
+  convergeLightAt,
   symbolIntroClear,
   symbolIntroGate,
   symbolIntroLineAt,
@@ -34,6 +37,34 @@ describe('符號段序列門檻', () => {
   it('converge 的終點就是交棒點（coreIn），不是另外手寫的數字', () => {
     const converge = SYMBOL_STOPS.find((s) => s.mode === 'converge');
     expect(converge?.until).toBe(FORUM_HANDOFF.coreIn);
+  });
+
+  // 2026-08-13 起門檻由 SYMBOL_BEAT_VH（四拍各吃多少 vh）累加推導，不再手寫小數。
+  // 這支守的是那條**反算關係**：從門檻反推回每一拍的 vh，要對得上宣告的值。
+  //
+  // 它抓的是本檔最容易犯、最靜默的錯 —— 有人調了 SYMBOL_VH 卻沒同步門檻（或反之）。
+  // 那種錯不會壞掉任何東西，只會讓四拍的絕對距離全部偏掉，畫面上僅表現為「節奏怪怪的」。
+  // 上面那支「until 嚴格遞增」在那種情況下還是綠的，正是它給假保證的地方。
+  it('門檻反推回來的每拍距離 ＝ SYMBOL_BEAT_VH 宣告的值', () => {
+    // mode → SYMBOL_BEAT_VH 的鍵。'enter' 是 SYMBOL_STOPS 的用語、'handoff' 是 SEQUENCE
+    // 與 SYMBOL_BEAT_VH 的用語，指同一拍（見 orange-core-config 的 SEQUENCE forum 章節）。
+    const beatOf = { disperse: 'disperse', face: 'face', converge: 'converge', enter: 'handoff' } as const;
+
+    let prev = 0;
+    for (const stop of SYMBOL_STOPS) {
+      const vh = (stop.until - prev) * SYMBOL_VH;
+      // 容差 1e-9 吸收「相加再相除再相減」的 IEEE754 誤差，不是放寬門檻本身：
+      // 真的錯位會差好幾個 0.01（＝ 幾個 vh），不會被這個容差蓋過去。
+      expect(vh).toBeCloseTo(SYMBOL_BEAT_VH[beatOf[stop.mode]], 9);
+      prev = stop.until;
+    }
+  });
+
+  // 總長是四拍的總和 —— 不是另外手寫的數字。這條翻掉的話上面那支會整批壞掉，
+  // 但錯誤訊息會指向「某一拍不對」而非真正的原因，故單獨守一條。
+  it('SYMBOL_VH ＝ 四拍 vh 的總和', () => {
+    const sum = Object.values(SYMBOL_BEAT_VH).reduce((a, b) => a + b, 0);
+    expect(SYMBOL_VH).toBeCloseTo(sum, 9);
   });
 
   // 改吃時間軸後，「文字在粒子集合前淡乾淨」不再由 progress 自動保證
@@ -75,6 +106,65 @@ describe('符號段序列門檻', () => {
   it('agendaIn 早於 coreOut，coreOut 收在段尾', () => {
     expect(FORUM_HANDOFF.agendaIn).toBeLessThan(FORUM_HANDOFF.coreOut);
     expect(FORUM_HANDOFF.coreOut).toBe(1.0);
+  });
+});
+
+// 2026-08-13：converge 從「mode 觸發的 2.2s 補間」改成「progress 的純函式」，
+// 為的是修掉「往回滑會連續 96vh 一片白什麼都不動」。這一組守的就是那個改動的**目的**
+// 與它的兩條硬需求（端點精確、翻面跟著底色），不是曲線的長相。
+describe('convergeAmountAt（匯聚那一拍：捲動 → 收攏量）', () => {
+  const start = SYMBOL_STOPS[1]!.until; // face 那一拍的終點 ＝ 開始收攏
+  const end = FORUM_HANDOFF.coreIn; //    交棒點 ＝ 收成一顆點
+
+  // 這支是整個改動的用意：值只由 progress 決定，於是往回捲**必然**沿原路倒退。
+  // 改版前那個定時補間做不到這件事 —— 它只知道「mode 剛剛翻了」，不知道捲到哪裡。
+  it('同一個 progress 恆得同一個值（可逆、與捲動方向無關）', () => {
+    const forward: number[] = [];
+    for (let i = 0; i <= 20; i++) forward.push(convergeAmountAt(start + ((end - start) * i) / 20));
+    const backward: number[] = [];
+    for (let i = 20; i >= 0; i--) backward.unshift(convergeAmountAt(start + ((end - start) * i) / 20));
+    expect(backward).toEqual(forward);
+  });
+
+  // 終點的 1 是「與 ForumCore 的橘方塊同尺寸同位置硬切」的前提（見 FORUM_HANDOFF.coreIn）——
+  // 差一點點就會在接棒那一幀看到縮一下，而那是本專案的不變量之一。
+  it('端點精確：face 收尾時 0、交棒點 1', () => {
+    expect(convergeAmountAt(start)).toBe(0);
+    expect(convergeAmountAt(end)).toBe(1);
+  });
+
+  it('區間外夾住：之前恆 0、之後（含段尾 handoff 整拍）恆 1', () => {
+    for (const p of [0, start / 2, start - 1e-6]) expect(convergeAmountAt(p)).toBe(0);
+    for (const p of [(end + 1) / 2, 1, 2]) expect(convergeAmountAt(p)).toBe(1);
+  });
+
+  it('區間內嚴格遞增', () => {
+    let prev = -1;
+    for (let i = 0; i <= 20; i++) {
+      const v = convergeAmountAt(start + ((end - start) * i) / 20);
+      expect(v).toBeGreaterThan(prev);
+      prev = v;
+    }
+  });
+
+  it('中點恰為 0.5（smoothstep 兩端一階導數為 0，收攏的起手與落點都是柔的）', () => {
+    expect(convergeAmountAt((start + end) / 2)).toBeCloseTo(0.5);
+  });
+
+  it('超出範圍的輸入不會回傳 NaN', () => {
+    for (const p of [-10, 10, Number.MAX_SAFE_INTEGER]) {
+      expect(Number.isNaN(convergeAmountAt(p))).toBe(false);
+    }
+  });
+
+  // 底色與 header 主題不能綁 mode：mode 在 start 就翻面，底色卻要走完整拍才變白。
+  // 這支守的是「翻面點落在這一拍**內部**」，綁回 mode 的話它會退回 start。
+  it('翻成淺色的時機在收攏中點，不在 mode 翻面的那一刻', () => {
+    expect(convergeLightAt(start)).toBe(false);
+    expect(convergeLightAt(end)).toBe(true);
+    const mid = (start + end) / 2;
+    expect(convergeLightAt(mid - (end - start) * 0.1)).toBe(false);
+    expect(convergeLightAt(mid + (end - start) * 0.1)).toBe(true);
   });
 });
 

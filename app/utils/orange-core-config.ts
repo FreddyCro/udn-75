@@ -107,6 +107,70 @@ export const FORUM_MOVE_EASE = 'none';
 //   —— 900 高的半屏只有 450，等比那組會整顆滑出畫面，這就是本設定要解決的問題。
 export const FORUM_CENTER_KNOT_VH = 0.5;
 
+// ── 符號段捲動尺：每一拍吃掉的捲動距離（× 視窗高）────────────────────────
+// **這是本段唯一的旋鈕。** 四拍對應 Figma「智慧論壇05–08」，也就是 SEQUENCE 裡的
+// forum.disperse / face / converge / handoff。要調節奏就改這裡，其餘門檻自己跟上。
+//
+// 為什麼以「vh」為來源，而不是像改版前那樣手寫 progress 門檻（0.28 / 0.62 / 0.84 / 0.92）：
+// 那些門檻只在某一個 SYMBOL_VH 之下才對應到想要的絕對距離。動了總長就整批靜默錯位 ——
+// 四拍的 vh 全部跑掉，而畫面上只會覺得「節奏怪怪的」，沒有任何東西會壞掉喊出來。
+// 改成 vh 當來源之後 SYMBOL_VH ＝ 四拍總和、門檻由累加推導，總長與各拍再也不可能對不上
+//（test/symbol-sequence.spec.ts 有一支直接守這條反算關係）。
+//
+// 調整史：
+//   2026-08-04  總長 1.6 → 3.2（整段拉長一倍），讓 disperse / face / converge 各拍都有更長的停留。
+//   2026-08-09  3.2 → 4.0。+80vh 裡 64vh 落在第一拍，疊上開場三行文案（見 SYMBOL_INTRO，
+//               disperse 48 → 112vh）—— 文案要有「浮現 → 讀完 → 淡出」的完整節奏，48vh 太趕。
+//               同時 coreIn 0.75 → 0.84（converge 54.4 → 88vh、handoff 80 → 64vh）。
+//   2026-08-13  4.0 → 3.44。converge 88 → 56vh、handoff 64 → 40vh：這兩拍的視覺是 SymbolFace
+//               的 2.2s 補間（吃時間、不吃捲動），補間跑完後的**停留**太長，讀起來像卡住。
+//               前兩拍的絕對距離不動（112 / 136vh），省下的 56vh 還給頁面。
+//               ⚠ handoff 已接近下限：40 ＝ 8vh 停留 ＋ AGENDA_OFFSCREEN_VH 的 32vh。
+//   2026-08-13  converge 改綁 scrub（見下方 convergeAmountAt），距離不動。上面那次縮短
+//               只治了順著滑的版本 —— 往回滑時那一拍**整段**沒有動畫，96vh 全是靜止的白。
+//               改成 progress 的純函式之後 converge 這一拍在兩個方向都被填滿，
+//               於是它的 vh 從「補間跑完後還要傻等多久」變回單純的「收攏要捲多久」。
+export const SYMBOL_BEAT_VH = {
+  disperse: 1.12,
+  face: 1.36,
+  converge: 0.56,
+  handoff: 0.4,
+} as const;
+
+/** 累計到每一拍**結束**時、距符號段起點的距離（× 視窗高）。門檻就從這裡換算。 */
+const BEAT_END_VH = {
+  disperse: SYMBOL_BEAT_VH.disperse,
+  face: SYMBOL_BEAT_VH.disperse + SYMBOL_BEAT_VH.face,
+  converge:
+    SYMBOL_BEAT_VH.disperse + SYMBOL_BEAT_VH.face + SYMBOL_BEAT_VH.converge,
+} as const;
+
+/** 這段序列吃掉的捲動距離（× 視窗高）＝ 四拍總和，不是另外手寫的數字。
+ *
+ *  ⚠ 捨到 1e-6 是為了清掉 IEEE754 尾數：四拍直接相加得 3.4400000000000004，而這個值會流到
+ *    dashboard 的 vh 讀數（TRACK_VH.symbol）與 SymbolScene 的段落高度上，讀起來像壞掉。
+ *    1e-6 個視窗高 ＝ 0.0001vh，遠細於任何有意義的宣告值 → 不會蓋掉真正的宣告錯誤。 */
+export const SYMBOL_VH =
+  Math.round((BEAT_END_VH.converge + SYMBOL_BEAT_VH.handoff) * 1e6) / 1e6;
+
+/**
+ * 距符號段起點 vh（× 視窗高）→ symbolProgress（0..1）。**本段所有門檻的唯一算式。**
+ *
+ * 推導出來的門檻因此是無窮小數（0.8837…）而不是改版前那種漂亮的 0.84 —— 那是刻意的：
+ * 它們是**推導值**，不該看起來像可以直接手改的旋鈕。改節奏請動 SYMBOL_BEAT_VH。
+ * dashboard 顯示這些門檻時記得自己捨入（見 SEQUENCE 的 handoff label 與 DevCoreProgress）。
+ */
+export function symbolProgressAt(vh: number): number {
+  return vh / SYMBOL_VH;
+}
+
+// 議程那 0.4s 的淡入必須發生在**畫面外**，判準是「符號段底緣距視窗底還有多遠」——
+// 這就是 agendaIn 距段尾要留的距離（× 視窗高）。已驗證可行，不得變小。
+//
+// ⚠ test/symbol-sequence.spec.ts 那支測試**刻意硬寫 32、不 import 這個常數**：
+//   它要守的就是「這個值不許退步」，import 進去就變成自我證明。
+export const AGENDA_OFFSCREEN_VH = 0.32;
+
 // ── forum 接棒門檻：converge 之後「白點 → 橘核心」的交接（symbolProgress 0..1）──
 // coreIn ：SymbolFace 收斂點交棒給 ForumCore 橘方塊。＝ converge 段終點，也是 enter 段的起點。
 //          **硬切、不是 crossfade** —— 收斂點在收攏末段（vSolid）已由白轉橘（SymbolFace 的
@@ -124,25 +188,26 @@ export const FORUM_CENTER_KNOT_VH = 0.5;
 //   交棒點是「黑白接縫升到視窗中央」＝ 符號段捲完再 +50vh，而那個位置被「路徑起點必須落在
 //   視窗正中央」的零跳點幾何鎖死（見 ForumCorePath 的 start: 'top center'）。要更短就得動
 //   交棒幾何、犧牲零跳點保證，或改成「懸停期間橘點跟著接縫往下漂」的另一種設計。
+// ⚠ 三個值都是**推導的**，不是旋鈕：要調交棒時機請改 SYMBOL_BEAT_VH.converge（往後推交棒點
+//   ＝ converge 那一拍變長）、要調黑畫面停留請改 SYMBOL_BEAT_VH.handoff。
 export const FORUM_HANDOFF = {
-  // 2026-08-09：0.75 → 0.84。converge（匯聚成點）那一拍的停留太短、交棒段又佔太多，
-  // 把 coreIn 往後推 ＝ converge 吃進 handoff 的距離。
-  // 400vh 下：converge 54.4 → 88vh（+62%）、handoff 80 → 64vh（−20%）。
-  coreIn: 0.84,
+  // converge 那一拍的終點 ＝ 3.04 / 3.44 ＝ 0.8837…（距段起點 304vh）
+  coreIn: symbolProgressAt(BEAT_END_VH.converge),
   coreOut: 1.0,
-  // 2026-08-09：0.9 → 0.92。這個門檻用**絕對距離**定錨、不隨 SYMBOL_VH 等比縮放：
-  // 它的作用是「讓那 0.4s 的淡入發生在畫面外」，判準是符號段底緣距視窗底多遠。
-  // 0.92 × 400vh ＝ 368vh，距段尾 32vh —— 與 SYMBOL_VH 3.2 時代的 0.9 等距。
-  agendaIn: 0.92,
+  // 距段尾恆為 AGENDA_OFFSCREEN_VH（32vh）——**絕對距離**定錨、不隨總長等比縮放，
+  // 因為它守的是「淡入發生在畫面外」，那件事的判準是 vh 不是比例。
+  // 3.12 / 3.44 ＝ 0.9069…（距段起點 312vh）
+  agendaIn: symbolProgressAt(SYMBOL_VH - AGENDA_OFFSCREEN_VH),
 } as const;
 
 // ── 星空 SymbolFace 序列（獨立黑底段落自己的捲動尺，見 01a.symbol/SymbolScene.vue）──
 // 該段落的捲動進度（symbolProgress, 0..1）依門檻切換 SymbolFace 的 mode。
 // 因為 scrub，往回捲會自動倒退。狀態：disperse → face（集合）→ converge（匯聚成點）
 // → enter（收斂點淡出，交棒給 ForumCore 橘核心，見 FORUM_HANDOFF）。
-// 只改 until 即可調每個狀態起點；converge 終點對齊 FORUM_HANDOFF.coreIn（＝交棒時機）。
-// ⚠️ 改這裡（或 FORUM_HANDOFF / SYMBOL_VH）之後，要同步 SymbolScene.vue 內的「symbolProgress
-//    時序表」註解 —— 那張表是本檔門檻 × SYMBOL_VH 的 vh 換算結果，不會自己更新。
+// 每個狀態的起點由 SYMBOL_BEAT_VH 累加推導（見 SYMBOL_STOPS）；converge 終點就是
+// FORUM_HANDOFF.coreIn（＝交棒時機），兩者同一個運算式、不會分家。
+// ⚠️ 改 SYMBOL_BEAT_VH 之後，要同步 SymbolScene.vue 內的「symbolProgress 時序表」註解
+//    —— 那張表是四拍 vh 的換算結果，不會自己更新。
 // ── 開場三行文案（Figma 智慧論壇05：pc 2065:139731 / pad 2065:124199 / mob 2065:120221）──
 // 疊在第一拍（disperse）上的一層純文字，見 01a.symbol/SymbolIntro.vue。
 //
@@ -159,7 +224,7 @@ export const FORUM_HANDOFF = {
 //
 //    ⚠️ 但補回來的是「條件保證」，不是改版前那種**構造上**的保證：清場自己要花 clearDur
 //    （0.3s），而越過 out 之後使用者還在往下捲。out 到人像集合只有
-//    (0.28 − 0.26) × 400vh ＝ 8vh，換算：捲速 ≲ 27vh/s 時 8vh 走得比 0.3s 慢 → 淡乾淨；
+//    1.12 − 1.04 ＝ 8vh，換算：捲速 ≲ 27vh/s 時 8vh 走得比 0.3s 慢 → 淡乾淨；
 //    **更快的捲速仍會短暫重疊**，而且沒有任何門檻安排救得回來（要救只能縮短 clearDur）。
 //    這是已接受的殘留風險：那個速度的人是「一路往下滑」而不是在讀，本來就看不到內容。
 //    守著這件事的不是 `out < until` 這個大小比較（清場改吃時間後它已不蘊含該性質），
@@ -168,12 +233,13 @@ export const FORUM_HANDOFF = {
 // 決策紀錄：architecture/2026-08-12-symbol-intro-timeline-design.md
 //   （它推翻了前一版 architecture/2026-08-12-symbol-intro-stagger-design.md 第一節的 scrub 結論）
 //
-// 換算成捲動距離（SYMBOL_VH = 4.0 ⇒ 400vh）：8vh 起播 → 104vh 保底清場，中間 96vh。
+// 兩個門檻都用**絕對距離**定錨（同 FORUM_HANDOFF.agendaIn）：8vh 起播 → 104vh 保底清場，
+// 中間 96vh。它們描述的是「文案在第一拍裡的位置」，第一拍的 vh 不變時就不該跟著總長飄。
 // ⇒ 捲速慢於約 15vh/s 才看得完整段 6.4s。停下來讀的人沒問題（這正是不綁 scroll 的用意）；
 //   一路不停往下捲的人會被截斷 —— 但那種人在 scrub 版本也只是一閃而過，不算退步。
 export const SYMBOL_INTRO = {
-  in: 0.02,
-  out: 0.26,
+  in: symbolProgressAt(0.08), // 8vh
+  out: symbolProgressAt(1.04), // 104vh（距第一拍結束 8vh，見上方 clearDur 的說明）
 } as const;
 
 // 「一邊讀一邊往下捲」的假設捲速上限（vh/s）。
@@ -371,19 +437,48 @@ export const SYMBOL_STOPS: readonly {
   until: number;
   mode: 'disperse' | 'face' | 'converge' | 'enter';
 }[] = [
-  { until: 0.28, mode: 'disperse' }, //                0.00–0.28 分散（前段疊開場文案，見 SYMBOL_INTRO）
-  { until: 0.62, mode: 'face' }, //                    0.28–0.62 集合（人像）＝最長的一拍
-  { until: FORUM_HANDOFF.coreIn, mode: 'converge' }, // 0.62–coreIn 匯聚成點
-  { until: 1.0, mode: 'enter' }, //                    coreIn–1.00 enter → 收斂點淡出、橘核心接棒
+  // 門檻全部由 SYMBOL_BEAT_VH 累加推導（vh 為距段起點的距離，SYMBOL_VH = 3.44 ⇒ 344vh）：
+  { until: symbolProgressAt(BEAT_END_VH.disperse), mode: 'disperse' }, // →112vh (32.56%) 分散（疊開場文案，見 SYMBOL_INTRO）
+  { until: symbolProgressAt(BEAT_END_VH.face), mode: 'face' }, //        →248vh (72.09%) 集合（人像）＝最長的一拍
+  { until: FORUM_HANDOFF.coreIn, mode: 'converge' }, //                  →304vh (88.37%) 匯聚成點
+  { until: 1.0, mode: 'enter' }, //                                      →344vh (100%)   收斂點淡出、橘核心接棒
 ];
 
-// 這段序列吃掉的捲動距離（× 視窗高）＝ 速度旋鈕（越大每個狀態停留越久）。
-// 2026-08-04：1.6 → 3.2（整段距離拉長一倍），讓 disperse / face / converge 各拍都有更長的停留。
-// 2026-08-09：3.2 → 4.0。+80vh 裡 64vh 落在第一拍，疊上開場三行文案（見 SYMBOL_INTRO，
-//             disperse 48 → 112vh）——文案要有「浮現 → 讀完 → 淡出」的完整節奏，48vh 太趕。
-//             同時重算 SYMBOL_STOPS 的門檻：face 幾乎不變（137.6 → 136vh），converge 拉長
-//             （54.4 → 88vh，+33.6vh），handoff 縮短（80 → 64vh，−16vh）——見 FORUM_HANDOFF。
-export const SYMBOL_VH = 4.0;
+/** 匯聚那一拍的收攏量（0 ＝ 還是完整人像、1 ＝ 已收成一顆點）。
+ *  SymbolFace 的 uConverge 與整片底色（黑→白）都吃這一個值。
+ *
+ *  **這是本段唯一一個「值由捲動決定」而不是「由門檻觸發補間」的視覺**，2026-08-13 改的。
+ *  改版前 converge 是 mode 翻面後跑一段固定 2.2s 的 gsap 補間（disperseDuration），
+ *  而固定時長的補間永遠貼在區段的**前緣** —— 門檻是照「往下滑」排的，於是：
+ *    順著滑 converge 那 56vh 的開頭就被補間填滿；
+ *    往回滑整整 56vh 完全靜止，補間要到離開這一拍（248vh）才開始跑。
+ *  加上其後 handoff 的 40vh 本來就是靜止的交棒段，往回滑會連續 96vh 只有一片白底
+ *  ＋中央一顆 26px 橘方塊，什麼都不動（實測 ≈3.8s @25vh/s，順著滑只有 ≈1.6s）。
+ *  這是使用者回報的「往回滑留白很久」。改成 progress 的純函式之後方向自然對稱，
+ *  越過 304vh 的同一刻粒子就開始散回人像。
+ *
+ *  ⚠️ 端點必須**精確**是 0 與 1，不能只是「很接近」：終點 1 是與 ForumCore 那顆橘方塊
+ *     硬切交棒的前提（同尺寸同位置，見 FORUM_HANDOFF.coreIn 與 SymbolFace 的 convergeSize），
+ *     少一點就會在接棒那一幀看到縮一下。smoothstep 自帶夾邊，故區間外也安全。
+ *
+ *  ⚠️ 用 smoothstep 而不是線性：改版前那 2.2s 補間吃的是 power2.inOut（兩端慢中間快），
+ *     smoothstep 是同一種手感的無參數版本，換成線性會讓收攏的起手與落點都變生硬。
+ *
+ *  純函式、不依賴 DOM —— 曲線由 test/symbol-sequence.spec.ts 守著。 */
+export function convergeAmountAt(p: number): number {
+  return smoothstep(symbolProgressAt(BEAT_END_VH.face), FORUM_HANDOFF.coreIn, p);
+}
+
+/** 匯聚到一半沒有？＝ 底色已經過黑白的中點。
+ *
+ *  段落底色（`.sec-symbol--light`）與 header 主題（data-header-theme）的翻面條件。
+ *  改版前綁的是 `symbolMode === 'converge'`，那在 scrub 化之後會壞掉：mode 照舊在 248vh
+ *  翻面，但底色此刻才剛要開始由黑轉白 —— header 會提早 56vh 宣告自己站在淺色底上、
+ *  改用深色內容，而底下其實還是全黑，那 56vh 的 header 等於看不見。
+ *  綁在收攏量的中點，翻面才跟著**真正的底色**走（而不是跟著 mode 這道指令）。 */
+export function convergeLightAt(p: number): boolean {
+  return convergeAmountAt(p) >= 0.5;
+}
 
 // ── 進場方塊的邊長（px）──────────────────────────────────────────────
 // 「載入層中央留白格 → HeroStart cube」在同一個位置交接：載入層收在全白（中央那格全程
@@ -547,8 +642,11 @@ export function seedTravelAt(p: number): number {
 //      （序號只是方便口頭念），正式書寫一律用 `forum.face.59%`。
 //
 // 反算回程式碼（dashboard 會直接印出來）：
-//   forum.face.59% → symbolProgress = 0.28 + 0.59 × (0.62 − 0.28) = 0.4806
-//                  → 距符號段起點 192.24vh（SYMBOL_VH 4.0 ＝ 400vh）
+//   forum.face.59% → symbolProgress = 0.3256 + 0.59 × (0.7209 − 0.3256) = 0.5588
+//                  → 距符號段起點 192.24vh（SYMBOL_VH 3.44 ＝ 344vh）
+//   ⚠️ 地址講的是**該拍內的比例**，所以 vh 只隨那一拍的 SYMBOL_BEAT_VH 變，不隨總長變 ——
+//      2026-08-13 把總長從 400 縮到 344vh 之後，face 的 vh 換算（112 + 0.59 × 136）一字不動，
+//      只有 progress 那個中間值變了。這正是「地址寫節點／拍，不寫 %」的用意。
 //
 // drive（驅動型）決定這個地址能不能拿來綁捲動事件 —— 混用會下出做不到的指令：
 //   'scrub' 綁捲動、可逆，progress ＝ 捲動比例。**只有這種能在任意 % 掛門檻。**
@@ -637,7 +735,8 @@ export const SEQUENCE: readonly SequenceChapter[] = [
       { key: 'disperse', label: '粒子分散（前段疊開場三行文案）', drive: 'scrub', track: 'symbol', from: 0, until: SYMBOL_STOPS[0]!.until },
       { key: 'face', label: '集合人像（最長的一拍）', drive: 'scrub', track: 'symbol', from: SYMBOL_STOPS[0]!.until, until: SYMBOL_STOPS[1]!.until },
       { key: 'converge', label: '匯聚成點', drive: 'scrub', track: 'symbol', from: SYMBOL_STOPS[1]!.until, until: FORUM_HANDOFF.coreIn },
-      { key: 'handoff', label: `交棒：白點→橘核心（agendaIn ${FORUM_HANDOFF.agendaIn}）`, drive: 'scrub', track: 'symbol', from: FORUM_HANDOFF.coreIn, until: 1 },
+      // agendaIn 是推導值（無窮小數），label 要自己捨入 —— 直接內插會印出 0.9069767441860465。
+      { key: 'handoff', label: `交棒：白點→橘核心（agendaIn ${(FORUM_HANDOFF.agendaIn * 100).toFixed(1)}%）`, drive: 'scrub', track: 'symbol', from: FORUM_HANDOFF.coreIn, until: 1 },
       // 符號段捲完 → 黑白接縫再升 50vh 才到視窗中央，橘點在這段停著不動。
       // 幾何下限，見 FORUM_HANDOFF 的註解。
       //

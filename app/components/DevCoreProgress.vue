@@ -16,6 +16,10 @@
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { FORUM_HANDOFF } from '~/utils/orange-core-config';
 import { FORUM_PATH_EVENTS } from '~/utils/forum-path-events';
+import {
+  FORUM_TURN_MIN_ANGLE_DEG,
+  FORUM_TURN_MIN_GAP_LEN,
+} from '~/utils/forum-path-turns';
 
 const route = useRoute();
 const visible = computed(() => route.query.pathdebug !== undefined);
@@ -34,6 +38,8 @@ const {
   reduceMotion,
   forumPathMarks,
   forumPathEvents,
+  forumPathProgress,
+  forumTurns,
 } = useOrangeCoreProgress();
 
 // ── 全域列 ──────────────────────────────────────────────────────────
@@ -97,7 +103,11 @@ const currentVhIntoTrack = computed(() => {
 
 // 「那顆橘點為什麼不在」＝ forumCoreDotVisible 的三個輸入攤平（見 useOrangeCoreProgress）
 const dotTerms = computed(() => [
-  { label: `sym≥${FORUM_HANDOFF.coreIn}`, ok: symbolProgress.value >= FORUM_HANDOFF.coreIn },
+  // coreIn 是推導值（無窮小數，見 orange-core-config 的 symbolProgressAt）→ 捨入再顯示。
+  {
+    label: `sym≥${(FORUM_HANDOFF.coreIn * 100).toFixed(1)}%`,
+    ok: symbolProgress.value >= FORUM_HANDOFF.coreIn,
+  },
   { label: 'pathActive', ok: forumPathActive.value },
   { label: '!riding', ok: !forumPathRiding.value },
 ]);
@@ -125,6 +135,19 @@ const eventRows = computed(() =>
       on: forumPathEvents[e.key] === true,
     };
   }),
+);
+
+// ── 轉折列（音效觸發點，見 ~/utils/forum-path-turns）─────────────────────
+// 角度是量出來的（節點座標的折線轉角），不是設定值 —— 調門檻時就看這一區選中了誰。
+const turnMinAngle = FORUM_TURN_MIN_ANGLE_DEG;
+const turnMinGap = FORUM_TURN_MIN_GAP_LEN;
+const turnRows = computed(() =>
+  (forumTurns.value ?? []).map((t) => ({
+    id: t.id,
+    angle: Math.round(t.angle),
+    mark: t.mark,
+    passed: forumPathProgress.value >= t.mark,
+  })),
 );
 
 const flags = computed(() => [
@@ -229,6 +252,27 @@ const flags = computed(() => [
           <span class="devseq__event-pct">
             {{ ev.missing ? '?' : pct(ev.mark) }}
           </span>
+        </div>
+      </div>
+
+      <!-- 轉折（音效觸發點）：純幾何判定，故這裡顯示的是量出來的角度，不是設定值。
+           調 FORUM_TURN_MIN_ANGLE_DEG / MIN_GAP_LEN 的唯一依據就是這一區。
+           ● ＝ 核心已走過（拿 forumPathProgress 比大小，只是視覺回饋；真正出聲的判定
+           在 ForumCorePath 的 playTurnsCrossed，它比的是弧長且只在往下捲時觸發）。 -->
+      <div v-if="turnRows.length" class="devseq__events">
+        <div class="devseq__events-head">
+          forum.path 轉折 ×{{ turnRows.length }}（≥{{ turnMinAngle }}° · 間隔 ≥{{ turnMinGap }}px）
+        </div>
+        <div
+          v-for="t in turnRows"
+          :key="t.id"
+          class="devseq__event"
+          :class="{ 'is-on': t.passed }"
+        >
+          <span class="devseq__event-dot">{{ t.passed ? '●' : '○' }}</span>
+          <span class="devseq__event-key">{{ t.id }}</span>
+          <span class="devseq__event-node">{{ t.angle }}°</span>
+          <span class="devseq__event-pct">{{ pct(t.mark) }}</span>
         </div>
       </div>
     </template>

@@ -20,6 +20,8 @@ import {
   FORUM_HANDOFF,
   BLESSING_HOLD,
   COVER_CONTACT,
+  convergeAmountAt,
+  convergeLightAt,
   coverOrangeAt,
   partnersFadeAt,
   seedTravelAt,
@@ -31,6 +33,7 @@ import {
   forumEventOn,
   type ForumEventMarks,
 } from '~/utils/forum-path-events';
+import type { ForumTurn } from '~/utils/forum-path-turns';
 
 // SymbolFace 的三態（互斥）：集合成人像 / 分散漂浮 / 匯聚成點。
 // 提升為全域共享：<SymbolFace> 由 Hero 綁 v-model:mode（它住在 HeroSymbolTransition 的 slot），
@@ -106,6 +109,13 @@ export function useOrangeCoreProgress() {
   const forumPathMarks = useState<ForumEventMarks | null>('forum-path-marks', () => null);
   const setForumPathMarks = (m: ForumEventMarks | null) => (forumPathMarks.value = m);
 
+  // 轉折清單（議程之前那一段，見 ~/utils/forum-path-turns）。ForumCorePath 在每次 refresh
+  // 重寫一次。⚠ **音效不從這裡觸發** —— 出聲是邊緣觸發的副作用，掛在 place() 逐幀比弧長
+  // 那裡（同一個 len，不必再換算成 progress）。本狀態純粹給 dashboard 看：
+  // 角度門檻與最小間隔只能靠耳朵調，而「這次選中了哪幾個節點」是調它們的唯一依據。
+  const forumTurns = useState<ForumTurn[] | null>('forum-turns', () => null);
+  const setForumTurns = (t: ForumTurn[] | null) => (forumTurns.value = t);
+
   const setPathProgress = (p: number) => (pathProgress.value = clamp01(p));
   const setTransitionProgress = (p: number) =>
     (transitionProgress.value = clamp01(p));
@@ -145,6 +155,18 @@ export function useOrangeCoreProgress() {
 
   // symbolProgress → 目標 mode / enter（供 SymbolScene watch 後指派 symbolMode；enter 目前僅 dev 顯示）。
   const symbolTarget = computed(() => resolveSymbol(symbolProgress.value));
+
+  // 匯聚那一拍的收攏量（0..1）。**本段唯一一個綁 scrub 的視覺** —— 其餘（disperse↔face
+  // 的散開／集合）仍是 mode 觸發的定時補間，見 convergeAmountAt 那段為什麼只有這一拍要改。
+  // 消費端是 Hero 傳給 <SymbolFace> 的 converge-amount（uConverge ＋ 整片底色都吃它）。
+  //
+  // ⚠ 每幀都變，但它是餵給一個 prop 的數字、不是 class 條件，故不必像 forumPathRiding
+  //   那樣收成 boolean（同 forumSlashDraw 的理由）。
+  const symbolConvergeAmount = computed(() => convergeAmountAt(symbolProgress.value));
+
+  // 底色／header 主題該不該翻成淺色（＝ 收攏量過半，見 convergeLightAt）。
+  // 收成 boolean：它是 class 與 data-attribute 的條件，整拍只翻一次，不該逐幀 re-render。
+  const symbolConvergeLight = computed(() => convergeLightAt(symbolProgress.value));
 
   // forum 接棒視窗：symbolProgress ∈ [coreIn, coreOut) → 橘核心（ForumCore）現身。
   //   進入（≥coreIn）→ SymbolFace 收斂點交棒給橘核心（硬切，兩顆已同色同尺寸，見 FORUM_HANDOFF）；
@@ -300,6 +322,8 @@ export function useOrangeCoreProgress() {
     symbolMode,
     symbolProgress,
     symbolTarget,
+    symbolConvergeAmount,
+    symbolConvergeLight,
     forumCoreActive,
     forumCoreDotVisible,
     agendaRevealed,
@@ -314,6 +338,8 @@ export function useOrangeCoreProgress() {
     forumSlashDraw,
     forumPathMarks,
     setForumPathMarks,
+    forumTurns,
+    setForumTurns,
     forumPathEvents,
     forumPathRiding,
     setPathProgress,

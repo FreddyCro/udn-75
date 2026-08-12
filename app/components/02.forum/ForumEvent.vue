@@ -51,6 +51,11 @@ const hasSlash = computed(() => {
 // 四場都會呼叫這個 composable，但只有 isCoreSlash 那一場真的把值綁到 DOM 上。
 const { forumSlashDraw } = useOrangeCoreProgress();
 
+// 「立即報名」的點擊音效（同 Agenda／AgendaReport 的兩顆 CTA）。useSfx() 一定要在 setup
+// 期間取（它此刻要讀 runtimeConfig，見 useSfx.ts）；音效池由 pages/index.vue 的 <AppSfx>
+// 持有，聲音開關關著時 play() 靜默。
+const { play } = useSfx();
+
 // 設計稿的講者版式分兩種：單人是「照片左／文字右」，多人（論壇二）是並排卡片。
 const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
 
@@ -85,8 +90,17 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       <p v-if="event.body" class="forum-event__body">{{ event.body }}</p>
 
       <!-- TODO 報名連結未定，暫用 # 佔位（同 AppHeader 的待補外連）。
-           盒子與配色由 <UBtn> 畫，本檔的 .forum-event__cta 只給尺寸與版位。 -->
-      <UBtn v-if="event.cta" variant="primary" class="forum-event__cta" href="#">
+           盒子與配色由 <UBtn> 畫，本檔的 .forum-event__cta 只給尺寸與版位。
+           點擊音效：帶 cta 的場次目前是論壇二與論壇四，兩者共用這顆按鈕 —— 不按場次分，
+           頁面上五顆 CTA（本顆 ×2、議程 ×2、報導 ×1）行為一致。UBtn 沒宣告 emits，
+           故 @click 會落在真正的 <a> 上（同 Agenda／AgendaReport 的寫法）。 -->
+      <UBtn
+        v-if="event.cta"
+        variant="primary"
+        class="forum-event__cta"
+        href="#"
+        @click="play('sfx01')"
+      >
         {{ event.cta }}
       </UBtn>
     </div>

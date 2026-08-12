@@ -83,7 +83,7 @@ app/components/
 | [useHeroVideo.ts](../app/composables/useHeroVideo.ts)                   | 狀態機        | hero 影片四階段 `main / loop / outro / gone`，衍生 `shouldLockScroll` / `isGone` / `hasLeftLoop`；與載入層的握手 `videoReady` / `loaderDone` / `heroStarted`；`currentTime`（dev 讀數）。狀態本身不含計時器，推進由 HeroVideo 依影片時間軸驅動 |
 | [hero-video-config.ts](../app/utils/hero-video-config.ts)               | 設定台        | `HERO_VIDEO_SRC` / `HERO_VIDEO_POSTER`（mob／pad／pc 三段，**RWD 預留**，目前三者共用 pc 版）、`HERO_VIDEO_SEGMENTS`（四階段的秒數區間，段落相接）、`HERO_VIDEO_SEGMENTS_BY_DEVICE`、`HERO_VIDEO_READY_TIMEOUT`、`HERO_GESTURE`（手勢門檻與冷卻） |
 | [useOrangeCoreProgress.ts](../app/composables/useOrangeCoreProgress.ts) | 狀態機        | 五條 progress 軌（見下表）＋ 由它們解出的 `symbolTarget` / `symbolMode` / `symbolLayerDone` / `forumCoreActive` / `agendaRevealed` / `blessingFrame`，以及 `reduceMotion` / `stairsDone`。**不含**「章節.part」定址（那在 `useCoreSequence`） |
-| [orange-core-config.ts](../app/utils/orange-core-config.ts)             | 設定台        | 門檻與距離：`MOVE_EASE`、`INTRO_FADE_VH`、`TRANSITION_VH`、`SYMBOL_TRANSITION`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`BLESSING_VH`、`BLESSING_HOLD`；序列定址表：`SEQUENCE` / `TRACK_VH`；幾何與外觀：`CORE`（論壇段設計線的節點資料在 `~/utils/forum-node-path`）。刻意**不含**子元件自身外觀參數（HeroLoader 的方塊／SymbolFace 的粒子物理），那些留在各元件 |
+| [orange-core-config.ts](../app/utils/orange-core-config.ts)             | 設定台        | 門檻與距離：`MOVE_EASE`、`INTRO_FADE_VH`、`TRANSITION_VH`、`SYMBOL_TRANSITION`、`SYMBOL_BEAT_VH`（符號段四拍的 vh ＝ 唯一旋鈕，`SYMBOL_VH` / `SYMBOL_STOPS` / `FORUM_HANDOFF` / `SYMBOL_INTRO` 皆由它經 `symbolProgressAt()` 推導）、`AGENDA_OFFSCREEN_VH`、`BLESSING_VH`、`BLESSING_HOLD`；序列定址表：`SEQUENCE` / `TRACK_VH`；幾何與外觀：`CORE`（論壇段設計線的節點資料在 `~/utils/forum-node-path`）。刻意**不含**子元件自身外觀參數（HeroLoader 的方塊／SymbolFace 的粒子物理），那些留在各元件 |
 | [blessing-face-frames.ts](../app/utils/blessing-face-frames.ts)         | 設定台        | 永續祝福逐格像素臉的格資料（`FACE_FRAME_COUNT` 17 格）                                                                                                                                                                   |
 | [hero-scroll-intent.ts](../app/utils/hero-scroll-intent.ts)             | 純函式        | loop ↔ outro 的方向手勢判定（body 鎖住時沒有 scroll 事件，故由 wheel／touchmove／方向鍵位移累積判定）。有 vitest 覆蓋                                                                                                     |
 
@@ -95,7 +95,7 @@ app/components/
 | --------------------- | ------------------------ | ----------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------- |
 | `pathProgress`        | `OrangeCorePath`（scrub）| `trigger: .sec1`、`start: 'top top'`、`endTrigger: .sec1__intro`、`end: 'bottom bottom'` | 由版面決定                  | core 沿線位置（`SEQUENCE` 的 `hero.core`）                      |
 | `transitionProgress`  | `Hero.vue` 的 transition pin | `trigger: .sec1__intro`、`start: 'bottom bottom'`、`end: +=TRANSITION_VH×vh` | **120vh**（`TRANSITION_VH` 1.2） | `SYMBOL_TRANSITION` → 兩段軸向放大（見 Section 1 詳規）        |
-| `symbolProgress`      | `SymbolScene`            | `trigger: .sec-symbol`、`start: 'top bottom'`、`end: 'bottom bottom'` | **320vh**（`SYMBOL_VH` 3.2） | `SYMBOL_STOPS` → `symbolMode` / `symbolLayerDone`；`FORUM_HANDOFF` → `forumCoreActive` / `agendaRevealed` |
+| `symbolProgress`      | `SymbolScene`            | `trigger: .sec-symbol`、`start: 'top bottom'`、`end: 'bottom bottom'` | **344vh**（`SYMBOL_VH` 3.44 ＝ `SYMBOL_BEAT_VH` 四拍總和） | `SYMBOL_STOPS` → `symbolMode` / `symbolLayerDone`；`FORUM_HANDOFF` → `forumCoreActive` / `agendaRevealed` |
 | `blessingProgress`    | `Blessing.vue`           | `trigger: .section3__face-track`、`start: 'top top'`、`end: 'bottom bottom'` | **120vh**（`BLESSING_VH` 1.2） | `blessingFrame`（17 格逐格臉，尾端 `BLESSING_HOLD` 停在最後一格） |
 
 > 引言淡出**不在**這四條軌上：它由 `Hero.vue` 自己的一條 scrub ScrollTrigger 驅動（`trigger: .sec1__intro-body`、`start: 'bottom center'`、`end: +=INTRO_FADE_VH×vh`），起點是量出來的幾何（文字底緣升到視窗中央 ＝ core 剛穿出最後一行），不是 path 進度門檻。詳見 Section 1 的 ⑤。
@@ -218,25 +218,27 @@ app/components/
 
 對應 Figma「智慧論壇05–08」四拍。**本元件不畫任何東西** —— `<SymbolFace>` 住在 Hero 轉場層的 slot 裡（理由見 Section 1 轉場詳規）。因此它退化為一把「捲動尺」：一段 `SYMBOL_VH × 100vh` 高的空 section（黑底，萬一轉場層還沒蓋滿時不露白），把捲動換算成 `symbolProgress`、指派 `symbolMode` 與 `symbolLayerDone`。**不需要 pin**（視覺已是 fixed）→ 少一層 transform / containing block 的雷。
 
-`symbolProgress` 時序（`SYMBOL_VH` 3.2 ＝ **320vh**；px 為視窗高 1080 的換算）：
+`symbolProgress` 時序（`SYMBOL_VH` 3.44 ＝ **344vh**；px 為視窗高 1080 的換算）：
 
-| step | mode / 事件                                    | 進度      | 累計距離（起→迄）            | 該段距離   |
-| ---- | ---------------------------------------------- | --------- | ---------------------------- | ---------- |
-| ①    | `disperse` 分散（預設）                        | 0 → 15%   | 0 → 48vh (0→518px)           | 48vh       |
-| ②    | `face` 集合（人像）＝最長的一拍                | 15% → 58% | 48 → 185.6vh (518→2004px)    | 137.6vh    |
-| ③    | `converge` 匯聚成點                            | 58% → 75% | 185.6 → 240vh (2004→2592px)  | 54.4vh     |
-| ④    | `coreIn` 交棒：轉場層淡出 ＋ ForumCore 淡入     | 75%       | 240vh (2592px)               | —          |
-| ⑤    | `enter` 橘核心停在黑畫面（原地停住）            | 75% → 90% | 240 → 288vh (2592→3110px)    | 48vh       |
-| ⑥    | `coreOut` 橘核心淡出 ＋ 論壇內容 reveal         | 90%       | 288vh (3110px)               | —          |
-| ⑦    | 段落捲完（`onLeave` → 鎖 1）                    | 100%      | 320vh (3456px)               | 32vh       |
+| step | mode / 事件                                     | 進度              | 累計距離（起→迄）              | 該段距離 |
+| ---- | ----------------------------------------------- | ----------------- | ------------------------------ | -------- |
+| ①    | `disperse` 分散（前段疊開場三行文案）           | 0 → 32.56%        | 0 → 112vh (0→1210px)           | 112vh    |
+| ②    | `face` 集合（人像）＝最長的一拍                 | 32.56% → 72.09%   | 112 → 248vh (1210→2678px)      | 136vh    |
+| ③    | `converge` 匯聚成點                             | 72.09% → 88.37%   | 248 → 304vh (2678→3283px)      | 56vh     |
+| ④    | `coreIn` 交棒：本層淡出 ＋ ForumCore 硬切上場    | 88.37%            | 304vh (3283px)                 | —        |
+| ⑤    | `enter` 橘核心停在黑畫面（原地停住）             | 88.37% → 90.70%   | 304 → 312vh (3283→3370px)      | 8vh      |
+| ⑥    | `agendaIn` 議程 reveal（仍在畫面外）             | 90.70%            | 312vh (3370px)                 | —        |
+| ⑦    | `coreOut` 黑底淡出、段落捲完（`onLeave` → 鎖 1） | 100%              | 344vh (3715px)                 | 32vh     |
 
-> ⚠️ 這張表是 `SYMBOL_STOPS` / `FORUM_HANDOFF` 門檻 × `SYMBOL_VH` 的換算結果。動那三個常數要同步更新（`SymbolScene.vue` 檔內也有一份同樣的表）。
+> ⚠️ 這張表是 **`SYMBOL_BEAT_VH`（四拍各吃多少 vh）** 的換算結果 —— 2026-08-13 起 progress 門檻本身也是從它推導的，不再手寫小數。動那個常數要同步更新這張表（`SymbolScene.vue` 檔內也有一份同樣的表）。
 >
-> 軌 A（hero 轉場 120vh）與軌 B（本段 320vh）**恰好首尾相接**：`start: 'top bottom'` 是在「sec1 底緣抵達視窗底」那一刻觸發，與本段高度無關，故不論 `SYMBOL_VH` 調多少都精準對上 pin 釋放的同一刻。合計 **440vh**。
+> ⑦ 的 32vh 是 `AGENDA_OFFSCREEN_VH` 的硬下限（議程那 0.4s 淡入必須發生在畫面外），由 `test/symbol-sequence.spec.ts` 守著。
+>
+> 軌 A（hero 轉場 120vh）與軌 B（本段 344vh）**恰好首尾相接**：`start: 'top bottom'` 是在「sec1 底緣抵達視窗底」那一刻觸發，與本段高度無關，故不論 `SYMBOL_VH` 調多少都精準對上 pin 釋放的同一刻。合計 **464vh**。
 
 | 元件 / 區塊                                                            | 功能                    | 說明                                                                                                                                                                                                                                                                                                                                                                                             |
 | ---------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [SymbolFace.vue](../app/components/01a.symbol/SymbolFace.vue)          | three.js 粒子人像星空   | **實際掛在 Hero 轉場層的 slot 內**，由本段依 `symbolProgress` 指派全域 `symbolMode`（Hero 端 `v-model:mode` 綁定）。三態互斥：`disperse` 分散漂浮／`face` 集合成人像／`converge` 匯聚成點；**mode 改變時由元件自身 2.2s GSAP 補間**，故 scroll 只需在門檻「指派」離散 mode、不必逐幀 scrub 進去。<br>**本元件完全不吃 scroll**：reveal 由 IntersectionObserver 一次性啟動（3s），漂浮／滑鼠斥力／慣性物理／彩蛋宮格都在 rAF 內。<br>粒子由符號字元集組成、取自 `face.png` 的 alpha 輪廓，含滑鼠斥力真空與慣性物理（動量 ＋ 指數 ease 回位，脫離「果凍感」）。元件自帶 dev config 面板（可匯出 JSON 參數） |
+| [SymbolFace.vue](../app/components/01a.symbol/SymbolFace.vue)          | three.js 粒子人像星空   | **實際掛在 Hero 轉場層的 slot 內**，由本段依 `symbolProgress` 指派全域 `symbolMode`（Hero 端 `v-model:mode` 綁定）。三態互斥：`disperse` 分散漂浮／`face` 集合成人像／`converge` 匯聚成點。<br>**兩種驅動方式並存**：`disperse ↔ face` 由 mode 改變觸發元件自身的 2.2s GSAP 補間（scroll 只在門檻指派離散 mode）；**`converge` 那一拍改吃 scrub** —— `uConverge` 與整片底色（黑→白）由 `convergeAmountAt(symbolProgress)` 逐幀決定，Hero 以 `converge-amount` prop 餵入（demo 頁不傳 → 退回補間版本）。<br>2026-08-13 改的，理由是**往回捲**：定時補間永遠貼在區段前緣，往回滑時 ③ 整拍靜止、補間要到離開那一拍才跑，於是 ③＋⑤＋⑦ 連續 96vh 只有一片白底加一顆 26px 橘方塊、什麼都不動（≈3.8s @25vh/s，順著滑僅 ≈1.6s）。改成 progress 的純函式後方向自然對稱。完整推導在 `convergeAmountAt` 上方。<br>其餘不吃 scroll：reveal 由執行閘門啟動（3s），漂浮／滑鼠斥力／慣性物理／彩蛋宮格都在 rAF 內。<br>粒子由符號字元集組成、取自 `face.png` 的 alpha 輪廓，含滑鼠斥力真空與慣性物理（動量 ＋ 指數 ease 回位，脫離「果凍感」）。元件自帶 dev config 面板（可匯出 JSON 參數） |
 
 ---
 

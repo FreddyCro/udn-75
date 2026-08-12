@@ -85,9 +85,10 @@ const props = defineProps({
   // ---------- 場景 / 動畫節奏 ----------
   /** 背景色（集合 / 散場漂浮時的底色） */
   bgColor: { type: String, default: '#ffffff' },
-  /** 匯聚成點狀態的背景色：mode 切到 converge 時整片底色翻成這個顏色。
-   *  補間與粒子收攏**同步**（同 disperseDuration、同 ease，見 syncBg），故底色是隨著
-   *  那團符號收緊而漸亮、在收成一顆點的同一刻到位；切回其他狀態會沿原路補回去。
+  /** 匯聚成點狀態的背景色：收攏到底時整片底色會是這個顏色。
+   *  與粒子收攏**同步**（見 syncBg：兩者吃同一個驅動源 —— 有 convergeAmount 就吃它，
+   *  沒有就吃 mode ＋ disperseDuration ＋ 同一組 ease），故底色是隨著那團符號收緊而漸亮、
+   *  在收成一顆點的同一刻到位；反向（散回人像）會沿原路退回去。
    *  ⚠️ 這是整片畫面的底色，不是元件外框 —— canvas 是滿版不透明的，翻的是 scene.background。 */
   convergeBgColor: { type: String, default: '#ffffff' },
   /** 組合（reveal）動畫秒數 */
@@ -115,6 +116,20 @@ const props = defineProps({
     type: String,
     default: CORE_ORANGE_HEX,
   },
+  /** 匯聚進度（0..1）由外部**逐幀**餵進來；null ＝ 沿用 mode 觸發的 disperseDuration 補間。
+   *
+   *  正式站傳 `symbolConvergeAmount`（＝ convergeAmountAt(symbolProgress)，見
+   *  ~/utils/orange-core-config），因為那一拍要能**往回捲倒帶**：定時補間只知道
+   *  「mode 剛剛翻了」，不知道捲到哪裡，於是往回滑時整拍靜止、補間要到離開那一拍
+   *  才開始跑 —— 使用者看到的就是連續 96vh 一片白什麼都不動。完整推導在那支函式上方。
+   *
+   *  demo 頁（側欄三顆按鈕）維持 null：那裡根本沒有捲動可以綁，按鈕按下去要有補間才看得到。
+   *  所以這是**兩種驅動方式**，不是新舊版本 —— 兩條路都要留著。
+   *
+   *  ⚠️ 接管的是 uConverge **與整片底色**兩樣，不是只有粒子（底色是「那團符號收緊」
+   *     的另一半，見 syncBg）。只接管一半的話收攏跟翻白會脫鉤。
+   *  ⚠️ disperse ↔ face 不受影響，仍走 mode ＋ disperseDuration。 */
+  convergeAmount: { type: Number as PropType<number | null>, default: null },
   /** 匯聚的「速差」：每顆粒子起跑點的散佈比例（0..0.9）。
    *  0 ＝ 全員同步收攏 —— 那等同對原點做等比縮放，看起來是「整張臉變小」而不是
    *  「符號各自飛進核心」。>0 則把每顆的起跑點依 aSeed 亂序散在 0..此值，
@@ -272,11 +287,24 @@ let disperseFn: ((animated?: boolean) => void) | null = null;
 
 // 狀態改變時，可逆地補間 uDisperse / uConverge（0↔1）與整片底色（見 syncBg）。
 // 兩者吃同一組 duration / ease，故「收攏」與「翻底色」是同一個動作的兩面。
+// ⚠️ 有 convergeAmount 時 uConverge 與底色改由捲動驅動，這兩支會讓開（見該 prop）；
+//    mode 本身照舊翻面 —— disperse↔face 仍歸它管，faceFormed 也還讀它。
 let syncBgFn: ((animated?: boolean) => void) | null = null;
 watch(mode, () => {
   disperseFn?.(true);
   syncBgFn?.(true);
 });
+
+/** props.convergeAmount 夾到 0..1；null ＝ 外部沒有接管，走 mode 補間（見該 prop）。 */
+const scrubbedConverge = () => {
+  const a = props.convergeAmount;
+  return a === null || a === undefined ? null : a < 0 ? 0 : a > 1 ? 1 : a;
+};
+
+// 外部接管時，uConverge 與底色**同時**改寫（同上：兩者是同一個動作的兩面）。
+// 逐幀會被捲動打到，故不做任何配置 —— 見 applyConverge 本體。
+let applyConvergeFn: (() => void) | null = null;
+watch(() => props.convergeAmount, () => applyConvergeFn?.());
 
 // 「完整集合」：mode 是 face、首次進場的 reveal 已跑完（uProgress=1）、且 uDisperse /
 // uConverge 都已回到 0。由 animate() 每幀依 uniform 實況推導（只在真的變動時才寫入，
@@ -420,6 +448,13 @@ onMounted(() => {
   const bgColor = new THREE.Color(cfg.bgColor);
   scene.background = bgColor;
 
+  // scrub 接管時的兩端色（下方 syncBg 的第一條分支就地 lerp 它們到 bgColor）。
+  // 物件重複使用：那條路徑在捲動中**逐幀**會走到，每幀 new 兩顆 THREE.Color
+  // 等於在整段最忙的那一拍餵 GC。每次都重讀 cfg 而不是建構時算一次 ——
+  // 面板可以即時改色（見 repaintColors）。
+  const bgFrom = new THREE.Color();
+  const bgTo = new THREE.Color();
+
   // 匯聚態翻底色：converge → convergeBgColor、其餘（集合 / 散場）→ bgColor，可逆補間。
   // 與 disperseFn 同一套寫法與同一組 duration / ease —— 底色是跟著 uConverge 一起走的，
   // 不是另一段獨立動畫：那團符號收緊到成點的同時底色剛好到位，中途往回捲也沿原路退回。
@@ -428,6 +463,15 @@ onMounted(() => {
   //    three 自己的 output 轉換鏈（會轉回 sRGB 再輸出），與 raw shader 的 uniform 不同。
   //    詳見 srgbColor 上方那段。
   const syncBg = (animated = true) => {
+    // 外部接管：底色不是「狀態之間的補間」而是「收攏量的函式」，與粒子吃同一個值
+    // （見 convergeAmount prop）。animated 在這條路徑上沒有意義 —— 補間的角色由捲動本身扮演。
+    const scrub = scrubbedConverge();
+    if (scrub !== null) {
+      gsap.killTweensOf(bgColor);
+      bgColor.copy(bgFrom.set(cfg.bgColor)).lerp(bgTo.set(cfg.convergeBgColor), scrub);
+      return;
+    }
+
     const target = new THREE.Color(
       mode.value === 'converge' ? cfg.convergeBgColor : cfg.bgColor,
     );
@@ -445,7 +489,7 @@ onMounted(() => {
     }
   };
   syncBgFn = syncBg;
-  syncBg(false); // 套用初始狀態（依 mode 直接定位），不動畫
+  syncBg(false); // 套用初始狀態（依 mode 或 convergeAmount 直接定位），不動畫
 
   const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 2000);
   camera.position.z = 600;
@@ -884,22 +928,37 @@ onMounted(() => {
     scene.add(points);
     tryReveal();
 
+    // 外部接管 uConverge 時的寫入點（見 convergeAmount prop）：直接寫值，不排補間。
+    // ⚠️ 仍要 killTweensOf：切換驅動方式的那一刻（或重建粒子後）可能還有一段 mode 補間
+    //    在飛，不殺掉的話它會和捲動搶同一個 uniform —— 症狀是往回捲時收攏先倒退幾幀
+    //    又被捲動拉回去，看起來像抖動。
+    applyConvergeFn = () => {
+      const scrub = scrubbedConverge();
+      if (scrub === null || !mat) return;
+      gsap.killTweensOf(mat.uniforms.uConverge);
+      mat.uniforms.uConverge!.value = scrub;
+      syncBg(false); // 底色是同一個動作的另一半，一起走（syncBg 自己會走 scrub 分支）
+    };
+
     // 依目前 mode 補間 uDisperse / uConverge 到對應目標；animated=false 用於初始直接定位。
     // 三態互斥：分散→uDisperse=1、匯聚→uConverge=1、集合→兩者皆 0。
     disperseFn = (animated = true) => {
       if (!mat) return;
       const dTarget = mode.value === 'disperse' ? 1 : 0;
-      const cTarget = mode.value === 'converge' ? 1 : 0;
+      const opts = { duration: cfg.disperseDuration, ease: 'power2.inOut' };
       gsap.killTweensOf(mat.uniforms.uDisperse);
+      if (animated) gsap.to(mat.uniforms.uDisperse, { value: dTarget, ...opts });
+      else mat.uniforms.uDisperse.value = dTarget;
+
+      // uConverge：外部接管時**完全不碰**，交給 applyConvergeFn 依捲動寫入。
+      // 否則 mode 翻面（248vh 那一刻，兩種驅動方式都會發生）排下的 2.2s 補間會與捲動
+      // 搶同一個 uniform。
+      if (scrubbedConverge() !== null) return applyConvergeFn?.();
+
+      const cTarget = mode.value === 'converge' ? 1 : 0;
       gsap.killTweensOf(mat.uniforms.uConverge);
-      if (animated) {
-        const opts = { duration: cfg.disperseDuration, ease: 'power2.inOut' };
-        gsap.to(mat.uniforms.uDisperse, { value: dTarget, ...opts });
-        gsap.to(mat.uniforms.uConverge, { value: cTarget, ...opts });
-      } else {
-        mat.uniforms.uDisperse.value = dTarget;
-        mat.uniforms.uConverge.value = cTarget;
-      }
+      if (animated) gsap.to(mat.uniforms.uConverge, { value: cTarget, ...opts });
+      else mat.uniforms.uConverge.value = cTarget;
     };
     disperseFn(false); // 套用初始預設狀態（不動畫）
     updateHintAnchor(); // 人像尺寸剛算出來（halfW/halfH），hint 的錨點跟著定位
