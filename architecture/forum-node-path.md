@@ -420,10 +420,46 @@ absolute 元素，若一直可見，段落進場到交棒點之間（50vh）畫�
 **編號永不重排。** 要插入新點就用 `P7a`，不重編號 —— 這樣「P4 往右一點」永遠指同一個點。
 理由同 `data-forum-anchor` 用具名而非索引。
 
+### 節點也是捲動事件的觸發點
+
+「核心走到線上某處 → 某個區塊有反應」的離散事件**以節點編號定址**，不用百分比：
+
+```ts
+// app/utils/forum-path-events.ts
+{ key: 'forum1TagLit', label: '…', at: { pc: 'W1', pad: 'Q1', mob: 'P1' }, dLen: -40 }
+```
+
+門檻由 `ForumCorePath` 在每次 `refreshInit` 依實際幾何重算（量尺 `<path>` 逐段累加
+`getTotalLength()`），寫進 `forumPathMarks` 軌；消費端讀 `forumPathEvents.<key>` 當 class
+條件，補間交給 CSS transition。**手寫百分比在 RWD 下會飄** —— 節點之間的弧長比例隨文字高度
+變動，且三個斷點的節點數與弧長分佈完全不同（實測同一個語意事件：pc 32.18% / pad 33.67% /
+mob 34.24%，不帶 `?highlights` 時 mob 更變成 41%）。`FORUM_SLASH_AT` 已經踩過這個坑。
+
+第六節那張「一句話 → 改哪裡」的表因此多一列：
+
+| 說法 | 改的欄位 |
+| --- | --- |
+| 「這個事件要早一點／晚一點觸發」 | `dLen`（px 弧長，正 ＝ 晚），或直接換 `at` 的節點 |
+
+完整資料模型、失敗模式與新增流程見
+`architecture/2026-08-12-forum-path-events-design.md`。
+
+⚠️ `buildNodePathD()` 因此多回傳一組 `segs`（每個存活節點的 `d` 片段）。
+它有兩條不變量 —— `segs.map(s => s.d).join('') === d` 且 `segs.length === 存活節點數` ——
+破掉會**靜默錯開所有事件**，由 `test/forum-node-path.spec.ts` 守著。
+
 ### dev overlay：`?pathdebug`
 
 疊在畫面上顯示：每個 waypoint 的**編號標籤 ＋ 實測座標**、它綁的 element 外框、
 以及設計稿原線（半透明對照）。有了它，溝通就是「**P9 要跟講者照片下緣對齊**」，不必猜座標。
+
+`<DevCoreProgress>` 面板底部另有一段**路徑事件列**（key／節點／算出來的 %／on-off），
+紅色 `?` ＝ 節點有填但查不到（被跳過的 `optional`，或編號打錯 —— 後者 console 會點名）。
+
+同一個參數還會把 `window.__udnForumPath` 掛上（`{ bp, pathLen, tailEndY, nodes, marks }`），
+供 Playwright 這類外部腳本驗「事件門檻是否精準落在節點上」—— 這一層的自動化覆蓋率是 0
+（vitest 只跑純函式），1px 的錯位肉眼看不出來。閘門同
+`plugins/gsap-debug-bridge.client.ts`。
 
 ---
 

@@ -15,6 +15,7 @@
 //   ③ 歸因 —— 底部旗標與 dotVisible 推導式，回答「那顆橘點為什麼不在」
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { FORUM_HANDOFF } from '~/utils/orange-core-config';
+import { FORUM_PATH_EVENTS } from '~/utils/forum-path-events';
 
 const route = useRoute();
 const visible = computed(() => route.query.pathdebug !== undefined);
@@ -31,6 +32,8 @@ const {
   agendaRevealed,
   blessingFrame,
   reduceMotion,
+  forumPathMarks,
+  forumPathEvents,
 } = useOrangeCoreProgress();
 
 // ── 全域列 ──────────────────────────────────────────────────────────
@@ -98,6 +101,31 @@ const dotTerms = computed(() => [
   { label: 'pathActive', ok: forumPathActive.value },
   { label: '!riding', ok: !forumPathRiding.value },
 ]);
+
+// ── 路徑事件列（節點定址的捲動事件，見 ~/utils/forum-path-events）───────────
+// 顯示四個欄位，正好對應調事件時要問的四個問題：
+//   key    這是哪個事件
+//   節點   它掛在哪個節點（＝ 溝通用的地址，「W10 那個事件太早」）
+//   %      門檻算出來是多少（可與 SEQUENCE 的 forum.path.% 對話）
+//   ●／○   現在是 on 還是 off
+// `–` ＝ 該斷點不觸發（at[bp] 為 null）；`?` ＝ 節點有填但 marks 裡沒有
+// （節點被跳過，或編號打錯 —— 後者 ForumCorePath 會 console.warn）。
+const eventRows = computed(() =>
+  FORUM_PATH_EVENTS.map((e) => {
+    const b = bp.value;
+    const id = b === '—' ? null : e.at[b];
+    const mark = forumPathMarks.value?.[e.key] ?? null;
+    return {
+      key: e.key,
+      label: e.label,
+      id,
+      mark,
+      // marks 缺 key 但節點有填 → 標記成待查（而不是靜靜顯示 off）
+      missing: id !== null && mark === null,
+      on: forumPathEvents[e.key] === true,
+    };
+  }),
+);
 
 const flags = computed(() => [
   { label: 'layerDone', ok: symbolLayerDone.value },
@@ -183,6 +211,25 @@ const flags = computed(() => [
 
       <div class="devseq__derive">
         symbolMode {{ symbolMode }} · blessingFrame {{ blessingFrame }}
+      </div>
+
+      <!-- 路徑事件：門檻由節點在每次 refresh 重算，故這裡的 % 是量出來的、不是設定值 -->
+      <div v-if="eventRows.length" class="devseq__events">
+        <div class="devseq__events-head">forum.path 事件（節點定址）</div>
+        <div
+          v-for="ev in eventRows"
+          :key="ev.key"
+          class="devseq__event"
+          :class="{ 'is-on': ev.on, 'is-missing': ev.missing }"
+          :title="ev.label"
+        >
+          <span class="devseq__event-dot">{{ ev.on ? '●' : '○' }}</span>
+          <span class="devseq__event-key">{{ ev.key }}</span>
+          <span class="devseq__event-node">{{ ev.id ?? '–' }}</span>
+          <span class="devseq__event-pct">
+            {{ ev.missing ? '?' : pct(ev.mark) }}
+          </span>
+        </div>
       </div>
     </template>
   </div>
@@ -328,5 +375,43 @@ const flags = computed(() => [
     color: var(--color-orange);
     opacity: 1;
   }
+}
+
+.devseq__events {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.devseq__events-head {
+  opacity: 0.55;
+}
+
+// 四欄固定寬（同 .devseq__row 的理由）：等寬字型 ＋ 固定欄寬，翻轉時整份表不左右抖
+.devseq__event {
+  display: grid;
+  grid-template-columns: 12px 1fr 34px 34px;
+  gap: 2px;
+  opacity: 0.45;
+
+  &.is-on {
+    color: var(--color-orange);
+    opacity: 1;
+  }
+
+  // 節點有填但 marks 裡查不到 —— 節點被跳過（optional）或編號打錯，兩者都該看得見
+  &.is-missing {
+    color: #ff5a5a;
+    opacity: 1;
+  }
+}
+
+.devseq__event-node {
+  opacity: 0.75;
+  text-align: right;
+}
+
+.devseq__event-pct {
+  text-align: right;
 }
 </style>

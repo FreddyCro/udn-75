@@ -489,3 +489,56 @@ describe('buildNodePathD 的 points 回傳', () => {
     expect(out.endY).toBe(300);
   });
 });
+
+// ── segs：路徑事件的量測基礎 ──────────────────────────────────────────
+// ForumCorePath 用量尺 path 逐段累加這些片段讀 getTotalLength()，算出每個節點在驅動線上的
+// 弧長 → 路徑事件的門檻。兩條不變量任一破掉，**所有事件的時機都會靜默錯開**
+// （見 architecture/2026-08-12-forum-path-events-design.md 第三節）。
+describe('buildNodePathD 的 segs 回傳', () => {
+  it.each(['pc', 'pad', 'mob'] as const)(
+    '%s：串起來逐字元等於 d，且每個存活節點各一段',
+    (bp) => {
+      // 所有錨點都量得到 → 存活節點 ＝ 全部節點（含 optional 的精彩活動那一點）
+      const out = buildNodePathD(FORUM_PATH_NODES[bp], {
+        width: 1280,
+        measure: () => rect({ top: 100, height: 200, left: 0, width: 600 }),
+      })!;
+      expect(out).not.toBeNull();
+      expect(out.segs.map((s) => s.d).join('')).toBe(out.d);
+      expect(out.segs).toHaveLength(FORUM_PATH_NODES[bp].length);
+      expect(out.segs.map((s) => s.id)).toEqual(
+        FORUM_PATH_NODES[bp].map((n) => n.id),
+      );
+    },
+  );
+
+  it('第一段是那個 M，其後每段各是一個 L 或 C', () => {
+    const out = buildNodePathD(
+      [
+        { id: 'A', x: 0, anchor: { sel: 's', edge: 'top' }, join: 'line' },
+        {
+          id: 'B',
+          x: 1,
+          anchor: { sel: 's', edge: 'top', dy: 100 },
+          join: { relIn: -30, relOut: 30, hIn: 0.4, hOut: 0.4 },
+        },
+        { id: 'C', x: 0.5, anchor: { sel: 's', edge: 'top', dy: 200 } },
+      ],
+      { width: 100, measure: () => rect() },
+    )!;
+    expect(out.segs.map((s) => s.d[0])).toEqual(['M', 'L', 'C']);
+    expect(out.segs.map((s) => s.id)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('被跳過的 optional 節點不會有自己的一段（id 對得回存活節點）', () => {
+    const nodes: ForumPathNode[] = [
+      { id: 'A', x: 'left', anchor: { sel: 'a', edge: 'top' }, join: 'line' },
+      { id: 'B', x: 'center', anchor: { sel: 'gone', edge: 'top' }, join: 'line', optional: true },
+      { id: 'C', x: 'right', anchor: { sel: 'c', edge: 'top', dy: 100 } },
+    ];
+    const m: ForumPathMeasure = (a) => (a.sel === 'gone' ? null : rect());
+    const out = buildNodePathD(nodes, { width: 100, measure: m })!;
+    expect(out.segs.map((s) => s.id)).toEqual(['A', 'C']);
+    expect(out.segs.map((s) => s.d).join('')).toBe(out.d);
+  });
+});

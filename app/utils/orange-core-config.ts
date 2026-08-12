@@ -53,6 +53,13 @@ export const SYMBOL_TRANSITION = {
 //   CROSSFADE — stage 5 星空淡入所占比例（避免大片半透明星空透出白底而 washy）
 //   TRANSITION— 星空遮罩起點尺寸（由 CORE.dotSize × lineScaleX 推導，永遠對齊那條 core 線）
 
+// ── 論壇段路徑事件的設定在別的檔案 ────────────────────────────────────
+// 「核心走到線上某處 → 某個區塊有反應」那批離散事件的表在 ~/utils/forum-path-events
+// （`FORUM_PATH_EVENTS`）。它們的門檻**不寫在這裡也不寫成百分比** —— 是由節點編號在每次
+// ScrollTrigger refresh 依實際幾何算出來的，因為手寫的 % 在 RWD 下會飄（正是下面
+// FORUM_SLASH_AT 2026-08-12 那則 ⚠ 記的事故）。
+// 完整設計見 architecture/2026-08-12-forum-path-events-design.md。
+
 // ── 論壇二 09/15 那一撇的觸發窗口 ────────────────────────────────────
 // 值是 forumPath 軌的 0..1，也就是 SEQUENCE 的 `forum.path.40%` 那個地址 ——
 // dashboard（?pathdebug）顯示的窗口可以直接貼回這裡。

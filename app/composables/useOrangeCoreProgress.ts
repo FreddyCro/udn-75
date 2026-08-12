@@ -26,6 +26,11 @@ import {
 } from '~/utils/orange-core-config';
 import { FACE_FRAME_COUNT } from '~/utils/blessing-face-frames';
 import { slashDrawAt, type SlashWindow } from '~/utils/forum-slash';
+import {
+  FORUM_PATH_EVENTS,
+  forumEventOn,
+  type ForumEventMarks,
+} from '~/utils/forum-path-events';
 
 // SymbolFace 的三態（互斥）：集合成人像 / 分散漂浮 / 匯聚成點。
 // 提升為全域共享：<SymbolFace> 由 Hero 綁 v-model:mode（它住在 HeroSymbolTransition 的 slot），
@@ -91,6 +96,16 @@ export function useOrangeCoreProgress() {
   //   與 ForumCorePath 那次「progress 沒歸零，橘方塊卡在論壇段不動」是同一類事故。
   const forumSlashWindow = useState<SlashWindow | null>('forum-slash-window', () => null);
 
+  // 路徑事件的觸發門檻表（事件 key → forumPath 軌的 0..1）。由 ForumCorePath.build() 依
+  // 節點在驅動線上的弧長算出來，每次 refresh 重寫一次 —— 門檻**不是手寫的百分比**
+  // （手寫的在 RWD 下會飄，見 architecture/2026-08-12-forum-path-events-design.md 第一節）。
+  //
+  // ⚠ 這是整套機制刻意只用**一條**軌的地方：事件表長到幾十個，reset() 仍然只清這一樣。
+  //   一個事件一條 useState 會讓「忘了歸零」那類事故隨事件數線性增加 —— 本檔上方
+  //   forumSlashWindow 與 ForumCorePath 的 reset() 各記過一次，兩次都是靜默的。
+  const forumPathMarks = useState<ForumEventMarks | null>('forum-path-marks', () => null);
+  const setForumPathMarks = (m: ForumEventMarks | null) => (forumPathMarks.value = m);
+
   const setPathProgress = (p: number) => (pathProgress.value = clamp01(p));
   const setTransitionProgress = (p: number) =>
     (transitionProgress.value = clamp01(p));
@@ -155,6 +170,30 @@ export function useOrangeCoreProgress() {
   // 兩個消費端：ForumCorePath 用它決定路徑核心的顯隱（p=0 時必須藏著，否則段落進場到
   // 交棒點之間畫面上會同時有兩顆方塊）；ForumCore 用它讓固定橘點的消失變成瞬間的。
   const forumPathRiding = computed(() => forumPathProgress.value > 0);
+
+  // 路徑事件：核心走到線上某個節點就翻成 true，往回捲自動跌回 false（純狀態、無副作用），
+  // 補間交給消費端的 CSS transition。事件表見 ~/utils/forum-path-events。
+  //
+  // ⚠ **每個 key 各自一個 computed**，不是「單一 computed 回一個物件」。後者依賴逐幀變動的
+  //   forumPathProgress，每幀都會產生新物件 → 所有消費端逐幀 re-render。拆開之後每幀只做
+  //   一次數字比較，而 Vue 只在**回傳值真的翻轉**時才通知依賴者（同下方 forumPathRiding
+  //   收成 boolean 的理由）。
+  // ⚠ 用 reactive() 包住那組 computed：它會自動 unwrap，模板寫 forumPathEvents.foo 就好，
+  //   且**保留每 key 的追蹤粒度**（回傳 Record<key, ComputedRef> 則模板要寫 .value）。
+  //
+  // marks 缺 key ＝ 該斷點不觸發（at[bp] 為 null）、或節點是 optional 且被跳過
+  // （?highlights=1 沒帶時整個精彩活動不渲染）→ 恆 false。marks 為 null（尚未建線／
+  // 斷點切換後的 reset）同理，故不必另外判 forumPathActive。
+  const forumPathEvents = reactive(
+    Object.fromEntries(
+      FORUM_PATH_EVENTS.map((e) => [
+        e.key,
+        computed(() =>
+          forumEventOn(forumPathProgress.value, forumPathMarks.value?.[e.key]),
+        ),
+      ]),
+    ),
+  ) as Record<string, boolean>;
 
   // 那一撇畫出多少（0..1）。ForumEvent 綁成 CSS var --slash-draw。
   // 逐幀會變，但消費端只有一個 style binding、不是 class 條件，故不必像 forumPathRiding
@@ -273,6 +312,9 @@ export function useOrangeCoreProgress() {
     forumSlashWindow,
     setForumSlashWindow,
     forumSlashDraw,
+    forumPathMarks,
+    setForumPathMarks,
+    forumPathEvents,
     forumPathRiding,
     setPathProgress,
     setSymbolProgress,

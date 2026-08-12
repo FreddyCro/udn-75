@@ -19,6 +19,11 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { ForumPathMeasure, ForumPathNode } from '~/utils/forum-node-path';
 import type { ArcKnot } from '~/utils/forum-path-geometry';
 import { nearestArcLength, type SlashWindow } from '~/utils/forum-slash';
+import {
+  resolveForumEventMarks,
+  unknownEventNodes,
+  type ForumEventMarks,
+} from '~/utils/forum-path-events';
 import { refreshScrollTriggers } from '~/utils/scroll-trigger';
 
 const rootEl = ref<HTMLElement | null>(null);
@@ -30,11 +35,14 @@ const trailMaskEl = ref<SVGMaskElement | null>(null);
 const trailMaskPathEl = ref<SVGPathElement | null>(null);
 // 可見線：整條由 waypoint 算出來，故只有一個 <path>。
 const genEl = ref<SVGPathElement | null>(null);
+// 量尺：只在 build() 用來逐段累加弧長（見 syncEventMarks），量完就清掉 d、不呈現任何東西。
+const probeEl = ref<SVGPathElement | null>(null);
 
 const {
   setForumPathProgress,
   setForumPathActive,
   setForumSlashWindow,
+  setForumPathMarks,
   setForumCoreCenterOffset,
   forumPathRiding,
   coverHandedOff,
@@ -105,6 +113,7 @@ function reset() {
   trailMaskPathEl.value?.removeAttribute('d');
   trailMaskEl.value?.removeAttribute('width');
   trailMaskEl.value?.removeAttribute('height');
+  probeEl.value?.removeAttribute('d');
   pathLen = 0;
   tailEndY = 0;
   knots = [];
@@ -113,6 +122,8 @@ function reset() {
   setForumPathActive(false);
   setForumPathProgress(0);
   setForumSlashWindow(null);
+  // 路徑事件的門檻表 —— 整套機制刻意只有這一條軌要清，事件表加到幾十個也一樣。
+  setForumPathMarks(null);
   setForumCoreCenterOffset(0);
 }
 
@@ -178,6 +189,82 @@ function syncSwapLen(
   if (!pt) return null;
   const sample = (len: number) => motion.getPointAtLength(len);
   return nearestArcLength({ x: pt[0]!, y: pt[1]! }, sample, pathLen);
+}
+
+// 路徑事件的觸發門檻表：先量出**每個節點在驅動線上的弧長**，再交給純算式換成 0..1。
+//
+// 量法是逐段累加：`segs[i]` 是「終止於第 i 個節點」的那一小段 d，串起來餵給量尺 path
+// 讀 getTotalLength() —— 節點數（約 35）次呼叫，只在 build() 跑。對照之下
+// syncSlashWindow() 單一個窗口就要 512 + 64 次 getPointAtLength，事件多了會線性惡化。
+//
+// ⚠ 為什麼用量尺而不是自己積分算 cubic 弧長：量尺與 pathLen **用同一把尺**（同一個瀏覽器
+//   實作），不會有兩套長度分歧 —— 而所有門檻最終都要跟 place() 的 len 比大小。
+// ⚠ 為什麼另開一個 <path> 而不是複用 motionEl：驅動線必須全程持有完整的 d。量尺放在同一個
+//   <svg> 內是為了保證它有 layout box（detached 元素的 getTotalLength 跨瀏覽器行為不一致）。
+function syncEventMarks(
+  list: ForumPathNode[],
+  segs: { id: string; d: string }[],
+): ForumEventMarks | null {
+  const b = bp.value;
+  const probe = probeEl.value;
+  if (!b || !probe || !pathLen || !segs.length) {
+    setForumPathMarks(null);
+    return null;
+  }
+
+  const lenAt = new Map<string, number>();
+  let acc = '';
+  for (const s of segs) {
+    acc += s.d;
+    probe.setAttribute('d', acc);
+    lenAt.set(s.id, probe.getTotalLength());
+  }
+  probe.removeAttribute('d'); // 量完就清，別讓它以完整長度留在 DOM 上
+
+  // 末端必須等於驅動線總長。不符 ＝ segs 與 d 已經對不上（產生器改動最可能的破法），
+  // 那會**靜默錯開所有事件** —— 故大聲說出來。門檻仍照算，少一點總比整段停掉好。
+  const tail = lenAt.get(segs[segs.length - 1]!.id) ?? 0;
+  if (Math.abs(tail - pathLen) > 0.5) {
+    console.warn(
+      `[forum-path-events] 量尺末端 ${tail.toFixed(2)} ≠ pathLen ${pathLen.toFixed(2)}，事件門檻不可信`,
+    );
+  }
+
+  // 事件表打錯節點編號是本機制最容易犯、最靜默的錯（事件永遠不觸發，而畫面上少一個效果
+  // 不會有人立刻發現）。這裡點名，test/forum-path-events.spec.ts 也守著同一條。
+  // ⚠ 拿 list（＝ FORUM_PATH_NODES[bp]）比對而不是 lenAt 的 key：後者不含被跳過的
+  //   optional 節點，會把「?highlights 沒帶」誤報成打錯字。
+  for (const { key, id } of unknownEventNodes(b, list.map((n) => n.id))) {
+    console.warn(
+      `[forum-path-events] 事件 "${key}" 的 ${b} 節點 "${id}" 不在節點表裡（打錯字？）`,
+    );
+  }
+
+  const marks = resolveForumEventMarks(b, (id) => lenAt.get(id), pathLen);
+  setForumPathMarks(marks);
+  return marks;
+}
+
+// ?pathdebug 才掛：外部量測腳本（Playwright）要驗「事件門檻是否精準落在節點上」，
+// 而 out.points 與 marks 都是本元件的區域值，從外面取不到 —— 這一層的自動化覆蓋率是 0
+// （vitest 只跑純函式），沒有它就只能靠肉眼比對，而 1px 的錯位肉眼看不出來。
+// 閘門與理由同 plugins/gsap-debug-bridge.client.ts：不做 import.meta.dev 判斷，
+// 因為 preview build 也要能量測；不帶參數的 production 頁面什麼都不掛。
+const route = useRoute();
+const pathDebug = computed(() => route.query.pathdebug !== undefined);
+
+function exposeDebug(
+  points: Map<string, [number, number]>,
+  marks: ForumEventMarks | null,
+) {
+  if (!pathDebug.value) return;
+  (window as unknown as Record<string, unknown>).__udnForumPath = {
+    bp: bp.value,
+    pathLen,
+    tailEndY,
+    nodes: Object.fromEntries(points),
+    marks,
+  };
 }
 
 // ── 整條線由 waypoint 算出（三個斷點共用）─────────────────────────────
@@ -276,8 +363,12 @@ function build() {
     // forumPathRiding 卡在 true —— 正是 reset() 註解說「不可發生」的那顆不會動的橘方塊。
     if (!knots.length) return reset();
     syncSlashWindow(motion);
+    // 事件門檻要在 pathLen 定案之後算（它是分母）。放在 setForumPathActive(true) 之前：
+    // active 翻上去的同一幀消費端就會讀 marks，晚一步會有一幀讀到上一個斷點的表。
+    const marks = syncEventMarks(list, out.segs);
 
     setForumPathActive(true);
+    exposeDebug(out.points, marks);
     place(st ? st.progress : 0);
   } finally {
     scope?.removeAttribute('data-path-measuring');
@@ -411,9 +502,14 @@ onBeforeUnmount(() => {
       <path ref="genEl" :stroke-width="FORUM_PATH_STROKE" />
     </svg>
 
-    <!-- 驅動線：stroke:none，只給 getPointAtLength 取樣用，不呈現。 -->
+    <!-- 驅動線：stroke:none，只給 getPointAtLength 取樣用，不呈現。
+         量尺（__probe）同層：build() 逐段累加 d 讀 getTotalLength()，算出每個節點的弧長
+         給路徑事件當門檻（見 syncEventMarks）。量完就清掉 d，平常是空的。
+         放在同一個 <svg> 內是為了保證它有 layout box —— detached 元素的 getTotalLength
+         跨瀏覽器行為不一致。 -->
     <svg class="forum-path__motion" xmlns="http://www.w3.org/2000/svg">
       <path ref="motionEl" fill="none" stroke="none" />
+      <path ref="probeEl" fill="none" stroke="none" />
     </svg>
 
     <!-- 尾跡：可見層吃固定 dasharray（＝虛線釘在弧長上），遮罩層滑動開窗。

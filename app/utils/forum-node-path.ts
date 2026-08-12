@@ -746,7 +746,21 @@ function resolveY(a: ForumPathAnchor, m: { top: number; height: number }): numbe
 export function buildNodePathD(
   nodes: ForumPathNode[],
   ctx: { width: number; measure: ForumPathMeasure; amplitude?: number }
-): { d: string; endY: number; points: Map<string, [number, number]> } | null {
+): {
+  d: string;
+  endY: number;
+  points: Map<string, [number, number]>;
+  /**
+   * 每個存活節點的 `d` 片段（segs[0] 是那個 `M`，其後每一段都終止於對應節點）。
+   * 不變量：`segs.map(s => s.d).join('') === d` 且 `segs.length === 存活節點數`。
+   *
+   * 用途：ForumCorePath 用量尺 path 逐段累加 getTotalLength()，算出**每個節點在驅動線上
+   * 的弧長** —— 路徑事件的門檻由此推導（見 forum-path-events 與
+   * architecture/2026-08-12-forum-path-events-design.md 第三節）。
+   * ⚠ 這兩條不變量由 test/forum-node-path.spec.ts 守著：破掉會靜默錯開**所有**事件。
+   */
+  segs: { id: string; d: string }[];
+} | null {
   const { width, measure, amplitude = 1 } = ctx;
 
   // 先過濾出「存活的點」：optional 且量不到 → 跳過；必要點量不到 → 整條放棄。
@@ -765,13 +779,18 @@ export function buildNodePathD(
   }
   if (live.length < 2) return null;
 
-  let d = `M${r2(live[0]!.pt[0])} ${r2(live[0]!.pt[1])}`;
+  // 逐節點累積 d 片段而非直接串成一個字串：下游要靠「到第 n 個節點為止的子路徑」量弧長。
+  // 串起來與舊寫法逐字元相同（黃金樣本因此不動）。
+  const segs: { id: string; d: string }[] = [
+    { id: live[0]!.node.id, d: `M${r2(live[0]!.pt[0])} ${r2(live[0]!.pt[1])}` },
+  ];
   for (let i = 0; i < live.length - 1; i++) {
     const [x0, y0] = live[i]!.pt;
     const [x1, y1] = live[i + 1]!.pt;
     const join = live[i]!.node.join ?? 'line';
+    const id = live[i + 1]!.node.id;
     if (join === 'line') {
-      d += `L${r2(x1)} ${r2(y1)}`;
+      segs.push({ id, d: `L${r2(x1)} ${r2(y1)}` });
       continue;
     }
     const len = Math.hypot(x1 - x0, y1 - y0);
@@ -790,7 +809,10 @@ export function buildNodePathD(
     const c1y = y0 + join.hIn * len * Math.sin(aIn);
     const c2x = x1 - join.hOut * len * Math.cos(aOut);
     const c2y = y1 - join.hOut * len * Math.sin(aOut);
-    d += `C${r2(c1x)} ${r2(c1y)} ${r2(c2x)} ${r2(c2y)} ${r2(x1)} ${r2(y1)}`;
+    segs.push({
+      id,
+      d: `C${r2(c1x)} ${r2(c1y)} ${r2(c2x)} ${r2(c2y)} ${r2(x1)} ${r2(y1)}`,
+    });
   }
 
   // endY 與 d 用同一個捨入值：ScrollTrigger 的 end 與線的末端必須指同一個點。
@@ -798,5 +820,10 @@ export function buildNodePathD(
   const points = new Map<string, [number, number]>(
     live.map((l) => [l.node.id, l.pt] as const),
   );
-  return { d, endY: r2(live[live.length - 1]!.pt[1]!), points };
+  return {
+    d: segs.map((s) => s.d).join(''),
+    endY: r2(live[live.length - 1]!.pt[1]!),
+    points,
+    segs,
+  };
 }
