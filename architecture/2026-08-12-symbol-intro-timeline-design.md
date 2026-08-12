@@ -35,10 +35,17 @@ opacity 全是 scrub，文字若吃時間軸會出現「捲回去了、文字還
 | 塊 | 職責 | 讀什麼 |
 | --- | --- | --- |
 | 閘門 | arm / reset / 強制清場 —— 只在門檻翻轉時動一次 | `symbolProgress`（`watch`，非逐幀） |
-| 時間軸 | 純函式：ms → 每行的 `{ opacity, shift, reveal }` | rAF 累加的 elapsed |
+| 時間軸 | 純函式：ms → 每行的 `{ opacity, shift, reveal }`（`symbolIntroLineAt` / `symbolIntroLineState`），以及「還要不要繼續推進 rAF」的判斷（`symbolIntroRunning`） | rAF 累加的 elapsed、`reduceMotion` |
 | 寫入 | 直接寫 `el.style` / `textContent`（沿用前一版作風） | 時間軸輸出 |
 
 `symbolProgress` 從「逐幀驅動源」降級成「觸發器」，這是本次改動的核心。
+
+> ⚠️ **元件內不留任何動畫語意的判斷**：`symbolIntroLineState`（含 reduce-motion 的兩態退化，
+> 見第五節）與 `symbolIntroRunning`（rAF 該不該繼續，見第六節）都收進純函式層，
+> `SymbolIntro.vue` 只負責持有狀態、推進 rAF、寫 DOM。這條是 review 逼出來的：計畫原稿把
+> 這兩支判斷寫在元件裡，與 Global Constraint「判斷全在純函式」互相矛盾，使用者裁定
+> Constraint 優先。值得記錄理由 —— `symbolIntroRunning` 原本留在元件裡時，是全案唯一
+> 沒有單元測試的動畫邏輯，也正是唯一寫錯的那一支（見第六節的 bug）。
 
 ### 閘門的三條規則
 
@@ -133,22 +140,37 @@ progress 軌上不再有對應的點 → 兩個常數刪除。留下：
 沒有意義」。**那個理由隨本次改動失效**：改成時間軸之後，這是本頁唯一一段自走播放的動畫，
 正好落在 WCAG 2.2.2 的範疇（捲動動畫由使用者的手控制，自走動畫不是）。
 
-`useOrangeCoreProgress()` 已有 `reduceMotion`。分支：越過 `in` → 三行直接全亮
-（無 stagger、無亂碼、無位移、不開 rAF），越過 `out` → 淡出（沿用 `clearDur`）。
-等於退化成一個純粹跟著捲動的兩態切換。
+`useOrangeCoreProgress()` 已有 `reduceMotion`。兩態退化住在純函式 `symbolIntroLineState()`，
+不是元件：未起播（`elapsed === null`）→ 藏（`opacity: 0`），已起播 → 直接全亮
+（`opacity: 1`、`shift: 0`、`reveal: 1`，無 stagger、無亂碼、無位移）；非 reduce-motion 時
+委派 `symbolIntroLineAt()`。`symbolIntroRunning()` 對 reduce-motion 恆回傳 `false`
+（兩態切換沒有補間要跑，不開 rAF）。越過 `out` 的淡出不是這支函式的事 ——
+根層的 `symbolIntroClear()` 乘數（第三節）套在 `paint()` 裡，不分 reduce-motion 都會套用，
+所以強制清場對兩態切換的使用者一樣有效。
 
 ## 六、rAF 閘門簡化
 
 前一版那支條件式 rAF（「任一行 `reveal` 落在開區間 (0,1) 才自轉亂碼」）**整支刪掉** ——
 它存在的唯一目的是補救 scrub 停在窗內時的亂碼定格，時間軸下不會停格。
-判準變成單純的「時間軸還沒結束 → 續跑」，每幀寫完整三件事
-（`style.opacity` / `style.transform` / `textContent`），結束後停下、`onBeforeUnmount` 取消。
+每幀寫完整三件事（`style.opacity` / `style.transform` / `textContent`），
+停止條件交給純函式 `symbolIntroRunning()`，結束後停下、`onBeforeUnmount` 取消。
+
+停止條件不是單純的「`elapsed < total` → 續跑」，正確語意是：**清場一旦跑完就是終態**
+（`clearElapsed !== null` 時只看 `clearElapsed < clearDur`，不管 `elapsed` 到哪；直到 gate
+把狀態重置回 `SYMBOL_INTRO_IDLE` 才會離開這個終態）。
+
+> ⚠️ 這是本次改動修掉的一個 bug，值得記一筆為什麼重要：原本的判準只看 `elapsed < TOTAL`。
+> 快速往下捲越過 `out` 觸發保底清場時，`elapsed` 完全不受影響、繼續累加 —— 於是整組早已
+> 被清場乘數壓到看不見，rAF 卻還要為它空轉到 `elapsed` 追上 `TOTAL` 為止，最多近 5 秒
+> （約 290 幀，每幀三次 `scrambleText` 字串配置與 `textContent` 覆寫）。而那段時間正是
+> 粒子集合成人像那一拍、頁面最重的一刻 —— 保底清場存在的目的就是替它讓路，
+> 讓路本身卻在背景繼續燒 CPU 是自我矛盾。
 
 ## 七、變更清單
 
 | 檔案 | 動作 |
 | --- | --- |
-| `app/utils/orange-core-config.ts` | 新增 `INTRO_TIMELINE`、`symbolIntroLineAt(t, i, count)`、`symbolIntroClear(t)`；刪 `symbolIntroLine()` / `symbolIntroOutOpacity()` / `INTRO_LINE_SPAN_RATIO`；`SYMBOL_INTRO` 收成 `{ in, out }` |
+| `app/utils/orange-core-config.ts` | 新增 `INTRO_TIMELINE`、`symbolIntroLineAt(t, i, count)`、`symbolIntroClear(t)`、`symbolIntroLineState(s, i, count, reduceMotion)`、`symbolIntroRunning(s, reduceMotion, count)`（後兩支是 review 後為滿足 Global Constraint 補的，見第二節）；刪 `symbolIntroLine()` / `symbolIntroOutOpacity()` / `INTRO_LINE_SPAN_RATIO`；`SYMBOL_INTRO` 收成 `{ in, out }` |
 | `app/components/01a.symbol/SymbolIntro.vue` | 改寫 `<script setup>`（閘門 ＋ rAF 時間軸 ＋ reduce-motion 分支）、檔頭註解重寫。template / SCSS 不動 |
 | `test/symbol-sequence.spec.ts` | `symbolIntroOutOpacity` / `symbolIntroLine` 兩個 describe 改寫成吃 ms；門檻關係那支去掉 `full` / `fadeOut` 的斷言、保留 `out < SYMBOL_STOPS[0].until` |
 | `app/components/01a.symbol/SymbolScene.vue` | 檔頭時序表「文案 8vh 第一行起／56vh…」那一列改寫 —— 現在只有起點與硬門檻是 vh，中間是秒 |

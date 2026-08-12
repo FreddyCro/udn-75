@@ -110,7 +110,7 @@ pad 在 1024 高、mob 在 667 高的視窗都比視窗還高；那種情形定�
 
 ### 曲線與共享軌
 
-`partnersFadeAt()` 沿用檔內既有的 `smoothstep`（同 `symbolIntroOutOpacity`）：兩端一階導數為 0，
+`partnersFadeAt()` 沿用檔內既有的 `smoothstep`（同 `symbolIntroClear`）：兩端一階導數為 0，
 scrub 淡出的頭尾不會有硬轉折，且它本身已夾在 `[0, 1]`。
 
 `blessingOutProgress` 提升成共享狀態而非 `Blessing.vue` 的區域 ref，理由與 `stairsDone` 相同：

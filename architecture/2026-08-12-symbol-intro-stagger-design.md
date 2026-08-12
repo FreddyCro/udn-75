@@ -2,7 +2,9 @@
 
 日期：2026-08-12（同日壓縮，原 209 行的設計稿見
 `git show e0840bd:architecture/2026-08-12-symbol-intro-stagger-design.md`）
-狀態：**已實作**
+狀態：**部分已被推翻** —— 第一節（掛 scrub 不掛時間軸）已由
+`architecture/2026-08-12-symbol-intro-timeline-design.md` 取代；
+第二節（共用亂碼純函式）與第四節的「逐幀直接寫 DOM」仍有效。
 相關檔案：`app/components/01a.symbol/SymbolIntro.vue`、`SymbolFace.vue`、
 `app/utils/orange-core-config.ts`、`app/utils/symbol-scramble.ts`、
 `test/symbol-sequence.spec.ts`、`test/symbol-scramble.spec.ts`
@@ -17,6 +19,11 @@
 ---
 
 ## 一、為什麼全部掛在 scrub 上，而不是時間軸
+
+> ⚠️ **本節結論已於同日被推翻**，理由見
+> `architecture/2026-08-12-symbol-intro-timeline-design.md` 第一節：
+> scrub 把「讀完三行」的責任推給使用者的捲動速度，而三行文案是資訊、不只是質感。
+> 以下保留原文以記錄當時的權衡。
 
 這一段從粒子（`uDisperse` / `uConverge`）、底色（`syncBg`）到文案 opacity，全部由
 `symbolProgress` 驅動、往回捲自動倒退。若文字改吃時間軸，會出現「捲回去了、文字還在自己跑完」
@@ -41,6 +48,11 @@
 （字元集內容不變）。
 
 ## 三、曲線
+
+> ⚠️ 本節描述的是**吃 progress** 的舊曲線。`full` / `fadeOut` 兩個門檻已刪除，
+> `symbolIntroOpacity` 的兩個後繼（`symbolIntroOutOpacity` / `symbolIntroLine`）也已被
+> `symbolIntroLineAt()` / `symbolIntroClear()` 取代。仍然有效的是「窗由行數推導、
+> 不寫死」這條原則（現在推導的是 ms 而不是 progress）與 `reveal` 用線性的理由。
 
 ### `SYMBOL_INTRO.full` 0.08 → 0.14
 
@@ -99,5 +111,8 @@ SCSS 的字級斷點。`.symbol-intro__line` 新增 `will-change: transform, opa
 
 ## 五、不做的事（YAGNI）
 
-`prefers-reduced-motion` 分支（本頁通篇是捲動動畫，單獨為這三行處理沒有意義）、
-亂碼速率獨立旋鈕、逐行淡出。
+亂碼速率獨立旋鈕（`INTRO_REVEAL_SPAN` 就是它的旋鈕）。
+
+> ⚠️ 原本列在這裡的另兩項已作廢：**逐行淡出**已於 2026-08-12 的時間軸改版實作；
+> **`prefers-reduced-motion` 分支**同次補上 —— 原本的理由是「本頁通篇是捲動動畫，
+> 單獨為這三行處理沒有意義」，改吃時間軸後這三行變成本頁唯一的自走動畫，那個理由失效。

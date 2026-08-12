@@ -5,17 +5,21 @@
 範圍：`01a.symbol`（開場文案、序列門檻）／`01.hero`（轉場層 slot，文字實際渲染處）／
 `02.forum`（門檻交接）。
 
-> ⚠️ **進場行為已於 2026-08-12 改版**：三行改成依序上浮 ＋ 逐字亂碼落定，
-> `SYMBOL_INTRO.full` 0.08 → 0.14，`symbolIntroOpacity()` 拆成
-> `symbolIntroOutOpacity()` ＋ `symbolIntroLine()`。
-> 見 `architecture/2026-08-12-symbol-intro-stagger-design.md`。本文的門檻語意仍成立。
+> ⚠️ **進場／退場行為已改版兩次**：
+> 1. 2026-08-12 三行改成依序上浮 ＋ 逐字亂碼落定
+>    （`architecture/2026-08-12-symbol-intro-stagger-design.md`）。
+> 2. 同日再改成**不綁捲動、吃時間軸**：`symbolProgress` 只當觸發器，
+>    `SYMBOL_INTRO` 收成 `{ in, out }`，曲線改成 `symbolIntroLineAt()` / `symbolIntroClear()`，
+>    新增閘門 `symbolIntroGate()`（`architecture/2026-08-12-symbol-intro-timeline-design.md`）。
+>
+> 本文第四節的序列節奏（`SYMBOL_VH` / `FORUM_HANDOFF` 等門檻）不受影響，仍成立。
 
 對應 Figma「智慧論壇05」：pc 1280 `2065:139729`（內文 `2065:139731`）／
 pad 768 `2065:124197`（`2065:124199`）／mob 414 `2065:120218`（`2065:120221`）。
 
 | 檔案 | 角色 |
 | --- | --- |
-| `app/utils/orange-core-config.ts` | `SYMBOL_INTRO`、`symbolIntroLine()`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`SEQUENCE` |
+| `app/utils/orange-core-config.ts` | `SYMBOL_INTRO`、`INTRO_TIMELINE`、`symbolIntroLineAt()`、`symbolIntroClear()`、`symbolIntroGate()`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`SEQUENCE` |
 | `app/components/01a.symbol/SymbolIntro.vue` | 開場文案元件（渲染於 `01.hero` 的轉場層 slot） |
 | `app/components/01a.symbol/SymbolScene.vue` | 符號段捲動尺；檔內的「symbolProgress 時序表」是第三節數字的來源 |
 | `app/locales/section1.json` | `symbol.intro`（三行文案） |
@@ -79,7 +83,7 @@ mob 的 22/44 只有本元件用得到，為它開一組 token 不划算。
 
 ## 三、進出場時機
 
-門檻常數 `SYMBOL_INTRO`（`in` / `full` / `fadeOut` / `out`）與曲線函式都在
+門檻常數 `SYMBOL_INTRO`（`in` ＝ 起播、`out` ＝ 保底清場）與曲線函式都在
 `app/utils/orange-core-config.ts`，關係由 `test/symbol-sequence.spec.ts` 守著 ——
 不在本文重複數學式，改門檻時看那支測試就知道有沒有踩到不變量。
 
@@ -89,6 +93,9 @@ mob 的 22/44 只有本元件用得到，為它開一組 token 不划算。
 轉場層的 `.hero-symbol-transition__stage` 在「左右展開段」就把 opacity 拉到 1，文字跟著滿版一起
 在場，符合分鏡 ⑥「展開到滿版 → 三行文案浮現」。文字自己的淡入從 `symbolProgress = in` 起算，
 與展開完成相差 8vh，肉眼是同一刻，但**驅動來源只有一個**。
+
+⚠️ 改吃時間軸後，`out` 這道閘門是上面那條硬關係的**唯一**保證（時間軸不知道捲動位置），
+不是保險。詳見 `architecture/2026-08-12-symbol-intro-timeline-design.md` 第二節。
 
 ---
 
