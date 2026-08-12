@@ -933,6 +933,12 @@ const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
   }
 
   .forum-event--stair & {
+    // 同 --quote 的說明。pad／mob 稿的場地名與 pc 不同（pad「集思台大會議中心／
+    // 國際會議廳」但斷行不同、mob 拆成「集思／台大會議中心」），故只有 pc 有素材。
+    // ⚠️ 稿的列距實測 63、這裡是 62 —— 既有的 1px 落差，同 mob 大標那組。不改：
+    //    動 line-height 會改行盒高度、帶偏 forum-node-path 的 dy。
+    --art-base: 47;
+
     top: 690px;
     right: 108px;
     align-items: flex-end;
