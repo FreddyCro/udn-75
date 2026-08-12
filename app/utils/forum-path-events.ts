@@ -58,6 +58,13 @@ export const FORUM_PATH_EVENTS: readonly ForumPathEvent[] = [
   // （見 dLen 的說明）。下面每個數字都是逐格捲動實測出來的：
   // 先二分找出事件翻轉的 scrollY，再二分找出「核心中心正好落在照片上緣」的 scrollY，
   // 兩者之差乘上該斷點的 progress／px 斜率與 pathLen ＝ 需要的弧長偏移。
+  //
+  // ⚠️ 那個換算只是**一階估計，要跑第二輪修正**。progress 對 scroll 是線性的，但核心沿線的
+  //    位置經過回中節點表重映射（見 forum-node-path.md 第五節），所以「弧長偏移 → 核心
+  //    移動多少」不是常數。實測 pc 的論壇二第一輪估 −199 就過頭 57.7px，第二輪修成 −122 才對。
+  //    量完務必再跑一次驗算，別只算一次就收工。
+  // ⚠️ 誤差容許到「核心中心落在照片上緣下方 0～15px」—— pc 的 W5 本來就錨在上緣 +15
+  //    （稿的意圖是彎頂進到照片裡），那個範圍就是設計本身的語意。
   // ⚠️ 要調時機請動這裡的 dLen，**不要**回頭改節點的 dy —— 那是設計線的幾何，
   //    一動整條線就偏（見 architecture/forum-node-path.md）。
   {
@@ -68,7 +75,7 @@ export const FORUM_PATH_EVENTS: readonly ForumPathEvent[] = [
     key: 'forum1PhotoReveal',
     label: '論壇一講者照：藍塊刷開',
     at: { pc: 'W5', pad: 'Q5', mob: 'P5' },
-    dLen: { pad: -205, mob: -81 },
+    dLen: { pad: -205, mob: -103 },
   },
   {
     // 兩張卡同場一起刷（一個事件管整場，見 ~/utils/forum-photo-reveal）。
@@ -79,7 +86,7 @@ export const FORUM_PATH_EVENTS: readonly ForumPathEvent[] = [
     key: 'forum2PhotoReveal',
     label: '論壇二講者卡：藍塊刷開（兩張一起）',
     at: { pc: 'W17', pad: 'Q8', mob: 'P9' },
-    dLen: { pc: -199, pad: 152, mob: -46 },
+    dLen: { pc: -122, pad: 181, mob: -46 },
   },
   {
     key: 'probeForum1Turn',
