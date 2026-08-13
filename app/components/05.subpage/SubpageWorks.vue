@@ -29,6 +29,10 @@ const props = defineProps<{ works: SubpageWorkItem[] }>();
 // 否則部署到子路徑／CDN 時瀏覽器會解析到 origin 根目錄而 404。
 const assetUrl = useAssetUrl();
 
+// 列的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
+// 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
+const { play } = useSfx();
+
 /* ── 懸浮縮圖狀態（觸發區＝得獎作品清單的每一列）── */
 const worksWrap = ref<HTMLElement | null>(null);
 const thumbBox = ref<HTMLElement | null>(null);
@@ -129,6 +133,7 @@ function deactivate() {
 /* ≥1280：hover 列觸發；離開整個清單才收起 */
 function onEnter(i: number, e: Event) {
   if (!hoverMode) return;
+  play('sfx01'); // <1280 的滾動觸發不出聲，只有真的 hover 才播
   activate(i, e.currentTarget as HTMLElement);
 }
 function onLeaveWrap() {
@@ -219,6 +224,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="subpage-works__list">
+      <!-- @click 落到 SubpageWork 根元素（a 或 div）：點擊看專題時出聲 -->
       <SubpageWork
         v-for="(w, i) in works"
         :key="i"
@@ -228,6 +234,7 @@ onBeforeUnmount(() => {
         :active="activeIdx === i"
         :dimmed="activeIdx !== -1 && activeIdx !== i"
         @mouseenter="onEnter(i, $event)"
+        @click="play('sfx01')"
       />
     </div>
   </div>

@@ -6,6 +6,10 @@ const { subpageAnchors } = common;
 // 編號藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
 const assetUrl = useAssetUrl();
 
+// 列的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
+// 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
+const { play } = useSfx();
+
 const rowEls: HTMLElement[] = [];
 const setRow = (el: any, i: number) => {
   if (el) rowEls[i] = el as HTMLElement;
@@ -24,7 +28,12 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
       :ref="(el) => setRow(el, i)"
       class="media__item"
     >
-      <NuxtLink class="media__row" :to="a.url">
+      <NuxtLink
+        class="media__row"
+        :to="a.url"
+        @mouseenter="play('sfx01')"
+        @click="play('sfx01')"
+      >
         <!-- 文字塊（編號＋標題，hover 整塊 scale）；break 只在 mob 稿於「：」後換行 -->
         <span class="media__text">
           <!-- 編號藝術字（同 SubpageAnchor：mask 上色，資料共用 numImg） -->

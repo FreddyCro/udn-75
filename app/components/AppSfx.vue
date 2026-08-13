@@ -13,9 +13,8 @@
  *   ・卸載時機 —— 換頁時要停掉並釋放，否則音效會跟著殘留。
  * 這三件事都需要一個明確的「這頁有音效」掛載點，composable 自己沒有。
  *
- * ⚠️ 刻意只掛在 pages/index.vue，不掛 app.vue —— 子頁（05.subpage）目前沒有要出聲的
- *    互動，不必讓它們也扛預載。故子頁呼叫 play() 會靜默無效（pool 未建立）。
- *    哪天子頁也要音效，把這個標籤移到 app.vue 即可，其餘不用改。
+ * 掛載點在 app.vue（全站唯一一份）：首頁與子頁（作品清單／智慧媒體清單）都有
+ * 互動音效，預載由全站扛。
  */
 const { prime, unlock, stopAll, release } = useSfx();
 const { soundOn } = useAppSound();

@@ -35,7 +35,12 @@ useHead(useTracking());
 </script>
 
 <template>
-  <NuxtLayout>
-    <NuxtPage />
-  </NuxtLayout>
+  <div>
+    <!-- 互動音效宿主：不輸出 DOM，播放一律透過 useSfx() 的 play()。
+         掛在 app.vue（而非 index.vue）：子頁的作品清單／智慧媒體清單也有互動音效 -->
+    <AppSfx />
+    <NuxtLayout>
+      <NuxtPage />
+    </NuxtLayout>
+  </div>
 </template>
