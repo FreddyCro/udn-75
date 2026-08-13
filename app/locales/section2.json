@@ -141,6 +141,18 @@
               "他畢生的成就獲得了新聞設計協會終身成就獎、密蘇里大學新聞學榮譽勳章，並入選《People》雜誌「100位最具影響力的西班牙裔人士」。"
             ]
           }
+        ],
+        "dateArt": [
+          {
+            "pc": { "src": "/img/forum/forum1-date-pc-1.svg", "w": 364.789, "h": 73.6299 },
+            "pad": { "src": "/img/forum/forum1-date-pad-1.svg", "w": 368.868, "h": 60 },
+            "mob": { "src": "/img/forum/forum1-date-mob-1.svg", "w": 214.6602, "h": 43.43 }
+          },
+          {
+            "pc": { "src": "/img/forum/forum1-date-pc-2.svg", "w": 364.789, "h": 78.7241 },
+            "pad": { "src": "/img/forum/forum1-date-pad-2.svg", "w": 368.868, "h": 60 },
+            "mob": { "src": "/img/forum/forum1-date-mob-2.svg", "w": 214.6602, "h": 46.4311 }
+          }
         ]
       },
       {
@@ -215,6 +227,23 @@
             "photo": "/img/udn75_pic01_03",
             "bio": []
           }
+        ],
+        "dateArt": [
+          {
+            "pc": { "src": "/img/forum/forum2-date-pc-1.svg", "w": 295.132, "h": 92.25 },
+            "pad": { "src": "/img/forum/forum2-date-pad-1.svg", "w": 191.505, "h": 60.193 },
+            "mob": { "src": "/img/forum/forum2-date-mob-1.svg", "w": 133.845, "h": 42.4091 }
+          },
+          {
+            "pc": { "src": "/img/forum/forum2-date-pc-2.svg", "w": 143.558, "h": 92.2627 },
+            "pad": { "src": "/img/forum/forum2-date-pad-2.svg", "w": 93.134, "h": 60 },
+            "mob": { "src": "/img/forum/forum2-date-mob-2.svg", "w": 65.0913, "h": 42.054 }
+          },
+          {
+            "pc": { "src": "/img/forum/forum2-date-pc-3.svg", "w": 225.54, "h": 94.189 },
+            "pad": { "src": "/img/forum/forum2-date-pad-3.svg", "w": 145.327, "h": 60 },
+            "mob": { "src": "/img/forum/forum2-date-mob-3.svg", "w": 102.779, "h": 42.434 }
+          }
         ]
       },
       {
@@ -257,7 +286,19 @@
             }
           }
         ],
-        "time": ""
+        "time": "",
+        "dateArt": [
+          {
+            "pc": { "src": "/img/forum/forum3-date-pc-1.svg", "w": 421.8854, "h": 85.7852 },
+            "pad": { "src": "/img/forum/forum3-date-pad-1.svg", "w": 279.096, "h": 60 },
+            "mob": { "src": "/img/forum/forum3-date-mob-1.svg", "w": 362, "h": 39.548 }
+          },
+          {
+            "pc": { "src": "/img/forum/forum3-date-pc-2.svg", "w": 421.8854, "h": 91.719 },
+            "pad": { "src": "/img/forum/forum3-date-pad-2.svg", "w": 279.096, "h": 60 },
+            "mob": { "src": "/img/forum/forum3-date-mob-2.svg", "w": 362, "h": 42.262 }
+          }
+        ]
       }
     ],
     "event4": {
@@ -319,6 +360,18 @@
           "photo": "/img/udn75_pic01_11",
           "bio": []
         }
+      ],
+      "dateArt": [
+        {
+          "pc": { "src": "/img/forum/forum4-date-pc-1.svg", "w": 457.76, "h": 70.7148 },
+          "pad": { "src": "/img/forum/forum4-date-pad-1.svg", "w": 367, "h": 56.6934 },
+          "mob": { "src": "/img/forum/forum4-date-mob-1.svg", "w": 356.003, "h": 39.8965 }
+        },
+        {
+          "pc": { "src": "/img/forum/forum4-date-pc-2.svg", "w": 457.76, "h": 75.5852 },
+          "pad": { "src": "/img/forum/forum4-date-pad-2.svg", "w": 367, "h": 60.5994 },
+          "mob": { "src": "/img/forum/forum4-date-mob-2.svg", "w": 356.003, "h": 42.625 }
+        }
       ]
     }
   },
@@ -327,23 +380,65 @@
       {
         "category": "開幕",
         "rows": [
-          { "time": "13:30", "title": "聯合報開幕致詞", "notes": ["聯合報社長 游美月"] },
-          { "time": "13:40", "title": "AI驅動永續轉型 共創安全韌性治理新典範", "notes": ["數發部部長 林宜敬"] },
-          { "time": "14:00", "title": "發布《AI時代 跨世代永續與未來生活大調查》", "notes": ["主講人：聯合線上總經理、Kantar凱度洞察"] }
+          {
+            "time": "13:30",
+            "title": "聯合報開幕致詞",
+            "notes": [
+              "聯合報社長 游美月"
+            ]
+          },
+          {
+            "time": "13:40",
+            "title": "AI驅動永續轉型 共創安全韌性治理新典範",
+            "notes": [
+              "數發部部長 林宜敬"
+            ]
+          },
+          {
+            "time": "14:00",
+            "title": "發布《AI時代 跨世代永續與未來生活大調查》",
+            "notes": [
+              "主講人：聯合線上總經理、Kantar凱度洞察"
+            ]
+          }
         ]
       },
       {
         "category": "AI與韌性",
         "rows": [
-          { "time": "14:20", "title": "AI黃金十年 跨世代共學的新未來", "notes": ["行政院經濟發展委員會創新經濟顧問 簡立峰"] },
-          { "time": "14:35", "title": "用AI制衡AI 建立可信任的數位防禦網", "notes": ["客戶A (金融)"] }
+          {
+            "time": "14:20",
+            "title": "AI黃金十年 跨世代共學的新未來",
+            "notes": [
+              "行政院經濟發展委員會創新經濟顧問 簡立峰"
+            ]
+          },
+          {
+            "time": "14:35",
+            "title": "用AI制衡AI 建立可信任的數位防禦網",
+            "notes": [
+              "客戶A (金融)"
+            ]
+          }
         ]
       },
       {
         "category": "AI與共好",
         "rows": [
-          { "time": "14:50", "title": "從算力到地力 讀懂土地讓AI走進地方", "notes": ["台灣地方創生基金會董事長 陳美伶"] },
-          { "time": "15:05", "title": "科技向善 用AI串聯地方創新與社會共好", "notes": ["客戶B (科技業)"] }
+          {
+            "time": "14:50",
+            "title": "從算力到地力 讀懂土地讓AI走進地方",
+            "notes": [
+              "台灣地方創生基金會董事長 陳美伶"
+            ]
+          },
+          {
+            "time": "15:05",
+            "title": "科技向善 用AI串聯地方創新與社會共好",
+            "notes": [
+              "客戶B (科技業)"
+            ]
+          }
         ]
       },
       {
@@ -352,21 +447,42 @@
           {
             "time": "15:20",
             "title": "AI 時代 社會韌性與地方共好",
-            "notes": ["主持人：聯合報總編輯 王茂臻", "與談人：簡立峰 × 陳美伶 × 客戶A × 客戶B"]
+            "notes": [
+              "主持人：聯合報總編輯 王茂臻",
+              "與談人：簡立峰 × 陳美伶 × 客戶A × 客戶B"
+            ]
           }
         ]
       },
       {
         "category": "AI與教育",
         "rows": [
-          { "time": "15:55", "title": "天賦與賦能 AI時代重新定義學習與人才", "notes": ["均一教育基金會董事 何麗梅"] }
+          {
+            "time": "15:55",
+            "title": "天賦與賦能 AI時代重新定義學習與人才",
+            "notes": [
+              "均一教育基金會董事 何麗梅"
+            ]
+          }
         ]
       },
       {
         "category": "AI與生活",
         "rows": [
-          { "time": "16:10", "title": "專題演講：AI打造跨世代共好 全齡友善生活", "notes": ["客戶C"] },
-          { "time": "16:25", "title": "AI與健康韌性 迎向超高齡社會的新解方", "notes": ["關渡醫院院長 陳亮恭"] }
+          {
+            "time": "16:10",
+            "title": "專題演講：AI打造跨世代共好 全齡友善生活",
+            "notes": [
+              "客戶C"
+            ]
+          },
+          {
+            "time": "16:25",
+            "title": "AI與健康韌性 迎向超高齡社會的新解方",
+            "notes": [
+              "關渡醫院院長 陳亮恭"
+            ]
+          }
         ]
       },
       {
@@ -375,20 +491,37 @@
           {
             "time": "16:40",
             "title": "AI時代 跨世代教育與高齡好生活",
-            "notes": ["主持人：聯合報王茂臻總編輯", "與談人：何麗梅 × 客戶C × 陳亮恭"]
+            "notes": [
+              "主持人：聯合報王茂臻總編輯",
+              "與談人：何麗梅 × 客戶C × 陳亮恭"
+            ]
           }
         ]
       }
     ],
     "actions": [
-      { "label": "下載完整議程", "href": "#", "variant": "outline" },
-      { "label": "立即報名", "href": "#", "variant": "primary" }
+      {
+        "label": "下載完整議程",
+        "href": "#",
+        "variant": "outline"
+      },
+      {
+        "label": "立即報名",
+        "href": "#",
+        "variant": "primary"
+      }
     ]
   },
   "report": {
-    "heading": ["乘載AI的鋒芒", "刻下永續的年輪"],
+    "heading": [
+      "乘載AI的鋒芒",
+      "刻下永續的年輪"
+    ],
     "body": "由倡議家與凱度洞察合作發起《AI時代 跨世代永續與未來生活大調查》，剖析當代台灣不同世代對科技變革與永續福祉的真實看法。",
-    "cta": { "label": "融媒體世代訪談報告網站", "href": "#" }
+    "cta": {
+      "label": "融媒體世代訪談報告網站",
+      "href": "#"
+    }
   },
   "highlights": {
     "heading": "聯合七五 智慧未來 系列論壇 現場精彩活動",

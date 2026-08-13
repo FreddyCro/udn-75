@@ -32,6 +32,13 @@ export type ForumTextArtSrc = {
  * 機制（行盒為什麼要保留、寬度為什麼掛在 span 上）見
  * architecture/2026-08-12-forum1-text-art-design.md
  */
+/**
+ * 一個展示型文字的逐斷點素材（不含真文字）。
+ * 日期大字用它 —— 那組的真文字是從 year / date / weekday 組出來的，不另存一份
+ * （見 ForumEvent.dateArt）。
+ */
+export type ForumArtByBp = Partial<Record<ForumBp, ForumTextArtSrc>>;
+
 export type ForumTextArt = {
   /** 真文字。素材斷點下轉為 visually-hidden，其餘斷點就是畫面上的字 */
   text: string;
@@ -45,7 +52,7 @@ export type ForumTextArt = {
    *
    * 沒填的斷點**退回活文字**（Noto Sans TC），與改動前完全相同。
    */
-  art: Partial<Record<ForumBp, ForumTextArtSrc>>;
+  art: ForumArtByBp;
 };
 
 /**
@@ -88,6 +95,21 @@ export type ForumEvent = {
   year: string;
   /** 「09/09」 —— 中間的「/」平常照畫 */
   date: string;
+  /**
+   * 日期大字的稿字形素材，**逐「行」一筆**，行的構成 ＝ 現行 grid 的列：
+   *   2 筆（論壇一三四）→ 「2026」／「09/09 三」
+   *   3 筆（論壇二的階梯）→ 「2026」／「09」／「15 三」
+   *
+   * 真文字不存在這裡，是從 year / date / weekday 組出來的（見 ForumEvent.vue 的
+   * dateLines）—— 文案只有一份，校稿只改那三個欄位。
+   *
+   * ⚠️ 星期的圓框**烤在素材裡**（稿是一個畫出來的圓，不是 border-radius），
+   *    論壇二那一撇則**不在**素材裡（它是功能，由橘核心逐段畫出，見 slash）。
+   * ⚠️ 畫布模式逐場不同，不能互抄：論壇一三四是「整組共用畫布」（列與列的水平錯位
+   *    烤進畫布），論壇二是「各列貼齊自己的墨跡」（錯位留給 --stair-x1／--stair-x2）。
+   *    理由與實測值見 architecture/2026-08-12-forum1-text-art-design.md。
+   */
+  dateArt: ForumArtByBp[];
   /**
    * 日期中間那一撇怎麼處理：
    *   省略      → 依版式預設（stair 不畫、其餘畫實體 `/`）

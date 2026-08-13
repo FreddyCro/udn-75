@@ -201,8 +201,10 @@ export type ForumLine = string | ForumTextArt;
 ⚠️ 放寬**跟著批次走**：本批只放寬 `title` / `subtitle`。`quoteEn` / `venue` 留到下一批。
 提前放寬會讓 `{{ line }}` 型別上合法、runtime 印出 `[object Object]`。
 
-⚠️ 日期組（`year` / `date` / `weekday` / `time`）是 scalar `string`，且 `date` 還會被
+⚠️ 日期組（`year` / `date` / `weekday`）是 scalar `string`，且 `date` 還會被
 `split('/')` 拆成兩格 grid 子項、`weekday` 外面套 CSS 圓框 —— 那組要怎麼吃素材本文件不涵蓋。
+→ 已在 [2026-08-13 的續篇](./2026-08-13-forum-date-text-art-design.md) 處理：
+改成「一行一筆素材、圓框烤在素材裡」，那五個 grid 格子與圓框的 CSS 都移除了。
 
 ### JSON（`section2.json` 論壇一那筆）
 

@@ -10,7 +10,7 @@
      2026-08-10 修講者組的 margin collapse（照片上移 102）時，W5／W7 就是這樣被帶偏的。
 -->
 <script setup lang="ts">
-import type { ForumEvent, ForumLine } from '~/types/forum';
+import type { ForumEvent, ForumLine, ForumTextArt } from '~/types/forum';
 
 const props = withDefaults(
   defineProps<{
@@ -45,6 +45,28 @@ const hasSlash = computed(() => {
   const s = props.event.slash;
   if (s === 'core') return false;
   return s ?? props.event.layout !== 'stair';
+});
+
+/**
+ * 日期大字的逐行素材 ＋ 真文字。
+ *
+ * 稿把日期整行 outline 掉了（**星期的圓框也在同一條 path 裡**），所以這一組不能像
+ * 其他群組那樣逐格替換 —— 一行就是一筆素材，行的構成照現行 grid 的列切：
+ *   2 行 → 「2026」／「09/09 三」　　3 行 → 「2026」／「09」／「15 三」（階梯式）
+ *
+ * 幾行由 dateArt 的筆數決定（＝稿有幾列），不由 layout 推 —— 資料說幾行就幾行。
+ * 真文字則一律從 year / date / weekday 組出來：文案只存一份，校稿只動那三個欄位。
+ * 某個斷點沒填素材時 <ForumArtLine> 會退回活文字（那時圓框不會出現，看得出來 ——
+ * 刻意的 fail-loud，不另做一套 CSS 圓框備援）。
+ */
+const dateLines = computed<ForumTextArt[]>(() => {
+  const [mm = '', dd = ''] = dateParts.value;
+  const tail = `${dd} ${props.event.weekday}`;
+  const texts =
+    props.event.dateArt.length === 3
+      ? [props.event.year, mm, tail]
+      : [props.event.year, `${mm}${hasSlash.value ? '/' : ' '}${tail}`];
+  return texts.map((text, i) => ({ text, art: props.event.dateArt[i] ?? {} }));
 });
 
 // 那一撇的畫出比例由論壇段路徑的進度驅動（窗口由 ForumCorePath 依幾何算出）。
@@ -117,10 +139,15 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       <!-- data-forum-anchor：ForumCorePath 依這個值（＝場次名）選錨點，不靠文件順序索引，
            故增刪／重排場次不會讓設計線靜默錨到別場身上。 -->
       <div class="forum-event__date" :data-forum-anchor="event.no">
-        <span class="forum-event__date-year">{{ event.year }}</span>
-        <span class="forum-event__date-mm">{{ dateParts[0] }}</span>
-        <span v-if="hasSlash" class="forum-event__date-slash">/</span>
-        <span class="forum-event__date-dd">{{ dateParts[1] }}</span>
+        <!-- 逐行素材（見上方 dateLines）：一行一筆，星期的圓框烤在素材裡。
+             行盒仍由 --date-lh 撐出，故整塊的高度與改動前一致 —— 那是設計線的
+             W1／W2、S1~S3、R1／R2 的錨點，高度一動整條線就偏。 -->
+        <ForumArtLine
+          v-for="(line, i) in dateLines"
+          :key="i"
+          :line="line"
+          class="forum-event__date-line"
+        />
         <!-- 那一撇（論壇二）：不是字元，是一筆橫跨兩階的直線，由橘核心經過時逐段畫出。
              外框不套 transform —— ForumCorePath 讀它的右上／左下對角當脊線兩端；
              若把 scaleY 掛在外框上，畫出前 rect 會塌成一點、窗口就算不出來。
@@ -128,7 +155,6 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
         <span v-if="isCoreSlash" class="forum-event__date-coreslash" aria-hidden="true">
           <i :style="{ '--slash-draw': forumSlashDraw }" />
         </span>
-        <span class="forum-event__date-weekday">{{ event.weekday }}</span>
       </div>
 
       <p class="forum-event__venue">
@@ -198,13 +224,19 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 
 // 講者組頂端（padding-top）與段落結尾留白（padding-bottom）皆為設計稿值；
 // 講者組走一般流排版，論壇一的長 bio 變長只會往下撐開，不會壓到上面的群組。
-// --date-size / --date-lh 在此給預設值：三個版式 modifier 都會蓋掉它，
+// --date-base / --date-lh 在此給預設值：三個版式 modifier 都會蓋掉它，
 // 但資料漏填 layout 時（型別擋不到 runtime JSON）至少日期不會失去字級。
+//
+// ⚠️ 日期的字級寫成**無單位**的 --date-base，--date-size 再由它乘 1px 導出。
+//    不是為了好看：稿字形素材的寬度基準 --art-base 必須無單位（<ForumArtLine> 用
+//    calc(--art-w / --art-base * 1em) 算寬，帶了 px 整式無效、素材寬塌成 0），
+//    而它又必須恆等於該區塊的 font-size。兩者共用同一個數字才不會各自漂移。
 // 階梯式日期（論壇二）逐行的位移與行進距抽成變數：三斷點各給一組 px。
 // 不改用 em 換算是為了不讓 pc 的值產生零點幾 px 的位移 —— 那條設計線靠它對位
 // （見 architecture/forum-node-path.md）。
 .forum-event {
-  --date-size: 105px;
+  --date-base: 105;
+  --date-size: calc(var(--date-base) * 1px);
   --date-lh: 98px;
   --stair-x1: 154px;
   --stair-x2: 324px;
@@ -233,20 +265,20 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   }
 
   &--quote {
-    --date-size: 105px;
+    --date-base: 105;
     --date-lh: 98px;
 
     padding: 1097px 0 280px;
 
     @include rwd-max('pc') {
-      --date-size: 86px;
+      --date-base: 86;
       --date-lh: 80px;
 
       padding: 32px 80px 80px;
     }
 
     @include rwd-max('tablet') {
-      --date-size: 62px;
+      --date-base: 62;
       --date-lh: 58px;
 
       padding: 32px 26px 100px;
@@ -254,13 +286,13 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   }
 
   &--stair {
-    --date-size: 132px;
+    --date-base: 132;
     --date-lh: 124px;
 
     padding: 1157px 0 120px;
 
     @include rwd-max('pc') {
-      --date-size: 86px;
+      --date-base: 86;
       --date-lh: 80px;
       --stair-x1: 99px;
       --stair-x2: 215px;
@@ -276,7 +308,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
 
     @include rwd-max('tablet') {
-      --date-size: 78px;
+      --date-base: 78;
       --date-lh: 73px;
       --stair-x1: 77px;
       --stair-x2: 163px;
@@ -293,20 +325,20 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   }
 
   &--right {
-    --date-size: 122px;
+    --date-base: 122;
     --date-lh: 114px;
 
     padding: 779px 0 40px;
 
     @include rwd-max('pc') {
-      --date-size: 86px;
+      --date-base: 86;
       --date-lh: 80px;
 
       padding: 32px 80px 40px;
     }
 
     @include rwd-max('tablet') {
-      --date-size: 57px;
+      --date-base: 57;
       --date-lh: 56px;
 
       padding: 32px 26px 32px;
@@ -315,16 +347,16 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 
   // 論壇四：日期只有兩行（2026／09-30，第二行往右錯開 --stair-x1），時間與地點接在下面，
   // 整組切齊右緣；講者卡與論壇二完全相同，故那幾條規則用選擇器共用、不重寫。
-  // --date-size / --date-lh 由稿反推：pc 的 2026 與 09/30 兩行間距 98.7 → lh 98（與論壇一同值）。
+  // --date-base / --date-lh 由稿反推：pc 的 2026 與 09/30 兩行間距 98.7 → lh 98（與論壇一同值）。
   &--youth {
-    --date-size: 105px;
+    --date-base: 105;
     --date-lh: 98px;
     --stair-x1: 115px;
 
     padding: 816px 0 120px;
 
     @include rwd-max('pc') {
-      --date-size: 82px;
+      --date-base: 82;
       --date-lh: 79px;
       --stair-x1: 92px;
 
@@ -332,7 +364,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
 
     @include rwd-max('tablet') {
-      --date-size: 58px;
+      --date-base: 58;
       --date-lh: 56px;
       --stair-x1: 66px;
 
@@ -718,8 +750,20 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 // 日期大字：ForumCorePath 的錨點元素（見檔頭）。
 // 字級由設計稿數字字框反推（論壇一寬 234.9／高 73.6，論壇二、三為其 1.253／1.165 倍）；
 // 設計稿字體的數字比 Noto Sans TC 寬，故取寬、高兩種反推值的折衷。
+// ⚠️ 換上稿字形素材後，--date-base 只剩兩個作用：撐行盒（line-height 另給）與當
+//    --art-base；畫面上的字寬完全由素材決定。反推值仍留著 —— 素材缺件時會退回活文字。
+//    唯一實測與稿不符的是**論壇二 mob**：稿的字面高 42.4 反推字級約 60，這裡是 78
+//    （素材照稿寬渲染，故看起來會比行距鬆）。要修得連 --stair-*／--date-lh 一起重推。
 // 版位：論壇一字面 (108, 587.4)、論壇二 (301, 769)、論壇三右緣切齊 1172、字面 y=434。
+//
+// 內容是**逐行的稿字形素材**（見 template 的 dateLines）。仍是 grid 而非 flex：
+// 階梯式（論壇二）的三列行高由 grid-template-rows 給（127／114／auto），
+// 那三個值決定整塊的高度 ＝ 設計線 S1~S3 的錨點，不能交給行盒自己長。
 .forum-event__date {
+  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於本區塊的 font-size ——
+  // 兩者共用 --date-base 就是為了這個等式（見檔案上方 .forum-event 的說明）。
+  --art-base: var(--date-base);
+
   position: absolute;
   display: grid;
   grid-template-columns: repeat(4, max-content);
@@ -779,14 +823,14 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       margin-left: auto;
     }
 
-    // mob 稿改成兩階：2026 靠左，月／日那行再往右下錯開（見 __date-mm）。
+    // mob 稿改成兩階：2026 靠左，月／日那行再往右下錯開（位移 62.94，烤在素材畫布裡）。
     @include rwd-max('tablet') {
       margin: 92px 0 0;
     }
   }
 
-  // 論壇四：維持基底的兩行格線（2026 ／ 09-30 三），只是第二行往右錯開（見 __date-mm）。
-  // 刻意不走 --stair 那組規則 —— 那會把「09」與「30」拆成兩行。
+  // 論壇四：維持基底的兩行格線（2026 ／ 09-30 三），第二行往右錯開（pc 115／pad 92.2，
+  // 烤在素材畫布裡）。刻意不走 --stair 那組規則 —— 那會把「09」與「30」拆成兩行。
   .forum-event--youth & {
     top: 702px;
     left: 714px;
@@ -799,52 +843,29 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   }
 }
 
-.forum-event__date-year {
-  grid-area: 1 / 1 / 2 / -1;
-
-  .forum-event--right & {
-    justify-self: end;
-
-    @include rwd-max('tablet') {
-      justify-self: start;
-    }
-  }
-
-  .forum-event--quote & {
-    @include rwd-max('pc') {
-      justify-self: end;
-    }
-  }
+// 日期的一「行」。每行橫跨整條格線（欄數在 __date 上，2 或 4，對這裡都一樣）。
+//
+// ⚠️ align-self: start 是必要的，不是預設值的贅寫。grid item 預設 stretch，會被拉成
+//    **grid 列的高度**；階梯式的列高是 127／114（見 __date 的 grid-template-rows），
+//    與行盒的 124 不同 → 素材（::after 的 top: 50%）會在錯的盒子裡置中，
+//    實測第一行往下 1.5px、第二行往上 5px。start 讓盒子回到自己的行盒高度。
+// ⚠️ 沒有水平對齊規則（justify-self）也沒有 --stair-x* 位移 —— 論壇一三四的錯位與
+//    對齊邊**烤在素材畫布裡**（整組共用畫布），CSS 再對齊一次就會位移兩次。
+//    論壇二例外，見下面那條。
+.forum-event__date-line {
+  grid-column: 1 / -1;
+  align-self: start;
 }
 
-.forum-event__date-mm {
-  grid-area: 2 / 1;
-
-  // 論壇四：第二行（09/30 三）整行往右錯開；因為 mm 是該行的第一格，
-  // 給它 margin-left 就會把同列的斜線／日／星期一起推過去。
-  .forum-event--youth & {
-    margin-left: var(--stair-x1);
-  }
-
-  .forum-event--stair & {
-    grid-area: 2 / 1 / 3 / -1;
-    margin-left: var(--stair-x1);
-  }
-
-  // mob 的論壇三：月／日整行往右錯開，形成兩階（設計稿位移 63）。
-  .forum-event--right & {
-    @include rwd-max('tablet') {
-      margin-left: 63px;
-    }
-  }
+// 論壇二的階梯：素材是「各列貼齊自己的墨跡」，錯位留在 CSS 這邊。
+// 值就是原本掛在 __date-mm / __date-dd 上的那兩個，實測即稿的字面 x 差
+// （pc 154／323.914 對上 154／324、pad 98.85／215.25 對上 99／215）。
+.forum-event--stair .forum-event__date-line:nth-child(2) {
+  margin-left: var(--stair-x1);
 }
 
-// 核心停靠點：核心經過時化為這一撇（Task 7 讀它的 rect 定位），靜態時與日期同色。
-// 左右間距取自設計稿字面間隙（0.095em／0.15em）再扣掉數字自身的側邊留白。
-.forum-event__date-slash {
-  grid-area: 2 / 2;
-  margin: 0 0.1em 0 0.05em;
-  color: inherit;
+.forum-event--stair .forum-event__date-line:nth-child(3) {
+  margin-left: var(--stair-x2);
 }
 
 // 論壇二 09/15 的那一撇：不是字元 —— 稿上 206.1 高，是 --date-size（105）的兩倍。
@@ -876,34 +897,6 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     background: currentcolor;
     transform: translateX(50%) rotate(26.7deg) scaleY(var(--slash-draw, 0));
     transform-origin: 50% 0;
-  }
-}
-
-.forum-event__date-dd {
-  grid-area: 2 / 3;
-
-  .forum-event--stair & {
-    grid-area: 3 / 1;
-    margin-left: var(--stair-x2);
-  }
-}
-
-// 星期圓框：設計稿直徑 ＝ 數字字級 ×0.46，左側間隙 ×0.19，底緣切齊數字基線。
-.forum-event__date-weekday {
-  grid-area: 2 / 4;
-  display: grid;
-  place-items: center;
-  align-self: end;
-  width: calc(var(--date-size) * 0.46);
-  height: calc(var(--date-size) * 0.46);
-  margin-left: calc(var(--date-size) * 0.19);
-  border: 1px solid currentcolor;
-  border-radius: 50%;
-  font-size: calc(var(--date-size) * 0.31);
-  line-height: 1;
-
-  .forum-event--stair & {
-    grid-area: 3 / 2;
   }
 }
 

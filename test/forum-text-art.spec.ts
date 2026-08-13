@@ -96,3 +96,59 @@ describe('論壇稿字形素材（ForumTextArt）與 section2.json 對帳', () =
     },
   );
 });
+
+// ── 日期大字（dateArt）─────────────────────────────────────────────────────
+// 與上面那組分開驗，因為它的形狀不同：**沒有 text 欄位**（真文字是從
+// year / date / weekday 組出來的，見 ForumEvent.vue 的 dateLines），所以 collectArts
+// 撈不到它，得自己走一遍。
+//
+// 這一組的失敗方向比別的群組**嚴重**：星期的圓框烤在素材裡，缺哪個斷點那個斷點就
+// 只剩沒有圓框的活文字 —— 所以這裡要求三個斷點全滿，不接受部分覆蓋。
+type DateEvent = {
+  no: string;
+  layout: string;
+  dateArt?: Record<string, ArtSrc>[];
+};
+
+const { events, event4 } = section2.forum as unknown as {
+  events: DateEvent[];
+  event4: DateEvent;
+};
+// ⚠️ 論壇四不在 events 裡（它排在議程之後、不屬於 .sec2__path，見 Forum.vue）——
+//    只掃 events 會漏掉第四場而全綠。
+const dateEvents = [...events, event4];
+
+describe('日期大字的稿字形素材（dateArt）', () => {
+  it('四場都在（漏掉論壇四是這支最容易犯的錯）', () => {
+    expect(dateEvents.map((e) => e.no)).toEqual(['論壇一', '論壇二', '論壇三', '論壇四']);
+  });
+
+  it.each(dateEvents.map((e) => [e.no, e] as const))('%s 的行數對得上版式', (_no, ev) => {
+    // 行數由資料決定、元件照著切真文字（2 行 → 「2026」／「09/09 三」，
+    // 3 行 → 「2026」／「09」／「15 二」）。階梯式（論壇二）是三階，其餘兩行。
+    expect(ev.dateArt?.length).toBe(ev.layout === 'stair' ? 3 : 2);
+  });
+
+  it.each(dateEvents.map((e) => [e.no, e] as const))('%s 的每一行都填滿三個斷點', (_no, ev) => {
+    const missing = (ev.dateArt ?? []).map((line, i) =>
+      BPS.filter((bp) => !line[bp]).map((bp) => `第 ${i + 1} 行缺 ${bp}`),
+    );
+    expect(missing.flat()).toEqual([]);
+  });
+
+  it.each(
+    dateEvents.flatMap((ev) =>
+      (ev.dateArt ?? []).flatMap((line, i) =>
+        Object.entries(line).map(
+          ([bp, src]) => [`${ev.no} 第 ${i + 1} 行 ${bp}`, src] as const,
+        ),
+      ),
+    ),
+  )('%s 的素材與資料對得上', (_name, src) => {
+    const file = join('public', src.src.replace(/^\//, ''));
+    expect(existsSync(file), `素材不存在：${file}`).toBe(true);
+    const size = svgSize(readFileSync(file, 'utf8'));
+    expect(size.w).toBeCloseTo(src.w, 2);
+    expect(size.h).toBeCloseTo(src.h, 2);
+  });
+});
