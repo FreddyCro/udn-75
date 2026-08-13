@@ -56,7 +56,7 @@ const hasSlash = computed(() => {
  *
  * 幾行由 dateArt 的筆數決定（＝稿有幾列），不由 layout 推 —— 資料說幾行就幾行。
  * 真文字則一律從 year / date / weekday 組出來：文案只存一份，校稿只動那三個欄位。
- * 某個斷點沒填素材時 <ForumArtLine> 會退回活文字（那時圓框不會出現，看得出來 ——
+ * 某個斷點沒填素材時 <UArtLine> 會退回活文字（那時圓框不會出現，看得出來 ——
  * 刻意的 fail-loud，不另做一套 CSS 圓框備援）。
  */
 const dateLines = computed<ForumTextArt[]>(() => {
@@ -95,18 +95,18 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       </p>
 
       <p v-if="event.brand" class="forum-event__brand">
-        <ForumArtLine :line="event.brand" />
+        <UArtLine :line="event.brand" />
       </p>
 
-      <!-- 逐行交給 <ForumArtLine>：字串照舊輸出文字，物件則換成稿字形 SVG（論壇一）。
+      <!-- 逐行交給 <UArtLine>：字串照舊輸出文字，物件則換成稿字形 SVG（論壇一）。
            見 architecture/2026-08-12-forum1-text-art-design.md。
            ⚠️ 素材模式要靠祖先的 --art-base（見下方 SCSS）才算得出寬度。 -->
       <h3 class="forum-event__title">
-        <ForumArtLine v-for="(line, i) in event.title" :key="i" :line="line" />
+        <UArtLine v-for="(line, i) in event.title" :key="i" :line="line" />
       </h3>
 
       <p v-if="event.subtitle" class="forum-event__subtitle">
-        <ForumArtLine v-for="(line, i) in event.subtitle" :key="i" :line="line" />
+        <UArtLine v-for="(line, i) in event.subtitle" :key="i" :line="line" />
       </p>
 
       <p v-if="event.body" class="forum-event__body">{{ event.body }}</p>
@@ -133,7 +133,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
            ≒ 下方 SCSS 的欄寬 454），墨跡落在稿的真實 x，所以右對齊靠畫布本身成立 ——
            不必為素材另外改 text-align／align-items（text-align 對絕對定位的 img 無效）。 -->
       <p v-if="event.quoteEn" class="forum-event__quote">
-        <ForumArtLine v-for="(line, i) in event.quoteEn" :key="i" :line="line" />
+        <UArtLine v-for="(line, i) in event.quoteEn" :key="i" :line="line" />
       </p>
 
       <!-- data-forum-anchor：ForumCorePath 依這個值（＝場次名）選錨點，不靠文件順序索引，
@@ -142,7 +142,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
         <!-- 逐行素材（見上方 dateLines）：一行一筆，星期的圓框烤在素材裡。
              行盒仍由 --date-lh 撐出，故整塊的高度與改動前一致 —— 那是設計線的
              W1／W2、S1~S3、R1／R2 的錨點，高度一動整條線就偏。 -->
-        <ForumArtLine
+        <UArtLine
           v-for="(line, i) in dateLines"
           :key="i"
           :line="line"
@@ -158,10 +158,10 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       </div>
 
       <p class="forum-event__venue">
-        <ForumArtLine v-for="(line, i) in event.venue" :key="i" :line="line" />
+        <UArtLine v-for="(line, i) in event.venue" :key="i" :line="line" />
         <!-- 時間預設排在地點之後；論壇四的稿相反（時間在上），由 SCSS 用 order 換位。
              時間在 __venue 之內，故 --art-base 直接沿用它的（時間沒有自己的 font-size）。 -->
-        <ForumArtLine
+        <UArtLine
           v-if="event.time"
           :line="event.time"
           class="forum-event__time"
@@ -204,8 +204,8 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
         </span>
 
         <p class="forum-event__speaker-name">
-          <ForumArtLine :line="sp.name" />
-          <ForumArtLine v-if="sp.nameZh" :line="sp.nameZh" />
+          <UArtLine :line="sp.name" />
+          <UArtLine v-if="sp.nameZh" :line="sp.nameZh" />
         </p>
         <p v-if="sp.role" class="forum-event__speaker-role">{{ sp.role }}</p>
         <p v-for="(para, j) in sp.bio ?? []" :key="j" class="forum-event__bio">
@@ -228,7 +228,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 // 但資料漏填 layout 時（型別擋不到 runtime JSON）至少日期不會失去字級。
 //
 // ⚠️ 日期的字級寫成**無單位**的 --date-base，--date-size 再由它乘 1px 導出。
-//    不是為了好看：稿字形素材的寬度基準 --art-base 必須無單位（<ForumArtLine> 用
+//    不是為了好看：稿字形素材的寬度基準 --art-base 必須無單位（<UArtLine> 用
 //    calc(--art-w / --art-base * 1em) 算寬，帶了 px 整式無效、素材寬塌成 0），
 //    而它又必須恆等於該區塊的 font-size。兩者共用同一個數字才不會各自漂移。
 // 階梯式日期（論壇二）逐行的位移與行進距抽成變數：三斷點各給一組 px。
@@ -449,7 +449,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 //    與這裡的 49 不符 —— 稿與程式的既有落差，同標眉那條註解記的情形。
 //    素材會照稿寬渲染，但行盒仍是 49 撐出來的 58.8，故幾何不變。
 .forum-event__brand {
-  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+  // 稿字形素材的寬度基準（見 <UArtLine>）：無單位，恆等於同一區塊的 font-size。
   --art-base: 56;
 
   margin: 21px 0 0;
@@ -475,7 +475,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 // 大標：論壇二／三為 5~6 個 CJK 字、字面寬 520／621，反推 96px ＋ 0.1em 字距、行距 118。
 // 論壇一是長英文名，設計稿字面寬 709，故縮到 74px ＋ 0.02em。
 .forum-event__title {
-  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+  // 稿字形素材的寬度基準（見 <UArtLine>）：無單位，恆等於同一區塊的 font-size。
   // 這一組是論壇二／三／四共用的基底；論壇一（--quote）在下面另有一組。
   --art-base: 96;
 
@@ -505,7 +505,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   }
 
   .forum-event--quote & {
-    // 稿字形素材的寬度基準：<ForumArtLine> 用 calc(--art-w-<斷點> / --art-base * 1em) 算寬。
+    // 稿字形素材的寬度基準：<UArtLine> 用 calc(--art-w-<斷點> / --art-base * 1em) 算寬。
     // ⚠️ **恆等於同一區塊的 font-size，且無單位** —— 帶了 px 整個 calc() 無效、素材寬塌成 0。
     //    逐斷點各給一次（不是共用 pc 的值再等比縮放）：三個斷點的稿是不同的 SVG，
     //    素材原生寬各自不同，只有「該斷點的字級」才是正確的換算基準。
@@ -711,7 +711,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 
 // 英文引言（論壇一）：設計稿 x=718 / 字面 y=720.9，欄寬 454 切齊右緣 1172、右對齊。
 .forum-event__quote {
-  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+  // 稿字形素材的寬度基準（見 <UArtLine>）：無單位，恆等於同一區塊的 font-size。
   --art-base: 40;
 
   position: absolute;
@@ -760,7 +760,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 // 階梯式（論壇二）的三列行高由 grid-template-rows 給（127／114／auto），
 // 那三個值決定整塊的高度 ＝ 設計線 S1~S3 的錨點，不能交給行盒自己長。
 .forum-event__date {
-  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於本區塊的 font-size ——
+  // 稿字形素材的寬度基準（見 <UArtLine>）：無單位，恆等於本區塊的 font-size ——
   // 兩者共用 --date-base 就是為了這個等式（見檔案上方 .forum-event 的說明）。
   --art-base: var(--date-base);
 
@@ -914,7 +914,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   // 字級都寫在各版式底下：pc 的 .forum-event--x .forum-event__venue 特異度較高，
   // 寫在這一層的 rwd 字級會被它蓋掉。
   .forum-event--quote & {
-    // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+    // 稿字形素材的寬度基準（見 <UArtLine>）：無單位，恆等於同一區塊的 font-size。
     // __time 是本層的子項、沒有自己的 font-size，故它直接繼承這個值。
     // ⚠️ pad 刻意沒有 —— pad 稿把地點兩行併成一行，與這裡的兩個 span 對不起來
     //    （見 ForumEvent type 的 venue 說明），那個斷點維持活文字。
@@ -1306,7 +1306,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 // 論壇一：姓名字面落在講者組頂端下方 112.7（那 102 的位移在 .forum-event__speaker 的
 // padding-top，見該處說明）。卡片版式改排在頭銜之後（設計稿是頭銜在上）。
 .forum-event__speaker-name {
-  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+  // 稿字形素材的寬度基準（見 <UArtLine>）：無單位，恆等於同一區塊的 font-size。
   // 只有論壇一有姓名素材（pc），pad／mob 尚未匯出，故那兩層不掛。
   --art-base: 42;
 

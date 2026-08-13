@@ -56,9 +56,9 @@ export type ForumTextArt = {
 };
 
 /**
- * 一行文字：字串＝活文字，物件＝SVG 素材（由 <ForumArtLine> 渲染）。
+ * 一行文字：字串＝活文字，物件＝SVG 素材（由 <UArtLine> 渲染）。
  *
- * ⚠️ 放寬**跟著批次走** —— 只有真的接上 <ForumArtLine> 的欄位才改成這個型別。
+ * ⚠️ 放寬**跟著批次走** —— 只有真的接上 <UArtLine> 的欄位才改成這個型別。
  *    提前放寬會讓 `{{ line }}` 在型別上合法、runtime 印出 [object Object]。
  *    目前已放寬：title、subtitle（論壇一第一批）。
  *    quoteEn、venue 留到第二批（英文引言／日期地點）。

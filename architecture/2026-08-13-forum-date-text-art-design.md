@@ -52,7 +52,7 @@
 
 高度來自兩處，兩處都沒動：
 
-- **行盒**：`ForumArtLine` 的 `::before { content: '\200B' }` 撐出正好 `line-height`
+- **行盒**：`UArtLine` 的 `::before { content: '\200B' }` 撐出正好 `line-height`
   （＝ `--date-lh`）的行盒，素材是 `::after` 的絕對定位背景、不進流排版。
 - **grid 列高**：階梯式的 `grid-template-rows: 127px 114px auto` 原封不動。
 
@@ -67,7 +67,7 @@ grid item 預設 `stretch`，會被拉成**列高**。階梯式的列高是 127�
 
 ## 三、`--date-base`：一個無單位的數字，兩個用途
 
-`--art-base` 必須**無單位**（`ForumArtLine` 用 `calc(--art-w / --art-base * 1em)` 算寬，
+`--art-base` 必須**無單位**（`UArtLine` 用 `calc(--art-w / --art-base * 1em)` 算寬，
 帶了 `px` 整式無效、素材寬塌成 0），而它又必須**恆等於該區塊的 `font-size`**。
 
 原本 13 處寫的是 `--date-size: 105px`。改成：
@@ -185,5 +185,5 @@ Figma 匯出的是絕對指令，切檔器會檢查、遇到小寫直接擲錯�
 
 ### 素材缺檔／缺斷點時的失敗方向
 
-`ForumArtLine` 會退回活文字 —— 但日期的圓框烤在素材裡，**退回時圓框會消失**。
+`UArtLine` 會退回活文字 —— 但日期的圓框烤在素材裡，**退回時圓框會消失**。
 所以 spec 對日期這一組要求「三個斷點全滿」，不接受部分覆蓋（其他群組允許）。

@@ -267,9 +267,9 @@ onBeforeUnmount(() => {
             <!-- 稿字形素材（白字）＋ visually-hidden 的真文字，機制見
                  architecture/2026-08-12-forum1-text-art-design.md。行盒仍是 line-height
                  撐出來的，故標題高度不變 —— 下面那兩個量測值（--face-block-h／--face-cell-y）
-                 靠它。⚠️ <ForumArtLine> 現在不只論壇在用（見它的檔頭）。 -->
+                 靠它。⚠️ <UArtLine> 現在不只論壇在用（見它的檔頭）。 -->
             <h2 class="section3__title">
-              <ForumArtLine class="section3__title-art" :line="partner.title" />
+              <UArtLine class="section3__title-art" :line="partner.title" />
             </h2>
             <p class="section3__body">{{ partner.body }}</p>
           </div>
@@ -565,12 +565,12 @@ onBeforeUnmount(() => {
 // 寬度就是整個 intro 欄寬：pc 507×104.04 / pad 340×69.77 / mob 362×74.29 —— 也就是標題與
 // 下方內文同寬（pad 的內文較寬 530，標題 340 置中）。
 //
-// 現在畫面吃的是那三份 SVG（見 template 的 <ForumArtLine>），font-size 只剩兩個作用：
+// 現在畫面吃的是那三份 SVG（見 template 的 <UArtLine>），font-size 只剩兩個作用：
 // 撐行盒、以及當素材的寬度基準 --art-base。四個字都是全形、Noto Sans TC 的字幅各 1em，
 // 所以「設計稿寬 ÷ 4」同時是「素材退回活文字時字盒剛好對齊欄寬」的值 —— 兩邊都對，
 // 故沿用不動。line-height 直接取向量高度。
 .section3__title {
-  // 素材的寬度基準（見 <ForumArtLine>）：**無單位**，恆等於本區塊的 font-size。
+  // 素材的寬度基準（見 <UArtLine>）：**無單位**，恆等於本區塊的 font-size。
   // 帶了 px 整個 calc() 無效、素材寬會塌成 0（fail-loud，看得出來）。
   --art-base: 126.75;
 

@@ -107,11 +107,11 @@ onBeforeUnmount(() => {
         'sec2__path--debug': pathDebug,
       }"
     >
-      <!-- 逐行交給 <ForumArtLine>：稿字形素材（橘色）＋ visually-hidden 的真文字。
+      <!-- 逐行交給 <UArtLine>：稿字形素材（橘色）＋ visually-hidden 的真文字。
            見 architecture/2026-08-12-forum1-text-art-design.md。
            ⚠️ 素材寬要靠下方 SCSS 的 --art-base（＝該斷點的 font-size）才算得出來。 -->
       <h2 class="sec2__heading">
-        <ForumArtLine v-for="(line, i) in forum.heading" :key="i" :line="line" />
+        <UArtLine v-for="(line, i) in forum.heading" :key="i" :line="line" />
       </h2>
 
       <!-- photo-reveal ＝ 講者照的藍塊狀態（三態，見 <ForumEvent> 的 prop 說明）。
@@ -238,7 +238,7 @@ onBeforeUnmount(() => {
 
 // 段落主標：pc 左右 108 ＝ 設計稿內容邊界，與 <ForumEvent> 對齊；pad／mob 稿改置中。
 .sec2__heading {
-  // 稿字形素材的寬度基準（見 <ForumArtLine>）：無單位，恆等於同一區塊的 font-size。
+  // 稿字形素材的寬度基準（見 <UArtLine>）：無單位，恆等於同一區塊的 font-size。
   // 素材本身是橘的（#ff7f00 ＝ --color-orange），故這裡的 color 只服務活文字 fallback。
   --art-base: 56;
 

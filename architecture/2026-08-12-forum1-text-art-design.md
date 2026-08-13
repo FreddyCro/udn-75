@@ -15,7 +15,7 @@
 | --- | --- |
 | `app/types/forum.ts` | `ForumTextArtSrc` / `ForumTextArt` / `ForumLine` 型別 |
 | `app/locales/section2.json` | 論壇一的逐行素材資料（真文字 ＋ 逐斷點素材） |
-| `app/components/02.forum/ForumArtLine.vue` | 一行文字：有該斷點素材就畫 SVG，否則畫活文字 |
+| `app/components/ui/UArtLine.vue` | 一行文字：有該斷點素材就畫 SVG，否則畫活文字（原 `02.forum/ForumArtLine.vue`，第二個 section 接上後改名搬家） |
 | `app/components/02.forum/ForumEvent.vue` | 兩處 `v-for` 換元件；逐斷點的 `--art-base` |
 | `public/img/forum/forum1-*-pc.svg` | pc 素材三份 |
 | `test/forum-text-art.spec.ts` | 素材與 JSON 對帳 |
@@ -103,10 +103,10 @@
 `.forum-event__head` 的下緣是 `W3` / `Q3` 的錨點（見 `forum-node-path.ts`）。
 **只要每行的行盒高度不變，那些 `dy` 一個都不用重校。**
 
-`ForumArtLine.vue` 的每個斷點都套同一個 mixin（以 pc 為例展開）：
+`UArtLine.vue` 的每個斷點都套同一個 mixin（以 pc 為例展開）：
 
 ```scss
-.forum-art-line--art-pc {
+.u-art-line--art-pc {
   @include rwd-min('pc') {
     position: relative;
     display: block;
@@ -117,9 +117,9 @@
     &::before { content: '\200B'; }
 
     // 真文字退場但留在無障礙樹與 SEO 裡
-    .forum-art-line__text { position: absolute; width: 1px; height: 1px; … }
+    .u-art-line__text { position: absolute; width: 1px; height: 1px; … }
 
-    .forum-art-line__art--pc {
+    .u-art-line__art--pc {
       display: block; position: absolute; top: 50%; left: 0;
       width: 100%; height: auto; transform: translateY(-50%);
     }
@@ -127,9 +127,13 @@
 }
 ```
 
+⚠️ **`.u-art-line__art` 這個元素已經不存在了。** 這一段記的是本批的 `<img>` 版；
+後來為了「只抓當下斷點那一份」改成 `::after` 的 `background-image`（見第三節末的補記與
+`UArtLine.vue`）。垂直置中與行盒的邏輯不變，只有承載素材的節點換了。
+
 ### ① 只有一份真文字，不做第二份 SR 複本
 
-`.forum-art-line__text` 恆存在：**有素材的斷點**把它變成 visually-hidden（仍在無障礙樹與 SEO 內），
+`.u-art-line__text` 恆存在：**有素材的斷點**把它變成 visually-hidden（仍在無障礙樹與 SEO 內），
 **沒有素材的斷點**它就是畫面上的字。
 
 若改成「一份 `visually-hidden` 複本 ＋ 一份可見文字」，在活文字斷點會有兩份相同文字，
@@ -165,7 +169,7 @@
 - `--art-base`：該組在**該斷點**的字級（大標 74 / 54 / 35，副標 50 / 43 / 32），
   掛在 `ForumEvent.vue` 的 `.forum-event__title` / `.forum-event__subtitle`，
   **每個 rwd 區塊都跟著它的 `font-size` 各寫一次**。
-- `--art-w-<斷點>`：該行該斷點素材的 Figma 原生寬，由 `ForumArtLine` 用 inline style 掛在 **span** 上。
+- `--art-w-<斷點>`：該行該斷點素材的 Figma 原生寬，由 `UArtLine` 用 inline style 掛在 **span** 上。
 
 ⚠️ 兩者都是**無單位的數字**（`--art-base: 74`，不是 `74px`）—— `calc()` 裡是
 「無單位 ÷ 無單位 × 1em」，任一個帶了 `px` 整個算式就無效（`px / px * em` 不合法）。
@@ -221,13 +225,19 @@ export type ForumLine = string | ForumTextArt;
 
 ### 元件
 
-`ForumArtLine.vue`。⚠️ 刻意**不**叫 `ForumLine` —— 這個 codebase 裡「線」專指橘核心那條設計線，
+`app/components/ui/UArtLine.vue`（本批叫 `02.forum/ForumArtLine.vue`，2026-08-13 永續祝福
+標題也接上這套機制之後改名搬到 `ui/` —— 名字不該騙人）。
+
+⚠️ 刻意**不**叫 `ForumLine` / `ULine` —— 這個 codebase 裡「線」專指橘核心那條設計線，
 會誤讀；而且型別已經叫 `ForumLine`，同名會與 Nuxt 自動註冊的元件相撞。
 
-`alt=""` 而非 `alt="{{ text }}"`：真文字已經在 `.forum-art-line__text` 裡。
+⚠️ 放在 `ui/` 的前提是 `nuxt.config.ts` 給 `~/components/ui` 設了 `pathPrefix: false`，
+否則元件名會變成 `<UiUArtLine>`（那份設定的註解就是為 `UBtn` 記的）。
 
-⚠️ **加一個斷點要動兩處**：資料多填一筆，**且** `ForumArtLine.vue` 的對應 media 區塊要存在。
-`.forum-art-line__art` 的基底是 `display: none`，所以只填資料不補 CSS 的失敗方向是
+`alt=""` 而非 `alt="{{ text }}"`：真文字已經在 `.u-art-line__text` 裡。
+
+⚠️ **加一個斷點要動兩處**：資料多填一筆，**且** `UArtLine.vue` 的對應 media 區塊要存在。
+素材是那個斷點的 media query 內才被引用的背景圖，所以只填資料不補 CSS 的失敗方向是
 「素材不顯示、活文字照常」，不是一張沒定位的圖壓在版面上。
 
 ---
@@ -266,7 +276,7 @@ export type ForumLine = string | ForumTextArt;
 需要 pad／mob 稿的 node id 才能匯出。到位後要做的事只有三件：
 1. 匯出 `forum1-*-pad.svg` / `-mob.svg`（同第六節流程）。
 2. `section2.json` 的 `art` 各多填一個 key。
-3. 確認 `ForumArtLine.vue` 的 `--art-pad` / `--art-mob` 區塊（已備位）與
+3. 確認 `UArtLine.vue` 的 `--art-pad` / `--art-mob` 區塊（已備位）與
    `ForumEvent.vue` 的逐斷點 `--art-base`（已就位）無誤。
 
 ### 素材缺檔時的失敗方向

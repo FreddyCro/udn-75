@@ -1,13 +1,11 @@
 <!--
-  一行展示型文字（稿上 outline 過的就吃 SVG 素材，其餘走活文字）。
+  一行展示型文字：稿上 outline 過的行給物件（走 SVG 素材），其餘給字串（走活文字）。
 
-  ⚠️ **名字騙人：它已經不只論壇在用。** Section 3 的「永續祝福」標題也是這一支
-     （見 03.blessing/Blessing.vue）。之所以還放在 02.forum/、還叫 ForumArtLine，
-     是因為改名要動三十幾處註解引用與兩份設計文件，值得單獨一個 commit 做，
-     不該混在功能改動裡。要改的話：檔案搬到 components/ui/、class 前綴
-     forum-art-line → u-art-line，消費端只有 Forum.vue／ForumEvent.vue／Blessing.vue。
+  跨 section 共用，故住在 ui/：目前的消費端是論壇段（大標／副標／引言／日期／地點／
+  講者姓名，見 02.forum/ForumEvent.vue 與 Forum.vue）與永續祝福的標題
+  （03.blessing/Blessing.vue）。原本叫 ForumArtLine、住在 02.forum/ ——
+  第二個 section 接上來之後名字就騙人了，故改名搬家。
 
-  稿上 outline 過的行給物件（走 SVG 素材），其餘給字串（走活文字，與改動前完全相同）。
   為什麼逐行成檔、為什麼行盒高度必須保留、素材怎麼定位，
   全部寫在 architecture/2026-08-12-forum1-text-art-design.md —— 改這支之前先讀那份。
 
@@ -20,10 +18,14 @@
      實測每個斷點都請求 46 個檔、pc 共 968 KB，其中 617 KB 用不到）。
      背景圖只在符合的 media query 內被引用，因此只會抓到當下斷點那一份。
 
-  ⚠️ 消費端要在祖先掛**無單位**的 --art-base（＝該組在該斷點的字級，見 ForumEvent.vue）。
+  ⚠️ 消費端要在祖先掛**無單位**的 --art-base（＝該組在該斷點的字級，見 ForumEvent.vue
+     的各群組與 Blessing.vue 的 .section3__title）。
      沒掛的話 calc() 整式無效、素材寬塌成 0（fail-loud，看得出來）。
 -->
 <script setup lang="ts">
+// ⚠️ 型別還留在 ~/types/forum：ForumLine／ForumTextArt 與它們依賴的 ForumBp
+//    （在 ~/utils/forum-path-events）都是論壇段先定義的。把那三個一起改成中性名稱
+//    會擴散到 forum.ts、ForumEvent.vue 與 spec，屬於另一次改名，本次刻意不做。
 import type { ForumLine, ForumTextArt } from '~/types/forum';
 
 const props = defineProps<{ line: ForumLine }>();
@@ -42,7 +44,7 @@ const text = computed(() => (typeof props.line === 'string' ? props.line : props
 
 /** 每個有素材的斷點掛一個 class，讓 SCSS 的對應 media 區塊接手 */
 const artClasses = computed(() =>
-  Object.keys(art.value?.art ?? {}).map((bp) => `forum-art-line--art-${bp}`),
+  Object.keys(art.value?.art ?? {}).map((bp) => `u-art-line--art-${bp}`),
 );
 
 /**
@@ -61,10 +63,10 @@ const artVars = computed(() =>
 </script>
 
 <template>
-  <span class="forum-art-line" :class="artClasses" :style="artVars">
+  <span class="u-art-line" :class="artClasses" :style="artVars">
     <!-- 真文字只有這一份：素材斷點下由 SCSS 轉成 visually-hidden（仍在無障礙樹與 SEO 內），
          沒有素材的斷點就是畫面上的字。不做第二份 SR 複本 —— 那會在活文字斷點被唸兩次。 -->
-    <span class="forum-art-line__text">{{ text }}</span>
+    <span class="u-art-line__text">{{ text }}</span>
   </span>
 </template>
 
@@ -107,7 +109,7 @@ const artVars = computed(() =>
 
   // 真文字退場但留在無障礙樹與 SEO 裡（＝ base.scss 的 .visually-hidden，
   // 這裡不能 @extend：跨檔 ＋ scoped，故照抄那六條）。
-  .forum-art-line__text {
+  .u-art-line__text {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -119,14 +121,14 @@ const artVars = computed(() =>
 }
 
 // pc（≥1280）
-.forum-art-line--art-pc {
+.u-art-line--art-pc {
   @include rwd-min('pc') {
     @include art-active('pc');
   }
 }
 
 // pad（768–1279）。巢狀兩個 mixin 會編成 (min-width: 768px) and (max-width: 1279px)。
-.forum-art-line--art-pad {
+.u-art-line--art-pad {
   @include rwd-min('tablet') {
     @include rwd-max('pc') {
       @include art-active('pad');
@@ -135,7 +137,7 @@ const artVars = computed(() =>
 }
 
 // mob（<768）
-.forum-art-line--art-mob {
+.u-art-line--art-mob {
   @include rwd-max('tablet') {
     @include art-active('mob');
   }
