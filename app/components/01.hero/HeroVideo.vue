@@ -485,6 +485,12 @@ onBeforeUnmount(() => {
 .sec1__hero-video {
   position: absolute;
   inset: 0;
+  // 影片本體在 pc 有尺寸上限（見 .sec1__hero-video-el），超過時置中、四周露出 hero 白底。
+  // 不用 margin: auto —— 垂直置中也要，flex 一次做完；pad / mob 沒有上限，
+  // 子項 100%×100% 仍是滿版，這層 flex 不影響它們。
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: opacity 0.8s ease;
 
   // 影片播放完畢（gone）：淡出，露出 hero 白底
@@ -505,6 +511,15 @@ onBeforeUnmount(() => {
   display: block;
   width: 100%;
   height: 100%;
+  // 舞台上限（pc 2560×1440，見 base.scss 的 --hero-stage-max-*）—— 與載入層、start
+  // 閘門共用同一組值並同樣置中，三層的中心才會落在同一點。
+  // 超過上限時影片盒置中、多出來的區域露出 hero 白底（見上層的 flex）；那與 gone 之後
+  // 淡出露出的白底同一個顏色，銜接不會有落差。
+  //
+  // 退場交棒不必跟著改：coverAnchorToScreen 吃的是 <video> 自己的
+  // getBoundingClientRect()（見 Hero.vue 的 runCoreEntrance），盒子縮小、置中都算得到。
+  max-width: var(--hero-stage-max-w);
+  max-height: var(--hero-stage-max-h);
   object-fit: cover;
   object-position: center;
   pointer-events: none;

@@ -5,8 +5,10 @@ import {
   NmdShare,
   NmdToTop,
 } from '@udn-digital-center/common-components';
-import { shareURL_fb, shareURL_line, shareURL_twitter } from '@/utils/share';
+import { shareURL_fb, shareURL_twitter, useLineShareUrl } from '@/utils/share';
 import strFooter from '@/locales/footer.json';
+
+const lineHref = useLineShareUrl();
 
 const CURRENT_YEAR = new Date().getFullYear();
 </script>
@@ -30,10 +32,23 @@ const CURRENT_YEAR = new Date().getFullYear();
         </template>
         <template #上線日期>{{ strFooter.date }}</template>
       </NmdAuthor>
+      <!-- 單檔圖用法（見 UPic.vue 案例 3）：logo.png 只有 1x、無 webp、無裝置後綴。 -->
+      <div class="app-footer__logo">
+        <UPic
+          src="/img/logo"
+          ext="png"
+          :use-prefix="false"
+          :use2x="false"
+          :webp="false"
+          :width="145"
+          :height="43"
+          :alt="strFooter.logoAlt"
+        />
+      </div>
       <ClientOnly>
         <NmdShare
           :facebook="{ href: shareURL_fb }"
-          :line="{ href: shareURL_line, target: '_blank' }"
+          :line="{ href: lineHref, target: '_blank' }"
           :twitter="{ href: shareURL_twitter }"
           twitter-icon="x"
         />
@@ -62,11 +77,20 @@ const CURRENT_YEAR = new Date().getFullYear();
     }
 
     // NmdAuthor 自己的 padding-top 是 mob 60 / ≥1280 才 80，但 pad 稿也要 80。
+    // padding-bottom 原生 50，稿的名單→logo 只留 32（三斷點同值）。
     .author-grid {
+      padding-bottom: 32px;
+
       @include rwd-min('tablet') {
         padding-top: 80px;
       }
     }
+  }
+
+  // 145×43（logo.png 原生 162×48，等比縮），三斷點同尺寸；下方 50 是到分享列的間距。
+  &__logo {
+    width: 145px;
+    margin: 0 auto 50px;
   }
 }
 </style>

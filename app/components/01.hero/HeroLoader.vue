@@ -1,10 +1,14 @@
 <template>
-  <div ref="rootRef" class="loader" aria-label="載入中" role="img">
-    <!-- 網格比視窗略大且置中，溢出等量裁掉 → 中間格中心 = 視窗正中心 -->
-    <div class="grid">
-      <div v-for="i in count" :key="i" ref="tileRefs" class="tile" />
+  <div class="loader" aria-label="載入中" role="img">
+    <!-- 舞台：與影片層 / start 閘門共用的尺寸上限（見 base.scss 的 --hero-stage-max-*），
+         置中；方塊只鋪在舞台內，外面留白底。網格改以「舞台」為量測基準（見 computeGrid）。 -->
+    <div ref="stageRef" class="stage">
+      <!-- 網格比舞台略大且置中，溢出等量裁掉 → 中間格中心 = 舞台正中心 -->
+      <div class="grid">
+        <div v-for="i in count" :key="i" ref="tileRefs" class="tile" />
+      </div>
+      <div ref="counterRef" class="counter">0%</div>
     </div>
-    <div ref="counterRef" class="counter">0%</div>
   </div>
 </template>
 
@@ -41,7 +45,7 @@ const props = defineProps({
 
 const emit = defineEmits<{ done: [] }>();
 
-const rootRef = ref<HTMLDivElement | null>(null);
+const stageRef = ref<HTMLDivElement | null>(null);
 const counterRef = ref<HTMLDivElement | null>(null);
 const tileRefs = ref<HTMLDivElement[]>([]);
 
@@ -78,18 +82,20 @@ const oddCover = (size: number, tile: number) => {
   return Math.max(3, n);
 };
 
+// 量的是「舞台」而非視窗：舞台在 pc 有尺寸上限（--hero-stage-max-*），方塊只鋪滿舞台，
+// 外面露白底 —— 與影片層同一條規則。舞台已置中，故下面的「網格中心」仍等於視窗正中心。
 const computeGrid = () => {
-  const vw = rootRef.value?.clientWidth || window.innerWidth;
-  const vh = rootRef.value?.clientHeight || window.innerHeight;
+  const vw = stageRef.value?.clientWidth || window.innerWidth;
+  const vh = stageRef.value?.clientHeight || window.innerHeight;
   const tile = props.tileSize;
   const c = oddCover(vw, tile);
   const r = oddCover(vh, tile);
   count.value = c * r;
-  // 奇數網格的正中間格：中心即整個網格中心；網格置中後 = 視窗正中心
+  // 奇數網格的正中間格：中心即整個網格中心；網格置中後 = 舞台正中心 = 視窗正中心
   centerIndex = Math.floor(r / 2) * c + Math.floor(c / 2);
-  if (rootRef.value) {
-    rootRef.value.style.setProperty('--cols', String(c));
-    rootRef.value.style.setProperty('--tile', `${tile}px`);
+  if (stageRef.value) {
+    stageRef.value.style.setProperty('--cols', String(c));
+    stageRef.value.style.setProperty('--tile', `${tile}px`);
   }
 };
 
@@ -217,13 +223,29 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .loader {
-  /* 覆蓋整個視窗的載入層（蓋在 header 之上，z-index > .app-header 的 1000） */
+  /* 覆蓋整個視窗的載入層（蓋在 header 之上，z-index > .app-header 的 1000）。
+     底色白：舞台有尺寸上限時，上限之外露出的就是這片白（同影片層淡出後的白底）。 */
   position: fixed;
   inset: 0;
   z-index: 2000;
   overflow: hidden;
   background: #fff;
-  /* 把略大於視窗的網格置中：溢出等量被裁，正中間那一格中心 = 視窗正中心 */
+  /* 舞台置中 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 舞台：三層共用的尺寸上限（見 base.scss 的 --hero-stage-max-*，pc 2560×1440；
+   其餘斷點為 none ＝ 滿版）。overflow 在這一層裁：網格比舞台略大且置中，
+   溢出等量被裁 → 正中間那一格中心 = 舞台正中心 = 視窗正中心。 */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-width: var(--hero-stage-max-w);
+  max-height: var(--hero-stage-max-h);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;

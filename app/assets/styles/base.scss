@@ -15,6 +15,22 @@
   // 底部錨定的 UI 要靠這個補回來 → bottom: calc(<設計稿的值> + var(--chrome-inset))。
   // 完整理由見 ~/utils/viewport-height 的 chromeInset()。
   --chrome-inset: 0px;
+
+  // hero 開場「舞台」的尺寸上限：影片層（01.hero/HeroVideo）、載入層（HeroLoader）、
+  // start 閘門（HeroStart）三層共用同一個上限並各自置中 —— 三者靠「同一個中心」串起
+  //「載入層中央留白格 → start cube → 影片裡的橘核心」這條交棒鏈，上限各寫一份就會漂掉。
+  // 超出上限的區域一律露出 hero 白底（三層的底色都是 #fff，接得起來）。
+  //
+  // none ＝ 不設限（＝滿版）：pc 剪輯只有 1920×1080，放到 4K 寬只是變糊，故只在 pc 收上限；
+  // pad 1024×1364 / mob 720×1280 是直式剪輯，限高會讓 iPad Pro 直式這類高視窗留白。
+  --hero-stage-max-w: none;
+  --hero-stage-max-h: none;
+
+  // 2560×1440 與 pc 剪輯的 1920×1080 同為 16:9 → 滿到上限時是等比放大，不裁切。
+  @include rwd-min('pc') {
+    --hero-stage-max-w: 2560px;
+    --hero-stage-max-h: 1440px;
+  }
 }
 
 html,
