@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import section2 from '../app/locales/section2.json';
+import section3 from '../app/locales/section3.json';
 
 // vitest 沒設 alias（見 vitest.config.ts），故一律相對路徑 import；
 // 檔案路徑相對 cwd（＝專案根，同 design-tokens.spec.ts 的做法）。
@@ -55,17 +56,27 @@ const svgSize = (src: string): { w: number; h: number } => {
   };
 };
 
-const arts = collectArts(section2);
+// 兩個 section 都用同一套機制（section3 只有「永續祝福」那一個標題），
+// 故一起走訪 —— 新的 section 接上素材時只要多加一個來源，斷言全部自動涵蓋。
+const arts = [section2, section3].flatMap((s) => collectArts(s));
 // 攤平成 (斷點, 素材) —— 逐筆斷言用
 const entries = arts.flatMap((a) =>
   Object.entries(a.art).map(([bp, src]) => ({ text: a.text, bp, src })),
 );
 
-describe('論壇稿字形素材（ForumTextArt）與 section2.json 對帳', () => {
+describe('稿字形素材（ForumTextArt）與 locales JSON 對帳', () => {
   // 這一道是「別的斷言別被空陣列蒙過去」的守門員：
   // 若哪天論壇一的 title 被改回純字串，下面的 it.each 會一條都不跑而全綠。
   it('至少有三筆素材（論壇一的大標 ＋ 副標兩行）', () => {
     expect(entries.length).toBeGreaterThanOrEqual(3);
+  });
+
+  // section3 只有一筆（永續祝福標題），單獨守著 —— 它與 section2 的素材混在同一份
+  // entries 裡，光看總數看不出它有沒有掉。
+  it('section3 的「永續祝福」標題有素材，且三個斷點全滿', () => {
+    const title = collectArts(section3);
+    expect(title.map((a) => a.text)).toEqual(['永續祝福']);
+    expect(Object.keys(title[0]!.art).sort()).toEqual(['mob', 'pad', 'pc']);
   });
 
   it('每一筆都有真文字（SEO / SR 的唯一來源）', () => {

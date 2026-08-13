@@ -264,7 +264,13 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="section3__intro">
-            <h2 class="section3__title">{{ partner.title }}</h2>
+            <!-- 稿字形素材（白字）＋ visually-hidden 的真文字，機制見
+                 architecture/2026-08-12-forum1-text-art-design.md。行盒仍是 line-height
+                 撐出來的，故標題高度不變 —— 下面那兩個量測值（--face-block-h／--face-cell-y）
+                 靠它。⚠️ <ForumArtLine> 現在不只論壇在用（見它的檔頭）。 -->
+            <h2 class="section3__title">
+              <ForumArtLine class="section3__title-art" :line="partner.title" />
+            </h2>
             <p class="section3__body">{{ partner.body }}</p>
           </div>
         </div>
@@ -555,11 +561,19 @@ onBeforeUnmount(() => {
   }
 }
 
-// 設計稿的「永續祝福」是外框化向量（Figma Group 12474），寬度就是整個 intro 欄寬：
-// pc 507×104.04 / pad 340×69.77 / mob 362×74.29 —— 也就是標題與下方內文同寬（pad 的
-// 內文較寬 530，標題 340 置中）。四個字都是全形，Noto Sans TC 的字幅各 1em，
-// 所以 font-size 取「設計稿寬 ÷ 4」字盒才會剛好對齊；line-height 直接取向量高度。
+// 設計稿的「永續祝福」是外框化向量（pc 2065:140384 / pad 2065:125424 / mob 2065:121728），
+// 寬度就是整個 intro 欄寬：pc 507×104.04 / pad 340×69.77 / mob 362×74.29 —— 也就是標題與
+// 下方內文同寬（pad 的內文較寬 530，標題 340 置中）。
+//
+// 現在畫面吃的是那三份 SVG（見 template 的 <ForumArtLine>），font-size 只剩兩個作用：
+// 撐行盒、以及當素材的寬度基準 --art-base。四個字都是全形、Noto Sans TC 的字幅各 1em，
+// 所以「設計稿寬 ÷ 4」同時是「素材退回活文字時字盒剛好對齊欄寬」的值 —— 兩邊都對，
+// 故沿用不動。line-height 直接取向量高度。
 .section3__title {
+  // 素材的寬度基準（見 <ForumArtLine>）：**無單位**，恆等於本區塊的 font-size。
+  // 帶了 px 整個 calc() 無效、素材寬會塌成 0（fail-loud，看得出來）。
+  --art-base: 126.75;
+
   margin: 0;
   font-size: 126.75px; // 507 / 4
   font-weight: 300;
@@ -567,13 +581,30 @@ onBeforeUnmount(() => {
   white-space: nowrap; // 字盒與欄寬等寬，四捨五入的誤差不該讓它斷成兩行
 
   @include rwd-max('pc') {
+    --art-base: 85;
+
     font-size: 85px; // 340 / 4
     line-height: 70px;
   }
 
   @include rwd-max('tablet') {
+    --art-base: 90.5;
+
     font-size: 90.5px; // 362 / 4
     line-height: 74px;
+  }
+}
+
+// 素材在 pad 要自己置中。
+// ⚠️ 不能靠 .section3__intro 的 text-align: center —— 素材模式下這個 span 是
+//    **固定寬的 block**（width 由 --art-w ÷ --art-base 算出），text-align 管不到它。
+//    稿在 pad 是「標題 340 置中於 530 的內文欄」，pc（欄寬 ＝ 標題寬）與 mob（稿靠左，
+//    見 __intro 的 text-align: left）都不需要，故只在 pad 那一段給。
+.section3__title-art {
+  @include rwd-min('tablet') {
+    @include rwd-max('pc') {
+      margin-inline: auto;
+    }
   }
 }
 

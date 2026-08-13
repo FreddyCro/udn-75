@@ -1,5 +1,11 @@
 <!--
-  論壇區塊的「一行」展示型文字。
+  一行展示型文字（稿上 outline 過的就吃 SVG 素材，其餘走活文字）。
+
+  ⚠️ **名字騙人：它已經不只論壇在用。** Section 3 的「永續祝福」標題也是這一支
+     （見 03.blessing/Blessing.vue）。之所以還放在 02.forum/、還叫 ForumArtLine，
+     是因為改名要動三十幾處註解引用與兩份設計文件，值得單獨一個 commit 做，
+     不該混在功能改動裡。要改的話：檔案搬到 components/ui/、class 前綴
+     forum-art-line → u-art-line，消費端只有 Forum.vue／ForumEvent.vue／Blessing.vue。
 
   稿上 outline 過的行給物件（走 SVG 素材），其餘給字串（走活文字，與改動前完全相同）。
   為什麼逐行成檔、為什麼行盒高度必須保留、素材怎麼定位，

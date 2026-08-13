@@ -1,6 +1,13 @@
 {
   "partner": {
-    "title": "永續祝福",
+    "title": {
+      "text": "永續祝福",
+      "art": {
+        "pc": { "src": "/img/blessing/blessing-title-pc.svg", "w": 507.0004, "h": 104.0445 },
+        "pad": { "src": "/img/blessing/blessing-title-pad.svg", "w": 340.0002, "h": 69.7736 },
+        "mob": { "src": "/img/blessing/blessing-title-mob.svg", "w": 362, "h": 74.2887 }
+      }
+    },
     "body": "聯合報系攜手企業盟友，許下永續未來，用科技賦能百工百業，以人文關懷全齡社會，在動盪的變局中，續做引領世代的關鍵力量。",
     "tiers": [
       {
