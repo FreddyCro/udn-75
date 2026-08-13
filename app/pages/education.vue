@@ -7,7 +7,6 @@ definePageMeta({ layout: 'subpage' });
 /** education 專屬文案結構：Subpage 外殼所需的 hero/intro/nav + 各內文區塊 */
 interface EducationContent extends SubpageContent {
   opening: string;
-  closing: string;
   cta: { label: string; url: string };
 }
 
@@ -22,13 +21,8 @@ const c = raw as EducationContent;
       <p class="sp-p" v-html="c.opening" />
     </div>
 
-    <!-- 結語 -->
-    <div class="sp-col mt-16">
-      <p class="sp-p" v-html="c.closing" />
-    </div>
-
     <!-- 線上特輯按鈕 -->
-    <div class="mt-8 mb-16 md:mb-8">
+    <div class="mt-8 lg:mt-16 mb-16 md:mb-8">
       <SubpageCta :label="c.cta.label" :url="c.cta.url" />
     </div>
   </Subpage>
