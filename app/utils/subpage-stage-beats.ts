@@ -60,3 +60,19 @@ export function blockState(progress: number, inLine: number, outLine: number): S
   if (progress < inLine) return 'before';
   return progress >= outLine ? 'after' : 'shown';
 }
+
+/**
+ * 「等淡出播完才停播」的延後副作用，執行當下還算不算數。
+ *
+ * ⚠ 淡出 tween 的 onComplete 不等於「這塊現在確實不用演了」：回捲若落在淡出的最後一格
+ *   frame，gsap 的 `overwrite: 'auto'` 要等新 tween 首次 render 才砍掉舊 tween，舊的淡出
+ *   會先播完並觸發 onComplete，把剛被 show 打開的播放狀態又關掉 —— 照片看得見卻停在
+ *   第一張，而且此時狀態已是 'shown'、同一拍內不會再換態，那條分支不會再進，
+ *   **不會自己恢復**，得捲出那一拍再捲回來。（見 test/subpage-media-active.spec.ts）
+ *
+ * 所以延後的停播要在執行當下重新確認該塊是不是真的還沒在演，不能只靠「onComplete
+ * 沒被觸發」來代表它已被接手。
+ */
+export function deferredStopStillApplies(stateNow: StageBlockState): boolean {
+  return stateNow !== 'shown';
+}

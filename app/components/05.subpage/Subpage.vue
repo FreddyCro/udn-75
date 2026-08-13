@@ -10,6 +10,7 @@ import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 import {
   HIDE_Y,
   blockState,
+  deferredStopStillApplies,
   stageBeats,
   stageLines,
   type StageBlockState,
@@ -240,9 +241,12 @@ onMounted(async () => {
               mediaFade.show(jumped);
             } else {
               // 輪播要等淡出播完才停，否則會在淡出途中倒回第一張（被看見）；
-              // 停播即倒回第一張，回捲重看時才會從頭演（見 SubpageIntroMedia 的 active）
+              // 停播即倒回第一張，回捲重看時才會從頭演（見 SubpageIntroMedia 的 active）。
+              // 但淡出播完時得重新確認「現在確實還不用演」—— 回捲落在淡出最後一格 frame 時
+              // 這個 onComplete 會晚於 show 才跑，不擋掉就會把剛打開的輪播又關掉且不會恢復
+              // （見 deferredStopStillApplies）
               mediaFade.hide(HIDE_Y[wantMedia], jumped, () => {
-                mediaActive.value = false;
+                if (deferredStopStillApplies(mediaState)) mediaActive.value = false;
               });
             }
           }
