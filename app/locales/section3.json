@@ -1,0 +1,227 @@
+{
+  "partner": {
+    "title": {
+      "text": "永續祝福",
+      "art": {
+        "pc": { "src": "/img/blessing/blessing-title-pc.svg", "w": 507.0004, "h": 104.0445 },
+        "pad": { "src": "/img/blessing/blessing-title-pad.svg", "w": 340.0002, "h": 69.7736 },
+        "mob": { "src": "/img/blessing/blessing-title-mob.svg", "w": 362, "h": 74.2887 }
+      }
+    },
+    "body": "聯合報系攜手企業盟友，許下永續未來，用科技賦能百工百業，以人文關懷全齡社會，在動盪的變局中，續做引領世代的關鍵力量。",
+    "tiers": [
+      {
+        "label": "策略夥伴",
+        "partners": [
+          {
+            "name": "台新新光金控",
+            "quote": "",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": ""
+          },
+          {
+            "name": "Kantar",
+            "quote": "",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": ""
+          }
+        ]
+      },
+      {
+        "label": "共創夥伴",
+        "partners": [
+          {
+            "name": "上海商銀",
+            "quote": "永續行動，守護未來 邁向淨零，共創新生",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.scsb.com.tw"
+          },
+          {
+            "name": "中保科技",
+            "quote": "AI智慧城市開創者 攜手打造永續新未來",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.secom.com.tw/"
+          }
+        ]
+      },
+      {
+        "label": "倡議夥伴",
+        "partners": [
+          {
+            "name": "紳裝",
+            "quote": "聯合七五傳初心，紳裝四十耀未來",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.gentlemen.com.tw/"
+          },
+          {
+            "name": "群創能源科技股份有限公司",
+            "quote": "科技引領能源轉型共築綠色新未來",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://cirsolar.tw/"
+          }
+        ]
+      },
+      {
+        "label": "響應夥伴",
+        "partners": [
+          {
+            "name": "Happy GO",
+            "quote": "點數串聯智慧生活，陪伴每一個更好的選擇",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.happygocard.com.tw/official/index.do"
+          },
+          {
+            "name": "久樘開發",
+            "quote": "以風光水綠 讓建築健康永續",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://a1.chiu-i.news"
+          },
+          {
+            "name": "中力都市",
+            "quote": "回歸建築耐震安全本質 共築台灣永續未來",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.dyf.com.tw/dyf/"
+          },
+          {
+            "name": "中租",
+            "quote": "打造綠能價值鏈，低碳轉型，邁向永續",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.chaileaseholding.com/CSR/OperatorTalk"
+          },
+          {
+            "name": "中華海洋",
+            "quote": "傳遞真知見證時代，守護健康共創美好",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://hiqbio.com/"
+          },
+          {
+            "name": "台中銀行",
+            "quote": "AI 賦能綠色轉型，台中銀行陪您永續同行",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.tcbbank.com.tw/"
+          },
+          {
+            "name": "台灣八木",
+            "quote": "支持永續行動，共同守護台灣土地與生態",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.yagitsu.co.jp"
+          },
+          {
+            "name": "台灣房屋",
+            "quote": "AI領航新時代品牌共創新價值",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://robot.twhg.com.tw/ai-llm.php"
+          },
+          {
+            "name": "立光診所",
+            "quote": "與聯合報一樣亮眼的秘訣，由立光守護您",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.lk-dr.com/"
+          },
+          {
+            "name": "宏碁",
+            "quote": "每個決定至關重要，共同為環境帶來改變",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.acer.com/50-years/tw-zh/"
+          },
+          {
+            "name": "金格食品",
+            "quote": "一口金格潔淨長崎蛋糕，一步靠近永續",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.king.com.tw/"
+          },
+          {
+            "name": "長春藤",
+            "quote": "健康永續來自預防，環境永續你我共創",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.icareyou.com.tw/"
+          },
+          {
+            "name": "帝璟建設",
+            "quote": "初心傳承共譜美好 一人一樹永續建築",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.di-jing.com.tw/"
+          },
+          {
+            "name": "唯賀國際餐飲股份有限公司",
+            "quote": "與聯合同行，讓溫暖延續",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.nu-pasta.com.tw/"
+          },
+          {
+            "name": "陸府建設",
+            "quote": "都會核心 回歸自然 打造永續生機建築",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.live-forever.com.tw/"
+          },
+          {
+            "name": "景文科大",
+            "quote": "景文37教學創新 聯合75共好永續",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.just.edu.tw/index.php"
+          },
+          {
+            "name": "新東陽",
+            "quote": "初心不變 創新永續 美味傳承與時代同行",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://shopping.hty.com.tw"
+          },
+          {
+            "name": "瑞助營造",
+            "quote": "深耕七五領新航，瑞助聯合創輝煌！",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.reiju.com.tw/"
+          },
+          {
+            "name": "萬世紀",
+            "quote": "與聯合報靈魂相遇，四季更迭，不負今生",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.books-darmo-cc.com/"
+          },
+          {
+            "name": "誠邑築建設",
+            "quote": "與城市共生，築綠未來。",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://cheeringzu.com/"
+          },
+          {
+            "name": "鈺陞建設",
+            "quote": "植綠地球、與自然共好，與未來同行！",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.facebook.com/yushengbuilding"
+          },
+          {
+            "name": "遠東SOGO",
+            "quote": "",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": ""
+          },
+          {
+            "name": "歐都納股份有限公司",
+            "quote": "守護山林生態，讓戶外探索永續共好。",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.atunas.com.tw/tw"
+          },
+          {
+            "name": "薰衣草森林集團",
+            "quote": "讓療癒成為生活，讓永續成為日常",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.lavenderforest.com.tw/zh-tw"
+          },
+          {
+            "name": "麗寶集團",
+            "quote": "AI驅動新時代，麗寶建設共築美好未來",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "http://www.lihpao.org.tw/group/index.php"
+          },
+          {
+            "name": "寶輝建設",
+            "quote": "砥礪前行 共築未來 與時俱進共創美好",
+            "logo": "/img/udn75_logo03_01.svg",
+            "url": "https://www.paohuei.com/"
+          }
+        ]
+      }
+    ]
+  }
+}

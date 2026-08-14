@@ -1,0 +1,148 @@
+<script setup lang="ts">
+// Section 01a.symbol：符號星空 / 人臉序列的**捲動驅動段落**（對應 Figma「智慧論壇05–08」四拍）。
+//
+// ⚠️ 本元件不畫任何東西 —— <SymbolFace> 住在 Hero 的 <HeroSymbolTransition> slot 裡。
+//    原因見設計分鏡 2065:143082：轉場（橘方塊上下拉長 → 左右展開）發生在 **hero 還被 pin 住**
+//    的時候，且「展開範圍內已可見粒子」，所以粒子場必須在 hero 轉場期間就在場、滿版渲染。
+//    轉場層是 fixed 滿版色場 ＋ clip 開窗，slot 內就是那顆真的 canvas。
+//
+// 因此本元件只是一把「捲動尺」：把自身高度換算成 symbolProgress，指派 mode 與撤場旗標。
+// 也因為視覺已經是 fixed，**不需要 pin**（少一層 transform / containing block 的雷）。
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
+const {
+  symbolMode,
+  symbolTarget,
+  setSymbolProgress,
+  symbolLayerDone,
+  symbolConvergeLight,
+} = useOrangeCoreProgress();
+
+// 段落高度 ＝ SYMBOL_VH × 視窗高（見 ~/utils/orange-core-config）＝ 序列的捲動長度。
+// 用 vhLength 而非字面 `320vh`：視窗高在本專案有單一來源（--vh），見 ~/utils/viewport-height。
+const sceneHeight = vhLength(SYMBOL_VH);
+
+// 捲動尺：本段頂端進入視窗底（＝ hero 轉場 pin 剛釋放的那一刻）起算，到本段捲完為止。
+//   ・start 'top bottom' 只看「sec1 底緣抵達視窗底」→ 與本段高度無關，故不論 SYMBOL_VH 調多少，
+//     都精準接在 hero 轉場 pin 釋放的同一刻（兩軌首尾相接、不重疊）。
+//   ・end 'bottom bottom' → 捲動距離＝本段高度＝ SYMBOL_VH × 100vh。
+//   ・往回捲自動倒退（converge→…→disperse）：靠 onUpdate 直接讀 self.progress，
+//     不是 scrub —— 本 trigger 沒有掛動畫，沒有東西需要被 scrub 平滑補間。
+//
+// ── symbolProgress 時序表 ────────────────────────────────────────────────
+// ⚠️ 這是換算結果、不是資料來源：**唯一來源是 SYMBOL_BEAT_VH**（四拍各吃多少 vh），
+//    progress 門檻與本表都是它的換算結果。改動那個常數後要回來手動同步這張表。
+//    下表為 SYMBOL_VH = 3.44（總長 344vh），括號內 px 是視窗高 1080 的換算。
+//
+//   step  mode / 事件                              progress      累計距離（起→迄）        該段距離
+//   ①     disperse 分散（前段疊開場三行文案）        0 → 32.56%    0    → 112vh   (0→1210px)     112vh
+//         └ 文案 8vh 起播 → 自走 6.4s 時間軸（2.0s 三行到位／停留 3.0s／1.4s 依序退場）
+//           104vh 保底清場（越過就強制淡出）。門檻在 SYMBOL_INTRO、節奏在 INTRO_TIMELINE
+//   ②     face 集合（人像）＝最長的一拍              32.56 → 72.09%  112 → 248vh (1210→2678px)  136vh
+//   ③     converge 匯聚成點                         72.09 → 88.37%  248 → 304vh (2678→3283px)   56vh
+//   ④     coreIn 交棒：本層淡出＋ForumCore 硬切上場  88.37%        304vh          (3283px)        —
+//   ⑤     enter 橘核心停在黑畫面（原地停住）          88.37 → 90.70%  304 → 312vh (3283→3370px)    8vh
+//   ⑥     agendaIn 議程 reveal（仍在畫面外）         90.70%        312vh          (3370px)        —
+//   ⑦     coreOut 黑底淡出、段落捲完（onLeave→鎖 1） 100%          344vh          (3715px)        32vh
+//
+// ⑤＋⑦ ＝ handoff 那一拍的 40vh。⑦ 的 32vh 是 AGENDA_OFFSCREEN_VH 的硬下限（議程淡入必須
+// 發生在畫面外），故 handoff 再縮就只能吃掉 ⑤ 的 8vh 停留 —— 見 FORUM_HANDOFF 的註解。
+//
+// ⑦ 之後還有一段「懸停期」不在本尺內：黑白接縫要再升 50vh 才抵達視窗中央，橘點在那段期間
+// 停在中央不動，然後由論壇段路徑接手（見 ForumCorePath 的 start: 'top center'）。
+// 那 50vh 是零跳點幾何的下限，見 FORUM_HANDOFF 的註解。
+//
+// 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本段合計 464vh。
+//
+// ⚠️ ① 與 ② 的交界（mode 切換）只是「觸發」SymbolFace 那 2.2s 的 gsap 補間
+//    （disperseDuration），本表只管門檻位置、不管補間跑多久。
+//    ③ converge **是例外**：2026-08-13 起它綁 scrub —— uConverge 與整片底色都由
+//    convergeAmountAt(symbolProgress) 逐幀決定（Hero 以 converge-amount 餵進去）。
+//    改的理由是往回捲：定時補間永遠貼在區段前緣，往回滑時 ③ 整拍靜止、補間要到離開
+//    這一拍才跑，於是 ③＋⑤＋⑦ 連續 96vh 一片白什麼都不動。推導見 convergeAmountAt。
+// ⚠️ reveal（粒子淡入）不在本表內：它由 SymbolFace 的執行閘門啟動 ——
+//    ＝ 轉場層 active（transitionProgress > 0，比本段的起點更早）＋ 進入視口 ＋ 分頁在前景。
+//    也就是說 reveal 發生在前一軌（hero 轉場的拉長段）裡，本段接手時粒子已在場。
+//    三個訊號在 reveal 跑完前任一個轉為 false（例如使用者又捲回 hero），SymbolFace 會把它
+//    收回起點並允許重跑 —— 這段動畫的用意就是「要有人看見」，不是計時器。
+const sceneRef = ref<HTMLElement | null>(null);
+let symbolST: ScrollTrigger | null = null;
+
+onMounted(() => {
+  if (!sceneRef.value) return;
+  gsap.registerPlugin(ScrollTrigger);
+  symbolST = ScrollTrigger.create({
+    trigger: sceneRef.value,
+    start: 'top bottom',
+    end: 'bottom bottom',
+    // 刻意沒有 invalidateOnRefresh：它是「refresh 時對綁定的動畫呼叫 invalidate()」，
+    // 而本 trigger 沒有掛動畫 → 純粹的 no-op。start/end 是字串，refresh 本來就會重算。
+    onUpdate: (self) => setSymbolProgress(self.progress),
+    onLeaveBack: () => setSymbolProgress(0), // 捲回本段之前 → 回到 disperse
+    onLeave: () => setSymbolProgress(1), //     捲過本段之後 → 維持 enter（已進入論壇）
+  });
+});
+
+onBeforeUnmount(() => {
+  symbolST?.kill();
+  symbolST = null;
+});
+
+// scroll 主導：symbolProgress 解出的目標 → 指派 SymbolFace 的 mode 與轉場層的撤場旗標。
+// 分兩個 watch 只在「值真的改變」時觸發（mode 改變才會讓 SymbolFace 跑 2.2s 補間）。
+watch(() => symbolTarget.value.mode, (m) => (symbolMode.value = m), {
+  immediate: true,
+});
+watch(() => symbolTarget.value.enter, (e) => (symbolLayerDone.value = e), {
+  immediate: true,
+});
+</script>
+
+<template>
+  <!-- 純捲動尺：無內容。底色是為了萬一轉場層還沒蓋滿時不露餡，故要跟著序列走：
+       converge 起翻白（見下方 SCSS 與 SymbolFace 的 convergeBgColor）。
+       data-header-theme 一併跟著翻 —— header 是靠段落宣告的主題決定自身配色，
+       底色翻白之後還宣告 dark 的話，header 的內容會白對白看不見。
+       （屬性本身在 SSR 就存在，符合 AppHeader onMounted 收集 [data-header-theme] 的前提；
+         值由 dataset 每次捲動即時讀取，故動態綁定有效，見 AppHeader 的 updateTheme。）
+       （進度除錯已整合成跨章節的 <DevCoreProgress>，掛在 pages/index.vue，?pathdebug 開啟。）
+
+       data-anchor-target：本段是論壇章節的開場（見檔頭：對應 Figma「智慧論壇05–08」），
+       故錨點列在這整段就該亮「論壇」。它有 SYMBOL_VH 個視窗高，不宣告的話 header 剛滑入
+       就會有那麼長一段三個錨點全不亮。宣告權在段落自己，AppHeader 只讀屬性、不認得
+       .sec-symbol —— 同 data-header-theme 的分工。值是靜態的，SSR 就在。 -->
+  <section
+    ref="sceneRef"
+    class="sec-symbol"
+    :class="{ 'sec-symbol--light': symbolConvergeLight }"
+    :style="{ height: sceneHeight }"
+    aria-hidden="true"
+    :data-header-theme="symbolConvergeLight ? 'light' : 'dark'"
+    data-anchor-target="forum"
+  />
+</template>
+
+<style lang="scss" scoped>
+// 這段的底色只有在「上面兩層都沒蓋住」時才會被看到，而那正是 coreOut 之後那一小段：
+// ForumCore 的滿版白底已淡出、.sec2 還沒捲上來，露出來的就是本段。
+// 故它必須跟著序列翻面，否則往下捲會在 forum 前面插一段黑（白 → 黑 → 白）。
+//
+// 綁 symbolConvergeLight（＝ 收攏量過半）而不是 symbolMode === 'converge'：
+// converge 改綁 scrub 之後，mode 仍在那一拍的**起點**就翻面，底色卻要走完整拍才變白 ——
+// 綁 mode 的話這裡會提早 56vh 翻白，而 header 也會跟著提早宣告自己站在淺色底上、改用
+// 深色內容，但底下其實還是全黑（那 56vh 的 header 等於看不見）。
+// convergeAmountAt 在越過交棒點之後恆為 1，故這個條件照樣涵蓋「一路到段落結束」，
+// 往回捲也自動翻回黑 —— 與 SymbolFace 的 convergeBgColor 仍是同一條規則的兩半。
+//
+// 不做 transition：切換的那一刻本段一定被不透明的轉場層（含滿版 canvas）蓋著，看不到；
+// 補一段時間曲線只會多一個要和 disperseDuration 對齊的數字。
+.sec-symbol {
+  position: relative;
+  background-color: #000;
+}
+
+.sec-symbol--light {
+  background-color: #fff;
+}
+</style>

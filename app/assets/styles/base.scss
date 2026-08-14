@@ -1,0 +1,181 @@
+:root {
+  // 頂部固定 header 的總高度（進度條 3px ＋ 頂部列 80px），
+  // 供錨點捲動偏移補償使用；CSS 與 JS 皆從此變數取得。
+  --header-height: 83px;
+
+  // 垂直捲軸寬度：預設 0（SSR 與 overlay 捲軸環境如 macOS／行動裝置皆為 0），
+  // 由 ~/plugins/scrollbar-width.client.ts 於 client 量測後覆寫（Windows 一般為 15~17px）。
+  // 用途：需要「扣掉捲軸寬」的地方一律用 calc(... - var(--scrollbar-width))，
+  // 避免捲軸出現／消失導致可用寬變動而撐出水平捲軸。
+  --scrollbar-width: 0px;
+
+  // 行動裝置的網址列／底部工具列此刻吃掉的高度：預設 0（桌機恆為 0），
+  // 由 ~/plugins/viewport-height.client.ts 量測後覆寫。
+  // 用途：滿版區塊的高是 --vh（＝ large viewport，工具列展開時比可視範圍高一截），
+  // 底部錨定的 UI 要靠這個補回來 → bottom: calc(<設計稿的值> + var(--chrome-inset))。
+  // 完整理由見 ~/utils/viewport-height 的 chromeInset()。
+  --chrome-inset: 0px;
+
+  // hero 開場「舞台」的尺寸上限：影片層（01.hero/HeroVideo）、載入層（HeroLoader）、
+  // start 閘門（HeroStart）三層共用同一個上限並各自置中 —— 三者靠「同一個中心」串起
+  //「載入層中央留白格 → start cube → 影片裡的橘核心」這條交棒鏈，上限各寫一份就會漂掉。
+  // 超出上限的區域一律露出 hero 白底（三層的底色都是 #fff，接得起來）。
+  //
+  // none ＝ 不設限（＝滿版）：pc 剪輯只有 1920×1080，放到 4K 寬只是變糊，故只在 pc 收上限；
+  // pad 1024×1364 / mob 720×1280 是直式剪輯，限高會讓 iPad Pro 直式這類高視窗留白。
+  --hero-stage-max-w: none;
+  --hero-stage-max-h: none;
+
+  // 2560×1440 與 pc 剪輯的 1920×1080 同為 16:9 → 滿到上限時是等比放大，不裁切。
+  @include rwd-min('pc') {
+    --hero-stage-max-w: 2560px;
+    --hero-stage-max-h: 1440px;
+  }
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+html {
+  // Figma design system：主字體 Noto Sans TC（weight 300 / 400 / 500）。
+  // 前面再疊一層西文版 Noto Sans —— fallback 逐字符生效，英數與西文標點會落在
+  // 第一順位的 Noto Sans，其餘（中文、全形標點 U+3000–303F／U+FF00–FFEF，
+  // Noto Sans 沒有這些碼位）自然掉到 Noto Sans TC。
+  // ⚠️ 這也把 — – ' ' " " … 這類 General Punctuation 一併交給西文版了：
+  //    中文段落裡的破折號／引號／刪節號會改用半形字幅，比 TC 版窄。這是刻意的取捨。
+  // 字體來源見 nuxt.config.ts 的 fonts.families（@nuxt/fonts 本地自架）。
+  font-family: 'Noto Sans', 'Noto Sans TC', sans-serif;
+  font-style: normal;
+  line-height: 150%;
+
+  // 一律不出現水平捲軸。兩種來源都會冒出來，且都不是版面真的「寬了一截」：
+  //   1. 次像素進位：DPR 非整數時（如 1.5）可用寬會是小數（1570.667px），
+  //      但 GSAP pin-spacer 與 canvas 寫入的是整數寬（1571px）→ 溢出 0.333px，
+  //      Chrome 進位成 1 device px 就渲染出一條水平捲軸。
+  //   2. section 1 的 date 群組／core path 仍是 pc 稿絕對定位（RWD 未做），
+  //      視窗窄於約 1000px 會超出視窗。
+  // 用 clip 而非 hidden：clip 不建立捲動容器，不影響 position:fixed 與 GSAP pin。
+  overflow-x: clip;
+}
+
+// 捲動鎖共兩把，各自獨立的 class（不共用，才不會互相清掉對方的鎖）：
+//   .is-scroll-locked — hero 影片 main / loop / outro 期間，見 01.hero/Hero.vue 的 applyScrollLock
+//   .is-menu-locked   — <1280 漢堡選單開啟期間，見 AppHeaderMenu.vue
+// 兩把同時成立也沒問題：宣告完全相同，padding-right 只補一次。
+//
+// ⚠️ 鎖必須下在 <html>，只下在 <body> 是無效的：上面那條 html { overflow-x: clip } 讓根元素
+//    不再是 overflow: visible，依 CSS 的 viewport propagation 規則，body 的 overflow 就不會
+//    再傳播到視窗 → 垂直捲軸仍在、頁面照樣捲得動（2026-08-04 實測：locked 期間
+//    innerWidth - clientWidth 還是 15，真實滑鼠捲動照樣有效）。
+html.is-scroll-locked,
+html.is-menu-locked {
+  overflow: hidden;
+}
+
+// overflow:hidden 讓垂直捲軸消失、可用寬多出一個捲軸寬 → 此時量到的寬度（GSAP
+// pin-spacer、各 100% 寬元素）會比解鎖後多 15px，解鎖捲軸回來就撐出水平捲軸。
+// 補回等寬的 padding-right → 鎖／解鎖的內容寬完全一致，不會有水平捲軸也不會橫向抖動。
+// overflow 這條是保險：html 若哪天恢復 overflow: visible，才由它接手傳播。
+body.is-scroll-locked,
+body.is-menu-locked {
+  overflow: hidden;
+  padding-right: var(--scrollbar-width);
+}
+
+// 同一把鎖的「hydration 之前」版本。上面那組由 Hero.vue 的 applyScrollLock() 操作，
+// 而它掛在 onMounted —— SSR 吐出的 HTML 到 hydration 之間頁面是能自由捲的，手機上
+// 這段好幾百 ms，使用者一進站往下甩就跑掉了。故 Hero 以 useHead 在 SSR 就把
+// .is-boot-locked 掛上 <html>（只有首頁有 Hero，子頁不受影響）。
+//
+// 交棒寫在選擇器裡：applyScrollLock() 第一件事就是蓋上 data-scroll-lock="hero"，
+// 這條隨即失效，其後一律由上面的 .is-scroll-locked 說了算。兩者在同一個同步區塊內
+// 完成，中間不會重繪 → 沒有「瞬間可捲動」的破口。
+//
+// 沒有 JS（或 bundle 掛掉）時會維持鎖住 —— 可接受：SSR 同時吐出的 HeroLoader 是
+// fixed inset:0 的白色不透明滿版層，那種情境下捲得動也只是在白畫面底下捲。
+// 同理，此時 --scrollbar-width 還是預設的 0（要 client 量），桌機會在 hydration
+// 那一刻補上 padding 而位移一個捲軸寬 —— 那也發生在載入層底下，看不到。
+html.is-boot-locked:not([data-scroll-lock]) {
+  overflow: hidden;
+
+  body {
+    overflow: hidden;
+    padding-right: var(--scrollbar-width);
+  }
+}
+
+// 換頁轉場 fade through（搭配 nuxt.config 的 app.pageTransition，mode: out-in）。
+// 舊頁只淡出、不縮放（accelerate 曲線，快速讓開）；新頁淡入＋由 0.96 放大到 1
+// （decelerate 曲線，慢慢落定）。辨識度來自這個 scale——只做 opacity 會是
+// cross-dissolve，眼睛幾乎讀不到換頁。時間比約 1:2，總長約 700ms。
+//
+// transform-origin 用 50% 0（頂端）：頁面是很長的文件，若用預設的 center，
+// scale 0.96 會讓頂端邊界位移數百 px，換頁瞬間看起來像整頁往下掉。
+.page-leave-active {
+  transition: opacity 220ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.page-leave-to {
+  opacity: 0;
+}
+
+.page-enter-active {
+  transition:
+    opacity 480ms cubic-bezier(0, 0, 0.2, 1),
+    transform 480ms cubic-bezier(0, 0, 0.2, 1);
+  transform-origin: 50% 0;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+// 首頁專用（見 app/pages/index.vue 的 definePageMeta）：只做 opacity，不帶 transform。
+// Hero 內有 position: fixed 的疊層（HeroLoader / HeroStart / HeroSymbolTransition）
+// 與 ScrollTrigger pin；進場期間父層若帶 transform，這些 fixed 元素會改以該變形層
+// 為定位基準而跳位，且 ScrollTrigger 初始化時會量到縮放後的尺寸。
+.page-fade-leave-active {
+  transition: opacity 220ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.page-fade-leave-to {
+  opacity: 0;
+}
+
+.page-fade-enter-active {
+  transition: opacity 480ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.page-fade-enter-from {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter-active,
+  .page-leave-active,
+  .page-fade-enter-active,
+  .page-fade-leave-active {
+    transition-duration: 1ms;
+  }
+}
+
+// 視覺上隱藏但保留於 DOM，供螢幕閱讀器與 SEO 讀取。
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

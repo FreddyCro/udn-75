@@ -1,0 +1,43 @@
+@import 'tailwindcss';
+
+@theme static {
+  /* ── 色票（對齊 Figma 類分頁 design variables）──
+     用法：class 用 text-orange / bg-orange…；SCSS 內用 var(--color-orange)。 */
+  --color-orange: #ff7f00; /* orange — 主色（進度條、強調、hover 底線） */
+  --color-blue: #9fd6ff; /* light blue — 永續祝福逐格臉「本格新增」的生長邊緣 */
+  --color-body: #404040; /* B3 — 子頁內文／H3 小標文字 */
+  --color-gray: #686868; /* dark gray — 次要文字（單元名） */
+  --color-gray-light: #898989; /* light gray — 輔助文字（撰文者） */
+  --color-line: #d8d8d8; /* B5 — 分隔線／邊框 */
+  --color-white-light: #fafafa; /* light white — 面板／區塊淺底 */
+
+  /* ── 字級（Noto Sans TC；--text-x--line-height 對齊 Figma text styles）── */
+  --text-caption: 15px; /* 圖說、製作團隊 400/22 */
+  --text-caption--line-height: 24px;
+  --text-body: 18px; /* P 內文 300/36 */
+  --text-body--line-height: 36px;
+  --text-h5: 20px; /* pc_H5 500/32 */
+  --text-h5--line-height: 32px;
+  --text-unit: 24px; /* 單元名 400/48 tracking .1em */
+  --text-unit--line-height: 48px;
+  --text-h4: 28px; /* pc_H4 400/46 */
+  --text-h4--line-height: 46px;
+  --text-h3: 32px; /* pc_H3 400/48 */
+  --text-h3--line-height: 48px;
+  --text-intro: 32px; /* 引言 lead（Figma 四部門引言 32/60 Light；mob 22/40） */
+  --text-intro--line-height: 60px;
+
+  --subpage-wide-w: 1080px; /* hero／引言／得獎作品寬欄 */
+  --subpage-content-w: 670px; /* 內文窄欄（可讀行長） */
+  --sp-img-caption: 12px; /* 圖 → 圖說 */
+  --sp-work-y: 16px; /* 得獎作品每列上下內距 */
+
+  --breakpoint-xxs: 375px;
+  --breakpoint-xs: 414px;
+  --breakpoint-sm: 768px;
+  --breakpoint-md: 1024px;
+  --breakpoint-lg: 1280px;
+  --breakpoint-xl: 1440px;
+  --breakpoint-2xl: 1920px;
+  --breakpoint-3xl: 2560px;
+}

@@ -1,0 +1,511 @@
+<!--
+  ============================================================================
+  LegacyHeartMetaballBlock — 游標互動的像素馬賽克揭露效果（單色藍 / Canvas 2D）
+  ============================================================================
+
+  【狀態】⚠️ 已退役、不再維護。本檔內容取自 **0.5.0 branch** 的
+  app/components/04.media/HeartMetaball.vue，原樣保留供 demo page 對照。
+  以下說明皆為當時的實作，與現役底紋無關。
+
+  現役底紋是 04.media/HeartMetaball.vue（三塊紋理 patch 漂移重疊），
+  要調整正式底紋請改那一份，不要改這裡。
+  元件名：<LegacyHeartMetaballBlock>（~/components 預設 pathPrefix 規則）。
+
+  【整體】
+  畫面是一張被網格量化的「蓋章式 metaball 場」當作柔邊遮罩：游標移動時沿軌跡
+  蓋下會漸縮消失的圓章，疊出有機團塊；無互動 IDLE_DELAY 秒後進入閒置漂浮，
+  團塊以多頻率 sin 在畫面中央緩慢游移。只有落在場內（Σ r²/d² ≥ 閾值）的格子
+  才會被填色，因此邊緣是隨游標生長/消退的柔邊，而非硬邊形狀。全程單色藍。
+
+  【兩區：中心 vs 外圍】（核心規格）
+  以游標為焦點 (centerX,centerY) 定義一個「會擴散的圓角方形」中心區，其餘場內
+  區域為外圍。中心區半邊長 centerR 由 0 緩動長到 CENTER_MAX（擴散感）並跟隨游標。
+
+    1. 形狀：用「超橢圓」判定中心區 |dx|^n + |dy|^n ≤ r^n（n = cornerExp）。
+       n=2 為正圓、n 越大越方；預設 4 → 圓角方形，避免生硬直角。
+
+    2. 中心圖案 = 「變寬棋盤」：
+       - 水平方向是寬度帶 1,2,3,6 循環（單元寬 12 格），SEG[p] = 該格所屬帶序 k(0~3)。
+       - 顏色由 (k + gy) 的奇偶決定：相鄰帶反色、相鄰列也反色（棋盤二染色），
+         但格子是不等寬的長方塊。每一列都畫。
+         偶數列：1藍 2白 3藍 6白；奇數列：1白 2藍 3白 6藍。
+       - 局部多底紋（variant system）：把畫面切成 accentBlock 格見方的區塊，每塊持有
+         一個 variant=(pattern, color)。pattern 有兩種：變寬棋盤、等分棋盤（EVEN_W 格
+         見方，evenCells 控制）；color 有藍/橘。多數區塊維持 base（變寬棋盤藍），
+         accentRatio 比例的區塊改用非 base variant（變寬橘／等分藍／等分橘）。
+       - Step 2 局部隨機切換：每塊的 variant 由「區塊座標 × epoch」的穩定 hash 決定。
+         epoch = floor(t / switchPeriod + 逐塊相位)，相位由區塊 hash 偏移 → 各塊在
+         不同時間點硬切、此起彼落；同一 epoch 內每幀同值 → 不閃爍。switchPeriod 控制節奏。
+
+    3. 外圍圖案：只在偶數列上，以 hash 隨機散布 1×1 / 1×2 小藍塊
+       （density = peripheryDensity），呈現鬆散像素點。
+
+    4. 邊界羽化（自然 spread）：用超橢圓正規化半徑 rn（中心 0、邊界 1）算「保留中心」
+       機率 keep（核心內 1、接近邊界經 smoothstep 降到 0）；以抖動 hash 機率性把
+       邊緣的中心格子「讓位」給外圍紋理 → 兩種紋理在過渡帶交融、邊界自然溶解，
+       不會看到生硬的圓角方形邊。edgeFeather 控制過渡帶寬度。
+
+  【穩定性】外圍與羽化都用「同座標每幀同值」的 hash（非 Math.random），所以圖案
+  不會逐幀閃爍；只有 metaball 場邊緣的隨機生死閾值 cellThresholds 提供毛糙感。
+
+  【效能】每幀只跑活動 bounding box 內的格子；render loop 由 IntersectionObserver
+  控制（不在視窗內就停）。
+
+  【Props】
+    bgColor          畫布底色
+    maxBalls         同時存活的 metaball 上限（ring buffer 大小）
+    life             單顆 ball 壽命（秒）
+    cellSize         馬賽克格子尺寸（px）— 控制顆粒粗細
+    color            單色藍
+    accentColor      強調色（橘）— 非 base variant 用此色
+    accentRatio      區塊偏離 base 的佔比（0~1）
+    accentBlock      區塊邊長（格數）— 越大每塊變化越大顆
+    evenCells        第二種 pattern「等分棋盤」方格邊長（格數）
+    switchPeriod     Step 2 局部隨機切換週期（秒）— 越大變化越慢
+    centerCells      中心圓角方形半邊長（格數）— 控制中心區大小
+    peripheryDensity 外圍藍塊密度（0~1）
+    cornerExp        中心區超橢圓指數（2=圓、4=圓角方、越大越方）
+    edgeFeather      邊緣羽化寬度（佔半徑比例 0~1，越大散越開）
+    idleRoamRange    閒置自動遊走範圍（佔短邊比例，移動範圍）
+    idleRoamSpeed    閒置遊走速度倍率
+    idleBlobMin/Max  閒置團塊半徑下/上限（顯示範圍，佔短邊比例；同游標的隨機半徑）
+    autoRoam         強制只自動遊走、不綁手指（觸控環境自動啟用）— 解 4-2
+
+  【閒置自動遊走 / 4-2 手機】
+  無 pointer 互動 IDLE_DELAY 秒後，團塊在畫面中央一帶以多個不可公度頻率疊加做
+  「平滑隨機遊走」（非原地抖動），範圍/速度/大小皆 prop 可調。補章只沿「移動路徑」
+  做（距離門檻，不做時間定點補章）→ 舊章隨壽命留在身後淡出，呈現像游標的「彗星
+  拖尾」、且不再原地一蹦一蹦像心跳。閒置補章與游標完全相同（每章 min~max 間隨機半徑），
+  無任何時間性脹縮／呼吸 → 純粹是「慢慢移動的游標」；移動速度由 idleRoamSpeed 控制。
+  另在遊走焦點補一顆「不衰減的持久頭部球」（半徑固定 = (min+max)/2）：遊走偶爾趨近靜止、
+  距離補章補不到時 trail 會衰減殆盡，這顆球確保團塊永不完全消失，且固定大小不脹縮。
+  觸控環境（hover:none）或 autoRoam 時不綁手指、一律自走 → 對應 4-2。
+  ============================================================================
+-->
+<template>
+  <section ref="wrapRef" class="metaballs" :style="{ background: bgColor }">
+    <canvas ref="canvasRef" />
+  </section>
+</template>
+
+<script setup lang="ts">
+const props = withDefaults(
+  defineProps<{
+    /** 畫布底色 */
+    bgColor?: string;
+    /** 同時存活的 metaball 上限（ring buffer 大小） */
+    maxBalls?: number;
+    /** 單顆 ball 從出現到消失的總壽命（秒） */
+    life?: number;
+    /** 矩陣格子尺寸（CSS px） */
+    cellSize?: number;
+    /** 單色藍 */
+    color?: string;
+    /** 強調色（橘）：中心棋盤的部分區塊會改用此色，做出局部多底紋 */
+    accentColor?: string;
+    /** 區塊「偏離 base」的佔比（0~1）：中心切成 accentBlock 格見方的區塊，此比例的
+     *  區塊會改用非 base 的 variant（換色／換 pattern）；其餘維持 base（變寬棋盤藍） */
+    accentRatio?: number;
+    /** 區塊邊長（格數）：越大每塊變化越大顆。穩定 hash 依區塊座標決定該塊的 variant */
+    accentBlock?: number;
+    /** 第二種 pattern「等分棋盤」的方格邊長（格數）：與變寬棋盤對比，越小格越細 */
+    evenCells?: number;
+    /** Step 2 局部隨機切換的週期（秒）：每塊每隔約這麼久重抽一次 variant；
+     *  各塊相位錯開 → 此起彼落地切換。越大變化越慢 */
+    switchPeriod?: number;
+    /** 中心正方形半邊長（格數）；方塊會由 0 緩動擴散到此大小並跟隨游標 */
+    centerCells?: number;
+    /** 外圍隨機藍塊的密度（0~1，偶數列上每格為藍的機率） */
+    peripheryDensity?: number;
+    /** 中心區形狀的超橢圓指數：2 = 正圓、越大越接近方形；4 左右為圓角方形 */
+    cornerExp?: number;
+    /** 邊緣羽化寬度（佔半徑比例 0~1）：越大過渡帶越寬、中心越自然散開融入外圍 */
+    edgeFeather?: number;
+    /** 閒置自動遊走的範圍（佔畫面短邊比例）：團塊在中央±此比例內平滑亂走。預設 0.4（原 0.1 的 4 倍） */
+    idleRoamRange?: number;
+    /** 閒置遊走速度倍率：越大走越快 */
+    idleRoamSpeed?: number;
+    /** 閒置團塊半徑下限（顯示範圍／佔短邊比例）：每章在 min~max 間隨機取半徑（同游標） */
+    idleBlobMin?: number;
+    /** 閒置團塊半徑上限（顯示範圍／佔短邊比例）：與 min 設相近＝大小幾乎固定 */
+    idleBlobMax?: number;
+    /** 強制「只自動遊走、不綁手指互動」（觸控環境會自動啟用，桌機可用此 prop 預覽手機行為） */
+    autoRoam?: boolean;
+  }>(),
+  {
+    bgColor: '#ffffff',
+    maxBalls: 64,
+    life: 1.6,
+    cellSize: 14,
+    color: '#9FD6FF',
+    accentColor: '#FF7F00',
+    accentRatio: 0.3,
+    accentBlock: 6,
+    evenCells: 2,
+    switchPeriod: 3,
+    centerCells: 17,
+    peripheryDensity: 0.5,
+    cornerExp: 4,
+    edgeFeather: 0.5,
+    idleRoamRange: 0.4,
+    idleRoamSpeed: 1,
+    idleBlobMin: 0.05,
+    idleBlobMax: 0.09,
+    autoRoam: false,
+  },
+);
+
+const wrapRef = ref<HTMLElement | null>(null);
+const canvasRef = ref<HTMLCanvasElement | null>(null);
+
+onMounted(() => {
+  const wrap = wrapRef.value;
+  const canvas = canvasRef.value;
+  if (!wrap || !canvas) return;
+
+  const ctx = canvas.getContext('2d')!;
+  const CELL = props.cellSize;
+  const MAX = props.maxBalls;
+  const COLOR = props.color;
+  const ACCENT = props.accentColor; // 強調色（橘）
+  const ACCENT_BLOCK = Math.max(1, Math.round(props.accentBlock)); // 區塊邊長（格）
+  const EVEN_W = Math.max(1, Math.round(props.evenCells)); // 等分棋盤方格邊長（格）
+  const SWITCH_PERIOD = Math.max(0.1, props.switchPeriod); // 切換週期（秒）
+
+  // 中心「變寬棋盤」：水平寬度帶 1,2,3,6 循環（單元寬 12 格），SEG[p] = 該位置所屬帶序 k(0~3)。
+  // 顏色 = (k + gy) 奇偶交錯 → 相鄰帶、相鄰列皆反色；錨定格子絕對座標，圖案固定不滑動。
+  const WIDTHS = [1, 2, 3, 6];
+  const SEG: number[] = [];
+  WIDTHS.forEach((w, k) => {
+    for (let i = 0; i < w; i++) SEG.push(k);
+  });
+  const UNIT_W = SEG.length; // 12
+
+  // 穩定的逐格偽隨機（同座標每幀同值 → 外圍圖案不閃爍）
+  const hash = (x: number, y: number) => {
+    const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  // 三輸入版（多帶一個 epoch 維度）：用於「區塊 × 時間」決定 variant
+  const hash3 = (x: number, y: number, z: number) => {
+    const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+    return s - Math.floor(s);
+  };
+
+  // 平滑階梯：x≤a 回 0、x≥b 回 1，中間為 S 形漸變
+  const smoothstep = (a: number, b: number, x: number) => {
+    const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+    return t * t * (3 - 2 * t);
+  };
+
+  // 中心正方形：跟隨游標的焦點 (centerX,centerY)，半邊長 centerR(px) 由 0 緩動擴散到 CENTER_MAX
+  let centerX = -9999;
+  let centerY = -9999;
+  let centerR = 0;
+  const CENTER_MAX = props.centerCells * CELL;
+
+  let width = 0;
+  let height = 0;
+  let cols = 0;
+  let rows = 0;
+  // 每格的生死閾值：metaball 等值線本身是平滑的，被網格量化後會切出
+  // 整排同列的直線與直角階梯；給每格隨機閾值讓輪廓毛糙、產生離群像素
+  let cellThresholds: (number | undefined)[] = [];
+
+  const setSize = () => {
+    width = wrap.clientWidth;
+    height = wrap.clientHeight;
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    canvas.width = Math.max(width * dpr, 1);
+    canvas.height = Math.max(height * dpr, 1);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cols = Math.ceil(width / CELL);
+    rows = Math.ceil(height / CELL);
+    cellThresholds = new Array(cols * rows);
+  };
+  setSize();
+
+  // ---------- 蓋章式 metaball：游標軌跡上生成，隨壽命漸縮 ----------
+  type Stamp = { x: number; y: number; r0: number; born: number };
+  const stamps: Stamp[] = Array.from({ length: MAX }, () => ({
+    x: -9999,
+    y: -9999,
+    r0: 0,
+    born: -Infinity,
+  }));
+  let stampIndex = 0;
+  const lastSpawn = { x: -9999, y: -9999 };
+  const SPAWN_DIST = 26; // 游標移動超過此距離才蓋下一章
+
+  const now = () => performance.now() / 1000;
+
+  const addStamp = (
+    x: number,
+    y: number,
+    rScaleMin: number,
+    rScaleMax: number,
+  ) => {
+    const base = Math.min(width, height);
+    const count = 1 + (Math.random() < 0.35 ? 1 : 0);
+    for (let n = 0; n < count; n++) {
+      const s = stamps[stampIndex]!;
+      stampIndex = (stampIndex + 1) % MAX;
+      const spread = base * 0.05;
+      s.x = x + (Math.random() - 0.5) * spread * 2;
+      s.y = y + (Math.random() - 0.5) * spread * 2;
+      s.r0 = base * (rScaleMin + Math.random() * (rScaleMax - rScaleMin));
+      s.born = now();
+    }
+  };
+
+  const spawn = (x: number, y: number) => {
+    const dx = x - lastSpawn.x;
+    const dy = y - lastSpawn.y;
+    if (dx * dx + dy * dy < SPAWN_DIST * SPAWN_DIST) return;
+    lastSpawn.x = x;
+    lastSpawn.y = y;
+    addStamp(x, y, 0.05, 0.12);
+  };
+
+  // ---------- 閒置漂浮：無互動時在畫面中央維持一小團，緩慢漂移 ----------
+  const IDLE_DELAY = 1.2; // 秒：最後一次 pointer 活動後多久進入閒置自走
+  let lastPointerAt = -Infinity;
+
+  const onPointerMove = (e: PointerEvent) => {
+    const rect = canvas.getBoundingClientRect();
+    lastPointerAt = now();
+    centerX = e.clientX - rect.left;
+    centerY = e.clientY - rect.top;
+    spawn(centerX, centerY);
+  };
+  // 4-2：觸控環境（手機，hover:none）手指感應不佳 → 不綁互動，一律自動遊走；
+  // autoRoam prop 可在桌機強制此行為以預覽手機效果。
+  const roamOnly =
+    props.autoRoam || window.matchMedia('(hover: none)').matches;
+  // 事件綁定範圍：預設綁自己；若外層有 [data-metaball-scope]（如 Media section
+  // 把 canvas 墊在內容下層），改綁該祖先 → 游標移到內容上方也能持續追蹤。
+  const listenEl =
+    (wrap.closest('[data-metaball-scope]') as HTMLElement | null) ?? wrap;
+  if (!roamOnly) {
+    listenEl.addEventListener('pointermove', onPointerMove);
+    listenEl.addEventListener('pointerdown', onPointerMove);
+  }
+
+  // ---------- render loop（IntersectionObserver 控制啟停） ----------
+  let raf = 0;
+  let running = false;
+
+  const animate = () => {
+    if (!running) return;
+    const t = now();
+    const isIdle = t - lastPointerAt > IDLE_DELAY;
+
+    // 閒置時：團塊在畫面中央一帶「平滑隨機遊走」（多個不可公度頻率疊加 → 不重複的
+    // 有機路徑，而非原地抖動）。範圍 idleRoamRange、速度 idleRoamSpeed 皆可調。
+    // pointer 互動會暫停，停止互動 IDLE_DELAY 後回到自走（觸控環境則一律自走）。
+    if (isIdle) {
+      const base = Math.min(width, height);
+      const amp = base * props.idleRoamRange;
+      const s = t * props.idleRoamSpeed;
+      // 每幀更新焦點 → 中心方塊跟著遊走路徑走；權重和為 1，最大擺幅 = amp
+      centerX =
+        width * 0.5 +
+        (Math.sin(s * 0.13) * 0.5 +
+          Math.sin(s * 0.21 + 1.7) * 0.3 +
+          Math.sin(s * 0.07 + 4.1) * 0.2) *
+          amp;
+      centerY =
+        height * 0.5 +
+        (Math.cos(s * 0.11) * 0.5 +
+          Math.cos(s * 0.19 + 0.7) * 0.3 +
+          Math.sin(s * 0.05 + 2.3) * 0.2) *
+          amp;
+      // 彗星拖尾：像游標一樣「只沿移動路徑」距離補章（移動超過 SPAWN_DIST 才補一章）。
+      // 不再用時間定點補章 → 不會在原地一蹦一蹦像心跳；舊章隨壽命衰退留在身後 →
+      // 形成隨移動方向淡出的尾巴。多頻遊走持續移動，故團塊不會因停滯而消失。
+      const dx = centerX - lastSpawn.x;
+      const dy = centerY - lastSpawn.y;
+      if (dx * dx + dy * dy > SPAWN_DIST * SPAWN_DIST) {
+        lastSpawn.x = centerX;
+        lastSpawn.y = centerY;
+        // 與游標完全相同：每章在 min~max 間隨機取半徑，沿移動路徑鋪章。
+        // 無任何時間性脹縮 → 純粹是「慢慢移動的游標」。
+        addStamp(centerX, centerY, props.idleBlobMin, props.idleBlobMax);
+      }
+    }
+
+    // 中心半邊長緩動擴散到目標值（擴散感）
+    centerR += (CENTER_MAX - centerR) * 0.12;
+
+    // 計算每顆 stamp 的當前半徑（快進慢出），並求活動範圍 bounding box
+    const live: { x: number; y: number; r: number }[] = [];
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (let i = 0; i < MAX; i++) {
+      const s = stamps[i]!;
+      const age = t - s.born;
+      const grow = Math.min(age / 0.15, 1);
+      const decay = 1 - Math.min(Math.max((age - 0.3) / (props.life - 0.3), 0), 1);
+      const r = s.r0 * grow * decay * decay;
+      if (r <= 1) continue;
+      live.push({ x: s.x, y: s.y, r });
+      // 2.5r = 場函式的有限支撐半徑：超過此距離場精確為 0，
+      // 因此 bounding box 裁切處不可能有活格子，不會切出直線
+      minX = Math.min(minX, s.x - r * 2.5);
+      maxX = Math.max(maxX, s.x + r * 2.5);
+      minY = Math.min(minY, s.y - r * 2.5);
+      maxY = Math.max(maxY, s.y + r * 2.5);
+    }
+
+    // 閒置「持久頭部」：在遊走焦點補一顆「不衰減」的球（固定半徑）。多頻遊走偶爾趨近
+    // 靜止、距離補章補不到時，trail 會在 life 內衰減殆盡 → 整團消失；這顆持久球確保
+    // 團塊永不完全消失，又因固定大小不會脹縮。身後的衰減 trail 仍形成彗星尾。
+    if (isIdle && width > 0) {
+      const base = Math.min(width, height);
+      const headR = base * (props.idleBlobMin + props.idleBlobMax) * 0.5;
+      live.push({ x: centerX, y: centerY, r: headR });
+      minX = Math.min(minX, centerX - headR * 2.5);
+      maxX = Math.max(maxX, centerX + headR * 2.5);
+      minY = Math.min(minY, centerY - headR * 2.5);
+      maxY = Math.max(maxY, centerY + headR * 2.5);
+    }
+
+    const gx0 = Math.max(Math.floor(minX / CELL), 0);
+    const gx1 = Math.min(Math.ceil(maxX / CELL), cols);
+    const gy0 = Math.max(Math.floor(minY / CELL), 0);
+    const gy1 = Math.min(Math.ceil(maxY / CELL), rows);
+
+    ctx.clearRect(0, 0, width, height);
+
+    // 逐格判斷是否在 metaball 場內（Σ r²/d² ≥ 閾值）：在場內才依「中心/外圍」
+    // 規則上色（見檔頭 spec）；離開場則重設該格閾值，下次經過重新抽。
+    for (let gy = 0; gy < rows; gy++) {
+      const inY = gy >= gy0 && gy < gy1;
+      for (let gx = 0; gx < cols; gx++) {
+        const idx = gy * cols + gx;
+        if (!inY || gx < gx0 || gx >= gx1 || live.length === 0) {
+          if (cellThresholds[idx] !== undefined) cellThresholds[idx] = undefined;
+          continue;
+        }
+        const cx = (gx + 0.5) * CELL;
+        const cy = (gy + 0.5) * CELL;
+        let field = 0;
+        for (const b of live) {
+          const dx = cx - b.x;
+          const dy = cy - b.y;
+          // 平移後的 inverse-square：在 d = 2.5r 處歸零（0.16 = 1/2.5²），
+          // 純 r²/d² 永不歸零，會讓 bounding box 邊界變成可見的直線
+          const q = (b.r * b.r) / (dx * dx + dy * dy + 1) - 0.16;
+          if (q > 0) field += q;
+        }
+        // 閾值在進入活動範圍時抽一次、存活期間固定（避免邊緣閃爍），
+        // 離開範圍後重設，下次經過再重抽
+        let th = cellThresholds[idx];
+        if (th === undefined) {
+          th = 0.6 + Math.random();
+          cellThresholds[idx] = th;
+        }
+        if (field >= th) {
+          // 中心區用超橢圓正規化半徑 rn（中心=0、邊界=1），圓角方形不見生硬直角
+          const cdx = Math.abs(cx - centerX);
+          const cdy = Math.abs(cy - centerY);
+          const e =
+            Math.pow(cdx, props.cornerExp) + Math.pow(cdy, props.cornerExp);
+          const rn = Math.pow(e, 1 / props.cornerExp) / Math.max(centerR, 0.0001);
+          // 羽化：核心內 keep=1 全保留中心圖案；接近邊界 keep 漸降到 0，
+          // 以抖動 hash 機率性讓位給外圍 → 兩種紋理在過渡帶交融、邊界自然溶解
+          const keep = 1 - smoothstep(1 - props.edgeFeather, 1, rn);
+          const isCenter = keep > 0 && hash(gx + 31.4, gy + 17.2) < keep;
+          let fill: string | null = null;
+          if (isCenter) {
+            // 中心 = 局部多底紋：把畫面切成 ACCENT_BLOCK 格見方的區塊，每塊在每個時刻
+            // 持有一個 variant=(pattern, color)。多數維持 base（變寬棋盤藍），accentRatio
+            // 比例的區塊改用非 base 的 variant（變寬橘／等分藍／等分橘）。
+            // Step 2：variant 由「區塊座標 × epoch」的穩定 hash 決定，epoch 相位逐塊錯開
+            //         → 各塊在不同時間點硬切、此起彼落；同一 epoch 內每幀同值 → 不閃。
+            const bx = Math.floor(gx / ACCENT_BLOCK);
+            const by = Math.floor(gy / ACCENT_BLOCK);
+            const phase = hash(bx * 7.1 + 1.3, by * 7.1 + 2.7); // 0~1 逐塊相位
+            const epoch = Math.floor(t / SWITCH_PERIOD + phase);
+            let usePattern = 0; // 0=變寬棋盤 1=等分棋盤
+            let useColor = COLOR;
+            if (hash3(bx, by, epoch + 0.5) < props.accentRatio) {
+              // 此塊偏離 base：在 3 種非 base variant 間抽一個
+              const j = Math.floor(hash3(bx + 0.7, by + 0.3, epoch + 11.5) * 3);
+              if (j === 0) {
+                useColor = ACCENT; // 變寬棋盤 × 橘
+              } else if (j === 1) {
+                usePattern = 1; // 等分棋盤 × 藍
+              } else {
+                usePattern = 1;
+                useColor = ACCENT; // 等分棋盤 × 橘
+              }
+            }
+            // 由 variant 的 pattern 決定該格是否上色
+            let on: boolean;
+            if (usePattern === 0) {
+              // 變寬棋盤：帶序 k 查 SEG，顏色 (k + gy) 奇偶交錯，每列都畫
+              const k = SEG[((gx % UNIT_W) + UNIT_W) % UNIT_W]!;
+              on = (k + gy) % 2 === 0;
+            } else {
+              // 等分棋盤：EVEN_W 格見方的方格二染色
+              on = (Math.floor(gx / EVEN_W) + Math.floor(gy / EVEN_W)) % 2 === 0;
+            }
+            if (on) fill = useColor;
+          } else if (gy % 2 === 0) {
+            // 外圍（含過渡帶讓位的格子）：偶數列隨機散布 1×1 / 1×2 小藍塊
+            if (hash(gx, gy) < props.peripheryDensity) fill = COLOR;
+          }
+          if (fill) {
+            ctx.fillStyle = fill;
+            ctx.fillRect(gx * CELL, gy * CELL, CELL, CELL);
+          }
+        }
+      }
+    }
+
+    raf = requestAnimationFrame(animate);
+  };
+
+  const observer = new IntersectionObserver(([entry]) => {
+    const shouldRun = entry?.isIntersecting ?? false;
+    if (shouldRun && !running) {
+      running = true;
+      animate();
+    } else if (!shouldRun && running) {
+      running = false;
+      cancelAnimationFrame(raf);
+    }
+  });
+  observer.observe(wrap);
+
+  const resizeObserver = new ResizeObserver(setSize);
+  resizeObserver.observe(wrap);
+
+  onBeforeUnmount(() => {
+    running = false;
+    cancelAnimationFrame(raf);
+    observer.disconnect();
+    resizeObserver.disconnect();
+    listenEl.removeEventListener('pointermove', onPointerMove);
+    listenEl.removeEventListener('pointerdown', onPointerMove);
+  });
+});
+</script>
+
+<style scoped>
+.metaballs {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.metaballs canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+</style>

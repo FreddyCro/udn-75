@@ -1,0 +1,53 @@
+@use 'sass:map';
+
+// ── RWD 斷點與 mixin ────────────────────────────────────────────────
+// 依 CLAUDE.md：RWD 寫在 BEM element 內部、用 rwd-xxx mixin 包住，同一 class
+// 只定義一次、各斷點集中同處。斷點值對齊 app/utils/constants.ts 的正式定義。
+//
+// 新寫的樣式一律 mobile-first：基底＝mob 稿，再用 rwd-min 往大螢幕覆蓋。
+//   .block__element {
+//     font-size: 16px;                                 // mob 稿（≤767）
+//     @include rwd-min('tablet') { font-size: 20px; }  // pad 稿（768–1279）
+//     @include rwd-min('pc') { font-size: 24px; }      // pc 稿（≥1280）
+//   }
+$breakpoints: (
+  'mobile': 414px,  // MOBILE_BREAKPOINTS
+  'tablet': 768px,  // TABLET_BREAKPOINTS
+  'pc': 1280px,     // PC_BREAKPOINTS
+);
+
+@function bp($name) {
+  @if map.has-key($breakpoints, $name) {
+    @return map.get($breakpoints, $name);
+  }
+  @return $name; // 允許直接傳入自訂像素值
+}
+
+// 「此斷點（含）以下」— desktop-first 覆蓋
+@mixin rwd-max($name) {
+  @media screen and (max-width: #{bp($name) - 0.02px}) {
+    @content;
+  }
+}
+
+// 「此斷點（含）以上」— mobile-first 覆蓋
+@mixin rwd-min($name) {
+  @media screen and (min-width: #{bp($name)}) {
+    @content;
+  }
+}
+
+// n 個視窗高。**取代所有字面的 `100vh`。**
+//
+// 為什麼不直接寫 vh：行動裝置上 CSS 的 `vh` 與 JS 的 `window.innerHeight` 不是同一個數
+// （前者是 large viewport、收合網址列不變；後者是 dynamic viewport、會變），本專案兩邊
+// 都在用 → 版面與捲動幾何各走各的尺。`--vh` 是量出來的單一來源，JS 側對應
+// `vhPx()`（見 app/composables/useViewportHeight.ts）。
+//
+// 也不用 dvh / svh / lvh：那些要 2022 年後的瀏覽器，本專案受眾的舊裝置比例高。
+//
+// fallback 的 `1vh` 是給 SSR 與 hydration 之前用的（此時 --vh 還沒寫入），
+// 兩者在載入當下本來就相等 → 不會有閃動。
+@function vh($n: 1) {
+  @return calc(var(--vh, 1vh) * #{$n * 100});
+}
