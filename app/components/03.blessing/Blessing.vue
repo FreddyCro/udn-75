@@ -31,6 +31,7 @@ const {
   coverSeed,
   coverSeedVisible,
   coverFaceVisible,
+  coverHandoff,
 } = useOrangeCoreProgress();
 
 // 夥伴清單整塊的現身時機。
@@ -254,11 +255,13 @@ onBeforeUnmount(() => {
 
             <!-- 白方塊：紙飛機沒入色塊後從接縫長出來的那一格 ＝ 逐格臉的第 01 格
                  （FACE_FRAMES[0] = [7,0,2,2]）。位置用網格比例寫死、不需量測；
-                 只有位移的幅度要量（--face-cell-y，見 script）。 -->
+                 只有位移的幅度要量（--face-cell-y，見 script）。
+                 --cover-grow ＝ 從接縫「長出來」的高度比例，與飛機下潛共用同一條
+                 曲線（coverHandoff）—— 兩者同一個 x、同一個窗口，是同一個變身。 -->
             <span
               v-if="coverSeedVisible"
               class="section3__face-seed"
-              :style="{ '--cover-seed': coverSeed }"
+              :style="{ '--cover-seed': coverSeed, '--cover-grow': coverHandoff }"
               aria-hidden="true"
             />
           </div>
@@ -516,6 +519,18 @@ onBeforeUnmount(() => {
 // 位移：起點是色塊上緣（＝ 臉屏上緣，故幅度就是 --face-cell-y），終點是 0（就位）。
 // --cover-seed 由 seedTravelAt(coverProgress) 餵入，scrub 驅動故不加 transition。
 // fallback 0px：量到之前不動，不會亂飛。
+//
+// 「長出來」（2026-08-14）：--cover-grow 由 coverHandoff 餵入，scaleY 0 → 1。
+// 改版前它是以完整尺寸憑空出現的（使用者回饋「白方塊直接出現」）。
+//
+// ⚠️ transform-origin 必須是 top：方塊的上緣在接觸點精準貼齊色塊上緣
+//    （2026-08-12 紀錄第八節實測 0.0px），以上緣為原點縮放才是「從接縫往下長出來」。
+//    預設的 50% 50% 會變成從中間往兩邊長，上緣會脫離接縫、看起來像浮在色塊裡。
+// ⚠️ 順序也不能反：先 translateY 再 scaleY ——「先位移到接縫、再從那裡長」。
+//    反過來的話縮放發生在位移之前的座標系，長出來的位置會隨 --cover-seed 飄。
+// ⚠️ 只長縱向：分鏡「永續祝福2」是 35×27（滿寬、未滿高），飛機是從上方鑽進來的，
+//    橫向一起長會變成「從中心點放大」，那是另一種敘事。
+// fallback 1：任何還沒餵值的時刻都是完整尺寸，不會整塊消失。
 .section3__face-seed {
   position: absolute;
   top: 0;
@@ -523,7 +538,9 @@ onBeforeUnmount(() => {
   width: 12.5%; // 2 / 16
   aspect-ratio: 1;
   background: #fff;
-  transform: translateY(calc((var(--cover-seed, 1) - 1) * var(--face-cell-y, 0px)));
+  transform: translateY(calc((var(--cover-seed, 1) - 1) * var(--face-cell-y, 0px)))
+    scaleY(var(--cover-grow, 1));
+  transform-origin: top;
 }
 
 .section3__intro {

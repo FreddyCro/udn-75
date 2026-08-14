@@ -58,6 +58,7 @@ const {
   setForumTurns,
   setForumCoreCenterOffset,
   forumPathRiding,
+  coverHandoff,
   coverHandedOff,
 } = useOrangeCoreProgress();
 
@@ -147,6 +148,11 @@ function reset() {
   knots = [];
   swapLen = null;
   planeFrame.value = 0;
+  // 姿態快取也要清：留著上一個斷點的座標，下潛的 watch 會把核心寫回那個位置
+  // —— 同 planeFrame 那條，殘影會是一架停在錯誤位置的紙飛機。
+  pose = null;
+  // 露出量是**該斷點該次幾何**的量測值（旋轉角隨設計線走），換斷點要重量。
+  planeOverhang = null;
   setForumPathActive(false);
   setForumPathProgress(0);
   setForumSlashWindow(null);
@@ -505,11 +511,75 @@ function build() {
 
     setForumPathActive(true);
     exposeDebug(out.points, marks, turns);
+    // 幾何重建了 → 末端切線（＝機身的旋轉角）可能跟著變，露出量要重量。
+    planeOverhang = null;
     place(st ? st.progress : 0);
   } finally {
     scope?.removeAttribute('data-path-measuring');
   }
 }
+
+// 核心在驅動線上的姿態（容器座標）。快取起來是給下潛用的：路徑在接觸點就跑完了
+// （ScrollTrigger 的 end ＝ COVER_CONTACT），其後 place() 不再被呼叫，而下潛還要繼續走。
+// null ＝ 還沒定位過（含 reset 之後）→ 下潛無事可做。
+type CorePose = { x: number; y: number; angle: number; scale: number };
+let pose: CorePose | null = null;
+
+// 機身露在定位點上方的高度（px）＝ 下潛真正要走完的距離。null ＝ 還沒量。
+//
+// 為什麼用量的而不是算的：幾何是「sprite 底部貼核心框底部、整組繞定位點旋轉」，
+// 算得出來，但要在這裡複製一份 sprite 的尺寸表與錨定規則 —— 那份副本壞掉時不會有人
+// 發現（飛機只是沒鑽乾淨）。量一次就沒有第二份事實。
+//
+// 只在下潛開始的那一幀量一次（此時路徑已跑完、機身停在最後一格、旋轉角不再變），
+// 不在逐幀的熱路徑上。定位點取核心框的**中心**：框是旋轉的，但中心是旋轉不變量。
+let planeOverhang: number | null = null;
+
+function measurePlaneOverhang(): number {
+  const core = coreEl.value;
+  const sprite = core?.querySelector('svg');
+  if (!core || !sprite) return 0;
+  const cr = core.getBoundingClientRect();
+  const sr = sprite.getBoundingClientRect();
+  return Math.max(0, cr.top + cr.height / 2 - sr.top);
+}
+
+/**
+ * 把核心的 transform 寫進 DOM，並疊上「鑽進色塊」的位移。
+ *
+ * 下潛是**沿著末端切線**繼續往前推 PLANE_DIVE_PX（見 coverHandoffAt）—— 不是垂直往下：
+ * 飛機在接縫上是斜的（設計線末端切線 112°），沿切線推才像它自己飛進去，
+ * 垂直推會看起來像被人往下壓。
+ *
+ * 推完之後它就在色塊底下（層序見 coverHandoffAt 的註解），**不需要每幀追接縫** ——
+ * 飛機與接縫在同一個座標系裡 1:1 一起捲動。
+ *
+ * x / y / rotation / scale 一律同一次 gsap.set 寫入：它們是同一顆方塊在同一幀的狀態，
+ * 分兩次寫等於讓 transform 有兩個作者（同 place() 裡 scale 那段的理由）。
+ */
+function writeCore(next?: CorePose) {
+  if (next) pose = next;
+  const core = coreEl.value;
+  if (!core || !pose) return;
+  const handoff = coverHandoff.value;
+  if (handoff > 0 && planeOverhang === null) {
+    planeOverhang = measurePlaneOverhang();
+  }
+  const dive = handoff * ((planeOverhang ?? 0) + PLANE_DIVE_MARGIN_PX);
+  const rad = (pose.angle * Math.PI) / 180;
+  gsap.set(core, {
+    x: pose.x + Math.cos(rad) * dive,
+    y: pose.y + Math.sin(rad) * dive,
+    rotation: pose.angle + 90,
+    scale: pose.scale,
+  });
+}
+
+// 下潛的驅動：coverProgress 由 Blessing 的 coverST 每幀寫入，而本元件的 ScrollTrigger
+// 在接觸點就結束了 —— 這條 watch 是接觸點之後唯一還在動核心的東西。
+// 註冊在 setup 的同步區間（不是 onMounted 裡）：在生命週期 hook 內建的 watcher
+// 不保證掛得進元件的 effect scope，會漏掉自動停止。
+watch(coverHandoff, () => writeCore());
 
 // 依 raw 捲動進度把核心定位到驅動線上的點，並轉到該處的路徑切線方向（雲霄飛車感）。
 // 先過 easeMove 得路徑進度 p 再定位；切線由前後各取 1px 的鄰近點連線求得，兩端皆穩定
@@ -547,7 +617,7 @@ function place(rawP: number) {
   const scale = slashCoreScaleAt(
     len, slashLens, FORUM_SLASH_CORE.shrinkLen, slashTipScale,
   );
-  gsap.set(core, { x: pt.x, y: pt.y, rotation: angle + 90, scale });
+  writeCore({ x: pt.x, y: pt.y, angle, scale });
   planeFrame.value = morphFrame(len, swapLen, FORUM_PLANE.morphLen);
 
   // 核心相對視窗中央的偏移（正 ＝ 在中央下方）。centerY 就是「此刻在視窗中央的容器 y」，
@@ -663,9 +733,12 @@ onBeforeUnmount(() => {
 
     <!-- 尾跡：可見層吃固定 dasharray（＝虛線釘在弧長上），遮罩層滑動開窗。
          遮罩描邊取可見層的 2 倍才蓋得乾淨。 -->
+    <!-- 尾跡跟著飛機的下潛淡出（scrub，見 coverHandoff）。它的幾何釘在路徑上、
+         沒辦法跟著往下沉，但機身還在飛的時候尾巴不能先不見 —— 讀起來會像尾巴自己
+         斷掉。淡出用 inline style 而非 class：那是逐幀的量，class 只能給二元的。 -->
     <svg
       class="forum-path__trail"
-      :class="{ 'is-gone': coverHandedOff }"
+      :style="{ opacity: 1 - coverHandoff }"
       xmlns="http://www.w3.org/2000/svg"
     >
       <mask
@@ -750,11 +823,8 @@ onBeforeUnmount(() => {
   inset: 0;
   overflow: visible;
   color: rgb(255, 127, 0);
-
-  // 同 .forum-path__core.is-gone：機身消失了不該留下彗星尾。
-  &.is-gone {
-    opacity: 0;
-  }
+  // 淡出由 inline style 逐幀寫入（見模板）。**刻意不加 transition** ——
+  // scrub 上疊補間會讓每一幀都滯後於捲動，手感發黏。
 }
 
 // 位置由 place() 逐幀以 gsap transform 寫入；top/left 只是把 transform 的原點釘在容器左上角。
@@ -771,9 +841,12 @@ onBeforeUnmount(() => {
     opacity: 1;
   }
 
-  // 交棒給白方塊之後立刻消失（見 useOrangeCoreProgress 的 coverHandedOff）。
-  // 刻意不加 transition：白方塊在同一刻從接縫長出來，這是硬切交棒，
-  // 淡出會讓兩者同時半透明地並存一小段（同本檔上方 opacity 的取捨）。
+  // 完全沒入色塊之後才收掉（見 useOrangeCoreProgress 的 coverHandedOff）。
+  //
+  // ⚠️ 這**不是**飛機消失的機制 —— 它是被色塊遮住的（幾何遮蔽，見 writeCore）。
+  //    切在它早就看不見的時候，所以不會被看到；純粹是保險，防止某個斷點的 sprite
+  //    比 PLANE_DIVE_PX 推的距離還長、機尾留在接縫上方。
+  //    刻意不加 transition：既然看不見，補間只是讓「保險」變得不可預測。
   &.is-gone {
     opacity: 0;
   }

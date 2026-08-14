@@ -20,8 +20,10 @@ import {
   FORUM_HANDOFF,
   BLESSING_HOLD,
   COVER_CONTACT,
+  COVER_HANDOFF_SPAN,
   convergeAmountAt,
   convergeLightAt,
+  coverHandoffAt,
   coverOrangeAt,
   partnersFadeAt,
   seedTravelAt,
@@ -300,10 +302,28 @@ export function useOrangeCoreProgress() {
     () => reduceMotion.value || coverProgress.value >= 1,
   );
 
-  // 紙飛機是否已交棒給白方塊（＝ 色塊上緣碰到它的那一刻）。
-  // 交棒後飛機必須**立刻**消失：色塊繼續上升時它會一路露在畫面上緣，
-  // 而敘事上它已經「變成」那顆白方塊了，同時存在兩個核心會讀不通。
-  const coverHandedOff = computed(() => coverProgress.value >= COVER_CONTACT);
+  // 接觸點的變身進度（0..1，曲線見 coverHandoffAt）。
+  //
+  // **一個值餵三個視覺**，這是它們同步的唯一保證：
+  //   ① 飛機沿末端切線下潛的距離（× PLANE_DIVE_PX，見 ForumCorePath 的 writeCore）
+  //   ② 彗星尾的淡出（1 − 本值）—— 機身還在飛的時候尾巴不能先不見
+  //   ③ 白方塊從接縫長出來的 scaleY（見 Blessing 的 .section3__face-seed）
+  //
+  // 逐幀會變，但三個消費端都只是 style binding、不是 class 條件，故不收成 boolean
+  //（同 forumSlashDraw 的理由）。
+  const coverHandoff = computed(() => coverHandoffAt(coverProgress.value));
+
+  // 紙飛機是否已完全沒入色塊（＝ 變身窗口跑完）。
+  //
+  // 2026-08-14 起它**不再**是「碰到就消失」的那個門檻（改版前是 p >= COVER_CONTACT，
+  // 飛機在接觸點瞬間 opacity: 0）。現在飛機是被色塊**遮住**的 —— 幾何遮蔽，不是淡出 ——
+  // 所以到這一點它早就看不見了，opacity: 0 純粹是保險（萬一某個斷點的 sprite 比
+  // PLANE_DIVE_PX 推的距離還長，機尾會留在接縫上）。切在看不見的時候，故不會被看到。
+  //
+  // ⚠ 不要把它改回接觸點：那等於復原成「直接消失」，而畫面上不會有任何東西壞掉喊出來。
+  const coverHandedOff = computed(
+    () => coverProgress.value >= COVER_CONTACT + COVER_HANDOFF_SPAN,
+  );
 
   // `.sec2__pin` 的 sticky 是否該掛上（＝ 已進入 cover 窗口）。
   //
@@ -356,6 +376,7 @@ export function useOrangeCoreProgress() {
     coverSeed,
     coverSeedVisible,
     coverFaceVisible,
+    coverHandoff,
     coverHandedOff,
     coverHoldArmed,
     stairsDone,
