@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { nearestArcLength, slashDrawAt } from '../app/utils/forum-slash';
+import {
+  nearestArcLength,
+  slashCoreScaleAt,
+  slashDrawAt,
+} from '../app/utils/forum-slash';
 import section2 from '../app/locales/section2.json';
-import { FORUM_SLASH_AT } from '../app/utils/orange-core-config';
+import { CORE, FORUM_SLASH_AT, FORUM_SLASH_CORE } from '../app/utils/orange-core-config';
 
 // vitest 沒設 alias（見 vitest.config.ts），故一律相對路徑 import。
 
@@ -30,6 +34,79 @@ describe('slashDrawAt', () => {
     expect(slashDrawAt(0.39, [0.4, 0.4])).toBe(0);
     expect(slashDrawAt(0.4, [0.4, 0.4])).toBe(1);
     expect(Number.isNaN(slashDrawAt(0.4, [0.4, 0.4]))).toBe(false);
+  });
+});
+
+// 核心縮成筆尖。窗口用弧長 [1000, 1200]、斜坡 80、筆尖倍率 0.37（≈ pc 的 9.6 / 26）。
+describe('slashCoreScaleAt', () => {
+  const lens: [number, number] = [1000, 1200];
+  const tip = 9.6 / CORE.dotSize;
+  const at = (len: number, ramp = 80, t = tip) =>
+    slashCoreScaleAt(len, lens, ramp, t);
+
+  it('斜坡之外維持原尺寸（前後都要）', () => {
+    expect(at(500)).toBe(1);
+    expect(at(920)).toBe(1); // 正好是斜坡起點
+    expect(at(1280)).toBe(1); // 正好是斜坡終點
+    expect(at(5000)).toBe(1);
+  });
+
+  it('窗口起點之前就已經縮完 —— 撇的第一個 pixel 是筆尖畫的', () => {
+    expect(at(1000)).toBeCloseTo(tip, 10);
+  });
+
+  it('整個窗口內維持筆尖，不隨畫出比例再變', () => {
+    expect(at(1000)).toBeCloseTo(tip, 10);
+    expect(at(1100)).toBeCloseTo(tip, 10);
+    expect(at(1200)).toBeCloseTo(tip, 10);
+  });
+
+  it('離開窗口後還原成原尺寸', () => {
+    expect(at(1200 + 80)).toBe(1);
+  });
+
+  it('斜坡上單調遞減／遞增，且兩端一階導數為 0（smoothstep）', () => {
+    const ramp = [920, 940, 960, 980, 1000].map((l) => at(l));
+    for (let i = 1; i < ramp.length; i++) {
+      expect(ramp[i]!).toBeLessThan(ramp[i - 1]!);
+    }
+    // 斜坡中點 ＝ 兩端的算術中點（smoothstep(0.5) = 0.5）
+    expect(at(960)).toBeCloseTo((1 + tip) / 2, 10);
+    // 兩端平緩：頭尾各 5% 的位移量遠小於中段同樣寬度的位移量
+    const head = 1 - at(924);
+    const mid = at(958) - at(962);
+    expect(head).toBeLessThan(mid);
+  });
+
+  it('窗口為 null（沒有那一撇）→ 恆 1', () => {
+    expect(slashCoreScaleAt(1100, null, 80, tip)).toBe(1);
+  });
+
+  it('量不到脊寬（tipScale 落在 (0,1) 之外）→ 恆 1，核心不可塌成 0', () => {
+    for (const bad of [0, -1, 1, 2, Number.NaN]) {
+      expect(slashCoreScaleAt(1100, lens, 80, bad)).toBe(1);
+      expect(slashCoreScaleAt(960, lens, 80, bad)).toBe(1);
+    }
+  });
+
+  it('斜坡為 0 → 退化成硬切，不做除以零', () => {
+    expect(at(999.9, 0)).toBe(1);
+    expect(at(1000, 0)).toBeCloseTo(tip, 10);
+    expect(at(1200, 0)).toBeCloseTo(tip, 10);
+    expect(at(1200.1, 0)).toBe(1);
+    expect(Number.isNaN(at(1000, 0))).toBe(false);
+  });
+
+  it('全程夾在 [tipScale, 1] 內 —— 不會過衝出比原尺寸更大／比筆尖更小', () => {
+    for (let len = 800; len <= 1400; len += 7) {
+      const s = at(len);
+      expect(s).toBeGreaterThanOrEqual(tip);
+      expect(s).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('shrinkLen 是正數 —— 0 會讓兩端各跳一下（見 FORUM_SLASH_CORE 的取捨）', () => {
+    expect(FORUM_SLASH_CORE.shrinkLen).toBeGreaterThan(0);
   });
 });
 

@@ -18,7 +18,12 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { ForumPathMeasure, ForumPathNode } from '~/utils/forum-node-path';
 import type { ArcKnot } from '~/utils/forum-path-geometry';
-import { nearestArcLength, type SlashWindow } from '~/utils/forum-slash';
+import {
+  nearestArcLength,
+  slashCoreScaleAt,
+  type SlashArcWindow,
+  type SlashWindow,
+} from '~/utils/forum-slash';
 import {
   resolveForumEventMarks,
   unknownEventNodes,
@@ -107,6 +112,12 @@ let tailEndY = 0;
 let knots: ArcKnot[] = [];
 // 變身點的弧長。量不到 → null → 全程維持橘方塊、不畫尾跡，但整條線照跑。
 let swapLen: number | null = null;
+// 那一撇的窗口換算成**弧長**（px）＋ 核心縮成筆尖的目標倍率。
+// 兩者都在 build() 定案（見 syncSlash），place() 每幀只做內插 —— 窗口本身是 0..1 的軌位置，
+// 在這裡先乘一次 pathLen，不要每幀再乘一遍。
+// null / 1 ＝ 沒有窗口或量不到脊寬 → 核心全程維持原尺寸（見 slashCoreScaleAt 的 fail-soft）。
+let slashLens: SlashArcWindow | null = null;
+let slashTipScale = 1;
 // 轉折的弧長（升冪，見 ~/utils/forum-path-turns）＋ 上一幀核心走到的弧長。
 // ⚠ lastTurnLen 為 null ＝ **尚未定錨**，下一次 place() 只記位置、不出聲。
 //   每次幾何重建（build / 斷點切換）都要歸 null：弧長全部換算過了，拿舊值比會噴一串音效
@@ -139,6 +150,9 @@ function reset() {
   setForumPathActive(false);
   setForumPathProgress(0);
   setForumSlashWindow(null);
+  // 核心的筆尖縮放也要歸位，理由同上面 planeFrame：不清的話殘影會停在縮小後的尺寸上。
+  slashLens = null;
+  slashTipScale = 1;
   // 路徑事件的門檻表 —— 整套機制刻意只有這一條軌要清，事件表加到幾十個也一樣。
   setForumPathMarks(null);
   turnLens = [];
@@ -159,7 +173,7 @@ function syncKnots(motion: SVGPathElement) {
   );
 }
 
-// 算出那一撇的觸發窗口（forumPath 軌的 0..1）並寫進共享軌。
+// 算出那一撇的觸發窗口（forumPath 軌的 0..1）。null ＝ 不畫那一撇。
 //
 // 撇是 "/"，核心在這一帶是往左下走 → 進入端是外框的**右上角**、結束端是**左下角**。
 // 那不是近似值：外框的尺寸就是脊線旋轉後的軸對齊外框（見 ForumEvent 的 SCSS），
@@ -169,12 +183,12 @@ function syncKnots(motion: SVGPathElement) {
 // 就會變。config 的 FORUM_SLASH_AT 只是「設計到切版有落差時」的手動覆寫，預設 null。
 //
 // 只在 build() 幾何重建時跑一次（512 + 64 次 getPointAtLength），不在逐幀熱路徑上。
-function syncSlashWindow(motion: SVGPathElement) {
+function computeSlashWindow(motion: SVGPathElement): SlashWindow | null {
   const b = bp.value;
-  if (!b || !pathLen) return setForumSlashWindow(null);
+  if (!b || !pathLen) return null;
 
   const override = FORUM_SLASH_AT[b];
-  if (override) return setForumSlashWindow(override);
+  if (override) return override;
 
   const root = rootEl.value;
   // 搜尋範圍同 buildNodesD：取 .sec2 而非 .sec2__path，座標原點則仍是 .forum-path。
@@ -182,7 +196,7 @@ function syncSlashWindow(motion: SVGPathElement) {
   const el = scope?.querySelector<HTMLElement>('.forum-event__date-coreslash');
   // 量不到就不畫那一撇（可能是資料沒標 'core'）—— 這裡**不**走 reset()：
   // 少一撇只是少一個裝飾，整條線與核心都還是對的，不該把整段停掉。
-  if (!root || !el) return setForumSlashWindow(null);
+  if (!root || !el) return null;
 
   const rootRect = root.getBoundingClientRect();
   const r = el.getBoundingClientRect();
@@ -193,8 +207,35 @@ function syncSlashWindow(motion: SVGPathElement) {
   const a = nearestArcLength(enter, sample, pathLen) / pathLen;
   const z = nearestArcLength(exit, sample, pathLen) / pathLen;
   // 排序而非假設 enter 在前：萬一日後線的走向反過來，這裡不該靜默畫成負向。
-  const w: SlashWindow = a <= z ? [a, z] : [z, a];
+  return a <= z ? [a, z] : [z, a];
+}
+
+// 核心縮成筆尖的目標倍率（脊寬 ÷ CORE.dotSize）。**量出來的，不是設定值** ——
+// 理由見 FORUM_SLASH_CORE 的 ⚠：脊寬由 --date-size 推導、住在 ForumEvent 的 SCSS，
+// 在這裡或 config 再寫一個比例就會有兩份，改字級時只有一邊跟上。
+//
+// ⚠ 用 getComputedStyle 而不是 getBoundingClientRect：那條脊線套了
+//   `rotate(26.7deg) scaleY(--slash-draw)` —— 尚未畫出來時（draw = 0）它的 rect 寬會是
+//   脊寬 × cos26.7°，甚至整個塌成 0，於是筆尖會**隨著這一刻的捲動位置**縮成不同大小。
+//   computed width 讀的是 used value（未經 transform），與捲動位置無關。
+// 量不到 → 回 1 ＝ 不縮（fail-soft）。撇照畫，只是核心維持 26px，就是改動前的樣子。
+function measureSlashTipScale(): number {
+  const scope = rootEl.value?.closest('.sec2');
+  const spine = scope?.querySelector<HTMLElement>('.forum-event__date-coreslash i');
+  if (!spine) return 1;
+  const w = Number.parseFloat(getComputedStyle(spine).width);
+  if (!Number.isFinite(w) || w <= 0 || w >= CORE.dotSize) return 1;
+  return w / CORE.dotSize;
+}
+
+// 把窗口寫進共享軌（給 ForumEvent 的 --slash-draw），並備好 place() 要用的兩個值。
+// 一起做是刻意的：三者同源，分開呼叫就可能只更新其中一個，症狀是「撇畫在 A 處、
+// 核心在 B 處縮小」——而兩邊都不會報錯。
+function syncSlash(motion: SVGPathElement) {
+  const w = computeSlashWindow(motion);
   setForumSlashWindow(w);
+  slashLens = w && pathLen ? [w[0] * pathLen, w[1] * pathLen] : null;
+  slashTipScale = w ? measureSlashTipScale() : 1;
 }
 
 // 變身節點在驅動線上的弧長。節點本來就在線上，故最近點即精確值。
@@ -353,6 +394,9 @@ function exposeDebug(
     nodes: Object.fromEntries(points),
     marks,
     turns,
+    // 那一撇：窗口的弧長與筆尖倍率。兩者都是量出來的，肉眼分不出「縮到脊寬」有沒有對，
+    // 故一併吐出來給量測腳本比對（tipScale × 26 應等於脊線的 computed width）。
+    slash: slashLens ? { lens: slashLens, tipScale: slashTipScale } : null,
   };
 }
 
@@ -451,7 +495,7 @@ function build() {
     // return：下面的 setForumPathActive(true) ＋ 殘留的 forumPathProgress 會讓
     // forumPathRiding 卡在 true —— 正是 reset() 註解說「不可發生」的那顆不會動的橘方塊。
     if (!knots.length) return reset();
-    syncSlashWindow(motion);
+    syncSlash(motion);
     // 事件門檻要在 pathLen 定案之後算（它是分母）。放在 setForumPathActive(true) 之前：
     // active 翻上去的同一幀消費端就會讀 marks，晚一步會有一幀讀到上一個斷點的表。
     const lenAt = measureNodeLens(out.segs);
@@ -493,7 +537,17 @@ function place(rawP: number) {
     (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
   // 一律 +90：sprite 機鼻朝 −y，而 angle 是「朝右為 0°」。第 0 格是正方形，
   // 多轉 90° 看起來完全一樣，故不分支。
-  gsap.set(core, { x: pt.x, y: pt.y, rotation: angle + 90 });
+  //
+  // scale ＝ 畫那一撇時縮成筆尖（見 slashCoreScaleAt）。與 x / y / rotation 同一個
+  // gsap.set 寫入，不另開一支 —— 它們是同一顆方塊在同一幀的狀態，分兩次寫等於讓
+  // transform 有兩個作者。縮放中心是方塊自己（transform-origin 預設 50% 50%），
+  // 故位置仍精準落在路徑點上。
+  // ⚠ 這一段的弧長遠早於變身點（swapLen），故不會與紙飛機的 FORUM_PLANE.scale 疊乘；
+  //   真要在飛機身上做縮放事件，得先想清楚兩個來源怎麼合成。
+  const scale = slashCoreScaleAt(
+    len, slashLens, FORUM_SLASH_CORE.shrinkLen, slashTipScale,
+  );
+  gsap.set(core, { x: pt.x, y: pt.y, rotation: angle + 90, scale });
   planeFrame.value = morphFrame(len, swapLen, FORUM_PLANE.morphLen);
 
   // 核心相對視窗中央的偏移（正 ＝ 在中央下方）。centerY 就是「此刻在視窗中央的容器 y」，

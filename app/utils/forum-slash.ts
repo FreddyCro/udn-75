@@ -8,7 +8,20 @@
 /** 那一撇的觸發窗口：forumPath 軌的 [起, 迄]，0..1。 */
 export type SlashWindow = [number, number];
 
+/** 同一個窗口換算成**弧長**（px）的形式。核心的縮放吃這一種 ——
+ *  place() 手上本來就是弧長，而「縮小要吃掉多少距離」講 px 才有意義（講 % 會隨線長飄）。 */
+export type SlashArcWindow = [number, number];
+
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+// GLSL 的 smoothstep：兩端一階導數為 0，縮放的起手與落點都不會有硬轉折。
+// ⚠ 與 orange-core-config 裡那支是同一個算式的第二份 —— 刻意不共用：本檔的定位是
+//   「不依賴任何東西的純算式層」（vitest 直接跑），而那邊是設定台、會 import 一堆常數。
+//   為了一行 GLSL 原語讓算式層反向依賴設定台不值得。
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = clamp01((x - edge0) / (edge1 - edge0));
+  return t * t * (3 - 2 * t);
+}
 
 /**
  * 那一撇畫出多少（0..1）：0 完全沒出現、1 整條畫完。
@@ -25,6 +38,51 @@ export function slashDrawAt(progress: number, window: SlashWindow | null): numbe
   const span = until - from;
   if (span <= 0) return progress >= from ? 1 : 0;
   return clamp01((progress - from) / span);
+}
+
+/**
+ * 核心在弧長 len 處該縮到多小（回傳倍率，1 ＝ 原尺寸 26px）。
+ *
+ * 為什麼要縮：那一撇的脊寬只有 9.6px（pc）／6.25（pad）／5.67（mob），而核心是 26px 的
+ * 方塊 —— 不縮的話畫面上是一顆大方塊拖著一條細線，看起來不是它畫出來的。縮到脊寬之後
+ * 它就是那支筆的筆尖。
+ *
+ * 時機是**進窗口前就縮完**：窗口起點之前預留 shrinkLen 的弧長縮小、終點之後同樣一段還原，
+ * 於是那一撇的第一個 pixel 出現時核心已經是筆尖大小。若改成在窗口內縮，撇的頭一小段會是
+ * 被大方塊畫出來的 —— 那正是本次要解決的觀感。
+ *
+ * tipScale 由呼叫端**量**脊寬算出（ForumCorePath 的 measureSlashTipScale），不寫在這裡：
+ * 脊寬是排版數字，住在 ForumEvent 的 SCSS（同 orange-core-config 對 FORUM_SLASH_AT 的分工）。
+ *
+ * 退化與 fail-soft：
+ *   lens 為 null（沒有窗口）→ 恆 1，什麼都不縮。
+ *   tipScale 不在 (0, 1) 內（量不到、或量出比核心還大）→ 恆 1。**不可能讓核心塌成 0**。
+ *   shrinkLen ≤ 0 → 退化成兩端硬切（合法用法：想讓它瞬間變小），不做除以零。
+ */
+export function slashCoreScaleAt(
+  len: number,
+  lens: SlashArcWindow | null,
+  shrinkLen: number,
+  tipScale: number,
+): number {
+  if (!lens) return 1;
+  if (!(tipScale > 0) || tipScale >= 1) return 1;
+
+  const [from, until] = lens;
+  const ramp = shrinkLen > 0 ? shrinkLen : 0;
+  // 窗口之內維持筆尖（撇正在被畫出來的整段）。
+  // ⚠ 這一條必須在下面那條**之前**：ramp = 0 時兩條的邊界重合（from − 0 ＝ from），
+  //   順序反過來就會在窗口的兩個端點各回一次原尺寸 —— 硬切的那一幀反而是大方塊。
+  if (len >= from && len <= until) return tipScale;
+  // 兩側的斜坡之外一律原尺寸。ramp = 0 時這一條同時也擋掉了下面的除以零。
+  if (len <= from - ramp || len >= until + ramp) return 1;
+
+  // k：0 ＝ 原尺寸、1 ＝ 筆尖。進場斜坡遞增，出場斜坡遞減。
+  const k =
+    len < from
+      ? smoothstep(from - ramp, from, len)
+      : 1 - smoothstep(until, until + ramp, len);
+  return 1 + (tipScale - 1) * k;
 }
 
 /**

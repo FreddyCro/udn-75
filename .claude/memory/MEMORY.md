@@ -1,6 +1,7 @@
 # Memory Index
 
 - [Dev server port ownership](dev-server-port-ownership.md) — 清 dev server 前先比對 PID 啟動時間；自己的 nuxt dev 可能落在 3001，殺 3000 會誤殺使用者的
+- [Verify scroll-driven visuals](verify-scroll-driven-visuals.md) — 用 ?pathdebug 的 __udnST 傳送到目標進度來驗 scrub 視覺；locator.screenshot() 會 scrollIntoView 弄掉捲動位置
 - [No auto commit](no-auto-commit.md) — 絕不自行 commit；停下來給 commit message，由使用者決定
 - [Comment style](comment-style.md) — 註解精簡原則：不寫 Figma node ID、不寫敘事型檔頭，只留維護必要資訊
 - [UI component workflow](ui-component-workflow.md) — 共用元件建置流程與清單在 architecture/components.md；ui/ + U 前綴、五步 SOP
