@@ -121,6 +121,12 @@ function onLoadedMetadata() {
   if (resumeAt > 0) {
     v.currentTime = resumeAt;
     resumeAt = 0;
+  } else {
+    // watch(heroState) 只在「狀態改變」時對齊，但狀態可能在本元件存在之前就已經設好：
+    // 帶 #loop 進站時 Hero 於自己的 setup 內就把 heroState 設成 loop，那時本元件（子層）
+    // 還沒建立、watcher 也還沒註冊 —— Vue 的 watch 不會補發早於它的變更。
+    // 不補這一次對齊，影片會從 0s 播整段正片，直到 33s 才跳回 loop 起點。
+    alignToSegment(v);
   }
   // 使用者已按下 start 才播（首次載入時通常還沒按，由下方 watch(heroStarted) 接手）
   if (heroStarted.value) void play();
@@ -132,6 +138,18 @@ function onLoadedMetadata() {
 function segEnd(v: HTMLVideoElement, seg: HeroVideoSegment) {
   if (Number.isFinite(seg.end)) return seg.end;
   return v.duration ? v.duration - 0.1 : Infinity;
+}
+
+// 把影片對齊到目前狀態該在的段落：已在段內就不動（避免自動推進時多跳一下）。
+// 用 segEnd 而非 seg.end：end 若填 HERO_VIDEO_END(Infinity)，直接比會把「影片已播完」
+// 也算在段內 → play() 對已 ended 的影片會從 0 重播整支。
+function alignToSegment(v: HTMLVideoElement) {
+  const s = heroState.value;
+  if (s === 'gone') return;
+  const seg = segments.value[s];
+  if (v.currentTime < seg.start || v.currentTime >= segEnd(v, seg)) {
+    v.currentTime = seg.start;
+  }
 }
 
 // 階段推進的單一真相＝影片時間軸：依 config 的段落秒數判斷何時換狀態 / 循環。
@@ -220,12 +238,7 @@ watch(heroState, (s) => {
     v.pause();
     return;
   }
-  // 不在目標段內才 seek。用 segEnd 而非 seg.end：end 若填 HERO_VIDEO_END(Infinity)，
-  // 直接比會把「影片已播完」也算在段內 → play() 對已 ended 的影片會從 0 重播整支。
-  const seg = segments.value[s];
-  if (v.currentTime < seg.start || v.currentTime >= segEnd(v, seg)) {
-    v.currentTime = seg.start;
-  }
+  alignToSegment(v);
   void play();
   if (s === 'outro') armOutroTimer(v);
 });
@@ -360,6 +373,10 @@ onMounted(() => {
     readyTimer = setTimeout(markReady, HERO_VIDEO_READY_TIMEOUT); // 遲遲無法播放時的保險
     promotePreload();
   }
+
+  // 同上一則的理由：來源在快取裡時 loadedmetadata 也可能早於 hydration 就觸發，
+  // 那樣 onLoadedMetadata 的對齊就漏掉了 —— 掛載時補查一次（HAVE_METADATA 以上）。
+  if (v && v.readyState >= 1) alignToSegment(v);
 
   if (heroStarted.value) void play(); // HMR / 重新掛載時可能已按過 start
 });
