@@ -142,6 +142,11 @@ watch(heroState, applyScrollLock);
 watch(heroState, (s, prev) => {
   if (s !== 'gone') {
     resetCoreEntrance(); // 倒帶回 loop：收掉動畫、dot 歸位
+    // 轉場進度一併歸零。header 在轉場期間刻意保持可點（見 AppHeader 的 z-index 註解），
+    // 使用者真的會在轉場進行到一半時按 logo 回 loop —— 不歸零的話 HeroSymbolTransition
+    // 會留在 active，在剛倒帶回來的影片上蓋一層近乎滿版的黑色 clip。
+    // onBeforeUnmount 有同一行清理，但那條只在換頁時跑得到；就地倒帶不 unmount。
+    setTransitionProgress(0);
     return;
   }
   runCoreEntrance(prev === 'outro');

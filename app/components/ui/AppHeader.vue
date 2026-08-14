@@ -8,6 +8,7 @@ import {
   type ThemeSpan,
 } from '@/utils/header-theme';
 import { pickActiveAnchor } from '@/utils/anchor-spy';
+import { resolveHomeIntent } from '@/utils/home-intent';
 
 /**
  * AppHeader — 底色隨捲動段落切換白／黑／橘（見 data-header-theme、updateTheme）。
@@ -35,9 +36,12 @@ const props = defineProps({
 const route = useRoute();
 const showNav = computed(() => route.path === '/');
 
-// logo 連回站台首頁。硬寫 "/" 在子路徑部署（GitHub Pages 的 /udn-75/、nmdap 的 /test/udn75/）
-// 會連到網域根，故改取 .env 的 NUXT_URL（見 nuxt.config 的 runtimeConfig.public.APP_URL）。
-const homeUrl = useRuntimeConfig().public.APP_URL;
+// logo 的目的地與點擊行為都由 resolveHomeIntent 決定（單一判定來源）。
+// 原本這裡用 runtimeConfig 的 APP_URL（絕對網址）+ 原生 <a>，那是整頁重載 ——
+// 首頁所有 section 重新 mount、全部 ScrollTrigger 重建。改走 NuxtLink 後
+// baseURL 由 router 自己套，子路徑部署（GitHub Pages 的 /udn-75/）不必再靠絕對網址。
+const homeIntent = computed(() => resolveHomeIntent(route.path === '/'));
+const { returnToLoop } = useHeroVideo();
 
 const progress = ref(0);
 const activeTarget = ref<string>('');
@@ -216,6 +220,26 @@ function scrollToTop(e?: Event) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// logo：回到 hero 的 loop 段。首頁就地倒帶（不換頁），子頁交給 NuxtLink 導航到 /#loop。
+function onLogoClick(e: MouseEvent) {
+  // 修飾鍵點擊（Ctrl／⌘／Shift／Alt）是「開新分頁／新視窗」的意圖，一律放行給瀏覽器 ——
+  // 攔下來會讓使用者按了沒反應。中鍵在現代瀏覽器發的是 auxclick，本來就不會進來。
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+  // 選單開著時 logo 仍可點：.app-header__bar-wrap 的 z-index 2 疊在面板（z-index 1）之上。
+  // 就地倒帶不換頁 → 面板不會自己消失，.is-menu-locked 也還鎖著 html/body，
+  // 使用者會看到「按了 logo，選單沒關、頁面鎖死」。
+  menuOpen.value = false;
+
+  if (homeIntent.value.action !== 'in-page') return; // 子頁：讓 NuxtLink 走
+
+  e.preventDefault();
+  // auto 而非 smooth：returnToLoop() 是瞬間生效的，smooth 期間影片已經淡回、
+  // 轉場層還在漸進收，兩者會打架（理由同 Hero 的 scrollToInitialHash）。
+  window.scrollTo({ top: 0, behavior: 'auto' });
+  returnToLoop();
+}
+
 // 選單面板是白底（設計稿只有這一版），開啟期間 header 一併切白底
 const effectiveTheme = computed<HeaderTheme>(() =>
   menuOpen.value ? 'light' : theme.value,
@@ -238,10 +262,11 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     <!-- 頂部列（≥1280：logo ＋ 錨點列 ＋ 音效 ＋ share；<1280：logo ＋ 音效 ＋ 漢堡） -->
     <div class="app-header__bar-wrap">
       <div class="app-header__bar">
-        <a
+        <NuxtLink
           class="app-header__logo"
-          :href="homeUrl"
+          :to="homeIntent.to"
           :aria-label="labels.logoLabel"
+          @click="onLogoClick"
         >
           <img
             class="app-header__logo-img"
@@ -249,7 +274,7 @@ const effectiveTheme = computed<HeaderTheme>(() =>
             :alt="labels.logoAlt"
           />
           <span class="app-header__logo-mask" aria-hidden="true" />
-        </a>
+        </NuxtLink>
 
         <div class="app-header__actions">
           <AppHeaderNav
