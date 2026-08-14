@@ -16,11 +16,10 @@ const emit = defineEmits<{ select: [target: string] }>();
 const route = useRoute();
 const isHome = computed(() => route.path === '/');
 
-// 首頁：攔下路由、就地捲動。子頁：不攔，讓 NuxtLink 導航（並吃到 viewport prefetch）。
-function onSelect(target: string, e: MouseEvent) {
+// 首頁：攔下瀏覽器的預設跳轉，改走 scrollToTarget（它會補掉 fixed header 的高度）。
+function onHomeSelect(target: string, e: MouseEvent) {
   // 修飾鍵點擊＝開新分頁的意圖，一律放行給瀏覽器。
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  if (!isHome.value) return;
   e.preventDefault();
   emit('select', target);
 }
@@ -28,16 +27,35 @@ function onSelect(target: string, e: MouseEvent) {
 
 <template>
   <nav class="app-header-nav">
-    <NuxtLink
-      v-for="anchor in anchors"
-      :key="anchor.target"
-      class="app-header-nav__link"
-      :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
-      :to="`/#${anchor.target}`"
-      @click="onSelect(anchor.target, $event)"
-    >
-      {{ anchor.title }}
-    </NuxtLink>
+    <!-- 首頁用原生 <a>，不用 NuxtLink：NuxtLink 內建的 click handler 會**先於**本元件的
+         @click 執行，且它是在那個時間點才檢查 e.defaultPrevented —— 我們的 preventDefault
+         還沒跑，攔不住它。結果是網址列被塞進 /#target，再由 Nuxt 的 scrollBehavior 捲到
+         沒有補償 --header-height 的原始位置。就地捲動一律走 scrollToTarget。 -->
+    <template v-if="isHome">
+      <a
+        v-for="anchor in anchors"
+        :key="anchor.target"
+        class="app-header-nav__link"
+        :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
+        :href="`#${anchor.target}`"
+        @click="onHomeSelect(anchor.target, $event)"
+      >
+        {{ anchor.title }}
+      </a>
+    </template>
+
+    <!-- 子頁：真的要換頁，交給 NuxtLink（client-side 導航，並吃到 viewport prefetch）。 -->
+    <template v-else>
+      <NuxtLink
+        v-for="anchor in anchors"
+        :key="anchor.target"
+        class="app-header-nav__link"
+        :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
+        :to="`/#${anchor.target}`"
+      >
+        {{ anchor.title }}
+      </NuxtLink>
+    </template>
   </nav>
 </template>
 

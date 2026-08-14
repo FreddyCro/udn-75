@@ -16,21 +16,19 @@ const panelRef = ref<HTMLElement | null>(null);
 
 const isHome = computed(() => route.path === '/');
 
-// 首頁：攔下路由、就地捲動。子頁：不攔，讓 NuxtLink 自己導航。
-//
-// 為什麼從 navigateTo 換成 NuxtLink：原本是 <a> + @click.prevent + navigateTo，
-// 完全吃不到 Nuxt 預設的 viewport prefetch —— 而子頁使用者最常從這裡回首頁，
-// 首頁的 chunk 白白等到點下去才開始下載。換成 NuxtLink 後 prefetch 是免費的。
-function onSelect(target: string, e: MouseEvent) {
-  // 修飾鍵點擊＝開新分頁的意圖，一律放行給瀏覽器（連選單都不關，使用者還在原頁）。
+// 首頁：攔下路由、就地捲動。
+function onHomeSelect(target: string, e: MouseEvent) {
+  // 修飾鍵點擊＝開新分頁的意圖，放行給瀏覽器，面板也不收（使用者還留在本頁）。
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-
-  emit('close');
-
-  if (!isHome.value) return; // 子頁：交給 NuxtLink 導航到 /#target
-
   e.preventDefault();
+  emit('close');
   emit('select', target);
+}
+
+// 子頁：導航交給 NuxtLink，本函式只負責把面板收起來。
+function onAwaySelect(e: MouseEvent) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  emit('close');
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -130,19 +128,37 @@ onBeforeUnmount(() => {
 
     <div ref="panelRef" class="app-header-menu__panel">
       <nav class="app-header-menu__nav">
-        <NuxtLink
-          v-for="anchor in anchors"
-          :key="anchor.target"
-          class="app-header-menu__link"
-          :class="{
-            'app-header-menu__link--active': activeTarget === anchor.target,
-          }"
-          :to="`/#${anchor.target}`"
-          :tabindex="open ? 0 : -1"
-          @click="onSelect(anchor.target, $event)"
-        >
-          {{ anchor.title }}
-        </NuxtLink>
+        <template v-if="isHome">
+          <a
+            v-for="anchor in anchors"
+            :key="anchor.target"
+            class="app-header-menu__link"
+            :class="{
+              'app-header-menu__link--active': activeTarget === anchor.target,
+            }"
+            :href="`#${anchor.target}`"
+            :tabindex="open ? 0 : -1"
+            @click="onHomeSelect(anchor.target, $event)"
+          >
+            {{ anchor.title }}
+          </a>
+        </template>
+
+        <template v-else>
+          <NuxtLink
+            v-for="anchor in anchors"
+            :key="anchor.target"
+            class="app-header-menu__link"
+            :class="{
+              'app-header-menu__link--active': activeTarget === anchor.target,
+            }"
+            :to="`/#${anchor.target}`"
+            :tabindex="open ? 0 : -1"
+            @click="onAwaySelect"
+          >
+            {{ anchor.title }}
+          </NuxtLink>
+        </template>
       </nav>
 
       <div class="app-header-menu__share">
