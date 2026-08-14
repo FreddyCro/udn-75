@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import str from '@/locales/common.json';
 import logoUrl from '@/assets/img/logo.svg';
-import { PC_BREAKPOINTS } from '@/utils/constants';
+import { PC_BREAKPOINTS, SUBPAGE_HEADER_ANCHOR } from '@/utils/constants';
 import {
   pickHeaderTheme,
   type HeaderTheme,
@@ -31,10 +31,14 @@ const props = defineProps({
   autoHide: { type: Boolean, default: true },
 });
 
-// 錨點列只在首頁顯示；子頁改用 SubpageAnchor / SubpageAnchorBar。
-// 用路由而非 autoHide 判斷，兩者語意不同，日後子頁若也想 autoHide 不會互相牽動。
 const route = useRoute();
-const showNav = computed(() => route.path === '/');
+
+// 錨點列首頁與子頁共用；只在 ≥1280 顯示（由 AppHeaderNav 自己的 CSS 決定，不必在此判斷）。
+// 子頁量不到 #forum / #blessing / #media 這些段落 → activeTarget 恆為 ''，
+// 故改用 navActiveTarget：子頁一律標成 SUBPAGE_HEADER_ANCHOR（見該常數的說明）。
+const navActiveTarget = computed(() =>
+  route.path === '/' ? activeTarget.value : SUBPAGE_HEADER_ANCHOR,
+);
 
 // logo 的目的地與點擊行為都由 resolveHomeIntent 決定（單一判定來源）。
 // 原本這裡用 runtimeConfig 的 APP_URL（絕對網址）+ 原生 <a>，那是整頁重載 ——
@@ -278,9 +282,8 @@ const effectiveTheme = computed<HeaderTheme>(() =>
 
         <div class="app-header__actions">
           <AppHeaderNav
-            v-if="showNav"
             :anchors="anchors"
-            :active-target="activeTarget"
+            :active-target="navActiveTarget"
             @select="scrollToTarget"
           />
 
@@ -310,7 +313,7 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     <AppHeaderMenu
       :open="menuOpen"
       :anchors="anchors"
-      :active-target="activeTarget"
+      :active-target="navActiveTarget"
       @close="menuOpen = false"
       @select="scrollToTarget"
     />
