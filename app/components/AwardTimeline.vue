@@ -53,6 +53,9 @@ const setItem = (el: any, i: number) => {
   if (el) itemEls[i] = el as HTMLElement;
 };
 
+/** 箭頭尖端走到欄寬的幾分之幾就讓該欄 active（0.1 = 一進欄位就亮） */
+const ITEM_ACTIVE_AT = 0.1;
+
 let tl: gsap.core.Timeline | null = null;
 let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -67,7 +70,18 @@ function build() {
 
   // 軌道超出舞台的量（函式值 + invalidateOnRefresh：resize 後 refresh 即重算）
   const shift = () => Math.max(0, track.scrollWidth - stage.clientWidth);
-  const n = itemEls.length;
+
+  // active 判定改看實際幾何（欄寬各異，用 progress 等分會失準）：
+  // 箭頭尖端（右緣，見 svg 箭頭在 x129–153）越過「該欄左緣 + 10% 欄寬」即 active。
+  // marks[i] 存成箭頭的 x 值門檻，onUpdate 只比數字、不觸發 reflow。
+  const head = arrow.parentElement!; // .award-timeline__head，箭頭的 offsetParent
+  let marks: number[] = [];
+  const measure = () => {
+    const base = head.offsetLeft; // 與 li 的 offsetLeft 同基準（head 非 li 的祖先）
+    marks = itemEls.map(
+      (el) => el.offsetLeft - base + el.offsetWidth * ITEM_ACTIVE_AT - arrow.offsetWidth,
+    );
+  };
 
   tl = gsap.timeline({
     scrollTrigger: {
@@ -80,8 +94,15 @@ function build() {
       anticipatePin: 1,
       scrub: 1,
       invalidateOnRefresh: true,
-      onUpdate: (self) => {
-        activeIdx.value = Math.min(n - 1, Math.floor(self.progress * n));
+      onRefresh: measure, // 版面／欄寬變動後重量門檻
+      onUpdate: () => {
+        // 讀 GSAP 快取的 x（非 DOM 量測）：找出尖端已越過的最後一欄
+        const x = gsap.getProperty(arrow, 'x') as number;
+        let idx = 0;
+        for (let i = 0; i < marks.length; i++) {
+          if (x >= marks[i]!) idx = i;
+        }
+        activeIdx.value = idx;
       },
     },
   });
@@ -108,17 +129,11 @@ function build() {
       0,
     );
   }
-  itemEls.forEach((el, i) => {
-    tl!.fromTo(
-      el,
-      { opacity: 0.5 },
-      { opacity: 1, duration: 0.12, ease: 'none' },
-      (i / n) * 0.85 + 0.05, // 箭頭抵達該欄的近似時間點
-    );
-  });
+  // 年份欄位的 opacity 一律由 CSS 固定 0.5／1（走過的欄位），這裡不做 tween
   if (shift() > 0) {
     tl.fromTo(track, { x: 0 }, { x: () => -shift(), ease: 'none', duration: 1 }, 0);
   }
+  measure(); // onRefresh 之外先量一次，確保首屏就有門檻可比
 }
 
 function teardown() {
@@ -126,9 +141,7 @@ function teardown() {
   tl?.kill();
   tl = null;
   gsap.set(
-    [trackRef.value, lineRef.value, trailRef.value, arrowRef.value, ...itemEls].filter(
-      Boolean,
-    ),
+    [trackRef.value, lineRef.value, trailRef.value, arrowRef.value].filter(Boolean),
     { clearProps: 'all' },
   );
 }
@@ -186,6 +199,7 @@ onBeforeUnmount(() => {
             :key="i"
             :ref="(el) => setItem(el, i)"
             class="award-timeline__item"
+            :class="{ 'award-timeline__item--passed': i <= activeIdx }"
             :style="{ '--w': `${item.width ?? 277}px` }"
           >
             <img
@@ -298,9 +312,15 @@ onBeforeUnmount(() => {
 }
 
 // 年份欄位：寬度對稿各欄不同（--w 由 template 帶入）
+// 預設 0.5，箭頭走過（i <= activeIdx）改 1：純 class 切換、無 transition，故是瞬間跳變
 .award-timeline__item {
   flex-shrink: 0;
   width: var(--w, 277px);
+  opacity: 0.5;
+
+  &--passed {
+    opacity: 1;
+  }
 }
 
 // 年份數字：對稿向量字（/img/news/{year}.svg）
@@ -361,9 +381,16 @@ onBeforeUnmount(() => {
 }
 
 // reduced-motion 降級：原生橫向捲動、全部顯示
-.award-timeline--static .award-timeline__stage {
-  height: auto;
-  padding: 64px 0;
-  overflow-x: auto;
+.award-timeline--static {
+  .award-timeline__stage {
+    height: auto;
+    padding: 64px 0;
+    overflow-x: auto;
+  }
+
+  // 無 ScrollTrigger → activeIdx 恆為 0，這裡直接讓所有欄位滿版
+  .award-timeline__item {
+    opacity: 1;
+  }
 }
 </style>
