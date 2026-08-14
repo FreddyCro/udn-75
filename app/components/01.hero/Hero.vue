@@ -17,6 +17,7 @@ import {
   HERO_CORE_HANDOFF,
   HERO_OUTRO_CORE_ANCHOR,
 } from '@/utils/hero-video-config';
+import { HERO_RETURN_HASH } from '@/utils/home-intent';
 
 // ref：
 //   sec1Ref       — 座標範圍 / ScrollTrigger trigger
@@ -93,6 +94,7 @@ const {
   videoReady,
   loaderDone,
   heroStarted,
+  returnToLoop,
 } = useHeroVideo();
 
 // 視窗高的單一來源（--vh）：轉場與引言淡出的尺長都吃它，不吃 window.innerHeight。
@@ -120,7 +122,21 @@ function bypassLoader() {
   setState('gone');
 }
 
-if (initialHash && !useNuxtApp().isHydrating) bypassLoader();
+// 帶 #loop 進站（子頁 header logo 點回來）：同樣略過載入層與 start 閘門，但落在 loop
+// 而非 gone —— 使用者按 logo 要的是「回到最開始」，不是回到已經看完的狀態。
+// loaderDone / heroStarted 由 returnToLoop() 一併設好（見 useHeroVideo）。
+function bypassToLoop() {
+  loaderBypass.value = true;
+  returnToLoop();
+}
+
+// #loop 走倒帶、其餘 hash（子頁選單的 /#forum 這類）維持既有的「直接進 gone」。
+function bypassForInitialHash() {
+  if (initialHash === HERO_RETURN_HASH) bypassToLoop();
+  else bypassLoader();
+}
+
+if (initialHash && !useNuxtApp().isHydrating) bypassForInitialHash();
 
 // ── 開場捲動鎖的「預設值」：SSR 就先鎖住 ──────────────────────────────
 // 下方 applyScrollLock() 掛在 onMounted，**要等 hydration**。SSR 吐出的 HTML 到
@@ -187,7 +203,7 @@ onMounted(() => {
   onBeforeUnmount(() => mq.removeEventListener('change', onMqChange));
 
   // hydration 那一輪擋不掉（理由見上方 bypassLoader）：補在這裡，仍搶在 applyScrollLock 之前。
-  if (initialHash && !loaderBypass.value) bypassLoader();
+  if (initialHash && !loaderBypass.value) bypassForInitialHash();
 
   // 捲動鎖由本元件「單一擁有」：載入層一掛上就上鎖（此時為 main），一路持有到
   // gone 才解鎖（退場段也鎖，見 useHeroVideo）。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
