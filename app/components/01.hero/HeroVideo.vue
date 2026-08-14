@@ -307,7 +307,7 @@ function onResize() {
 
 // ── preload 升級：metadata → auto ────────────────────────────────────
 // template 上刻意只給 preload="metadata"。<video> 是 SSR 就吐出來的，preload="auto" 會讓
-// 瀏覽器在 **HTML 解析階段**（bundle 都還沒下載完）就開始拉整支影片 —— pc 版 70MB，直接跟
+// 瀏覽器在 **HTML 解析階段**（bundle 都還沒下載完）就開始拉整支影片 —— pc 版 9.4MB（pad 6.6MB / mob 4.1MB），直接跟
 // Nuxt bundle 搶頻寬與連線 → hydration 被推遲。而載入層在 hydration 之前是「SSR 吐出的
 // 靜態 0%」（沒有方塊、沒有 JS 在跑，見 HeroLoader），影片拖多久、那個 0% 就定格多久。
 //
@@ -322,7 +322,10 @@ function promotePreload() {
     if (!v || v.readyState >= 3) return;
     v.preload = 'auto';
     // 只改 preload 屬性不保證瀏覽器立刻續拉（各家實作不一），load() 才確定重啟緩衝。
-    // 此刻 currentTime 必為 0（還沒播過），load() 的重置沒有東西可丟。
+    // ⚠️ load() 會把 currentTime 重置回 0。原本這裡假設「此刻必為 0（還沒播過）」——
+    //    帶 #loop 進站時不成立：watch(heroState) 已經 seek 到 loop.start（30s）。
+    //    沿用 RWD 換來源那條路，記進 resumeAt、由 onLoadedMetadata 跳回去。
+    if (v.currentTime > 0) resumeAt = v.currentTime;
     v.load();
   });
 }
@@ -383,7 +386,7 @@ onBeforeUnmount(() => {
          就開始拉整支影片、拖慢 hydration（理由與升級時機見 script 的 promotePreload）。 -->
     <div
       class="sec1__hero-video"
-      :class="{ 'is-ended': isGone }"
+      :class="{ 'is-ended': isGone, 'is-loading': !videoReady }"
       aria-hidden="true"
     >
       <video
@@ -495,6 +498,15 @@ onBeforeUnmount(() => {
 
   // 影片播放完畢（gone）：淡出，露出 hero 白底
   &.is-ended {
+    opacity: 0;
+  }
+
+  // canplay 之前 <video> 什麼都不畫（HERO_VIDEO_POSTER 三個裝置都是空字串），
+  // 露出的是 .sec1__hero 的白底。首次載入時看不到（載入層蓋著），但帶 #loop 進站
+  // 會略過載入層 —— 那時就是一瞬純白。先透明、ready 後靠上面那條 0.8s transition
+  // 淡入，與 gone 淡出露白底是同一套視覺語言。
+  // 與 .is-ended 同為 opacity: 0，兩者同時成立也不會打架。
+  &.is-loading {
     opacity: 0;
   }
 }
