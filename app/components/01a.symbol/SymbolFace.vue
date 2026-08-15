@@ -13,6 +13,7 @@ import {
 } from '~/utils/symbol-atlas';
 import { sampleImageToGridWithLimit } from '~/utils/symbol-sampler';
 import { FACE_HOVER_INFLUENCE, faceUv } from '~/utils/symbol-hint';
+import { EGG_CLOSED, nextEggIndex, tapEggIndex } from '~/utils/symbol-egg';
 import {
   SYMBOL_CONFIG_KEYS,
   SYMBOL_LIVE_COLOR_KEYS,
@@ -247,8 +248,9 @@ const srgbColor = (style: string) =>
 
 const wrapRef = ref<HTMLDivElement | null>(null);
 const eggRef = ref<HTMLDivElement | null>(null);
-// 目前游標所在宮格 index（-1 = 無），只在換格時更新 → slot 內容僅換格才 re-render
-const activeEgg = ref(-1);
+// 目前顯示的彩蛋句 index（EGG_CLOSED ＝ 不顯示），只在換句時更新 → slot 內容僅換句才 re-render。
+// 兩種驅動方式（見下方 isMob 那段）：桌機是游標所在宮格逐幀推導，手機是 tap／計時器寫入。
+const activeEgg = ref(EGG_CLOSED);
 
 // 彩蛋切換時的「亂碼跑動」出現動畫：activeEgg 換格時，文字由隨機字元逐步落定成句子，
 // 讓「切換到另一則彩蛋」更明顯。displayText 取代直接顯示 phrases[activeEgg]。
@@ -275,7 +277,50 @@ const runScramble = (target: string) => {
 watch(activeEgg, (idx) => {
   runScramble(idx >= 0 ? (cfg.phrases[idx] ?? '') : '');
 });
-onBeforeUnmount(() => cancelAnimationFrame(scrambleRaf));
+
+// ---------- 手機版彩蛋：tap 驅動 ----------
+// 手機沒有 hover，故 <768px 走另一套：點人臉**任一處**就依序換下一句（不分宮格，
+// 規則見 ~/utils/symbol-egg），開啟後每 EGG_AUTO_MS 自動換下一句，且**不因手指離開而收起**
+// —— 只有點在人臉以外、或整個離開集合態（見 faceFormed 的 watch）才關。
+// 桌機維持宮格 hover 對位，兩套只在 animate() 的彩蛋段分流。
+//
+// 斷點沿用 hint 那把尺（下方 HINT_ICON_UV 的 mob 版位也吃它）：與 hintMob 的文案
+// 「點擊人臉…」、Hero 的 worldScale 同一個 768 界線，全站一致。
+// ⚠️ 已知取捨（同 .hint 的 SCSS 註解）：≥768px 的觸控裝置仍走 hover 那套，在那些機器上
+//    彩蛋摸不到。改用 (hover: none) 可解，但會與吃寬度的 hint 版位脫鉤，故依專案慣例走斷點。
+const MOB_QUERY = '(max-width: 767.98px)'; // ＝ mixins.scss 的 rwd-max('tablet')
+// 非 reactive：animate() 每幀讀它分流，包成 ref 等於在熱迴圈多一次 getter。
+// 真正需要重繪的狀態是 activeEgg，那個才是 ref。初值與後續變動見 onMounted 的 matchMedia。
+let isMob = false;
+/** 自動換下一句的間隔（ms）。扣掉 480ms 的亂碼動畫還有 2.5 秒可讀。 */
+const EGG_AUTO_MS = 3000;
+let eggAutoTimer = 0;
+const advanceEgg = () => {
+  activeEgg.value = nextEggIndex(activeEgg.value, cfg.phrases.length);
+};
+const stopEggAuto = () => {
+  clearInterval(eggAutoTimer);
+  eggAutoTimer = 0;
+};
+/** 開始／重新計時。點擊本身就是一次「剛換過」，故要從頭算，不是接著上一輪的殘餘。 */
+const startEggAuto = () => {
+  stopEggAuto();
+  eggAutoTimer = window.setInterval(advanceEgg, EGG_AUTO_MS);
+};
+// 彩蛋開著時真空是「定住」的（見 onLeave），關閉就得有人把它鬆開，
+// 否則捲離集合態再回來時，influence 會停在 1 → 一回到人臉就有一個沒人點過的洞。
+// onMounted 內指派（targetInfluence 住在那層）。
+let releaseMouseFn: (() => void) | null = null;
+const closeEgg = () => {
+  stopEggAuto();
+  activeEgg.value = EGG_CLOSED;
+  releaseMouseFn?.();
+};
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(scrambleRaf);
+  stopEggAuto();
+});
 // 三種狀態：'face' = 集合（人像）/ 'disperse' = 分散（散場漂浮）/ 'converge' = 匯聚成點。
 // 三態互斥，由 uDisperse / uConverge 兩個 uniform 表示（同一時間至多一個為 1）。
 // v-model 由父層決定預設值並隨意切換（正式站是 SymbolScene 依捲動指派，
@@ -402,7 +447,7 @@ const HINT_ICON_UV = {
 };
 // 手機版說明文字與人像 bbox 底緣的距離（Figma 2065:120222：bbox 底 563 → 文字頂 594）。
 // 實際寫在 .hint-mob 的 margin-top，這裡只是註記出處。
-const HINT_MOB_QUERY = '(max-width: 767.98px)'; // ＝ mixins.scss 的 rwd-max('tablet')
+// 斷點判定共用上方彩蛋那支 isMob（同一把尺，見 MOB_QUERY）。
 
 const hintVisible = ref(false);
 const hintPos = ref<{ x: number; y: number } | null>(null);
@@ -432,6 +477,13 @@ watch(faceFormed, (formed) => {
   //    收起與復原會輪流發生，提示變成閃爍。
   if (!formed && !props.hintOnce) hintDismissed = false;
   hintVisible.value = formed && !hintDismissed && !!props.hint;
+
+  // 手機版彩蛋的第二個（也是最後一個）關閉入口：離開集合態 —— 捲到 disperse／converge、
+  // 捲出視口、切分頁（見 stopLoop 也會把 faceFormed 收成 false）。
+  // ⚠️ 少了這一段，捲到匯聚那一拍畫面只剩一顆橘核心，卻還飄著一句橘字，
+  //    而且背景那支 3 秒計時器會一直換句換下去。
+  // 桌機寫不寫都一樣：它的 index 由 animate() 每幀依游標重算，下一幀就蓋掉了。
+  if (!formed) closeEgg();
 });
 
 
@@ -440,6 +492,18 @@ onMounted(() => {
   if (!wrap) return;
   const width = wrap.clientWidth;
   const height = wrap.clientHeight;
+
+  // 手機版彩蛋走 tap（見 MOB_QUERY 那段），hint 的版位也吃同一把尺。
+  // 轉向／拉視窗跨過斷點時：先關掉彩蛋（換到桌機那套後，tap 開的那句沒有人會再收），
+  // 再重算 hint 錨點（pc 與 mob 的 HINT_ICON_UV 不同）。
+  const mobMq = window.matchMedia(MOB_QUERY);
+  isMob = mobMq.matches;
+  const onMobChange = (e: MediaQueryListEvent) => {
+    isMob = e.matches;
+    closeEgg();
+    updateHintAnchor();
+  };
+  mobMq.addEventListener('change', onMobChange);
 
   const scene = new THREE.Scene();
   // ⚠️ 這顆 Color 物件從頭到尾是同一個 instance（下方 syncBg 就地補間 r/g/b），
@@ -516,6 +580,14 @@ onMounted(() => {
   const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   const hit = new THREE.Vector3();
 
+  // 手機版彩蛋的錨點（world 座標）：文字與真空洞都停在最後一次點擊的位置。
+  // ⚠️ 存 world 而不是螢幕 px —— 轉向、網址列收合、捲軸出現都會改變 canvas 尺寸，
+  //    存 px 的話文字會釘在舊像素位置、與人臉脫節；存 world 則由 animate() 每幀投影，
+  //    自動跟著人臉走（同 hint 錨點的做法）。
+  const eggAnchor = new THREE.Vector3();
+  /** 手機彩蛋開著嗎 ＝ 真空是否該定住不放（見 onLeave）。 */
+  const eggHolding = () => isMob && activeEgg.value >= 0;
+
   const onMove = (e: PointerEvent) => {
     const rect = renderer.domElement.getBoundingClientRect();
     ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -528,10 +600,57 @@ onMounted(() => {
   };
   // 離開只把影響淡出，不把座標拉回 9999（否則真空會橫掃到角落）
   const onLeave = () => {
+    // 手機且彩蛋開著：不鬆手 —— 真空洞要與文字一起留在點擊處，直到彩蛋關閉為止。
+    // 觸控抬指一定會發 pointerleave，照原本淡出的話，手指一離開洞就闔起來、
+    // 只剩一句字浮在完好的人臉上。座標拉回錨點是因為抬指前可能滑了一段，
+    // 停在最後滑到的位置會讓洞與文字錯開。
+    if (eggHolding()) {
+      mouse.copy(eggAnchor);
+      return;
+    }
     targetInfluence = 0;
   };
   renderer.domElement.addEventListener('pointermove', onMove);
   renderer.domElement.addEventListener('pointerleave', onLeave);
+
+  // 彩蛋關閉時鬆開真空（closeEgg 走這條，見它的宣告處）。桌機不受影響：
+  // 那邊的 influence 一律由游標的進出決定，closeEgg 只是在離開集合態時順手收東西。
+  releaseMouseFn = () => {
+    if (isMob) targetInfluence = 0;
+  };
+
+  // 手機版彩蛋：點人臉換下一句、點人臉以外關閉（桌機讓開，走 animate() 的宮格路徑）。
+  // ⚠️ 用 click 而不是 pointerdown：捲動拖曳會走 pointercancel、不會合成 click，
+  //    故「捲頁時手指掃過人臉」不會誤開彩蛋 —— 這一段畫面本來就是靠捲動推進的。
+  const onTap = (e: MouseEvent) => {
+    // 集合途中／散場中點下去不該冒出彩蛋（同 PC 提示，理由見 faceFormed 宣告處）
+    if (!isMob || !faceFormed.value) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(ndc, camera);
+    if (!raycaster.ray.intersectPlane(plane, hit)) return;
+    // 命中框與桌機宮格同一套（faceUv），差別只在手機不再把它切成 gridCols × gridRows
+    const uv = faceUv(hit.x, hit.y, halfW, halfH);
+    const next = tapEggIndex(activeEgg.value, cfg.phrases.length, !!uv);
+    activeEgg.value = next;
+    // ⚠️ 分支看的是「真的開了嗎」而不是「點在臉上嗎」：沒有文案時（phrases 為空）
+    //    點人臉並不會開，那就不該留下一支永遠換不出東西的計時器。
+    if (next >= 0) {
+      eggAnchor.copy(hit); // next >= 0 蘊含命中人臉，hit 就是這一次的點擊處
+      // 真空跟著定位到同一點並拉滿：tap 不像 hover 會持續餵座標，不寫這兩行的話
+      // 洞只會靠點擊前那一下 pointermove 短暫出現，抬指就淡掉（見 onLeave）。
+      mouse.copy(hit);
+      targetInfluence = 1;
+      startEggAuto(); // 點擊＝剛換過一句，3 秒從頭算
+      // 手機的提示文案就是「點擊人臉…」，點到了就等於學會了 → 收起（收多久見 hintOnce）
+      if (!hintDismissed) dismissHint();
+    } else {
+      stopEggAuto();
+      targetInfluence = 0; // 點在人臉以外＝收工，洞跟著文字一起收掉
+    }
+  };
+  renderer.domElement.addEventListener('click', onTap);
 
   // atlas / colorRamp / points 改為 let，可在 refresh 時 dispose 重建
   let atlas: GlyphAtlas | null = null;
@@ -1142,6 +1261,13 @@ onMounted(() => {
   const proj = new THREE.Vector3();
   let viewW = width;
   let viewH = height;
+  /** 把 .egg 的中心對到某個 world 座標（桌機餵游標、手機餵最後點擊處）。 */
+  const placeEgg = (el: HTMLElement, world: THREE.Vector3) => {
+    proj.copy(world).project(camera);
+    const sx = (proj.x * 0.5 + 0.5) * viewW;
+    const sy = (-proj.y * 0.5 + 0.5) * viewH;
+    el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%)`;
+  };
   if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
 
   // hint 錨點：人像 bbox 上的兩個定點投影到螢幕 px —— 圖示（HINT_ICON_UV）與手機文字（底緣中點）。
@@ -1161,11 +1287,9 @@ onMounted(() => {
     //    啟動 rAF），此時 camera.matrixWorldInverse 仍是單位矩陣、position.z 還沒烘進去，
     //    project() 的透視除法會除以 0 → Infinity。先手動更新矩陣，補上 renderer 尚未做的那一步。
     camera.updateMatrixWorld();
-    // 斷點在這裡即時判定就夠，不必另掛 matchMedia listener：跨斷點必然改變 .stage 的寬，
-    // 那會觸發下方的 ResizeObserver → 再呼叫本函式一次。
-    const [u, v] = window.matchMedia(HINT_MOB_QUERY).matches
-      ? HINT_ICON_UV.mob
-      : HINT_ICON_UV.pc;
+    // 斷點讀彩蛋那支 isMob（onMounted 內以 matchMedia 初始化並追蹤變動）：
+    // 跨斷點時 change 回呼會直接再呼叫本函式一次，不必在這裡重新查詢 media query。
+    const [u, v] = isMob ? HINT_ICON_UV.mob : HINT_ICON_UV.pc;
     // uv(0..1，左上原點) → world：x 由 -halfW 到 +halfW、y 由 +halfH 到 -halfH
     hintPos.value = projectAnchor(halfW * (u! * 2 - 1), -halfH * (v! * 2 - 1));
     hintMobPos.value = projectAnchor(0, -halfH);
@@ -1316,28 +1440,36 @@ onMounted(() => {
     // PC 提示：游標真的碰到人像 → 永久收起。
     // ⚠️ 判定用 bbox 而非「真的撞散粒子」（holeRadius 命中）—— 後者在臉的空白處移動不會觸發，
     //    提示會賴著不走。autoMouse 是無 hover 環境用的虛擬游標，會自己戳到，不算使用者互動。
-    if (onFace && !hintDismissed && !cfg.autoMouse) dismissHint();
+    // ⚠️ 手機讓開（!isMob）：那邊沒有 hover，收起時機改在 tap（見 onTap）——
+    //    不擋的話，手指為了捲動掃過人臉就會把「點擊人臉…」這句提示收掉，而使用者根本沒點過。
+    if (onFace && !hintDismissed && !cfg.autoMouse && !isMob) dismissHint();
 
-    // 彩蛋：算游標所在宮格 → 顯示對應句子
+    // 彩蛋：兩套驅動（見 MOB_QUERY 那段）
+    //   手機 ── index 由 tap／3 秒計時器寫入，這裡只負責定位；錨點是最後一次點擊處，
+    //           顯隱**不看 influence**（手指早就離開了，看它就會自己淡掉）。
+    //   桌機 ── index 由游標所在宮格逐幀推導，文字跟著游標跑、濃度跟著 influence 淡入淡出。
     const eggEl = eggRef.value;
     if (eggEl && halfW > 0) {
-      let idx = -1;
-      if (onFace && cfg.phrases.length) {
-        const col = Math.min(cfg.gridCols - 1, Math.floor(onFace.u * cfg.gridCols));
-        const row = Math.min(cfg.gridRows - 1, Math.floor(onFace.v * cfg.gridRows));
-        const i = row * cfg.gridCols + col;
-        if (i < cfg.phrases.length && cfg.phrases[i]) idx = i;
-      }
-      if (idx !== activeEgg.value) activeEgg.value = idx; // 僅換格才觸發 re-render
-      if (idx >= 0) {
-        proj.copy(smoothMouse).project(camera);
-        const sx = (proj.x * 0.5 + 0.5) * viewW;
-        const sy = (-proj.y * 0.5 + 0.5) * viewH;
-        // 文字中心對齊真空中心（游標位置）：水平+垂直皆置中
-        eggEl.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%)`;
-        eggEl.style.opacity = String(Math.min(1, influence));
+      if (isMob) {
+        const open = activeEgg.value >= 0;
+        if (open) placeEgg(eggEl, eggAnchor);
+        eggEl.style.opacity = open ? '1' : '0';
       } else {
-        eggEl.style.opacity = '0';
+        let idx = EGG_CLOSED;
+        if (onFace && cfg.phrases.length) {
+          const col = Math.min(cfg.gridCols - 1, Math.floor(onFace.u * cfg.gridCols));
+          const row = Math.min(cfg.gridRows - 1, Math.floor(onFace.v * cfg.gridRows));
+          const i = row * cfg.gridCols + col;
+          if (i < cfg.phrases.length && cfg.phrases[i]) idx = i;
+        }
+        if (idx !== activeEgg.value) activeEgg.value = idx; // 僅換格才觸發 re-render
+        if (idx >= 0) {
+          // 文字中心對齊真空中心（游標位置）
+          placeEgg(eggEl, smoothMouse);
+          eggEl.style.opacity = String(Math.min(1, influence));
+        } else {
+          eggEl.style.opacity = '0';
+        }
       }
     }
 
@@ -1445,6 +1577,8 @@ onMounted(() => {
     resizeObs.disconnect();
     renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('pointerleave', onLeave);
+    renderer.domElement.removeEventListener('click', onTap);
+    mobMq.removeEventListener('change', onMobChange);
     revealTween?.kill(); // gsap ticker 上的補間，不會隨 rAF 一起停
     revealTween = null;
     gsap.killTweensOf(bgColor); // 同上：底色補間也跑在 gsap 的 ticker 上
