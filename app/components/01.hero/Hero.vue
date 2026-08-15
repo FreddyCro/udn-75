@@ -17,6 +17,7 @@ import {
   HERO_CORE_HANDOFF,
   HERO_OUTRO_CORE_ANCHOR,
 } from '@/utils/hero-video-config';
+import { HERO_RETURN_HASH } from '@/utils/home-intent';
 
 // ref：
 //   sec1Ref       — 座標範圍 / ScrollTrigger trigger
@@ -93,6 +94,7 @@ const {
   videoReady,
   loaderDone,
   heroStarted,
+  returnToLoop,
 } = useHeroVideo();
 
 // 視窗高的單一來源（--vh）：轉場與引言淡出的尺長都吃它，不吃 window.innerHeight。
@@ -120,7 +122,21 @@ function bypassLoader() {
   setState('gone');
 }
 
-if (initialHash && !useNuxtApp().isHydrating) bypassLoader();
+// 帶 #loop 進站（子頁 header logo 點回來）：同樣略過載入層與 start 閘門，但落在 loop
+// 而非 gone —— 使用者按 logo 要的是「回到最開始」，不是回到已經看完的狀態。
+// loaderDone / heroStarted 由 returnToLoop() 一併設好（見 useHeroVideo）。
+function bypassToLoop() {
+  loaderBypass.value = true;
+  returnToLoop();
+}
+
+// #loop 走倒帶、其餘 hash（子頁選單的 /#forum 這類）維持既有的「直接進 gone」。
+function bypassForInitialHash() {
+  if (initialHash === HERO_RETURN_HASH) bypassToLoop();
+  else bypassLoader();
+}
+
+if (initialHash && !useNuxtApp().isHydrating) bypassForInitialHash();
 
 // ── 開場捲動鎖的「預設值」：SSR 就先鎖住 ──────────────────────────────
 // 下方 applyScrollLock() 掛在 onMounted，**要等 hydration**。SSR 吐出的 HTML 到
@@ -142,6 +158,11 @@ watch(heroState, applyScrollLock);
 watch(heroState, (s, prev) => {
   if (s !== 'gone') {
     resetCoreEntrance(); // 倒帶回 loop：收掉動畫、dot 歸位
+    // 轉場進度一併歸零。header 在轉場期間刻意保持可點（見 AppHeader 的 z-index 註解），
+    // 使用者真的會在轉場進行到一半時按 logo 回 loop —— 不歸零的話 HeroSymbolTransition
+    // 會留在 active，在剛倒帶回來的影片上蓋一層近乎滿版的黑色 clip。
+    // onBeforeUnmount 有同一行清理，但那條只在換頁時跑得到；就地倒帶不 unmount。
+    setTransitionProgress(0);
     return;
   }
   runCoreEntrance(prev === 'outro');
@@ -182,7 +203,7 @@ onMounted(() => {
   onBeforeUnmount(() => mq.removeEventListener('change', onMqChange));
 
   // hydration 那一輪擋不掉（理由見上方 bypassLoader）：補在這裡，仍搶在 applyScrollLock 之前。
-  if (initialHash && !loaderBypass.value) bypassLoader();
+  if (initialHash && !loaderBypass.value) bypassForInitialHash();
 
   // 捲動鎖由本元件「單一擁有」：載入層一掛上就上鎖（此時為 main），一路持有到
   // gone 才解鎖（退場段也鎖，見 useHeroVideo）。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
@@ -219,8 +240,23 @@ onMounted(() => {
     });
   }
 
-  if (initialHash) scrollToInitialHash(initialHash);
+  if (initialHash === HERO_RETURN_HASH) scrollToTopForLoop();
+  else if (initialHash) scrollToInitialHash(initialHash);
 });
+
+// 帶 #loop 進站：目標不是某個段落，而是「回到最開始」，所以要捲回頂端。
+// 不能倚賴既有的兩條路：
+//   ① #loop 對不到元素，vue-router 的 scrollToPosition 會警告後放棄；
+//   ② applyScrollLock() 的 scrollTo(0,0) 只在 hasLeftLoop === false（首次體驗）時才跑。
+// 已經捲過首頁的人 hasLeftLoop 為 true → 沿用子頁的捲動位置 → #app-hero 不在畫面上
+// → HeroVideo 的 heroIO 立刻 setState('gone')，功能在被看見之前就被撤銷。
+// nextTick + refreshScrollTriggers 的理由同 scrollToInitialHash：pin spacer 會改變文件高度。
+function scrollToTopForLoop() {
+  nextTick(() => {
+    refreshScrollTriggers();
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  });
+}
 
 // 帶 hash 進站時的落點。必須等 pin 的 pin-spacer 撐開文件（refreshScrollTriggers()）
 // 之後才量位置，否則量到的是沒有 spacer 的舊高度、會落在段落上方數個視窗。

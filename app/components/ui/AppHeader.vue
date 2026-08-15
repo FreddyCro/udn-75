@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import str from '@/locales/common.json';
 import logoUrl from '@/assets/img/logo.svg';
-import { PC_BREAKPOINTS } from '@/utils/constants';
+import { PC_BREAKPOINTS, SUBPAGE_HEADER_ANCHOR } from '@/utils/constants';
 import {
   pickHeaderTheme,
   type HeaderTheme,
   type ThemeSpan,
 } from '@/utils/header-theme';
 import { pickActiveAnchor } from '@/utils/anchor-spy';
+import { resolveHomeIntent } from '@/utils/home-intent';
 
 /**
  * AppHeader — 底色隨捲動段落切換白／黑／橘（見 data-header-theme、updateTheme）。
@@ -30,14 +31,27 @@ const props = defineProps({
   autoHide: { type: Boolean, default: true },
 });
 
-// 錨點列只在首頁顯示；子頁改用 SubpageAnchor / SubpageAnchorBar。
-// 用路由而非 autoHide 判斷，兩者語意不同，日後子頁若也想 autoHide 不會互相牽動。
 const route = useRoute();
-const showNav = computed(() => route.path === '/');
 
-// logo 連回站台首頁。硬寫 "/" 在子路徑部署（GitHub Pages 的 /udn-75/、nmdap 的 /test/udn75/）
-// 會連到網域根，故改取 .env 的 NUXT_URL（見 nuxt.config 的 runtimeConfig.public.APP_URL）。
-const homeUrl = useRuntimeConfig().public.APP_URL;
+// 錨點列首頁與子頁共用；只在 ≥1280 顯示（由 AppHeaderNav 自己的 CSS 決定，不必在此判斷）。
+// 子頁量不到 #forum / #blessing / #media 這些段落 → activeTarget 恆為 ''，
+// 故改用 navActiveTarget：子頁一律標成 SUBPAGE_HEADER_ANCHOR（見該常數的說明）。
+const navActiveTarget = computed(() =>
+  route.path === '/' ? activeTarget.value : SUBPAGE_HEADER_ANCHOR,
+);
+
+// logo 的目的地與點擊行為都由 resolveHomeIntent 決定（單一判定來源）。
+// 原本這裡用 runtimeConfig 的 APP_URL（絕對網址）+ 原生 <a>，那是整頁重載 ——
+// 首頁所有 section 重新 mount、全部 ScrollTrigger 重建。子頁改走 NuxtLink 後
+// baseURL 由 router 自己套，子路徑部署（GitHub Pages 的 /udn-75/）不必再靠絕對網址。
+const homeIntent = computed(() => resolveHomeIntent(route.path === '/'));
+const { returnToLoop } = useHeroVideo();
+
+const router = useRouter();
+// 原生 <a> 的 href 要自己套 router base：子路徑部署（GitHub Pages 的 /udn-75/）下
+// 直接寫 "/" 會連到網域根 —— 那正是這支 logo 原本用絕對網址要避開的事，
+// 中鍵／Ctrl 點擊會真的走到它。router.resolve() 回傳的 href 已含 base。
+const logoHref = computed(() => router.resolve(homeIntent.value.to).href);
 
 const progress = ref(0);
 const activeTarget = ref<string>('');
@@ -216,6 +230,26 @@ function scrollToTop(e?: Event) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// logo：回到 hero 的 loop 段。首頁就地倒帶（不換頁），子頁交給 NuxtLink 導航到 /#loop。
+function onLogoClick(e: MouseEvent) {
+  // 修飾鍵點擊（Ctrl／⌘／Shift／Alt）是「開新分頁／新視窗」的意圖，一律放行給瀏覽器 ——
+  // 攔下來會讓使用者按了沒反應。中鍵在現代瀏覽器發的是 auxclick，本來就不會進來。
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+  // 選單開著時 logo 仍可點：.app-header__bar-wrap 的 z-index 2 疊在面板（z-index 1）之上。
+  // 就地倒帶不換頁 → 面板不會自己消失，.is-menu-locked 也還鎖著 html/body，
+  // 使用者會看到「按了 logo，選單沒關、頁面鎖死」。
+  menuOpen.value = false;
+
+  if (homeIntent.value.action !== 'in-page') return; // 子頁：讓 NuxtLink 走
+
+  e.preventDefault();
+  // auto 而非 smooth：returnToLoop() 是瞬間生效的，smooth 期間影片已經淡回、
+  // 轉場層還在漸進收，兩者會打架（理由同 Hero 的 scrollToInitialHash）。
+  window.scrollTo({ top: 0, behavior: 'auto' });
+  returnToLoop();
+}
+
 // 選單面板是白底（設計稿只有這一版），開啟期間 header 一併切白底
 const effectiveTheme = computed<HeaderTheme>(() =>
   menuOpen.value ? 'light' : theme.value,
@@ -238,10 +272,17 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     <!-- 頂部列（≥1280：logo ＋ 錨點列 ＋ 音效 ＋ share；<1280：logo ＋ 音效 ＋ 漢堡） -->
     <div class="app-header__bar-wrap">
       <div class="app-header__bar">
+        <!-- 首頁用原生 <a>，不用 NuxtLink：NuxtLink 內建的 click handler 會**先於**本元件的
+             @click 執行，且它是在那個時間點才檢查 e.defaultPrevented —— onLogoClick 的
+             preventDefault 還沒跑，攔不住它。結果是推入一次真正的導航到 /，多一筆歷史紀錄、
+             讓「上一頁」失效。就地倒帶一律走 onLogoClick（捲頂 ＋ returnToLoop）。
+             （同 AppHeaderNav / AppHeaderMenu 已修過的順序陷阱。） -->
         <a
+          v-if="homeIntent.action === 'in-page'"
           class="app-header__logo"
-          :href="homeUrl"
+          :href="logoHref"
           :aria-label="labels.logoLabel"
+          @click="onLogoClick"
         >
           <img
             class="app-header__logo-img"
@@ -251,11 +292,26 @@ const effectiveTheme = computed<HeaderTheme>(() =>
           <span class="app-header__logo-mask" aria-hidden="true" />
         </a>
 
+        <!-- 子頁：真的要換頁，交給 NuxtLink（client-side 導航）；onLogoClick 只負責關選單。 -->
+        <NuxtLink
+          v-else
+          class="app-header__logo"
+          :to="homeIntent.to"
+          :aria-label="labels.logoLabel"
+          @click="onLogoClick"
+        >
+          <img
+            class="app-header__logo-img"
+            :src="logoUrl"
+            :alt="labels.logoAlt"
+          />
+          <span class="app-header__logo-mask" aria-hidden="true" />
+        </NuxtLink>
+
         <div class="app-header__actions">
           <AppHeaderNav
-            v-if="showNav"
             :anchors="anchors"
-            :active-target="activeTarget"
+            :active-target="navActiveTarget"
             @select="scrollToTarget"
           />
 
@@ -285,7 +341,7 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     <AppHeaderMenu
       :open="menuOpen"
       :anchors="anchors"
-      :active-target="activeTarget"
+      :active-target="navActiveTarget"
       @close="menuOpen = false"
       @select="scrollToTarget"
     />

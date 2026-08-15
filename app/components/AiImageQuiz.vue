@@ -104,10 +104,11 @@ function pick(i: number) {
       </button>
     </div>
 
+    <!-- 說明面板：未作答時整塊收合（含「說明：」），作答後才展開 -->
     <div class="ai-quiz__panel" :class="{ 'ai-quiz__panel--open': answered }">
-      <p class="ai-quiz__hint">說明：</p>
-      <div class="ai-quiz__body" :class="{ 'ai-quiz__body--open': answered }">
-        <div class="ai-quiz__body-inner">
+      <div class="ai-quiz__panel-clip">
+        <div class="ai-quiz__panel-inner">
+          <p class="ai-quiz__hint">說明：</p>
           <!-- 對稿只有圖示不帶文字；對錯文字保留在 alt 供 aria-live 朗讀 -->
           <p class="ai-quiz__badge" aria-live="polite">
             <img
@@ -264,17 +265,32 @@ function pick(i: number) {
   }
 }
 
-// 說明面板：「說明：」常駐，作答後 body 以 grid-rows 0fr ↔ 1fr 下展。
-// 未展開時底線收邊（面板僅一行「說明：」）；展開後內容自己撐出範圍，底線移除
+// 說明面板 toggle：整塊以 grid-rows 0fr ↔ 1fr 下展（不用 height/max-height，
+// 只動 grid track，瀏覽器不必逐格重算 layout 以外的東西，也不需要寫死高度）。
+// margin 一起動畫，收合時按鈕下方不留空白
 .ai-quiz__panel {
-  margin-top: 28px;
-  padding: 16px 24px;
-  background: #f7f7f7; // 面板專用底色，非全站 token
-  border-bottom: 1px solid #d9d9d9; // 面板收邊線，非全站 token
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: 0;
+  transition:
+    grid-template-rows 0.4s ease,
+    margin-top 0.4s ease;
 
   &--open {
-    border-bottom-color: transparent; // 保留 1px 佔位，展開時不位移
+    grid-template-rows: 1fr;
+    margin-top: 28px;
   }
+}
+
+// 壓縮層：padding／底色不能放這裡，border-box 下 height 0 仍會留下 padding 的高度
+.ai-quiz__panel-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ai-quiz__panel-inner {
+  padding: 16px 24px;
+  background: #f7f7f7; // 面板專用底色，非全站 token
 }
 
 .ai-quiz__hint {
@@ -283,21 +299,6 @@ function pick(i: number) {
   line-height: 24px;
   font-weight: 300;
   color: var(--color-gray-light);
-}
-
-.ai-quiz__body {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.4s ease;
-}
-
-.ai-quiz__body--open {
-  grid-template-rows: 1fr;
-}
-
-.ai-quiz__body-inner {
-  min-height: 0;
-  overflow: hidden;
 }
 
 .ai-quiz__badge {
