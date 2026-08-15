@@ -72,13 +72,15 @@ function pick(i: number) {
         :aria-pressed="picked === i"
         @click="pick(i)"
       >
-        <img
-          v-if="i === 0"
-          class="ai-quiz__btn-icon"
-          src="/img/udn75_nav_prev.svg"
-          alt=""
-          aria-hidden="true"
-        />
+        <!-- 圓鈕：hover 版（橘底白箭頭）疊在預設版上淡入，橘底不透明所以不必藏底下那張 -->
+        <span v-if="i === 0" class="ai-quiz__btn-circle" aria-hidden="true">
+          <img class="ai-quiz__btn-icon" src="/img/udn75_nav_prev.svg" alt="" />
+          <img
+            class="ai-quiz__btn-icon ai-quiz__btn-icon--hover"
+            src="/img/udn75_nav_prev_hover.svg"
+            alt=""
+          />
+        </span>
         <img
           v-if="i === 0"
           class="ai-quiz__btn-pixel ai-quiz__btn-pixel--left"
@@ -94,13 +96,18 @@ function pick(i: number) {
           alt=""
           aria-hidden="true"
         />
-        <img
+        <span
           v-if="i !== 0"
-          class="ai-quiz__btn-icon ai-quiz__btn-icon--flip"
-          src="/img/udn75_nav_prev.svg"
-          alt=""
+          class="ai-quiz__btn-circle ai-quiz__btn-circle--flip"
           aria-hidden="true"
-        />
+        >
+          <img class="ai-quiz__btn-icon" src="/img/udn75_nav_prev.svg" alt="" />
+          <img
+            class="ai-quiz__btn-icon ai-quiz__btn-icon--hover"
+            src="/img/udn75_nav_prev_hover.svg"
+            alt=""
+          />
+        </span>
       </button>
     </div>
 
@@ -123,7 +130,8 @@ function pick(i: number) {
               :alt="isCorrect ? correctLabel : wrongLabel"
             />
           </p>
-          <p v-if="explain" class="ai-quiz__explain">{{ explain }}</p>
+          <!-- 不加 v-if：作答當下才插入的節點沒有起始樣式可過渡，淡入會被跳過 -->
+          <p class="ai-quiz__explain">{{ explain }}</p>
         </div>
       </div>
     </div>
@@ -149,6 +157,7 @@ function pick(i: number) {
 
 .ai-quiz__options {
   display: flex;
+  gap: 8px;
 }
 
 .ai-quiz__option {
@@ -220,10 +229,13 @@ function pick(i: number) {
   }
 }
 
-.ai-quiz__btn-icon {
+// 圓鈕盒固定 48×48（版面不動），hover 以 scale 放大到對稿的 58px
+.ai-quiz__btn-circle {
+  position: relative;
   display: none;
   width: 48px;
   height: 48px;
+  transition: transform 0.25s ease;
 
   &--flip {
     transform: scaleX(-1);
@@ -231,6 +243,36 @@ function pick(i: number) {
 
   @include rwd-min('tablet') {
     display: block;
+  }
+
+  // 觸控裝置沒有真正的 hover，避免點完卡在 hover 態
+  @media (hover: hover) {
+    .ai-quiz__btn:hover & {
+      transform: scale(1.2083); // 58 / 48
+    }
+
+    .ai-quiz__btn:hover &--flip {
+      transform: scaleX(-1) scale(1.2083);
+    }
+  }
+}
+
+.ai-quiz__btn-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+
+  &--hover {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+
+    @media (hover: hover) {
+      .ai-quiz__btn:hover & {
+        opacity: 1;
+      }
+    }
   }
 }
 
@@ -293,18 +335,45 @@ function pick(i: number) {
   background: #f7f7f7; // 面板專用底色，非全站 token
 }
 
+// 面板內容依序淡入：說明 → 對錯圖示 → 解說文字。
+// 面板本身展開要 0.4s，所以第一段從 0.3s 才起跑，之後每段隔 0.25s
 .ai-quiz__hint {
   margin: 0;
   font-size: 16px;
   line-height: 24px;
   font-weight: 300;
   color: var(--color-gray-light);
+  opacity: 0;
+  transition: opacity 0.4s ease 0.3s;
+
+  .ai-quiz__panel--open & {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
+// 圖示除了淡入，再從 0.8 撐到 1（cubic-bezier 尾段略帶回彈感）
 .ai-quiz__badge {
   display: flex;
   justify-content: center;
   margin: 12px 0 0;
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity 0.4s ease 0.55s,
+    transform 0.4s cubic-bezier(0.34, 1.3, 0.64, 1) 0.55s;
+
+  .ai-quiz__panel--open & {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 .ai-quiz__badge-icon {
@@ -320,5 +389,15 @@ function pick(i: number) {
   font-weight: 300;
   color: var(--color-body);
   text-align: left;
+  opacity: 0;
+  transition: opacity 0.4s ease 0.8s;
+
+  .ai-quiz__panel--open & {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 </style>
