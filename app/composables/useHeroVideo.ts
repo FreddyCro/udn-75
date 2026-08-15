@@ -104,8 +104,16 @@ export function useHeroVideo() {
    * 本 composable 不該去相依 useOrangeCoreProgress，那會把整組 core/forum 狀態
    * 拉進每一個 useHeroVideo() 呼叫者（含掛在所有子頁的 AppHeader）。
    */
-  const returnToLoop = () => {
-    loaderDone.value = true;
+  const returnToLoop = ({ skipLoader = true } = {}) => {
+    // skipLoader ＝ true（預設，首頁就地倒帶）：直接開閘，畫面立刻是 loop。使用者已經在
+    //   首頁上、載入層早就收掉了，這時把它請回來只會像整頁重載。
+    // skipLoader ＝ false（帶 #loop 進站）：**載入層留著跑完**。此時 hero 影片可能一次都
+    //   沒下載過（直接開子頁再點 logo），開閘會露出一片白 —— HERO_VIDEO_POSTER 三個裝置
+    //   都是空字串，canplay 之前 <video> 什麼都不畫。載入層的 :ready="videoReady" 正是
+    //   為此而設：進度封頂在 99% 等影片，ready 後才收尾到 100%。
+    //   不會死結：緩衝與 canplay 都不看 loaderDone（見 HeroVideo 的 onMounted），
+    //   而下面的 setState('loop') 會讓影片在載入層底下先 seek 到 30s 並開始播。
+    if (skipLoader) loaderDone.value = true;
     heroStarted.value = true;
     setState('loop');
   };

@@ -113,7 +113,21 @@ const { vhPx } = useViewportHeight();
 //      首次載入（hydration）：SSR 必然已經吐出載入層，此刻改值會 hydration mismatch →
 //        留到 onMounted，改以 loaderBypass 把淡出換成瞬間移除（見 template 的 :name）。
 const initialHash = import.meta.client ? window.location.hash.slice(1) : '';
+// 只管**轉場樣式**：true → loader-cut（零時長、瞬間移除）。#loop 不設它，因為那條要走
+// 正常的 loader-fade 淡出（載入層是跑完的，不是被抽掉的）。
 const loaderBypass = ref(false);
+// 只管**這個 hash 的進站處理跑過了沒**。原本是拿 loaderBypass 兼任，但 #loop 已經不設
+// 那面旗子了 —— 不拆開的話 onMounted 會再跑一次 bypassForInitialHash()。
+let hashHandled = false;
+
+// 載入層的自走秒數。帶 #loop 回來時它的職責只是「等影片可播放」，不是首次進站的品牌開場，
+// 故比較短 —— 影片已在 disk cache 時（從首頁進子頁再點 logo，最常見）這就是全部的等待時間。
+// 影片還沒下載完則不受此值限制：進度封頂在 99% 等 videoReady（見 HeroLoader 的 ready）。
+const LOADER_DURATION = { first: 2, returnToLoop: 1.2 };
+const loaderDuration =
+  initialHash === HERO_RETURN_HASH
+    ? LOADER_DURATION.returnToLoop
+    : LOADER_DURATION.first;
 
 function bypassLoader() {
   loaderBypass.value = true;
@@ -122,21 +136,33 @@ function bypassLoader() {
   setState('gone');
 }
 
-// 帶 #loop 進站（子頁 header logo 點回來）：同樣略過載入層與 start 閘門，但落在 loop
+// 帶 #loop 進站（子頁 header logo 點回來、或直接開 /#loop）：略過 start 閘門，落在 loop
 // 而非 gone —— 使用者按 logo 要的是「回到最開始」，不是回到已經看完的狀態。
-// loaderDone / heroStarted 由 returnToLoop() 一併設好（見 useHeroVideo）。
+//
+// ⚠️ 與其他 hash 不同，**載入層要留著跑完 0%→100%**，故不設 loaderBypass、
+//    也不開 loaderDone 的閘（skipLoader: false，理由見 useHeroVideo 的 returnToLoop）。
+//    原本這裡是瞬間開閘，於是：
+//      client-side 導航 → 載入層完全不出現，影片沒快取時就是一片白等 10 秒以上；
+//      直接開 /#loop → SSR 已吐出載入層，onMounted 才開閘 → 0% 閃現約 90ms 再跳掉。
+//    兩種都是「進度停在 0% 就跳走」的觀感。留著跑完才有可讀的等待。
 function bypassToLoop() {
-  loaderBypass.value = true;
-  returnToLoop();
+  returnToLoop({ skipLoader: false });
 }
 
 // #loop 走倒帶、其餘 hash（子頁選單的 /#forum 這類）維持既有的「直接進 gone」。
 function bypassForInitialHash() {
+  if (hashHandled) return;
+  hashHandled = true;
   if (initialHash === HERO_RETURN_HASH) bypassToLoop();
   else bypassLoader();
 }
 
-if (initialHash && !useNuxtApp().isHydrating) bypassForInitialHash();
+// ⚠️ 這一行**必須排在下面兩個 watch(heroState) 之後**（原本在它們之前）。
+//    bypassToLoop() / bypassLoader() 會呼叫 setState()，而清理工作（resetCoreEntrance、
+//    setTransitionProgress(0)）掛在 watch 裡 —— 監聽器還沒註冊，那次狀態改變就沒人接，
+//    core 與轉場層會帶著上一輪的殘留狀態進場。搬到 watch 之後仍在 setup 內，
+//    依舊搶在首次 render 之前，故上方「判定必須在 render 之前」的前提不受影響。
+//    （宣告提升讓函式在此可用；watch 的 callback 也不會在註冊當下就跑。）
 
 // ── 開場捲動鎖的「預設值」：SSR 就先鎖住 ──────────────────────────────
 // 下方 applyScrollLock() 掛在 onMounted，**要等 hydration**。SSR 吐出的 HTML 到
@@ -167,6 +193,10 @@ watch(heroState, (s, prev) => {
   }
   runCoreEntrance(prev === 'outro');
 });
+
+// 帶 hash 進站的處理（見上方 bypassForInitialHash 的 ⚠）：排在兩個 watch 之後，
+// 才接得到它自己觸發的那次 setState()。
+if (initialHash && !useNuxtApp().isHydrating) bypassForInitialHash();
 
 // core 於轉場開始後隱去：其後畫面上那個方塊由 HeroSymbolTransition 接手畫
 // （避免兩層各畫一次而 drift）。以 opacity 隱藏而非 display:none —— 轉場層仍要讀它的螢幕矩形。
@@ -203,7 +233,8 @@ onMounted(() => {
   onBeforeUnmount(() => mq.removeEventListener('change', onMqChange));
 
   // hydration 那一輪擋不掉（理由見上方 bypassLoader）：補在這裡，仍搶在 applyScrollLock 之前。
-  if (initialHash && !loaderBypass.value) bypassForInitialHash();
+  // 重入由 bypassForInitialHash() 自己的 hashHandled 擋掉（client-side 導航時 setup 已經跑過）。
+  if (initialHash) bypassForInitialHash();
 
   // 捲動鎖由本元件「單一擁有」：載入層一掛上就上鎖（此時為 main），一路持有到
   // gone 才解鎖（退場段也鎖，見 useHeroVideo）。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
@@ -222,6 +253,11 @@ onMounted(() => {
     pinSpacing: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => setTransitionProgress(self.progress),
+    // 與 SymbolScene 的 symbolST 同一個缺口（理由詳見該處）：transitionProgress 是 useState、
+    // 跨導航存活，而其餘三個回呼只在狀態改變時寫入 → remount 出來的新 trigger 一次都不叫，
+    // 上一輪的殘值就留著。這裡目前還有 watch(heroState) 的 setTransitionProgress(0) 兜著，
+    // 但那條只在「狀態真的改變」時才跑（回到同一個狀態就不跑），不該當成唯一防線。
+    onRefresh: (self) => setTransitionProgress(self.progress),
     onLeaveBack: () => setTransitionProgress(0), // 捲回 pin 之前 → 收回轉場
     onLeave: () => setTransitionProgress(1), //     捲過 pin 之後 → 維持滿版，等 SymbolScene 接手
   });
@@ -433,7 +469,7 @@ function applyScrollLock() {
     >
       <HeroLoader
         v-if="!loaderDone"
-        :duration="2"
+        :duration="loaderDuration"
         :ready="videoReady"
         @done="loaderDone = true"
       />

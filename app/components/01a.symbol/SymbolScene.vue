@@ -79,6 +79,14 @@ onMounted(() => {
     // 刻意沒有 invalidateOnRefresh：它是「refresh 時對綁定的動畫呼叫 invalidate()」，
     // 而本 trigger 沒有掛動畫 → 純粹的 no-op。start/end 是字串，refresh 本來就會重算。
     onUpdate: (self) => setSymbolProgress(self.progress),
+    // ⚠️ onRefresh 不是可有可無的（同 Blessing 三條軌的理由）：symbolProgress 是 useState，
+    //    **跨 client-side 導航存活**，而下面三個回呼都只在「狀態改變」時才寫入。
+    //    子頁換回首頁時本元件 remount，這支 trigger 是全新的、自己的 progress 從 0 起算：
+    //    onUpdate 因為沒變化不觸發、onLeaveBack 因為從沒進去過也不觸發 —— 於是上一輪捲到
+    //    論壇之後留下的 1 沒人寫回 0。後果是 ForumCore 的橘點（forumCoreDotVisible 的第一個
+    //    條件就是 symbolProgress ≥ coreIn）在 scrollY 0 的 hero 影片上憑空現身。
+    //    refresh 一定會在 create() 當下跑一次，補在這裡才是「不論怎麼進到這頁都對得上」。
+    onRefresh: (self) => setSymbolProgress(self.progress),
     onLeaveBack: () => setSymbolProgress(0), // 捲回本段之前 → 回到 disperse
     onLeave: () => setSymbolProgress(1), //     捲過本段之後 → 維持 enter（已進入論壇）
   });
