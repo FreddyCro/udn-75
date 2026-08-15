@@ -37,6 +37,13 @@ import {
   type ForumTurn,
 } from '~/utils/forum-path-turns';
 import { refreshScrollTriggers } from '~/utils/scroll-trigger';
+import { pointKey } from '~/utils/sample-cache';
+import {
+  forumKnotCache as knotCache,
+  forumSlashCache as slashCache,
+  forumSwapCache as swapCache,
+  forumTurnCache as turnCache,
+} from '~/utils/forum-path-cache';
 
 const rootEl = ref<HTMLElement | null>(null);
 const motionEl = ref<SVGPathElement | null>(null);
@@ -96,6 +103,13 @@ const coreStyle = computed(() => {
   // 進到第 1 格之後底色讓給 sprite，改用 color 餵 currentColor。
   return planeFrame.value > 0 ? { ...box, color: orange } : { ...box, background: orange };
 });
+
+// 取樣結果快取（knotCache / slashCache / swapCache / turnCache）住在
+// ~/utils/forum-path-cache —— **不能**寫在這裡：`<script setup>` 的頂層會被編譯進
+// setup()，每個實例重跑一次，換頁 remount 就等於沒有快取。理由詳見該檔的 ⚠。
+//
+// ⚠ 只快取「取樣結果」，不快取副作用（setForumTurns / setForumSlashWindow /
+//   lastTurnLen 歸零等）——那些每輪都要照跑，否則命中時共享軌不會被寫入。
 
 let st: ScrollTrigger | null = null;
 // 驅動線（＝設計線）的總弧長：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用。
@@ -170,12 +184,17 @@ function reset() {
 // 重建回中節點表。必須在 pathLen / tailEndY 都定案之後呼叫。
 // 間距吃視窗高：畫面越矮，容許的偏移越小，節點就越密（見 FORUM_CENTER_KNOT_VH）。
 // 取樣 512 點 ＝ 每 ~26px 弧長一點（mob 最長 13429），只在 build() 跑，不在熱路徑上。
-function syncKnots(motion: SVGPathElement) {
-  knots = buildArcKnots(
-    pathLen,
-    tailEndY,
-    vhPx(FORUM_CENTER_KNOT_VH),
-    (len) => motion.getPointAtLength(len).y,
+function syncKnots(motion: SVGPathElement, d: string) {
+  // 鍵含全部輸入：d（決定整條幾何）＋ 三個純量。同鍵必得同結果，故快取是精確的。
+  knots = knotCache.get(
+    `${d}|${pathLen}|${tailEndY}|${vhPx(FORUM_CENTER_KNOT_VH)}`,
+    () =>
+      buildArcKnots(
+        pathLen,
+        tailEndY,
+        vhPx(FORUM_CENTER_KNOT_VH),
+        (len) => motion.getPointAtLength(len).y,
+      ),
   );
 }
 
@@ -189,7 +208,10 @@ function syncKnots(motion: SVGPathElement) {
 // 就會變。config 的 FORUM_SLASH_AT 只是「設計到切版有落差時」的手動覆寫，預設 null。
 //
 // 只在 build() 幾何重建時跑一次（512 + 64 次 getPointAtLength），不在逐幀熱路徑上。
-function computeSlashWindow(motion: SVGPathElement): SlashWindow | null {
+function computeSlashWindow(
+  motion: SVGPathElement,
+  d: string,
+): SlashWindow | null {
   const b = bp.value;
   if (!b || !pathLen) return null;
 
@@ -209,11 +231,18 @@ function computeSlashWindow(motion: SVGPathElement): SlashWindow | null {
   const enter = { x: r.right - rootRect.left, y: r.top - rootRect.top };
   const exit = { x: r.left - rootRect.left, y: r.bottom - rootRect.top };
 
-  const sample = (len: number) => motion.getPointAtLength(len);
-  const a = nearestArcLength(enter, sample, pathLen) / pathLen;
-  const z = nearestArcLength(exit, sample, pathLen) / pathLen;
-  // 排序而非假設 enter 在前：萬一日後線的走向反過來，這裡不該靜默畫成負向。
-  return a <= z ? [a, z] : [z, a];
+  // 量測（便宜）在快取外、兩次 nearestArcLength（各 512+64 次取樣，本元件最貴的一段）
+  // 在快取內。鍵含 d 與兩個端點座標 —— 版面真的動了，rect 就會變、快取自然 miss。
+  return slashCache.get(
+    `${d}|${pointKey(enter.x, enter.y)}|${pointKey(exit.x, exit.y)}`,
+    () => {
+      const sample = (len: number) => motion.getPointAtLength(len);
+      const a = nearestArcLength(enter, sample, pathLen) / pathLen;
+      const z = nearestArcLength(exit, sample, pathLen) / pathLen;
+      // 排序而非假設 enter 在前：萬一日後線的走向反過來，這裡不該靜默畫成負向。
+      return a <= z ? [a, z] : [z, a];
+    },
+  );
 }
 
 // 核心縮成筆尖的目標倍率（脊寬 ÷ CORE.dotSize）。**量出來的，不是設定值** ——
@@ -237,8 +266,8 @@ function measureSlashTipScale(): number {
 // 把窗口寫進共享軌（給 ForumEvent 的 --slash-draw），並備好 place() 要用的兩個值。
 // 一起做是刻意的：三者同源，分開呼叫就可能只更新其中一個，症狀是「撇畫在 A 處、
 // 核心在 B 處縮小」——而兩邊都不會報錯。
-function syncSlash(motion: SVGPathElement) {
-  const w = computeSlashWindow(motion);
+function syncSlash(motion: SVGPathElement, d: string) {
+  const w = computeSlashWindow(motion, d);
   setForumSlashWindow(w);
   slashLens = w && pathLen ? [w[0] * pathLen, w[1] * pathLen] : null;
   slashTipScale = w ? measureSlashTipScale() : 1;
@@ -249,13 +278,17 @@ function syncSlash(motion: SVGPathElement) {
 function syncSwapLen(
   motion: SVGPathElement,
   points: Map<string, [number, number]>,
+  d: string,
 ): number | null {
   const b = bp.value;
   if (!b || !pathLen) return null;
   const pt = points.get(FORUM_PLANE.node[b]!);
   if (!pt) return null;
-  const sample = (len: number) => motion.getPointAtLength(len);
-  return nearestArcLength({ x: pt[0]!, y: pt[1]! }, sample, pathLen);
+  // 鍵含 d 與該節點座標；節點座標本身就來自這條 d 的產生器，故同鍵必得同結果。
+  return swapCache.get(`${d}|${pointKey(pt[0]!, pt[1]!)}`, () => {
+    const sample = (len: number) => motion.getPointAtLength(len);
+    return nearestArcLength({ x: pt[0]!, y: pt[1]! }, sample, pathLen);
+  });
 }
 
 // 路徑事件的觸發門檻表：先量出**每個節點在驅動線上的弧長**，再交給純算式換成 0..1。
@@ -333,10 +366,12 @@ function syncEventMarks(
 function syncTurns(
   motion: SVGPathElement,
   lenAt: Map<string, number> | null,
+  pathD: string,
 ): ForumTurn[] | null {
   const b = bp.value;
   turnLens = [];
   // ⚠ 一併歸 null：弧長剛剛全部重算過，拿上一次的位置比大小會噴一串音效。
+  //   這條在快取命中時**同樣要跑** —— 它清的是「上一幀走到哪」，與取樣結果無關。
   lastTurnLen = null;
   if (!b || !lenAt) {
     setForumTurns(null);
@@ -354,12 +389,18 @@ function syncTurns(
     return turnAngleDeg([before.x, before.y], [p.x, p.y], [after.x, after.y]);
   };
 
-  const turns = pickTurns({
-    order: FORUM_FRONT_NODES[b].map((n) => n.id),
-    angleAt,
-    lenAt: (id) => lenAt.get(id),
-    pathLen,
-  });
+  // 鍵含 d、斷點、取樣間距，以及 lenAt 的完整內容 —— 後者是 angleAt 的取樣位置來源，
+  // 少放進鍵就會在「同一條線但節點弧長換了」時回舊答案（?highlights 增刪節點即是）。
+  const turns = turnCache.get(
+    `${pathD}|${b}|${d}|${[...lenAt].map(([id, len]) => `${id}:${len}`).join(',')}`,
+    () =>
+      pickTurns({
+        order: FORUM_FRONT_NODES[b].map((n) => n.id),
+        angleAt,
+        lenAt: (id) => lenAt.get(id),
+        pathLen,
+      }),
+  );
   turnLens = turns.map((t) => t.len);
   setForumTurns(turns);
   return turns;
@@ -495,19 +536,19 @@ function build() {
     // ⚠ tailEndY 不能留 0 —— ScrollTrigger 的 end 讀它，0 會被 GSAP 夾成 start + 0.01，
     //   捲動尺變零長度、核心一進場就跳到路徑末端。
     tailEndY = out.endY;
-    swapLen = syncSwapLen(motion, out.points);
-    syncKnots(motion);
+    swapLen = syncSwapLen(motion, out.points, out.d);
+    syncKnots(motion, out.d);
     // 節點表建不出來（pathLen 或 tailEndY ≤ 0）就整條放棄，**不能**只讓 place() 提早
     // return：下面的 setForumPathActive(true) ＋ 殘留的 forumPathProgress 會讓
     // forumPathRiding 卡在 true —— 正是 reset() 註解說「不可發生」的那顆不會動的橘方塊。
     if (!knots.length) return reset();
-    syncSlash(motion);
+    syncSlash(motion, out.d);
     // 事件門檻要在 pathLen 定案之後算（它是分母）。放在 setForumPathActive(true) 之前：
     // active 翻上去的同一幀消費端就會讀 marks，晚一步會有一幀讀到上一個斷點的表。
     const lenAt = measureNodeLens(out.segs);
     const marks = syncEventMarks(list, lenAt);
     // 也要在下面 place() 之前：place() 會拿 turnLens 比大小並定錨 lastTurnLen。
-    const turns = syncTurns(motion, lenAt);
+    const turns = syncTurns(motion, lenAt, out.d);
 
     setForumPathActive(true);
     exposeDebug(out.points, marks, turns);
