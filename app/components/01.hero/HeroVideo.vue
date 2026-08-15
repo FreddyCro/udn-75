@@ -79,9 +79,15 @@ let readyTimer: ReturnType<typeof setTimeout> | undefined;
 // 切換 RWD 來源會重新載入影片：先記住秒數，metadata 就緒後跳回原處續播
 let resumeAt = 0;
 
+// 這一顆 <video> 自己的可播放狀態。與全域 videoReady 分開：後者是給 HeroLoader 的握手用的、
+// 跨導航不重設，拿來當「本元素可不可以顯示」會在重新掛載時失準 —— 首頁 → 子頁 → 點 logo
+// 回來時元素是全新的（readyState 0），全域旗標卻還是上一次的 true，防白閃的守衛就整條失效。
+const elementReady = ref(false);
+
 // 放行 HeroLoader（canplay / 逾時 / 載入失敗都算「不再等影片」）
 const markReady = () => {
   videoReady.value = true;
+  elementReady.value = true;
   if (readyTimer) {
     clearTimeout(readyTimer);
     readyTimer = undefined;
@@ -121,6 +127,12 @@ function onLoadedMetadata() {
   if (resumeAt > 0) {
     v.currentTime = resumeAt;
     resumeAt = 0;
+  } else {
+    // watch(heroState) 只在「狀態改變」時對齊，但狀態可能在本元件存在之前就已經設好：
+    // 帶 #loop 進站時 Hero 於自己的 setup 內就把 heroState 設成 loop，那時本元件（子層）
+    // 還沒建立、watcher 也還沒註冊 —— Vue 的 watch 不會補發早於它的變更。
+    // 不補這一次對齊，影片會從 0s 播整段正片，直到 33s 才跳回 loop 起點。
+    alignToSegment(v);
   }
   // 使用者已按下 start 才播（首次載入時通常還沒按，由下方 watch(heroStarted) 接手）
   if (heroStarted.value) void play();
@@ -132,6 +144,18 @@ function onLoadedMetadata() {
 function segEnd(v: HTMLVideoElement, seg: HeroVideoSegment) {
   if (Number.isFinite(seg.end)) return seg.end;
   return v.duration ? v.duration - 0.1 : Infinity;
+}
+
+// 把影片對齊到目前狀態該在的段落：已在段內就不動（避免自動推進時多跳一下）。
+// 用 segEnd 而非 seg.end：end 若填 HERO_VIDEO_END(Infinity)，直接比會把「影片已播完」
+// 也算在段內 → play() 對已 ended 的影片會從 0 重播整支。
+function alignToSegment(v: HTMLVideoElement) {
+  const s = heroState.value;
+  if (s === 'gone') return;
+  const seg = segments.value[s];
+  if (v.currentTime < seg.start || v.currentTime >= segEnd(v, seg)) {
+    v.currentTime = seg.start;
+  }
 }
 
 // 階段推進的單一真相＝影片時間軸：依 config 的段落秒數判斷何時換狀態 / 循環。
@@ -220,12 +244,7 @@ watch(heroState, (s) => {
     v.pause();
     return;
   }
-  // 不在目標段內才 seek。用 segEnd 而非 seg.end：end 若填 HERO_VIDEO_END(Infinity)，
-  // 直接比會把「影片已播完」也算在段內 → play() 對已 ended 的影片會從 0 重播整支。
-  const seg = segments.value[s];
-  if (v.currentTime < seg.start || v.currentTime >= segEnd(v, seg)) {
-    v.currentTime = seg.start;
-  }
+  alignToSegment(v);
   void play();
   if (s === 'outro') armOutroTimer(v);
 });
@@ -307,7 +326,7 @@ function onResize() {
 
 // ── preload 升級：metadata → auto ────────────────────────────────────
 // template 上刻意只給 preload="metadata"。<video> 是 SSR 就吐出來的，preload="auto" 會讓
-// 瀏覽器在 **HTML 解析階段**（bundle 都還沒下載完）就開始拉整支影片 —— pc 版 70MB，直接跟
+// 瀏覽器在 **HTML 解析階段**（bundle 都還沒下載完）就開始拉整支影片 —— pc 版 9.4MB（pad 6.6MB / mob 4.1MB），直接跟
 // Nuxt bundle 搶頻寬與連線 → hydration 被推遲。而載入層在 hydration 之前是「SSR 吐出的
 // 靜態 0%」（沒有方塊、沒有 JS 在跑，見 HeroLoader），影片拖多久、那個 0% 就定格多久。
 //
@@ -322,7 +341,10 @@ function promotePreload() {
     if (!v || v.readyState >= 3) return;
     v.preload = 'auto';
     // 只改 preload 屬性不保證瀏覽器立刻續拉（各家實作不一），load() 才確定重啟緩衝。
-    // 此刻 currentTime 必為 0（還沒播過），load() 的重置沒有東西可丟。
+    // ⚠️ load() 會把 currentTime 重置回 0。原本這裡假設「此刻必為 0（還沒播過）」——
+    //    帶 #loop 進站時不成立：watch(heroState) 已經 seek 到 loop.start（30s）。
+    //    沿用 RWD 換來源那條路，記進 resumeAt、由 onLoadedMetadata 跳回去。
+    if (v.currentTime > 0) resumeAt = v.currentTime;
     v.load();
   });
 }
@@ -358,6 +380,10 @@ onMounted(() => {
     promotePreload();
   }
 
+  // 同上一則的理由：來源在快取裡時 loadedmetadata 也可能早於 hydration 就觸發，
+  // 那樣 onLoadedMetadata 的對齊就漏掉了 —— 掛載時補查一次（HAVE_METADATA 以上）。
+  if (v && v.readyState >= 1) alignToSegment(v);
+
   if (heroStarted.value) void play(); // HMR / 重新掛載時可能已按過 start
 });
 
@@ -383,7 +409,7 @@ onBeforeUnmount(() => {
          就開始拉整支影片、拖慢 hydration（理由與升級時機見 script 的 promotePreload）。 -->
     <div
       class="sec1__hero-video"
-      :class="{ 'is-ended': isGone }"
+      :class="{ 'is-ended': isGone, 'is-loading': !elementReady }"
       aria-hidden="true"
     >
       <video
@@ -495,6 +521,15 @@ onBeforeUnmount(() => {
 
   // 影片播放完畢（gone）：淡出，露出 hero 白底
   &.is-ended {
+    opacity: 0;
+  }
+
+  // canplay 之前 <video> 什麼都不畫（HERO_VIDEO_POSTER 三個裝置都是空字串），
+  // 露出的是 .sec1__hero 的白底。首次載入時看不到（載入層蓋著），但帶 #loop 進站
+  // 會略過載入層 —— 那時就是一瞬純白。先透明、ready 後靠上面那條 0.8s transition
+  // 淡入，與 gone 淡出露白底是同一套視覺語言。
+  // 與 .is-ended 同為 opacity: 0，兩者同時成立也不會打架。
+  &.is-loading {
     opacity: 0;
   }
 }

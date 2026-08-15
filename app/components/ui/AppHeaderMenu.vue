@@ -16,16 +16,19 @@ const panelRef = ref<HTMLElement | null>(null);
 
 const isHome = computed(() => route.path === '/');
 
-// 首頁：就地捲動；子頁：走路由回首頁帶 hash（不能用原生 <a href="/#x">，那會整頁重載）
-async function onSelect(target: string) {
+// 首頁：攔下路由、就地捲動。
+function onHomeSelect(target: string, e: MouseEvent) {
+  // 修飾鍵點擊＝開新分頁的意圖，放行給瀏覽器，面板也不收（使用者還留在本頁）。
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
   emit('close');
+  emit('select', target);
+}
 
-  if (isHome.value) {
-    emit('select', target);
-    return;
-  }
-
-  await navigateTo(`/#${target}`);
+// 子頁：導航交給 NuxtLink，本函式只負責把面板收起來。
+function onAwaySelect(e: MouseEvent) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  emit('close');
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -125,20 +128,37 @@ onBeforeUnmount(() => {
 
     <div ref="panelRef" class="app-header-menu__panel">
       <nav class="app-header-menu__nav">
-        <a
-          v-for="anchor in anchors"
-          :key="anchor.target"
-          class="app-header-menu__link"
-          :class="{
-            'app-header-menu__link--active':
-              isHome && activeTarget === anchor.target,
-          }"
-          :href="isHome ? `#${anchor.target}` : `/#${anchor.target}`"
-          :tabindex="open ? 0 : -1"
-          @click.prevent="onSelect(anchor.target)"
-        >
-          {{ anchor.title }}
-        </a>
+        <template v-if="isHome">
+          <a
+            v-for="anchor in anchors"
+            :key="anchor.target"
+            class="app-header-menu__link"
+            :class="{
+              'app-header-menu__link--active': activeTarget === anchor.target,
+            }"
+            :href="`#${anchor.target}`"
+            :tabindex="open ? 0 : -1"
+            @click="onHomeSelect(anchor.target, $event)"
+          >
+            {{ anchor.title }}
+          </a>
+        </template>
+
+        <template v-else>
+          <NuxtLink
+            v-for="anchor in anchors"
+            :key="anchor.target"
+            class="app-header-menu__link"
+            :class="{
+              'app-header-menu__link--active': activeTarget === anchor.target,
+            }"
+            :to="`/#${anchor.target}`"
+            :tabindex="open ? 0 : -1"
+            @click="onAwaySelect"
+          >
+            {{ anchor.title }}
+          </NuxtLink>
+        </template>
       </nav>
 
       <div class="app-header-menu__share">

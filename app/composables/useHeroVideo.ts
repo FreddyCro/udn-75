@@ -84,6 +84,32 @@ export function useHeroVideo() {
     setState('loop');
   };
 
+  /**
+   * 「回到最開始」：由 header logo 觸發（見 ~/utils/home-intent）。
+   *
+   * 與 rewindToLoop 的差別有二，故不共用：
+   *   ① 不限定 gone —— outro 播到一半、轉場進行到一半點 logo 都要能回。
+   *   ② 保證閘門已開（loaderDone / heroStarted）—— 子頁帶 #loop 進站時兩者是初始的
+   *      false，不設就會卡在載入層與 start 按鈕前面。
+   *
+   * ⚠️ 刻意**不**把 hasLeftLoop 設回 false（＝不重新上鎖）。上方那條「倒帶不重新上鎖」
+   * 的決策前提是「rewind 必發生在 scrollY 已是 0 的時候」，而 logo 點擊不受此前提保護
+   * （子頁回來、首頁捲到一半都會觸發）—— 在非頂端切 overflow:hidden 的 iOS 橡皮筋
+   * 風險比 rewind 更高。已接受的代價同 rewindToLoop：回到 loop 後頁面可自由捲動。
+   *
+   * 例外（不是漏網，是正確的）：從沒進過 gone 的人（直接開子頁、再點 logo）hasLeftLoop
+   * 本來就是 false → 這次會上鎖。那正是他們的「第一次」，鎖住等下滑觸發 outro 才對。
+   *
+   * 轉場進度的歸零**不在這裡**做，在 Hero 的 watch(heroState) 裡（見下方 Step 3）——
+   * 本 composable 不該去相依 useOrangeCoreProgress，那會把整組 core/forum 狀態
+   * 拉進每一個 useHeroVideo() 呼叫者（含掛在所有子頁的 AppHeader）。
+   */
+  const returnToLoop = () => {
+    loaderDone.value = true;
+    heroStarted.value = true;
+    setState('loop');
+  };
+
   const isGone = computed(() => state.value === 'gone');
   // main / loop / outro 期間鎖住頁面捲動，gone 才解鎖；但「看完過開場」之後不再上鎖
   // （見 hasLeftLoop）。
@@ -105,6 +131,7 @@ export function useHeroVideo() {
     setState,
     skip,
     rewindToLoop,
+    returnToLoop,
     isGone,
     shouldLockScroll,
     hasLeftLoop,
