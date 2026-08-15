@@ -42,10 +42,16 @@ const navActiveTarget = computed(() =>
 
 // logo 的目的地與點擊行為都由 resolveHomeIntent 決定（單一判定來源）。
 // 原本這裡用 runtimeConfig 的 APP_URL（絕對網址）+ 原生 <a>，那是整頁重載 ——
-// 首頁所有 section 重新 mount、全部 ScrollTrigger 重建。改走 NuxtLink 後
+// 首頁所有 section 重新 mount、全部 ScrollTrigger 重建。子頁改走 NuxtLink 後
 // baseURL 由 router 自己套，子路徑部署（GitHub Pages 的 /udn-75/）不必再靠絕對網址。
 const homeIntent = computed(() => resolveHomeIntent(route.path === '/'));
 const { returnToLoop } = useHeroVideo();
+
+const router = useRouter();
+// 原生 <a> 的 href 要自己套 router base：子路徑部署（GitHub Pages 的 /udn-75/）下
+// 直接寫 "/" 會連到網域根 —— 那正是這支 logo 原本用絕對網址要避開的事，
+// 中鍵／Ctrl 點擊會真的走到它。router.resolve() 回傳的 href 已含 base。
+const logoHref = computed(() => router.resolve(homeIntent.value.to).href);
 
 const progress = ref(0);
 const activeTarget = ref<string>('');
@@ -266,7 +272,29 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     <!-- 頂部列（≥1280：logo ＋ 錨點列 ＋ 音效 ＋ share；<1280：logo ＋ 音效 ＋ 漢堡） -->
     <div class="app-header__bar-wrap">
       <div class="app-header__bar">
+        <!-- 首頁用原生 <a>，不用 NuxtLink：NuxtLink 內建的 click handler 會**先於**本元件的
+             @click 執行，且它是在那個時間點才檢查 e.defaultPrevented —— onLogoClick 的
+             preventDefault 還沒跑，攔不住它。結果是推入一次真正的導航到 /，多一筆歷史紀錄、
+             讓「上一頁」失效。就地倒帶一律走 onLogoClick（捲頂 ＋ returnToLoop）。
+             （同 AppHeaderNav / AppHeaderMenu 已修過的順序陷阱。） -->
+        <a
+          v-if="homeIntent.action === 'in-page'"
+          class="app-header__logo"
+          :href="logoHref"
+          :aria-label="labels.logoLabel"
+          @click="onLogoClick"
+        >
+          <img
+            class="app-header__logo-img"
+            :src="logoUrl"
+            :alt="labels.logoAlt"
+          />
+          <span class="app-header__logo-mask" aria-hidden="true" />
+        </a>
+
+        <!-- 子頁：真的要換頁，交給 NuxtLink（client-side 導航）；onLogoClick 只負責關選單。 -->
         <NuxtLink
+          v-else
           class="app-header__logo"
           :to="homeIntent.to"
           :aria-label="labels.logoLabel"

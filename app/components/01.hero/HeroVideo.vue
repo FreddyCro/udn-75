@@ -79,9 +79,15 @@ let readyTimer: ReturnType<typeof setTimeout> | undefined;
 // 切換 RWD 來源會重新載入影片：先記住秒數，metadata 就緒後跳回原處續播
 let resumeAt = 0;
 
+// 這一顆 <video> 自己的可播放狀態。與全域 videoReady 分開：後者是給 HeroLoader 的握手用的、
+// 跨導航不重設，拿來當「本元素可不可以顯示」會在重新掛載時失準 —— 首頁 → 子頁 → 點 logo
+// 回來時元素是全新的（readyState 0），全域旗標卻還是上一次的 true，防白閃的守衛就整條失效。
+const elementReady = ref(false);
+
 // 放行 HeroLoader（canplay / 逾時 / 載入失敗都算「不再等影片」）
 const markReady = () => {
   videoReady.value = true;
+  elementReady.value = true;
   if (readyTimer) {
     clearTimeout(readyTimer);
     readyTimer = undefined;
@@ -403,7 +409,7 @@ onBeforeUnmount(() => {
          就開始拉整支影片、拖慢 hydration（理由與升級時機見 script 的 promotePreload）。 -->
     <div
       class="sec1__hero-video"
-      :class="{ 'is-ended': isGone, 'is-loading': !videoReady }"
+      :class="{ 'is-ended': isGone, 'is-loading': !elementReady }"
       aria-hidden="true"
     >
       <video

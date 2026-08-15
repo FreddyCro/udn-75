@@ -240,8 +240,23 @@ onMounted(() => {
     });
   }
 
-  if (initialHash) scrollToInitialHash(initialHash);
+  if (initialHash === HERO_RETURN_HASH) scrollToTopForLoop();
+  else if (initialHash) scrollToInitialHash(initialHash);
 });
+
+// 帶 #loop 進站：目標不是某個段落，而是「回到最開始」，所以要捲回頂端。
+// 不能倚賴既有的兩條路：
+//   ① #loop 對不到元素，vue-router 的 scrollToPosition 會警告後放棄；
+//   ② applyScrollLock() 的 scrollTo(0,0) 只在 hasLeftLoop === false（首次體驗）時才跑。
+// 已經捲過首頁的人 hasLeftLoop 為 true → 沿用子頁的捲動位置 → #app-hero 不在畫面上
+// → HeroVideo 的 heroIO 立刻 setState('gone')，功能在被看見之前就被撤銷。
+// nextTick + refreshScrollTriggers 的理由同 scrollToInitialHash：pin spacer 會改變文件高度。
+function scrollToTopForLoop() {
+  nextTick(() => {
+    refreshScrollTriggers();
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  });
+}
 
 // 帶 hash 進站時的落點。必須等 pin 的 pin-spacer 撐開文件（refreshScrollTriggers()）
 // 之後才量位置，否則量到的是沒有 spacer 的舊高度、會落在段落上方數個視窗。
