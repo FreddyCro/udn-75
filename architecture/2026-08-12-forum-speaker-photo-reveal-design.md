@@ -93,6 +93,11 @@ Vue 對**宣告成 `Boolean` 型別**的 prop 有特殊的 absence casting：沒
 `.forum-event--quote :deep(...)`（pad／mob static 233），而 `.forum-event__photo-slot`
 又把同一組數字鏡射一遍；`order` 與 `grid-row` 還另外掛在 `.u-pic` 上。
 
+> **2026-08-17 更新**：`.forum-event__speaker--card` 已隨「論壇二／四改單人講者」一併移除
+> （版式改由 `--stair` / `--youth` 決定，不再由人數決定）。上面那段記的是收斂前的狀況，
+> 保留是為了說明這一層為什麼存在；現行的照片框尺寸是 pc 280 / pad 233 / mob 180，
+> 見 `ForumEvent.vue` 的 `.forum-event__photo-box`。
+
 ### 收斂後的分工
 
 | 層 | 負責 |

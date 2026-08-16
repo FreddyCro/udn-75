@@ -214,17 +214,10 @@
         "speakerLabel": "講者介紹",
         "speakers": [
           {
-            "role": "台積電董事長暨總裁",
-            "name": "魏哲家",
+            "role": "台積電執行副總經理\n暨共同營運長",
+            "name": "米玉傑",
             "photoNo": "02",
-            "photo": "/img/udn75_pic01_02",
-            "bio": []
-          },
-          {
-            "role": "台積電執行副總經理 暨共同營運長",
-            "name": "秦永沛",
-            "photoNo": "03",
-            "photo": "/img/udn75_pic01_03",
+            "photo": "/img/udn75_pic01_12",
             "bio": []
           }
         ],
@@ -347,17 +340,10 @@
       "speakerLabel": "講者介紹",
       "speakers": [
         {
-          "role": "台積電文教基金會 董事長",
-          "name": "曾繁城",
-          "photoNo": "04",
-          "photo": "/img/udn75_pic01_10",
-          "bio": []
-        },
-        {
-          "role": "台積電文教基金會 執行長",
-          "name": "許峻郎",
-          "photoNo": "05",
-          "photo": "/img/udn75_pic01_11",
+          "role": "台積電執行副總經理\n暨共同營運長",
+          "name": "秦永沛",
+          "photoNo": "03",
+          "photo": "/img/udn75_pic01_03",
           "bio": []
         }
       ],
@@ -520,7 +506,7 @@
     ],
     "body": "由倡議家與凱度洞察合作發起《AI時代 跨世代永續與未來生活大調查》，剖析當代台灣不同世代對科技變革與永續福祉的真實看法。",
     "cta": {
-      "label": "融媒體世代訪談報告網站",
+      "label": "AI時代 跨世代永續與未來生活大調查",
       "href": "#"
     }
   },

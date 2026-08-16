@@ -84,7 +84,8 @@ export const FORUM_PATH_EVENTS: readonly ForumPathEvent[] = [
     dLen: { pad: -205, mob: -103 },
   },
   {
-    // 兩張卡同場一起刷（一個事件管整場，見 ~/utils/forum-photo-reveal）。
+    // 一個事件管整場（見 ~/utils/forum-photo-reveal）。2026-08-17 之前論壇二是兩張卡、
+    // 由這一個事件同時刷開；改版成單人之後就只有一張，機制不變。
     //
     // 2026-08-16：從「碰到照片上緣」**提前到照片前面那個轉彎**（設計要求）。
     // 舊版是 at W17/Q8/P9 ＋ dLen −122/+181/−46 —— 那三個位置都校在照片上緣，但都落在

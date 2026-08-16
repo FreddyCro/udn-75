@@ -29,8 +29,11 @@
   // 滿版就要滿版，不該被一條側欄切到。
   //
   // 子頁疊層總表（動任何一層請把整張表看過；數字刻意寫死好 grep）：
+  //   1200  AppHeader.is-menu-open（<1280 選單開啟時 —— modal 贏過一切，見 AppHeader）
   //   1100  滿屏引言媒體（舞台 --media，見 Subpage.vue／SubpageIntroMedia）
-  //   1000  AppHeader
+  //         ⚠️ GSAP 的 .pin-spacer 會把這個值抄成行內樣式且不再更新 ⇒ 整段 pin 期間
+  //            舞台都在 header 之上，這正是 1200 那層存在的理由。
+  //   1000  AppHeader（常態）
   //    960  SubpageAnchorBar（<1280 底部錨點列 —— 那個斷點唯一的導覽，不讓內容蓋掉）
   //    950  .sp-full 本層
   //    900  SubpageAnchor（pc 右側 rail）

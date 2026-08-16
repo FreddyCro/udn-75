@@ -192,30 +192,37 @@ const PAD_NODES: ForumPathNode[] = [
     anchor: { event: '論壇二', sel: '.forum-event__meta', edge: 'top', dy: 86 },
     join: 'line',
   },
+  // ⚠ Q8～Q10 的 dy 在 2026-08-17 重校過：論壇二的講者組從「兩張並排卡片 ＋ 上方標籤列」
+  //   （稿上緣 3593.02、高 390）改成「單人照片左、文字右」（稿上緣 3614、高 233）。
+  //   **pad 的線稿沒有重畫**（`Vector 276` 2652:53744 與改版前完全一致），論壇三的位置也
+  //   沒動，故這三點改用新的 dy 把它們釘回稿上原本的頂點 —— 三個都精準對回，線形不變。
   {
-    id: 'Q8', // 稿 (246, 3595)；論壇二講者組上緣 3593.02
+    id: 'Q8', // 稿 (246, 3595)；論壇二講者組上緣 3614 − 19
     x: 0.32,
-    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'top', dy: 2 },
+    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'top', dy: -19 },
     join: { relIn: 68.2, relOut: -47.4, hIn: 0.434, hOut: 0.632 },
   },
   {
-    id: 'Q9', // 稿 (109, 3627)；講者組 +34
+    id: 'Q9', // 稿 (109, 3627)；講者組上緣 +13
     x: 0.142,
-    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'top', dy: 34 },
+    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'top', dy: 13 },
     // hOut 0 → 到達側是硬轉角（撞左牆），relOut 因此沒有意義
     join: { relIn: 7, relOut: 0, hIn: 0.487, hOut: 0 },
   },
   {
-    id: 'Q10', // 稿 (5.5, 3877.5)＝撞左牆的硬轉角；講者組高度的 0.729 處
+    id: 'Q10', // 稿 (5.5, 3877.5)＝撞左牆的硬轉角；講者組下緣 3847 + 30.5
     // 5.5 / 768 ＝ 稿的精確 x。容器在 pad 固定 768 之後（見
     // architecture/2026-08-12-forum-pad-container-design.md），4px 描邊落在
     // 3.5–7.5、本來就在容器內，不需要再用 'left' 的 EDGE_INSET 保護。
+    //
+    // ⚠ 改版前是 fraction 0.7294（組高 390 時剛好落在稿的頂點）。組矮成 233 之後同一個
+    //   比例會落在 3784、比稿高 93px，故改掛 bottom —— 稿上這個角本來就在講者組**下方**。
     x: 0.00716,
     anchor: {
       event: '論壇二',
       sel: '.forum-event__speakers',
-      edge: 'fraction',
-      t: 0.7294,
+      edge: 'bottom',
+      dy: 30.5,
     },
     // hIn 0 → 出發側同樣是硬轉角，relIn 沒有意義
     join: { relIn: 0, relOut: -0.6, hIn: 0, hOut: 0.668 },
@@ -308,22 +315,33 @@ const MOB_NODES: ForumPathNode[] = [
     anchor: { sel: '[data-forum-anchor="論壇二"]', edge: 'top', dy: 38 },
     join: 'line',
   },
+  // ⚠ P8～P10 在 2026-08-17 重接過。論壇二的講者組從「標籤列 ＋ 兩張直排卡片」
+  //   （稿上緣 3764.5、下緣 4190.5）改成「單人照片左、文字右」（稿上緣 3819.5、高 180），
+  //   於是：
+  //     ① P10 原本掛 `.forum-event__speaker` 的 **nth: 1** —— 第二位講者不存在了，那是
+  //        必要錨點，量不到會讓**整條 mob 線放棄**、橘核心在論壇段整段消失
+  //        （與 2026-08-09 那次事故同型，見本檔頭與 forum-node-path.md 第二節）。
+  //     ② 標籤已經不在照片上方、而是移進右邊文字欄，P8 掛它已無版面意義。
+  //   三點一律改掛 `.forum-event__speakers`（單人時它的 rect ＝ 照片框的 rect），dy 則
+  //   重校成稿上原本的頂點。**mob 線稿沒有重畫**，所以 P8／P9 精準落回稿；P10 是
+  //   「講者組下緣 +12」，語意不變、絕對位置隨組變矮往上移 191（記在第七節）。
   {
-    id: 'P8', // 稿 (107.0, 3786)；論壇二講者介紹列上緣 3764.5
+    id: 'P8', // 稿 (107.0, 3786)；論壇二講者組上緣 3819.5 − 33（角落在照片正上方）
     x: 0.259,
-    anchor: { event: '論壇二', sel: '.forum-event__speaker-label', edge: 'top', dy: 22 },
+    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'top', dy: -33 },
     join: { relIn: -69, relOut: 53.2, hIn: 0.43, hOut: 0.69 },
   },
   {
-    id: 'P9', // 稿 (295.3, 3868.9)；講者一組上緣 3814.5
+    id: 'P9', // 稿 (295.3, 3868.9)；講者組上緣 +49（點落在照片裡）
     x: 0.713,
-    anchor: { event: '論壇二', sel: '.forum-event__speaker', nth: 0, edge: 'top', dy: 54 },
+    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'top', dy: 49 },
     join: { relIn: -6.4, relOut: 4.1, hIn: 0.34, hOut: 0.17 },
   },
   {
-    id: 'P10', // 稿 (323.5, 4202)；講者二組下緣 4190.5
+    id: 'P10', // 稿 (323.5, 4202)＝改版前的講者組下緣 +12；現為 3999.5 + 12
     x: 0.781,
-    anchor: { event: '論壇二', sel: '.forum-event__speaker', nth: 1, edge: 'bottom', dy: 12 },
+    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'bottom', dy: 12 },
+    note: '講者組改單人後比稿高 191（稿 4202 → 4011.5）；語意仍是「講者組下緣 +12」',
     join: 'line',
   },
   {

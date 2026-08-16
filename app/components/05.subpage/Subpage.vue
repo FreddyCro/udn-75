@@ -423,6 +423,14 @@ onBeforeUnmount(() => {
     padding: 0 20px;
     max-width: min(79vw, 1104px);
   }
+
+  // pc 稿：1280 − 108×2 = 1064 即**內容寬本身**，所以這裡不留 padding ——
+  // 沿用 tablet 的 `padding: 0 20px` 會把欄再吃掉 40，文案左緣就對不到稿上的 108。
+  // 1064 ＞ 六頁最寬的副標藝術字（education 796），SVG 不會被 max-width 壓縮。
+  @include rwd-min('pc') {
+    max-width: 1064px;
+    padding: 0;
+  }
 }
 
 // 寬欄（hero／引言）：pad 起照 pc 稿比例流體縮放，≥1280 錨定回定寬。
@@ -566,11 +574,26 @@ onBeforeUnmount(() => {
     bottom: calc(265 / 1024 * 100%);
     width: 428px;
   }
+  // pc 稿改為「跟在副標下方、左緣切齊文案」，不再貼視窗右下。
+  //
+  // 定位：與文案的**相對位置固定**，所以用 top 定值而非 bottom ——
+  //   411 = 163(hero padding-top) + 72(主標) + 32(副標 margin-top) + 64(副標) + 80(稿上的間距)
+  // 主／副標高度是 CSS 寫死的，六頁一致，所以這個定值對六頁都準。
+  //
+  // 尺寸：稿的 480×224 是**上限**，視窗高度不足時依剩餘高度等比縮小（見 clamp）。
+  // width 交給 auto 由高度帶出來 —— 六頁素材比例都是 ~2.14（856×400），224 高算出 479.4，
+  // 與稿的 480 差 0.6px。寫死 480 反而會在比例微異的 education／health 上壓扁。
+  // ⚠️ clamp 的下限 0 是防呆：直接寫 `calc(100svh - 494px)` 的話，矮視窗算出負值會讓整條
+  //    height 宣告失效、退回 auto（＝素材原尺寸 856px）而爆版 —— 而且是靜默的。
   @include rwd-min('pc') {
-    right: 8vw;
-    bottom: 10vh;
-    left: auto;
-    width: min(428px, 34vw);
+    top: 411px;
+    right: auto;
+    bottom: auto;
+    left: calc(50% - 532px); // 1064 欄的左緣（pc 起 50% ≥ 640，算出來不會為負）
+    width: auto;
+    // 494 = 411(距頂) + 83(稿的底部留白)；720 高時得 226 → 取上限 224，正好對稿
+    height: clamp(0px, calc(100vh - 494px), 224px);
+    height: clamp(0px, calc(100svh - 494px), 224px); // 與 hero 的 100svh 同單位
     transform: none;
   }
 }

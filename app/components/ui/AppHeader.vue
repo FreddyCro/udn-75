@@ -273,7 +273,10 @@ const effectiveTheme = computed<HeaderTheme>(() =>
 <template>
   <header
     class="app-header"
-    :class="[`app-header--${effectiveTheme}`, { 'is-visible': isVisible }]"
+    :class="[
+      `app-header--${effectiveTheme}`,
+      { 'is-visible': isVisible, 'is-menu-open': menuOpen },
+    ]"
   >
     <!-- 閱讀進度 -->
     <div v-show="isVisible" class="app-header__progress">
@@ -393,6 +396,21 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     --hd-bg: color-mix(in srgb, var(--color-orange) 70%, transparent);
     --hd-fg: #fff;
     --hd-accent: #fff;
+  }
+
+  // 選單開啟期間，header 整層抬到子頁疊層之上（見 subpage.scss 的疊層總表）。
+  //
+  // 為什麼需要這條：子頁舞台被 ScrollTrigger pin 之後，GSAP 產生的 .pin-spacer 帶著
+  // **行內** `z-index: 1100`（抄自 `.subpage__stage--media`，且抄過去就不再更新，
+  // 見 Subpage.vue 的 :deep(.pin-spacer) 註解）⇒ 整段 pin 期間該佔位都是一個高於
+  // header（1000）的堆疊脈絡。AppHeaderMenu 的面板在 header 內（z-index 1），
+  // 被自己的祖先關在 1000 這層，於是子頁 pin 期間開選單，舞台的標題／滿屏媒體會
+  // 直接畫在白面板之上 —— 那不是選單自己的 z-index 不夠，抬面板毫無作用。
+  //
+  // 只在選單開著時抬：媒體那一拍本來就該蓋掉 header（滿屏照片要滿屏），
+  // 常態抬上去會把那一拍的設計弄壞。選單是 modal，開著時它贏過一切才合理。
+  &.is-menu-open {
+    z-index: 1200;
   }
 }
 
