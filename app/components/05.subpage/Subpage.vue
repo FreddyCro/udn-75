@@ -80,7 +80,8 @@ const heroInnerRef = ref<HTMLElement | null>(null);
 const introInnerRef = ref<HTMLElement | null>(null);
 const mediaRef = ref<HTMLElement | null>(null);
 
-/** 錨點（pc 右側 rail 與 <1280 底部列）是否出現：捲過 hero/引言舞台後才顯示 */
+/** <1280 底部錨點列是否出現：捲過 hero/引言舞台後才滑入。
+ *  ⚠️ pc 右側 rail **不吃這面旗子**（全程顯示，理由見 template 的註解），別再接回去。 */
 const anchorVisible = ref(false);
 
 /**
@@ -375,15 +376,20 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- 舞台之後的內容：不透明背景，維持 rail(z1) / 滿版區塊(z2) 的疊層約定。
+    <!-- 舞台之後的內容：不透明背景。z-index 維持 auto（不建立堆疊脈絡）。
          --under-stage：上拉一屏墊到舞台後面，媒體淡出就直接見內文（見 SCSS） -->
     <div
       class="subpage__content"
       :class="{ 'subpage__content--under-stage': stagePinned && !!introMedia }"
     >
-      <!-- 錨點導覽（皆 position: fixed，不占版面）：舞台演完才出現、回捲則收回。
-           pc = 右側 rail、<1280 = 視窗下緣錨點列，顯隱共用同一條進度線 -->
-      <SubpageAnchor :visible="anchorVisible" />
+      <!-- 錨點導覽（皆 position: fixed，不占版面）。
+           pc 右側 rail：**全程顯示**，不跟著舞台藏起來。hero／引言兩拍都是透明層
+           （只有文字與 KV 圖，見 .subpage__hero／.subpage__intro 都沒有背景），
+           擋不到 rail；真正會蓋住它的只有滿屏引言媒體那一拍，而那是靠疊層做掉的
+           （舞台 --media 1100 ＞ rail 900，見 SubpageAnchor），不需要再切一次顯隱。
+           <1280 的底部錨點列維持原本「舞台演完才滑入」：它橫在視窗下緣、是實心底，
+           在 hero 那一屏滑進來會壓到設計稿的首屏構圖，與 rail 不是同一回事。 -->
+      <SubpageAnchor visible />
       <SubpageAnchorBar :visible="anchorVisible" />
 
       <!-- 內文：各頁以預設 slot 撰寫，間距在頁面上逐塊標 Tailwind mt-*/mb-* -->
@@ -510,7 +516,8 @@ onBeforeUnmount(() => {
 }
 
 // 舞台之後的內容底。z-index 須維持 auto，否則會建立 stacking context，
-// 破壞 rail(z1) / 滿版區塊(z2) 的約定（見 SubpageAnchor）。
+// 把裡面 position: fixed 的 rail／錨點列關進來 —— 它們的 900 就再也跨不出去、
+// 會被外面隨便一個滿版區塊蓋掉（見 SubpageAnchor）。
 .subpage__content {
   position: relative;
   background: #fff;
@@ -629,7 +636,8 @@ onBeforeUnmount(() => {
 
 // 引言滿版一屏（pin 模式時 = 舞台那一屏）：mob/pad 對稿上下留白相等 → 垂直置中；
 // pc 對稿不置中，改以「靠下 + 底距 80」表達，視窗高度一離開 720 也不會失準。
-// 舞台期間右側 rail（SubpageAnchor）整個藏著（進 subpage__content 才淡入），此處不需 z-index。
+// 本層沒有背景（透明），故右側 rail（SubpageAnchor，全程顯示）從它底下透出來，
+// 不需要在這裡排 z-index —— 會蓋住 rail 的只有滿屏引言媒體那一拍。
 .subpage__intro {
   display: flex;
   align-items: center;

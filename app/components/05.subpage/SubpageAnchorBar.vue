@@ -58,10 +58,13 @@ onMounted(() => {
 .subpage-anchor-bar {
   // 固定在視窗下緣（子頁 navbar 下方沒有內容，不需要 sticky 佔版面）：
   // 預設收在視窗外，捲過 hero 後由 --visible 滑入。
-  // z-index 900：高於滿版區塊(z2)／rail(z1) 的疊層約定（見 SubpageAnchor），低於 header(1000)。
+  // z-index 960：**高於** .sp-full 滿版區塊(950)，低於 header(1000)。
+  // 刻意與 pc 右側 rail(900) 不同值：rail 被滿版區塊蓋掉是設計要的（滿版就要滿版），
+  // 但這條是 <1280 唯一的導覽、又橫在視窗下緣，被照片牆蓋掉就等於沒有導覽。
+  // 完整疊層總表見 assets/styles/subpage.scss 的 .sp-full。
   position: fixed;
   inset: auto 0 0 0;
-  z-index: 900;
+  z-index: 960;
   display: flex;
   align-items: center;
   justify-content: center;

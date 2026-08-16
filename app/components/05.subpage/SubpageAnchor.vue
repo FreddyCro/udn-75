@@ -3,10 +3,11 @@
  * SubpageAnchor — 子頁右側錨點導覽（pc 限定，<1280 隱藏、改用 SubpageAnchorBar），
  * 資料來自 locales/common.json 的 subpageAnchors。藝術字以 CSS mask + currentColor
  * 上色，換色不需多份素材。hover 與 active 同為「不透明＋放大＋尾端橫線」，不變色。
- * 顯隱與 SubpageAnchorBar 同步：由 Subpage.vue 的舞台 ScrollTrigger 決定，
- * 捲進 subpage__content（舞台演完）才淡入，hero／引言期間不出現。
- * rail 走低 z-index（--subpage-anchor-z，預設 1）：滿版 section 以
- * position: relative + z-index: 2 + 不透明背景即可蓋過，不需 JS 偵測。
+ * 顯隱：**全程顯示**（Subpage.vue 直接傳 visible）。舞台的 hero／引言兩拍是透明層，
+ * 蓋不到 rail；只有滿屏引言媒體那一拍該蓋住它，那由疊層做掉（見下方 z-index）。
+ * ⚠️ 與 SubpageAnchorBar 不同步 —— 那條橫在視窗下緣、是實心底，仍維持「舞台演完才滑入」。
+ * rail 疊在**一般內文**之上（--subpage-anchor-z，預設 900），但滿版嵌入元件
+ * （.sp-full，950）刻意蓋得過它 —— 滿版就要滿版。疊層總表見 subpage.scss 的 .sp-full。
  */
 import str from '~/locales/common.json';
 
@@ -56,7 +57,11 @@ const assetUrl = useAssetUrl();
   position: fixed;
   top: 25%;
   right: 24px;
-  z-index: var(--subpage-anchor-z, 1); // 滿版區塊 z-index ≥ 2 即蓋過 rail（底層）
+  // 900 ＝ 子頁疊層的最底層（總表見 assets/styles/subpage.scss 的 .sp-full）：
+  // 內文的一般段落（z-index auto）蓋不過它，但滿版嵌入元件（.sp-full，950）、
+  // 底部錨點列(960)、header(1000)、滿屏引言媒體(1100) 都蓋得過。
+  // ⚠️ 與 SubpageAnchorBar(960) 刻意不同值，理由見該檔。
+  z-index: var(--subpage-anchor-z, 900);
   display: none; // <1280 改用 SubpageAnchorBar
   transform: translateY(-50%);
   // 預設藏著（hero／引言舞台期間），舞台演完由 --visible 淡入；
