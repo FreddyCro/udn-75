@@ -196,17 +196,28 @@ useMediaIntroMotion({
 // 故本區塊自身高度扣掉它；多出來的餘白留在 .media__roam 之後，清單往下順推。
 // pad 以下不設限制，維持原本流動版面
 .media__head {
+  padding-top: 80px;
+
   @include rwd-min('pc') {
     min-height: 572px - 80px;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    padding-top: 0;
+  }
+}
+
+.media__title {
+  margin-bottom: 16px;
+
+  @include rwd-min('tablet') {
+    margin-bottom: 32px;
   }
 }
 
 .media__body {
   max-width: 530px;
-  margin: 16px 0 0;
+  margin: 0 0;
   color: var(--color-gray-light);
   font-size: 18px;
   line-height: 36px;
@@ -220,7 +231,7 @@ useMediaIntroMotion({
 
   @include rwd-min('pc') {
     max-width: 518px;
-    margin: 16px 0 0;
+    margin: 0;
   }
 }
 
