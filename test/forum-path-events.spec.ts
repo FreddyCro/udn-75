@@ -79,7 +79,8 @@ describe('resolveForumEventMarks', () => {
 
   it('dLen 逐斷點給：各斷點吃自己的值，缺的視為 0', () => {
     // 這是常態而非例外：at 本來就指向三個不同節點，離「想觸發的位置」的距離自然不同。
-    // 實例 forum2PhotoReveal —— pc 要 −199、pad 要 +152（反向），共用一個數字不可能都對。
+    // 實例 forum1PhotoReveal —— pc 要 0、pad 要 −205、mob 要 −103，共用一個數字不可能都對。
+    // （更極端的是 2026-08-16 之前的 forum2PhotoReveal：pc −122 與 pad +181 方向相反。）
     const perBp: ForumPathEvent[] = [
       {
         key: 'p',
