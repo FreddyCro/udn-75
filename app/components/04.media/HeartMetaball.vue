@@ -89,7 +89,6 @@
     idleRoamRange  閒置自動遊走範圍（佔短邊比例）
     roamArea       閒置遊走活動範圍（正規化矩形）— 叢集含外緣不出帶、必要時縮小
     idleRoamSpeed  閒置遊走速度倍率
-    idleDelay      游標停止多少秒後切換到自動遊走
     tailBlobMin/Max 拖尾章半徑下/上限（**佔 headR 倍數**，非畫面短邊）
                    → 尾巴面積主旋鈕；綁 headR 故與 coreScale 等比連動
     autoRoam       強制只自動遊走、不綁游標
@@ -158,8 +157,6 @@ const props = withDefaults(
     roamArea?: { x: number; y: number; width: number; height: number };
     /** 閒置遊走速度倍率 */
     idleRoamSpeed?: number;
-    /** 游標停止多少秒後切換到自動遊走 */
-    idleDelay?: number;
     /** 拖尾章半徑下限（**佔 headR 持久球半徑**的倍數，非畫面短邊）
      *  → 與頭部等比連動，調 coreScale 時尾巴自動跟著縮 */
     tailBlobMin?: number;
@@ -209,7 +206,6 @@ const props = withDefaults(
     tailAmount: 0.75,
     idleRoamRange: 0.1,
     idleRoamSpeed: 1,
-    idleDelay: 5,
     // 以 headR 為基準的章半徑：0.5~0.85 搭配 STAMP_SPREAD 0.3 → 尾巴可及約
     // 1.01×headR、gate 起點 0.6×headR、本體外緣約 0.89×headR
     // → 尾/本體面積比 ≈0.83，且不隨 coreScale 改變。要更小就往下調 tailBlobMax。
@@ -410,15 +406,14 @@ onMounted(() => {
   };
 
   // ---------- 互動：pc 追游標；觸控 / 窄幅 / autoRoam 一律閒置自走 ----------
-  const IDLE_DELAY = Math.max(0, props.idleDelay);
+  // 「碰過游標沒有」＝自動遊走與跟隨游標的分水嶺（見 animate 的 isIdle）：
+  //   觸控／窄幅（roamOnly，連 listener 都不掛）→ 恆為 -Infinity ＝ 一路自走
+  //   pc 首次 hover 前 → 同樣自走，底紋不會開天窗
+  //   pc 收到第一個 pointer 事件後 → 永遠跟隨，游標停多久都不漂走（設計師指定）
+  // ⚠️ 不可改回「停止 N 秒後回到自走」的時間門檻：那個判斷同時是觸控環境走
+  //    自走分支的唯一條件，一旦以 Infinity 之類的值關閉，觸控會掉進跟隨分支 →
+  //    永遠沒有游標 → headR = 0 → 整片底紋靜默消失。
   let lastPointerAt = -Infinity;
-  // 進入閒置時「最後位置 → 遊走軌跡」的落差與其淡出狀態（見 animate 的 idle 分支）。
-  // IDLE_BLEND 是指數時間常數（秒）：越大越慢併回軌跡、越像順著原本的動線飄走；
-  // 太小則接近舊行為（一進閒置就被拉回畫面中央）。
-  const IDLE_BLEND = 3;
-  let idleActive = false;
-  let idleOffX = 0;
-  let idleOffY = 0;
 
   // pointer 只記錄「目標點」，實際焦點在 animate 裡逐幀緩動過去（平滑跟隨）；
   // 蓋章也改在 animate 沿緩動後的路徑做 → 尾巴永遠在團塊身後、不會超前
@@ -466,7 +461,7 @@ onMounted(() => {
     const t = now();
     const dt = Math.min(Math.max(t - prevT, 0), 0.1); // 分頁被節流時夾住
     prevT = t;
-    const isIdle = t - lastPointerAt > IDLE_DELAY;
+    const isIdle = lastPointerAt === -Infinity;
 
     // 閒置：焦點以多個不可公度頻率平滑遊走，沿路徑蓋章 → 彗星尾。
     // roamArea：遊走中心＝矩形中心，逐軸幅度＝半寬/半高內縮「可見半徑」；
@@ -519,25 +514,12 @@ onMounted(() => {
           Math.cos(s * 0.19 + 0.7) * 0.3 +
           Math.sin(s * 0.05 + 2.3) * 0.2) *
           ampY;
-      // 從「游標最後停的位置」接著遊走，而不是瞬間跳回遊走軌跡上。
-      // 遊走軌跡是多頻率正弦疊加、無法反解相位，所以改成疊一個「進入閒置那一刻
-      // 與軌跡的落差」，再讓它指數淡出 → 起點完全等於最後位置（零跳動），
-      // 之後在 IDLE_BLEND 的時間尺度內平順併回軌跡，軌跡形狀本身不受影響。
-      if (!idleActive) {
-        idleActive = true;
-        // centerX < -9000 = 從未接觸過游標（觸控/autoRoam）→ 不需要偏移
-        idleOffX = centerX > -9000 ? centerX - roamX : 0;
-        idleOffY = centerY > -9000 ? centerY - roamY : 0;
-      }
-      // 先套用再衰減：進入閒置的第一幀 centerX 完全等於最後位置，零跳動
-      centerX = roamX + idleOffX;
-      centerY = roamY + idleOffY;
-      const blend = Math.exp(-dt / IDLE_BLEND); // 與幀率無關
-      idleOffX *= blend;
-      idleOffY *= blend;
+      // 遊走只發生在「從未收到過游標」的情況（見 isIdle），焦點必定還在初始的
+      // -9999，不會有「從最後位置併回軌跡」的落差要處理 → 直接坐落在軌跡上
+      centerX = roamX;
+      centerY = roamY;
       shouldSpawn = true;
     } else {
-      idleActive = false;
       clusterScale = 1;
       // 平滑跟隨：焦點每幀往游標 lerp（k 做 frame-rate 正規化，以 60fps 為基準）
       // → 團塊是「跟」上來而非瞬間貼齊；游標停下時緩緩收斂。章沿此路徑蓋。
