@@ -61,8 +61,24 @@ export function useHeroVideo() {
     shouldLockHeroScroll(state.value, hasLeftLoop.value),
   );
 
+  // 這一趟下滑是否已經抵達過 gone（＝退場段已經放完、交棒給 DOM 的 orange core）。
+  //
+  // 退場段播完是**停在最後一格**，而那一格的構圖就是 gone（橘方塊在正中央，見
+  // HERO_OUTRO_CORE_ANCHOR 的交棒）。少了這面旗標，往回捲時 dissolveState 會把狀態
+  // 送回 outro，於是淡回畫面上的是那一格凍住的畫面 —— 使用者看到的仍然是 gone，
+  // 影片「回不到 loop」（2026-08-16 實測：捲回 y=360 時 state 是 outro、影片停在 38.57s）。
+  //
+  // 設起的點是 setState('gone')（不是 scrub 的某個門檻）：heroIO 的「捲出視窗就收尾」
+  // 也會直接進 gone，那條路徑同樣不該在捲回來時把凍住的退場段搬回畫面上。
+  // 清掉的點有二：捲回頂端（p < DISSOLVE_LEAVE，見 HeroVideo 的 applyDissolve）與
+  // returnToLoop() —— 兩者都是「重新開始一趟」，下次下滑要再看到完整的退場段。
+  const outroSpent = useState('hero-outro-spent', () => false);
+
   const setState = (s: HeroState) => {
-    if (s === 'gone') hasLeftLoop.value = true;
+    if (s === 'gone') {
+      hasLeftLoop.value = true;
+      outroSpent.value = true;
+    }
     state.value = s;
   };
 
@@ -124,6 +140,9 @@ export function useHeroVideo() {
     heroStarted.value = true;
     // 按 logo 回來之後 stage 不能繼續被壓著隱藏 —— 否則影片明明重新開始播卻整層透明。
     openingSkipped.value = false;
+    // 「回到最開始」＝ 重新開始一趟：退場段要能再放一次，否則按了 logo 回來、再往下捲
+    // 只會看到影片淡掉，沒有退場。
+    outroSpent.value = false;
     setState('loop');
   };
 
@@ -142,5 +161,6 @@ export function useHeroVideo() {
     scrubArmed,
     skipOpening,
     openingSkipped,
+    outroSpent,
   };
 }

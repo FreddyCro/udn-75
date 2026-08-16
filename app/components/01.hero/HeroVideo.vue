@@ -16,7 +16,11 @@ import {
   type HeroVideoDevice,
   type HeroVideoSegment,
 } from '@/utils/hero-video-config';
-import { dissolveAlpha, dissolveState } from '@/utils/hero-dissolve';
+import {
+  DISSOLVE_LEAVE,
+  dissolveAlpha,
+  dissolveState,
+} from '@/utils/hero-dissolve';
 
 const {
   state: heroState,
@@ -28,6 +32,7 @@ const {
   scrubArmed,
   skipOpening,
   openingSkipped,
+  outroSpent,
 } = useHeroVideo();
 
 // 視窗高的單一來源（--vh）：scrub 的 end 吃它，不吃 window.innerHeight
@@ -291,7 +296,10 @@ function applyDissolve(p: number) {
     stage.style.visibility = alpha === 0 ? 'hidden' : 'visible';
   }
   if (!scrubArmed.value || openingSkipped.value) return;
-  const next = dissolveState(p, heroState.value);
+  // 捲回頂端 ＝ 重新武裝：下一趟下滑要再放一次完整的退場段。
+  // （設起的點在 setState('gone')，見 useHeroVideo 的 outroSpent。）
+  if (p < DISSOLVE_LEAVE) outroSpent.value = false;
+  const next = dissolveState(p, heroState.value, outroSpent.value);
   if (next !== heroState.value) setState(next);
 }
 

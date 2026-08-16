@@ -25,13 +25,26 @@ export function dissolveAlpha(p: number): number {
 
 /** 溶解進度 p ＋ 目前狀態 → 下一個狀態。
  *
+ *  @param outroSpent 這一趟下滑是否已經抵達過 gone（＝退場段已經放完、交棒給 DOM core）。
+ *    由呼叫端保管，抵達 gone 時設起、p 落回 LEAVE 之下（回到頂端）時清掉。
+ *
  *  ⚠️ `main` 直接原樣返回：正片期間頁面是鎖住的、p 恆為 0，若讓它推導就會把狀態打成
  *     `loop`，等於正片被跳掉。scrub 只負責 loop 之後的事。
  *  ⚠️ 遲滯帶（LEAVE..ENTER）內維持現狀：停在邊界上的微小抖動（觸控板慣性、橡皮筋）
  *     若每次都翻面，影片會在 loop 段與退場段之間反覆 seek。 */
-export function dissolveState(p: number, current: HeroState): HeroState {
+export function dissolveState(
+  p: number,
+  current: HeroState,
+  outroSpent = false,
+): HeroState {
   if (current === 'main') return 'main';
   if (p >= 1) return 'gone';
+  // 已交棒過就不再回到 outro —— 退場段播完是**停在最後一格**，而那一格的構圖就是
+  // gone（橘方塊在正中央，見 HERO_OUTRO_CORE_ANCHOR）。往回捲時若把狀態送回 outro，
+  // 淡回畫面上的是那一格凍住的畫面，使用者看到的仍是 gone、影片回不到 loop
+  // （2026-08-16 實測：捲回 y=360 時 state 是 outro、影片停在 38.57s）。
+  // 這一條擺在 gone 之後：再往下捲仍要收尾，否則 orange core 接不上。
+  if (outroSpent) return 'loop';
   if (p > DISSOLVE_ENTER) return 'outro';
   if (p < DISSOLVE_LEAVE) return 'loop';
   return current;

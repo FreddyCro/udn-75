@@ -58,4 +58,19 @@ describe('dissolveState', () => {
     expect(dissolveState(1.2, 'gone')).toBe('gone');
     expect(dissolveState(0.5, 'gone')).toBe('outro');
   });
+
+  it('退場已交棒過（outroSpent）→ 往回捲直接回 loop，不再經過 outro', () => {
+    // 退場段播完會停在最後一格，而那一格的構圖**就是** gone（橘方塊在正中央，
+    // 見 HERO_OUTRO_CORE_ANCHOR 的交棒）。往回捲時若把狀態送回 outro，畫面淡回來的
+    // 是那一格凍住的畫面 —— 使用者看到的仍然是 gone，影片「回不到 loop」。
+    expect(dissolveState(0.99, 'gone', true)).toBe('loop');
+    expect(dissolveState(0.5, 'gone', true)).toBe('loop');
+    expect(dissolveState(0.5, 'loop', true)).toBe('loop');
+  });
+
+  it('outroSpent 蓋不過 gone —— 再往下捲仍要收尾', () => {
+    // 回到 loop 之後再往下捲：這一趟不重播退場段（已經看過），但 p 抵達 1
+    // 還是要進 gone，否則 orange core 接不上。
+    expect(dissolveState(1, 'loop', true)).toBe('gone');
+  });
 });
