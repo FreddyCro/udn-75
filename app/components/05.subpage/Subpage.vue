@@ -11,6 +11,7 @@ import {
   HIDE_Y,
   blockState,
   deferredStopStillApplies,
+  mediaFadeAlpha,
   stageBeats,
   stageLines,
   type StageBlockState,
@@ -102,26 +103,32 @@ let tweens: gsap.core.Tween[] = [];
 let triggers: ScrollTrigger[] = [];
 
 /** 過線就播 0.4s 的淡入/淡出；overwrite 讓兩個方向對打時直接接手，不疊 tween。
- *  instant = 程式化跳捲（換頁回頂等）的狀態同步：直接 set 到位，不播過場。 */
-function makeFade(targets: HTMLElement[]) {
+ *  instant = 程式化跳捲（換頁回頂等）的狀態同步：直接 set 到位，不播過場。
+ *
+ *  shift = false → **只淡，不做垂直位移**（滿屏媒體用）。文字塊往上抽是「這段講完了」的
+ *  語彙，但整屏的照片跟著平移會讀成「頁面在滑掉」，而且滿版圖平移會露出後面的底色。
+ *  此時 hide() 的 y 參數會被忽略 —— 呼叫端維持與 intro 相同的寫法，不必分支。 */
+function makeFade(targets: HTMLElement[], { shift = true } = {}) {
+  /** shift 關掉時整個不碰 y，gsap 就不會在元素上留下 inline transform */
+  const dy = (y: number) => (shift ? { y } : {});
   const show = (instant = false) =>
     instant
-      ? gsap.set(targets, { autoAlpha: 1, y: 0, overwrite: 'auto' })
+      ? gsap.set(targets, { autoAlpha: 1, ...dy(0), overwrite: 'auto' })
       : tweens.push(
-          gsap.to(targets, { autoAlpha: 1, y: 0, duration: 0.4, ease: 'power2.out', overwrite: 'auto' }),
+          gsap.to(targets, { autoAlpha: 1, ...dy(0), duration: 0.4, ease: 'power2.out', overwrite: 'auto' }),
         );
   /** onComplete 在淡出真的播完才呼叫（instant 則立即）：給「等看不見了再收拾」的副作用用。
    *  被 overwrite 接手而中止的 tween 不會觸發，所以淡出中途改回淡入不會誤收。 */
   const hide = (y: number, instant = false, onComplete?: () => void) => {
     if (instant) {
-      gsap.set(targets, { autoAlpha: 0, y, overwrite: 'auto' });
+      gsap.set(targets, { autoAlpha: 0, ...dy(y), overwrite: 'auto' });
       onComplete?.();
       return;
     }
     tweens.push(
       gsap.to(targets, {
         autoAlpha: 0,
-        y,
+        ...dy(y),
         duration: 0.4,
         ease: 'power2.in',
         overwrite: 'auto',
@@ -134,8 +141,8 @@ function makeFade(targets: HTMLElement[]) {
     tweens.push(
       gsap.fromTo(
         targets,
-        { autoAlpha: 0, y: REVEAL.y },
-        { autoAlpha: 1, y: 0, duration: REVEAL.duration, ease: REVEAL.ease, overwrite: 'auto' },
+        { autoAlpha: 0, ...dy(REVEAL.y) },
+        { autoAlpha: 1, ...dy(0), duration: REVEAL.duration, ease: REVEAL.ease, overwrite: 'auto' },
       ),
     );
   return { show, hide, reveal };
@@ -175,13 +182,15 @@ onMounted(async () => {
 
   const heroFade = makeFade(heroTargets);
   const introFade = makeFade(introTarget);
-  const mediaFade = makeFade(mediaTarget);
+  // 媒體只淡不位移（見 makeFade 的 shift）
+  const mediaFade = makeFade(mediaTarget, { shift: false });
 
   // 載入即播 hero 進場；後面兩塊先藏著等進度線
   if (heroTargets.length) tweens.push(gsap.from(heroTargets, REVEAL));
   gsap.set(introTarget, { autoAlpha: 0, y: HIDE_Y.before });
-  // 沒有第三拍時 mediaTarget 是空陣列，gsap 會警告 target not found
-  if (mediaTarget.length) gsap.set(mediaTarget, { autoAlpha: 0, y: HIDE_Y.before });
+  // 沒有第三拍時 mediaTarget 是空陣列，gsap 會警告 target not found。
+  // 這裡同樣不給 y —— 起手就位移的話第一次淡入會從偏移處滑回來。
+  if (mediaTarget.length) gsap.set(mediaTarget, { autoAlpha: 0 });
 
   /**
    * 舞台 pin 的距離＝拍數 × 一屏：各塊疊在這幾屏內依序交接，
@@ -199,6 +208,8 @@ onMounted(async () => {
   // 引言與媒體同為三態（見 blockState）；hero 一開始就在演，只有 shown/退場兩態
   let introState: StageBlockState = 'before';
   let mediaState: StageBlockState = 'before';
+  /** 最近一次 scrub 套到媒體上的 alpha；1 ＝ 還沒進退場窗（見 onUpdate 的 scrub 段） */
+  let mediaAlpha = 1;
   // ⚠️ 首頁 → 子頁換的是 layout，Nuxt 的 scrollBehavior 會等 layout 轉場結束才回捲到頂，
   //    同步狀態（不播過場），跳回 hero 則重播進場 → 只留「hero 淡入」。
   let lastScroll: number | null = null; // null = 尚未收到 update，初次一律視為跳捲
@@ -233,9 +244,11 @@ onMounted(async () => {
             else introFade.hide(HIDE_Y[wantIntro], jumped);
           }
 
-          const wantMedia = blockState(p, lines.mediaIn, lines.mediaOut);
+          // 退場線給 1：媒體一路演到 pin 結束，中間的淡出由下面的 scrub 負責。
+          const wantMedia = blockState(p, lines.mediaIn, 1);
           if (wantMedia !== mediaState) {
             mediaState = wantMedia;
+            mediaAlpha = 1; // 離開 shown 就把 scrub 的記錄歸位，下次進來才會重新套
             if (wantMedia === 'shown') {
               mediaActive.value = true;
               mediaFade.show(jumped);
@@ -250,9 +263,36 @@ onMounted(async () => {
               });
             }
           }
+
+          // 媒體退場：**綁 progress 的 scrub**，不是 0.4s 時間動畫。內文墊在它後面且
+          // 隨捲動 1:1 走，用時間動畫的話照片消失時內文已經滑掉「速度 × 0.4s」
+          // （實測 800px/s 滑 221px、1600px/s 滑 573px）。理由詳見 mediaFadeAlpha。
+          //
+          // 只在值真的變了才寫：淡入那段 a 恆為 1、mediaAlpha 也是 1 → 不寫，
+          // 才不會用 gsap.set 把 show() 的 0.4s 淡入 tween 蓋掉變成瞬間出現。
+          if (mediaState === 'shown' && mediaTarget.length) {
+            const a = mediaFadeAlpha(p, lines.mediaFadeFrom);
+            if (a !== mediaAlpha) {
+              mediaAlpha = a;
+              gsap.set(mediaTarget, { autoAlpha: a, overwrite: 'auto' });
+              // 淡光了才停輪播（停播＝倒回第一張，太早停會在還看得見時被看到）；
+              // 回捲時 a 會沿原路升回來，同一行就把它復播。
+              mediaActive.value = a > 0;
+            }
+          }
         },
         // pin 結束＝舞台演完 → 錨點出現（pc rail 淡入、<1280 底部列滑入）；回捲進 pin 段則收回
-        onLeave: () => (anchorVisible.value = true),
+        onLeave: () => {
+          anchorVisible.value = true;
+          // 退場的收尾保險：scrub 要 progress 剛好等於 1 才會把 alpha 帶到 0，而 onUpdate
+          // 不保證收得到那一格。漏收的話照片會留在畫面上，舞台的 z-index 1100 還會壓著
+          // 內文擋掉點擊 —— 而且是靜默的。onLeave 一定會在越過 end 時觸發，補一刀。
+          if (mediaTarget.length) {
+            mediaAlpha = 0;
+            gsap.set(mediaTarget, { autoAlpha: 0, overwrite: 'auto' });
+            mediaActive.value = false;
+          }
+        },
         onEnterBack: () => (anchorVisible.value = false),
       }),
     );
@@ -279,7 +319,11 @@ onBeforeUnmount(() => {
     <div
       ref="stageRef"
       class="subpage__stage"
-      :class="{ 'subpage__stage--pinned': stagePinned }"
+      :class="{
+        'subpage__stage--pinned': stagePinned,
+        // 媒體那一拍要蓋掉 header —— 抬的是整個舞台，不是媒體本身（見 SCSS）
+        'subpage__stage--media': mediaActive,
+      }"
     >
       <header ref="heroRef" class="subpage__hero">
         <UPic
@@ -331,8 +375,12 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- 舞台之後的內容：不透明背景，維持 rail(z1) / 滿版區塊(z2) 的疊層約定 -->
-    <div class="subpage__content">
+    <!-- 舞台之後的內容：不透明背景，維持 rail(z1) / 滿版區塊(z2) 的疊層約定。
+         --under-stage：上拉一屏墊到舞台後面，媒體淡出就直接見內文（見 SCSS） -->
+    <div
+      class="subpage__content"
+      :class="{ 'subpage__content--under-stage': stagePinned && !!introMedia }"
+    >
       <!-- 錨點導覽（皆 position: fixed，不占版面）：舞台演完才出現、回捲則收回。
            pc = 右側 rail、<1280 = 視窗下緣錨點列，顯隱共用同一條進度線 -->
       <SubpageAnchor :visible="anchorVisible" />
@@ -401,6 +449,20 @@ onBeforeUnmount(() => {
   }
 }
 
+// 媒體那一拍：整個舞台抬到 header（z-index 1000）之上，滿屏照片／影片才蓋得掉頂條。
+//
+// ⚠️ 為什麼抬的是**舞台**而不是 `.subpage__media` 或 `.intro-media`：
+//    pin 之後 `.subpage__stage--pinned` 是 position: fixed ⇒ 自成堆疊脈絡，而它自己
+//    z-index: auto —— 裡面設多高都出不去。要跨過 header 只能抬到「與 header 同一個
+//    堆疊脈絡」的這一層。（降級版型沒有 pin、沒有這層脈絡，由 .intro-media 自己的 1100 處理。）
+// ⚠️ 綁 --media 而非常態生效：舞台是滿版 fixed，抬上去就會攔掉 header 的點擊。
+//    只在媒體那一拍抬 —— 那時 header 本來就被照片蓋住，點不到是一致的行為。
+// ⚠️ 淡入的 0.4s 內舞台已經在上面，但 hero／引言層是透明的，header 仍看得見，
+//    直到照片真的蓋上來。不會有「header 先消失一拍」的破綻。
+.subpage__stage--pinned.subpage__stage--media {
+  z-index: 1100; // 與 SubpageIntroMedia 的 .intro-media 同值，兩處要一起改
+}
+
 // 引言之後的滿屏媒體。降級（no-JS／reduced-motion）時照文件流自佔一屏；
 // pin 模式改為疊在同層（見上方 --pinned）。媒體以 fill 模式撐滿，圖說才貼在視窗底。
 .subpage__media {
@@ -430,6 +492,33 @@ onBeforeUnmount(() => {
 .subpage__content {
   position: relative;
   background: #fff;
+}
+
+// 上拉，墊到舞台後面 —— 照片溶解時內文已經在後面接著，不必再乾捲一屏才看得到。
+//
+// 為什麼需要：pin-spacer ＝ 舞台自身一屏 ＋ pin 距離，內文接在 spacer 之後。unpin 那一刻
+// 舞台雖然空了，那一屏仍在文件流裡要整屏捲掉，內文才輪得到 —— 沒有上拉時實測
+// （1440×900）照片消失在 2700、內文到頂要 3664，中間 964px ≒ 一屏全白。
+//
+// **為什麼是 65svh 而不是滿滿一屏**：拉滿（100svh）的話溶解結束時內文上緣已經在 64，
+// 等於「文章早就就定位、照片只是從它身上淡掉」，溶解全程都看得到字。留 35svh 的話
+// 文章是**從下面進場**的 —— 實測 1440×900：
+//   溶解開始 2475 → 上緣 604（只露下面約三分之一）
+//   溶解結束 2700 → 上緣 379
+//   到頂     3079 → 上緣 0（溶解完再 379px，有進場感但不會空一屏）
+// 這個數字純粹是視覺取捨、可以單獨調（不影響 scrub 的正確性）：
+// 調大越接近「就定位」，調小越接近「空一屏」；上限 100svh、拿掉就是空一屏的原樣。
+//
+// ⚠️ 綁 `stagePinned && introMedia`，兩個條件都不能少：
+//    ① 沒有 pin（no-JS／reduced-motion）時三塊各佔一屏走文件流，上拉會吃掉媒體那屏。
+//    ② 沒有第三拍時 beats=1、pin 只有一屏，上拉會讓內文在 hero 那拍就從下緣冒出來
+//       —— 引言層是透明的，擋不住。目前六頁子頁都有 introMedia，但版型分支還在，別拿掉。
+// ⚠️ 疊層剛好是對的，不用另外排：媒體那一拍舞台是 z-index 1100（見下方 --media），
+//    內文 z-index: auto 在它下面 → 照片淡掉就露出內文。其餘拍舞台雖然只有 auto，
+//    但那時內文上緣還在視窗外（實測引言退場的 1215 時仍在 1774），不會偷跑。
+.subpage__content--under-stage {
+  margin-top: -65vh;
+  margin-top: -65svh; // 與 .subpage__stage--pinned 的高度同單位，行動裝置才對得齊
 }
 
 // 首屏裝飾圖：素材 856×400 為 @2x，自然顯示 428×200。

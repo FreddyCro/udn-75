@@ -260,10 +260,24 @@ onBeforeUnmount(() => {
 .intro-media {
   margin: 0;
   width: 100%;
-
   // 滿屏模式：高度交給父層決定，框不再自己算 16:9（圖照樣 cover，只是裁切比例跟著視窗）
   &--fill {
     height: 100%;
+
+    // 疊在 AppHeader（z-index 1000）之上 —— 滿屏媒體要蓋掉常駐頂條。
+    // 1100 沿用本專案的疊層約定：> header(1000)，仍低於 HeroStart(1500) 與 HeroLoader(2000)。
+    // figure 預設 static，只給 z-index 不會進疊層比較 → 必須配 position: relative。
+    //
+    // ⚠️ 只給 --fill，**不給常態的 16:9 內文區塊** —— 內文那種會隨頁面捲到 header 底下，
+    //    抬上去就變成內文圖蓋住頂條。要蓋掉 header 的只有「滿屏那一拍」。
+    // ⚠️ 這裡的值**只在 Subpage 的降級版型（no-JS／reduced-motion）直接生效** ——
+    //    那時舞台是文件流，一路到 body 都沒有堆疊脈絡，1100 直接和 header 比。
+    //    pin 版型下祖先會把它關住：`.subpage__stage--pinned` 被 ScrollTrigger 設成
+    //    position: fixed ⇒ 自成堆疊脈絡，而它自己 z-index: auto，裡面再高也出不去。
+    //    那條路徑改由 `.subpage__stage--media` 抬整層，見 Subpage.vue
+    //    （兩處要一起改，數字刻意寫死好 grep）。
+    position: relative;
+    z-index: 1100;
 
     .intro-media__viewport {
       height: 100%;
