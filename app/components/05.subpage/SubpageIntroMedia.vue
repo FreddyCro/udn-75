@@ -276,8 +276,12 @@ onBeforeUnmount(() => {
     //    position: fixed ⇒ 自成堆疊脈絡，而它自己 z-index: auto，裡面再高也出不去。
     //    那條路徑改由 `.subpage__stage--media` 抬整層，見 Subpage.vue
     //    （兩處要一起改，數字刻意寫死好 grep）。
+    // ⚠️ 抬過 header 就要配 pointer-events: none，否則這一屏蓋住的頂條全部點不到
+    //    （理由與 Subpage.vue 的 .subpage__stage--media 相同，兩處一起改）。
+    //    本元件沒有可互動元素，整層放行不犧牲功能；捲動不受 pointer-events 影響。
     position: relative;
     z-index: 1100;
+    pointer-events: none;
 
     .intro-media__viewport {
       height: 100%;

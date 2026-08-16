@@ -45,7 +45,7 @@ const navActiveTarget = computed(() =>
 // 首頁所有 section 重新 mount、全部 ScrollTrigger 重建。子頁改走 NuxtLink 後
 // baseURL 由 router 自己套，子路徑部署（GitHub Pages 的 /udn-75/）不必再靠絕對網址。
 const homeIntent = computed(() => resolveHomeIntent(route.path === '/'));
-const { returnToLoop } = useHeroVideo();
+const { returnToLoop, isGone } = useHeroVideo();
 
 const router = useRouter();
 // 原生 <a> 的 href 要自己套 router base：子路徑部署（GitHub Pages 的 /udn-75/）下
@@ -58,9 +58,23 @@ const activeTarget = ref<string>('');
 const menuOpen = ref(false);
 const theme = ref<HeaderTheme>('light');
 let themeEls: HTMLElement[] = [];
-// header 是否顯示。autoHide=false 時自始為 true（含 SSR），避免子頁載入時的滑入動畫；
-// autoHide=true 時初始隱藏，待 hero 完全捲離視窗才顯示。
-const isVisible = ref(!props.autoHide);
+// hero 是否已完全捲離視窗（由下方 heroObserver 寫入）。autoHide=false 時無人監看，
+// 直接視為 true —— 那些頁面根本沒有 #app-hero。
+const heroOut = ref(!props.autoHide);
+
+// header 是否顯示。autoHide=false 時恆為 true（含 SSR），避免子頁載入時的滑入動畫。
+//
+// autoHide=true（首頁）有兩個顯示條件，任一成立即顯示：
+//   heroOut  hero 完全捲離視窗 —— 原本的唯一條件。
+//   isGone   影片退場結束。2026-08-16 起 .sec1__hero 是 sticky 且高 2.05 個視窗，
+//            「完全捲離視窗」要到 scrollY 4000 以上才成立（實測 1440×900 約 4223），
+//            整段引言與轉場都還看不到 header。設計要的是「影片一消失 header 就在」，
+//            那正是 gone，故直接讀狀態，不再另外量幾何。
+//   ⚠️ 倒帶回 loop（logo 就地倒帶／往回捲）時 isGone 轉 false，header 會跟著收回去 ——
+//      這是對的：那時影片又回到畫面上了。
+const isVisible = computed(
+  () => !props.autoHide || heroOut.value || isGone.value,
+);
 const anchors = str.headerAnchors as Anchor[];
 // logo 的替代文字與漢堡的 aria-label 一律走文案檔（locales/common.json 的 header），
 // 元件內不寫死中文 —— 校稿時只需要改 JSON。
@@ -149,7 +163,7 @@ onMounted(() => {
       if (hero) {
         heroObserver = new IntersectionObserver(
           ([entry]) => {
-            if (entry) isVisible.value = !entry.isIntersecting;
+            if (entry) heroOut.value = !entry.isIntersecting;
           },
           { threshold: 0 },
         );
@@ -162,7 +176,7 @@ onMounted(() => {
         return;
       }
       // 連續數幀仍找不到 hero → 保底直接顯示。
-      isVisible.value = true;
+      heroOut.value = true;
     };
     setupHeroObserver();
   }

@@ -455,12 +455,34 @@ onBeforeUnmount(() => {
 //    pin 之後 `.subpage__stage--pinned` 是 position: fixed ⇒ 自成堆疊脈絡，而它自己
 //    z-index: auto —— 裡面設多高都出不去。要跨過 header 只能抬到「與 header 同一個
 //    堆疊脈絡」的這一層。（降級版型沒有 pin、沒有這層脈絡，由 .intro-media 自己的 1100 處理。）
-// ⚠️ 綁 --media 而非常態生效：舞台是滿版 fixed，抬上去就會攔掉 header 的點擊。
-//    只在媒體那一拍抬 —— 那時 header 本來就被照片蓋住，點不到是一致的行為。
+// ⚠️ 綁 --media 而非常態生效：舞台是滿版 fixed，抬上去就會蓋住整個 header。
+//    只在媒體那一拍抬 —— 其餘拍讓 header 正常疊在最上層。
 // ⚠️ 淡入的 0.4s 內舞台已經在上面，但 hero／引言層是透明的，header 仍看得見，
 //    直到照片真的蓋上來。不會有「header 先消失一拍」的破綻。
 .subpage__stage--pinned.subpage__stage--media {
   z-index: 1100; // 與 SubpageIntroMedia 的 .intro-media 同值，兩處要一起改
+}
+
+// 舞台佔位（GSAP 插入的 .pin-spacer）不吃指標事件。
+//
+// 為什麼是佔位而不是舞台本身：ScrollTrigger 把被 pin 元素的 **computed** z-index 抄成
+// 佔位的**行內**樣式，好讓 pin 期間（舞台變 position: fixed）原地的疊層不變。上面那條
+// `--media` 的 1100 就這樣被抄了過去 —— 而且**抄過去就不再更新**：實測整支 /news 從
+// 載入起，佔位的行內樣式就是 `z-index: 1100`，`--media` 是開是關都一樣。
+//
+// 後果是靜默的：佔位 position: relative ＋ z-index 1100 ⇒ 自成堆疊脈絡且高於
+// header（1000），於是**整段 pin 期間**（三屏、不只媒體那一拍）header 都在它底下 ——
+// 畫面上看得見、點不到。實測 /news 捲到 y=600 時，logo 中心的 elementFromPoint
+// 命中的是 .subpage__intro，logo 完全點不到。
+//
+// 修法取 pointer-events 而非去搶 z-index：行內樣式要 !important 才蓋得掉，而那是
+// 跟 GSAP 搶同一個屬性的寫法，日後版本一改就是另一個靜默失效。pointer-events 沒有
+// 人跟我們搶，且會**繼承**給整個舞台（含滿屏媒體），一條就夠。
+// ⚠️ 代價：舞台那三屏的文字（標題／引言）不能反白選取。舞台之後的正文
+//    （.subpage__content 在佔位外面）不受影響。舞台內本來就沒有可互動元素。
+// ⚠️ 捲動不受影響：pointer-events 不擋滾輪／觸控捲動。
+:deep(.pin-spacer) {
+  pointer-events: none;
 }
 
 // 引言之後的滿屏媒體。降級（no-JS／reduced-motion）時照文件流自佔一屏；
