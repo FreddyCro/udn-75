@@ -2,11 +2,12 @@
 // hero：第一屏影片區塊（含 SEO 文字、skip 按鈕、下滑提示）。
 // 影片四階段狀態自 useHeroVideo 全域共享；「各階段秒數」與「RWD 影片來源」集中在
 // ~/utils/hero-video-config，本元件只負責依設定驅動 <video>（seek / loop / 換狀態）。
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section1.json';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
 import {
-  HERO_OUTRO_MAX_MS,
-  HERO_OUTRO_STALL_GRACE_MS,
+  HERO_DISSOLVE_VH,
   HERO_SKIP_APPEAR_AT,
   HERO_VIDEO_POSTER,
   HERO_VIDEO_READY_TIMEOUT,
@@ -15,22 +16,23 @@ import {
   type HeroVideoDevice,
   type HeroVideoSegment,
 } from '@/utils/hero-video-config';
-import {
-  createHeroGestureAccum,
-  heroGestureStep,
-  HERO_GESTURE,
-} from '@/utils/hero-scroll-intent';
+import { dissolveAlpha, dissolveState } from '@/utils/hero-dissolve';
 
 const {
   state: heroState,
   setState,
   skip,
-  rewindToLoop,
-  isGone,
   videoReady,
   heroStarted,
   currentTime,
+  scrubArmed,
+  skipOpening,
+  openingSkipped,
 } = useHeroVideo();
+
+// 視窗高的單一來源（--vh）：scrub 的 end 吃它，不吃 window.innerHeight
+// （後者在行動裝置上會隨網址列收合而變，見 useViewportHeight）。
+const { vhPx } = useViewportHeight();
 
 // skip 按鈕的現身條件（設計稿 #BN skip）：正片播放 HERO_SKIP_APPEAR_AT 秒後淡入，
 // 正片播完進 loop 就淡出。
@@ -62,6 +64,7 @@ const ASSETS_PATH = runtime.public.APP_ASSETS_PATH;
 const device = ref<HeroVideoDevice>('pc');
 const videoEl = ref<HTMLVideoElement | null>(null);
 const heroEl = ref<HTMLElement | null>(null);
+const stageEl = ref<HTMLElement | null>(null);
 
 // Hero 需要 <video> 的螢幕矩形與 videoWidth/Height，才能把影片裡那顆 orange core 的落點
 // 換算成螢幕座標（退場交棒，見 ~/utils/hero-core-handoff）。
@@ -111,8 +114,13 @@ async function play() {
     // 影片本身沒問題，loadedmetadata / watch(heroState) 會再播一次；
     // 一律當成被封鎖就會讓正常使用者莫名其妙看不到開場。
     if ((err as DOMException | undefined)?.name !== 'NotAllowedError') return;
+    // 自動播放被封鎖是第四條「不經 scrub 進 gone」的路徑（其餘三條 skip() / onError() /
+    // bypassLoader() 都已呼叫 skipOpening()）：呼叫 skipOpening() 而非裸 setState('gone')，
+    // 否則 openingSkipped 不會被設，下一次捲動 scrub 讀到 p 落在 (ENTER, 1) 會判成 outro，
+    // 把影片 seek 回退場段再 play() → 再被擋 → 又 setState('gone') → 狀態在 outro / gone
+    // 之間每個捲動幀來回震盪、影片每幀重新 seek（2026-08-16 於 iOS 低耗電模式實測到）。
     markReady();
-    setState('gone');
+    skipOpening();
   }
 }
 
@@ -173,8 +181,14 @@ function onTimeUpdate() {
       if (v.currentTime >= seg.loop.end) v.currentTime = seg.loop.start; // loop 段循環
       break;
     case 'outro':
-      // 退場段播到 outro.end（38.5s，非影片結尾）→ gone（影片淡出、orange core 淡入）
-      if (v.currentTime >= segEnd(v, seg.outro)) setState('gone');
+      // 退場段播到 outro.end（38.5s，非影片結尾）：停在最後一格，不再自己 setState('gone')。
+      // ⚠️ outro → gone 的唯一權威是 scrub（dissolveState，見 applyDissolve）。這裡若也
+      // 寫狀態，會與 scrub 變成兩個互相打架的驅動源：退場段只有 2.5 秒，使用者若捲得比
+      // 這慢（或捲進退場後停住），影片會先自己播完被判 gone；之後任何一點捲動讓 p 落回
+      // (ENTER, 1) 又會被 dissolveState 判回 outro，把影片 seek 回 36s 重播（2026-08-16
+      // 實測到的抽搐）。故這裡只暫停影片、把「該不該進 gone」整個交給 p 是否 ≥ 1。
+      // !v.paused 早退：避免 timeupdate 每幀（~250ms）都重複呼叫 pause()。
+      if (v.currentTime >= segEnd(v, seg.outro) && !v.paused) v.pause();
       break;
   }
 }
@@ -192,52 +206,33 @@ function onEnded() {
     void play();
     return;
   }
-  if (heroState.value === 'outro') setState('gone');
+  // outro 播到底（@ended，通常先被上面 onTimeUpdate 的暫停攔到，這裡是保險）：
+  // 影片已經自然停在最後一幀，不必再做什麼。狀態改變交給 scrub（理由同 onTimeUpdate）。
 }
 
 function onError() {
-  // 影片載入失敗：放行載入層並直接進 gone —— 否則捲動鎖會把整頁鎖死。
+  // 影片載入失敗：放行載入層並直接跳過開場 —— 否則捲動鎖會把整頁鎖死。
+  // ⚠️ 呼叫 skipOpening() 而非 setState('gone')：後者不會設 openingSkipped，
+  //    畫面上沒有影片可淡，之後 scrub 讀到的 p 只要越過門檻仍會把 stage 淡回來、
+  //    等於把一支根本沒播出來的影片「復原」在畫面上。
   markReady();
-  setState('gone');
-}
-
-// ── 退場段的保險絲 ──────────────────────────────────────────────────
-// outro 期間頁面鎖住（見 useHeroVideo 的 shouldLockScroll），影片若卡住就永遠等不到 gone、
-// 整頁鎖死。timeupdate / @ended 都靠影片自己前進，卡住時兩者都不會來，故另起一支計時器。
-let outroTimer: ReturnType<typeof setTimeout> | undefined;
-
-function clearOutroTimer() {
-  if (outroTimer) {
-    clearTimeout(outroTimer);
-    outroTimer = undefined;
-  }
+  skipOpening();
 }
 
 // ── hero 捲出視窗 → 直接收尾 ────────────────────────────────────────
 // orange core 綁在 gone 上（見 Hero.vue 的 coreVisible），影片沒播完 core 就不會出現。
 // 影片都已經捲出視窗了，繼續播只是讓 core 遲到 —— 直接進 gone。兩種情形都吃得到：
 //   ① 退場播到一半被捲走 → 不必等剩下的秒數
-//   ② 倒帶回 loop 後用捲軸 / End 鍵跳走（沒有 wheel 手勢 → 永遠不會進 outro）
-//      → 否則影片在畫面外無限循環，core 永遠不出現
-// main / loop 期間頁面鎖著、hero 不可能離開視窗，故這條實際上只在「離開過 loop」之後生效。
+//   ② 倒帶回 loop 後用捲軸 / End 鍵跳走（跳得比 dissolveST 的 end 還遠，scrub 來不及
+//      判定就已經離開視窗）→ 否則影片在畫面外無限循環，core 永遠不出現
+// main 期間頁面鎖著（見 useHeroVideo 的 shouldLockScroll），hero 不可能離開視窗，
+// 故這條實際上只在「離開過 loop」之後生效。
 let heroIO: IntersectionObserver | null = null;
 
-function armOutroTimer(v: HTMLVideoElement) {
-  const seg = segments.value.outro;
-  const end = segEnd(v, seg);
-  const ms = Number.isFinite(end)
-    ? (end - seg.start) * 1000 + HERO_OUTRO_STALL_GRACE_MS
-    : HERO_OUTRO_MAX_MS;
-  outroTimer = setTimeout(() => {
-    if (heroState.value === 'outro') setState('gone');
-  }, ms);
-}
-
-// 狀態改變（SKIP / 手勢 / 自動推進）→ 對齊該段起點並續播；gone 則停住影片。
+// 狀態改變（SKIP / scrub / 自動推進）→ 對齊該段起點並續播；gone 則停住影片。
 // 已落在目標段內就不 seek：main → loop 是相接的，自動推進不會有跳動。
 // loop → outro 則必定 seek（33 → 36 中間刻意留白，見 hero-video-config 的段落表）。
 watch(heroState, (s) => {
-  clearOutroTimer(); // 離開 outro（正常播完或倒帶）都要拆掉保險絲
   const v = videoEl.value;
   if (!v) return;
   if (s === 'gone') {
@@ -246,7 +241,6 @@ watch(heroState, (s) => {
   }
   alignToSegment(v);
   void play();
-  if (s === 'outro') armOutroTimer(v);
 });
 
 // 按下 start 後才開始播 main（見 useHeroVideo 的 heroStarted）
@@ -260,62 +254,64 @@ watch(soundOn, (on) => {
   if (v) v.muted = !on;
 });
 
-// ── 方向手勢：loop 往下 → outro；gone 且在頂端往上 → 倒帶回 loop ──────────
-// loop 期間 body 鎖住（沒有 scroll 事件），故一律從 wheel / touchmove 的位移自行累積；
-// 判定邏輯在 ~/utils/hero-scroll-intent（純函式，有單元測試）。
-// 累積器用普通變數而非 ref：每次事件只讀寫數字，不需要驅動畫面（<script setup> 內
-// 的變數本身就是每個元件實例各一份）。
-let gesture = createHeroGestureAccum();
+// ── 退場溶解：唯一的驅動源 ──────────────────────────────────────────
+// 不 pin，只讀進度：pin 會插入 pin-spacer 改變文件高度，與本 section 既有的
+// transitionST 互相餵幾何（理由詳見設計文件第二節）。
+let dissolveST: ScrollTrigger | null = null;
 
-function feedGesture(delta: number) {
-  // 兩個出口都只在 loop / gone 開著，main 與 outro 怎麼滑都不會有意圖 —— 這幾支監聽
-  // 掛在 window 上、整頁生命週期都在，不必陪著跑。
-  // ⚠️ **不要**再加上 atTop 的早退把 gone 也擋掉：gone 期間即使還沒回到頂端也必須持續
-  //    累積，回滑時的第一個負值才有東西可以反向清掉、立刻算數 —— 那正是 heroGestureStep
-  //    的 reversed 分支在處理的手感（見 hero-scroll-intent 的註解 ②）。
-  const inLoop = heroState.value === 'loop';
-  if (!inLoop && !isGone.value) return;
-
-  const { intent, accum } = heroGestureStep(
-    gesture,
-    {
-      delta,
-      now: performance.now(),
-      inLoop,
-      isGone: isGone.value,
-      atTop: window.scrollY <= 0,
-    },
-    HERO_GESTURE,
-  );
-  gesture = accum;
-  if (intent === 'to-outro') setState('outro');
-  else if (intent === 'to-loop') rewindToLoop();
+function buildDissolveST() {
+  if (!heroEl.value) return;
+  dissolveST = ScrollTrigger.create({
+    trigger: heroEl.value,
+    start: 'top top',
+    // vhPx 而非 window.innerHeight：後者在行動裝置上會隨網址列收合而變（見 useViewportHeight）。
+    end: () => `+=${vhPx(HERO_DISSOLVE_VH)}`,
+    scrub: true,
+    invalidateOnRefresh: true,
+    onUpdate: (self) => applyDissolve(self.progress),
+    // 快速捲過整段時 onUpdate 不保證收到端點值 —— 明確補上，否則會留殘影或卡在半溶。
+    onLeave: () => applyDissolve(1),
+    onLeaveBack: () => applyDissolve(0),
+    onRefresh: (self) => applyDissolve(self.progress),
+  });
 }
 
-// passive：本監聽不 preventDefault（loop 期間 body 已鎖、gone 在頂端也無處可捲），
-// 宣告 passive 讓瀏覽器不必等我們就能處理捲動。
-function onWheel(e: WheelEvent) {
-  feedGesture(e.deltaY);
-}
-
-let touchY = 0;
-function onTouchStart(e: TouchEvent) {
-  touchY = e.touches[0]?.clientY ?? 0;
-}
-function onTouchMove(e: TouchEvent) {
-  const y = e.touches[0]?.clientY ?? touchY;
-  feedGesture(touchY - y); // 手指往上移 ＝ 內容往下捲 ＝ delta 為正
-  touchY = y;
-}
-
-// 鍵盤：一次按鍵直接給滿門檻（鍵盤沒有「累積位移」的概念）
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
-    feedGesture(HERO_GESTURE.toOutroPx);
-  } else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'Home') {
-    feedGesture(-HERO_GESTURE.toLoopPx);
+function applyDissolve(p: number) {
+  const stage = stageEl.value;
+  // opacity 這行必須不論 scrubArmed／openingSkipped 都跑：SKIP／載入失敗當下 scrub
+  // 可能還沒 arm（或已被跳過鎖死），stage 若少了這行會維持初始的完全不透明，
+  // 影片永遠蓋在畫面上不走。
+  const alpha = openingSkipped.value ? 0 : dissolveAlpha(p);
+  if (stage) {
+    stage.style.opacity = String(alpha);
+    // 完全溶解（p ≥ 1，或 openingSkipped 強制視為已溶解）時額外設 visibility: hidden：
+    // 這層是滿版渲染，opacity: 0 只是「畫成透明」，瀏覽器仍在每幀合成一層看不見的滿版
+    // 影片；隱藏後才真的停止合成（見設計文件第一節的表）。alpha 是明確夾邊過的 0/1
+    // （見 dissolveAlpha 的註解），故用 === 0 精確比較、不必擔心浮點誤差。
+    stage.style.visibility = alpha === 0 ? 'hidden' : 'visible';
   }
+  if (!scrubArmed.value || openingSkipped.value) return;
+  const next = dissolveState(p, heroState.value);
+  if (next !== heroState.value) setState(next);
 }
+
+// openingSkipped 翻面時要立刻重套一次 —— applyDissolve 平常只由 ScrollTrigger 的
+// 回呼驅動，而 SKIP／載入失敗／帶 hash 進站都可能發生在 scrollY 0（根本沒有捲動事件），
+// 少了這一條，影片會賴在畫面上直到使用者捲動才被 scrub 淡掉（2026-08-16 實測發現）。
+// 讀 dissolveST?.progress 而非假設 0：returnToLoop() 也會把這面旗子清回 false，
+// 而那次翻轉可能發生在非 0 的捲動位置，此時要復原成當下捲動量對應的 alpha，
+// 不能硬設回 1（那會在使用者已經捲了一段時讓影片瞬間跳回全實）。
+watch(openingSkipped, () => applyDissolve(dissolveST?.progress ?? 0));
+
+// scrubArmed 翻面（true）時要重新推導一次狀態 —— 它只是「開不開閘」，本身不改變 heroState。
+// heroState 是 useState，跨導航存活：若在低 p（甚至 0）時重新掛載又還沒 arm，畫面會停在
+// 上一輪殘留的 gone（不透明度已被上面那行帶回實體），此時若只是「打開閘門」而不重新推導，
+// 就要等使用者捲動才會觸發 applyDissolve、狀態才追上 p —— 中間那格會先閃一次不透明的
+// 首幀、接著第一次捲動又直接跳去 outro（而非 loop），而非讓 arm 當下就把狀態拉回與 p
+// 相符的那一格。故 arm 的當下要主動呼叫 applyDissolve，等同「補一次 onRefresh」。
+watch(scrubArmed, (on) => {
+  if (on) applyDissolve(dissolveST?.progress ?? 0);
+});
 
 function onResize() {
   const next = getDeviceTypeByResolution();
@@ -352,10 +348,9 @@ function promotePreload() {
 onMounted(() => {
   onResize();
   window.addEventListener('resize', onResize);
-  window.addEventListener('wheel', onWheel, { passive: true });
-  window.addEventListener('touchstart', onTouchStart, { passive: true });
-  window.addEventListener('touchmove', onTouchMove, { passive: true });
-  window.addEventListener('keydown', onKeydown);
+
+  gsap.registerPlugin(ScrollTrigger);
+  buildDissolveST();
 
   // threshold 0 ＝ 完全沒有交集才算離開，與 Hero 判斷「從哪裡進場」用的
   // isVerticallyOnScreen 同一條界線（見 ~/utils/hero-core-handoff）。
@@ -389,14 +384,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize);
-  window.removeEventListener('wheel', onWheel);
-  window.removeEventListener('touchstart', onTouchStart);
-  window.removeEventListener('touchmove', onTouchMove);
-  window.removeEventListener('keydown', onKeydown);
   if (readyTimer) clearTimeout(readyTimer);
-  clearOutroTimer();
   heroIO?.disconnect();
   heroIO = null;
+  dissolveST?.kill();
+  dissolveST = null;
 });
 </script>
 
@@ -404,108 +396,170 @@ onBeforeUnmount(() => {
   <!-- id 供 AppHeader 以 IntersectionObserver 監看 hero（捲離後才顯示 header）；
        本元件自己也監看同一個元素 —— 捲出視窗就直接收尾（見上方 heroIO） -->
   <div ref="heroEl" class="sec1__hero" id="app-hero">
-    <!-- 影片層：滿版；退場消失（gone）時淡出，露出 hero 白底。
-         ⚠️ preload 是 "metadata" 而非 "auto"：這裡是 SSR 吐出的標記，auto 會在 HTML 解析階段
-         就開始拉整支影片、拖慢 hydration（理由與升級時機見 script 的 promotePreload）。 -->
-    <div
-      class="sec1__hero-video"
-      :class="{ 'is-ended': isGone, 'is-loading': !elementReady }"
-      aria-hidden="true"
-    >
-      <video
-        ref="videoEl"
-        class="sec1__hero-video-el"
-        :src="videoSrc"
-        :poster="videoPoster"
-        muted
-        playsinline
-        preload="metadata"
-        disablepictureinpicture
-        @canplay="onCanPlay"
-        @loadedmetadata="onLoadedMetadata"
-        @timeupdate="onTimeUpdate"
-        @ended="onEnded"
-        @error="onError"
+    <!-- 影片舞台：.sec1__hero（sticky）的佔位比一個視窗高（$dissolve + $intro-at，
+         見下方 style），本舞台只以 inset: 0 0 auto 0 疊在佔位「頂端」那一個視窗高
+         （height: vh(1)），並不會溢出佔位之外 —— 佔位本身撐出的高度差就是引言頂端
+         被蓋住的那一截，靠 sticky 把舞台一路釘在螢幕上緣直到溶解結束。
+         顯隱交給 dissolveST 直接寫 style.opacity（見 script 的 applyDissolve）——
+         這是整個遮擋機制的唯一驅動源，不再靠 class 或 transition。
+         skip 與下滑提示收在裡面，底部錨定才會對齊「舞台（＝視窗）的下緣」。 -->
+    <div ref="stageEl" class="sec1__hero-stage">
+      <!-- 影片層：滿版。
+           ⚠️ preload 是 "metadata" 而非 "auto"：這裡是 SSR 吐出的標記，auto 會在 HTML 解析階段
+           就開始拉整支影片、拖慢 hydration（理由與升級時機見 script 的 promotePreload）。 -->
+      <div
+        class="sec1__hero-video"
+        :class="{ 'is-loading': !elementReady }"
+        aria-hidden="true"
+      >
+        <video
+          ref="videoEl"
+          class="sec1__hero-video-el"
+          :src="videoSrc"
+          :poster="videoPoster"
+          muted
+          playsinline
+          preload="metadata"
+          disablepictureinpicture
+          @canplay="onCanPlay"
+          @loadedmetadata="onLoadedMetadata"
+          @timeupdate="onTimeUpdate"
+          @ended="onEnded"
+          @error="onError"
+        />
+      </div>
+
+      <!--
+        skip：正片播放 3s 後「原地」淡入，進 loop 段淡出消失。
+        按鈕本體（盒子、字級、雙箭頭、40% ↔ hover 100%）都在 <UBtnSkip>，
+        本檔的 .sec1__hero-skip 只給版位與「現不現身」。
+        刻意不用 v-if + <Transition>：常駐 DOM 只切 class，淡出期間 hover 規則已隨
+        .is-visible 一起失效（不會卡在 100% 又被瞬間移除）。
+        隱藏時（含淡出中）用 inert：一個屬性同時做掉「不進無障礙樹、不可 focus、不吃指標」，
+        而且它會把已經在身上的 focus 逼出去（下一個 frame）—— 這是 tabindex -1 ＋ aria-hidden
+        做不到的：那兩者只管「之後還能不能被 tab 到」，已握著的 focus 會留在原處，於是
+        aria-hidden 蓋住 focus 元素，瀏覽器警告。
+        這條路徑不只有點擊：使用者 tab 到按鈕後正片自然播完（→ loop）也會走到，
+        所以 onSkipClick 的 blur 不能替代 inert，兩者各補一半。
+        tabindex 仍保留：inert 未支援時至少不會被 tab 進看不見的按鈕。
+        pointer-events: none 也留在 scss，那是淡入淡出版位的一部分，不倚賴 inert。
+      -->
+      <UBtnSkip
+        class="sec1__hero-skip"
+        :class="{ 'is-visible': showSkip }"
+        :label="str.hero.skipLabel"
+        :aria-label="str.hero.skipAria"
+        :tabindex="showSkip ? 0 : -1"
+        :inert="!showSkip"
+        @click="onSkipClick"
       />
+
+      <!--
+        下滑看更多：僅 loop 狀態顯示（提示使用者向下滾動以觸發退場）。
+        設計稿（mob 2065:120052 / pad 2065:124031 / pc 2065:139395）只有一個 22×12 的
+        點陣 chevron，沒有文字也沒有那條垂直細線 —— 文案改掛 .visually-hidden：
+        這個提示對讀不到圖形的使用者更重要，稿上沒畫不代表不必說。
+      -->
+      <div v-if="heroState === 'loop'" class="sec1__hero-scroll">
+        <span class="visually-hidden">{{ str.hero.scrollHint }}</span>
+        <!--
+          點陣 chevron：11 顆 2×2 實心方塊排成階梯狀，與稿逐點相同。
+          與 <UBtnSkip> 的雙箭頭是同一個 component「提示下滑」，那邊是轉 90° 的
+          12×22（指右），這裡是原方向的 22×12（指下）—— 座標互為轉置。
+          同樣沿用該檔的處理：不引外部 svg 檔、直接畫 rect，
+          shape-rendering 保住像素邊緣。
+
+          ⚠️ 畫兩顆（稿上是一顆）：這是動態的一部分，不是版面上多了一個圖示 ——
+          兩顆疊在同一個位置、跑同一條路徑，只差半個週期（見 --offset 的 delay），
+          於是任一瞬間一顆在行程上半段、另一顆在下半段，看起來像一前一後的雙箭頭。
+          少了第二顆就補不起每循環約 0.6s 的空檔（參考範例即是如此設計）。
+          靜止時（prefers-reduced-motion）兩顆完全重合 ＝ 稿上那一顆。
+
+          v-for 而非把 <svg> 抄兩份：路徑只寫一次，兩顆的差異全在 CSS。
+          （<UBtnSkip> 那邊把座標寫進同一條 path 是因為兩箭頭不需各自動畫。）
+        -->
+        <svg
+          v-for="i in 2"
+          :key="i"
+          class="sec1__hero-scroll-icon"
+          :class="{ 'sec1__hero-scroll-icon--offset': i === 2 }"
+          viewBox="0 0 22 12"
+          shape-rendering="crispEdges"
+          aria-hidden="true"
+        >
+          <path
+            d="M0 0h2v2H0z M2 2h2v2H2z M4 4h2v2H4z M6 6h2v2H6z M8 8h2v2H8z M10 10h2v2H10z M12 8h2v2H12z M14 6h2v2H14z M16 4h2v2H16z M18 2h2v2H18z M20 0h2v2H20z"
+          />
+        </svg>
+      </div>
     </div>
 
     <!-- 文字保留於 DOM 供 SEO / 螢幕閱讀器，視覺上不顯示 -->
     <h1 class="visually-hidden">{{ str.hero.title }}</h1>
     <p class="visually-hidden">{{ str.hero.subtitle }}</p>
-
-    <!--
-      skip：正片播放 3s 後「原地」淡入，進 loop 段淡出消失。
-      按鈕本體（盒子、字級、雙箭頭、40% ↔ hover 100%）都在 <UBtnSkip>，
-      本檔的 .sec1__hero-skip 只給版位與「現不現身」。
-      刻意不用 v-if + <Transition>：常駐 DOM 只切 class，淡出期間 hover 規則已隨
-      .is-visible 一起失效（不會卡在 100% 又被瞬間移除）。
-      隱藏時（含淡出中）用 inert：一個屬性同時做掉「不進無障礙樹、不可 focus、不吃指標」，
-      而且它會把已經在身上的 focus 逼出去（下一個 frame）—— 這是 tabindex -1 ＋ aria-hidden
-      做不到的：那兩者只管「之後還能不能被 tab 到」，已握著的 focus 會留在原處，於是
-      aria-hidden 蓋住 focus 元素，瀏覽器警告。
-      這條路徑不只有點擊：使用者 tab 到按鈕後正片自然播完（→ loop）也會走到，
-      所以 onSkipClick 的 blur 不能替代 inert，兩者各補一半。
-      tabindex 仍保留：inert 未支援時至少不會被 tab 進看不見的按鈕。
-      pointer-events: none 也留在 scss，那是淡入淡出版位的一部分，不倚賴 inert。
-    -->
-    <UBtnSkip
-      class="sec1__hero-skip"
-      :class="{ 'is-visible': showSkip }"
-      :label="str.hero.skipLabel"
-      :aria-label="str.hero.skipAria"
-      :tabindex="showSkip ? 0 : -1"
-      :inert="!showSkip"
-      @click="onSkipClick"
-    />
-
-    <!--
-      下滑看更多：僅 loop 狀態顯示（提示使用者向下滾動以觸發退場）。
-      設計稿（mob 2065:120052 / pad 2065:124031 / pc 2065:139395）只有一個 22×12 的
-      點陣 chevron，沒有文字也沒有那條垂直細線 —— 文案改掛 .visually-hidden：
-      這個提示對讀不到圖形的使用者更重要，稿上沒畫不代表不必說。
-    -->
-    <div v-if="heroState === 'loop'" class="sec1__hero-scroll">
-      <span class="visually-hidden">{{ str.hero.scrollHint }}</span>
-      <!--
-        點陣 chevron：11 顆 2×2 實心方塊排成階梯狀，與稿逐點相同。
-        與 <UBtnSkip> 的雙箭頭是同一個 component「提示下滑」，那邊是轉 90° 的
-        12×22（指右），這裡是原方向的 22×12（指下）—— 座標互為轉置。
-        同樣沿用該檔的處理：不引外部 svg 檔、直接畫 rect，
-        shape-rendering 保住像素邊緣。
-
-        ⚠️ 畫兩顆（稿上是一顆）：這是動態的一部分，不是版面上多了一個圖示 ——
-        兩顆疊在同一個位置、跑同一條路徑，只差半個週期（見 --offset 的 delay），
-        於是任一瞬間一顆在行程上半段、另一顆在下半段，看起來像一前一後的雙箭頭。
-        少了第二顆就補不起每循環約 0.6s 的空檔（參考範例即是如此設計）。
-        靜止時（prefers-reduced-motion）兩顆完全重合 ＝ 稿上那一顆。
-
-        v-for 而非把 <svg> 抄兩份：路徑只寫一次，兩顆的差異全在 CSS。
-        （<UBtnSkip> 那邊把座標寫進同一條 path 是因為兩箭頭不需各自動畫。）
-      -->
-      <svg
-        v-for="i in 2"
-        :key="i"
-        class="sec1__hero-scroll-icon"
-        :class="{ 'sec1__hero-scroll-icon--offset': i === 2 }"
-        viewBox="0 0 22 12"
-        shape-rendering="crispEdges"
-        aria-hidden="true"
-      >
-        <path
-          d="M0 0h2v2H0z M2 2h2v2H2z M4 4h2v2H4z M6 6h2v2H6z M8 8h2v2H8z M10 10h2v2H10z M12 8h2v2H12z M14 6h2v2H14z M16 4h2v2H16z M18 2h2v2H18z M20 0h2v2H20z"
-        />
-      </svg>
-    </div>
   </div>
 </template>
 
 <style lang="scss" scoped>
+// ── hero 佔位的兩個旋鈕 ───────────────────────────────────────────────
+// $intro-at：溶解結束時，引言上緣落在螢幕的哪裡（0.85 ＝ 露出約三行，
+//            這是設計核准過的那一格構圖）。
+// $dissolve：溶解吃掉多少捲動距離。**必須與 hero-video-config 的 HERO_DISSOLVE_VH
+//            相同**（那邊算 ScrollTrigger 的 end，這邊算佔位高度）。
+// 佔位高 = 兩者相加，是推導值、不是第三個旋鈕：
+//   引言上緣螢幕位置 = 佔位高 − scrollY ⇒ scrollY = $dissolve 時剛好等於 $intro-at。
+$intro-at: 0.85;
+$dissolve: 1.2;
+
 .sec1__hero {
-  position: relative;
+  // sticky 而非 pin：pin 會插入 pin-spacer、改變文件高度，與 transitionST／
+  // OrangeCorePath／後面三個章節的量測互相餵食，失敗方式是**安靜的幾何漂移**。
+  // sticky 完全不動文件高度。也不用 fixed —— .sec1__inner 從載入起就帶著 pin 機制
+  // 寫入的 transform，fixed 子孫會改以它為基準（HeroLoader / HeroStart /
+  // HeroSymbolTransition 掛在 inner 外面就是這個原因）；sticky 對捲動容器定位，不受影響。
+  //
+  // ⚠️ sticky 必須下在**本元素**、不能下在內層的 stage：stage 只能在本元素的框內黏，
+  //    會在「佔位高 − 1vh」就脫離，撐不過溶解。本元素的容器是很高的 .sec1__inner，
+  //    黏住的範圍才夠（2026-08-16 實測：1845px 高的 sticky 在 scrollY 0～3000 全部黏在 0）。
+  // ⚠️ 這是本方案唯一的脆弱點：日後若有人在 .sec1 到 <html> 之間任何一層加上
+  //    overflow: hidden/auto/scroll，sticky 會**安靜失效**。已實測目前全鏈都是 visible
+  //    （html 的 overflow-x: clip 不建立捲動容器，base.scss 已依賴此性質）。
+  // ⚠️ sticky 的黏著範圍還被**容器底緣**卡住一次：黏到 .sec1__inner 量完就會釋放，
+  //    不會無限黏下去。實測（1440×900）釋放點在 scrollY 1298，溶解在 1080 已經走完，
+  //    餘裕 218px。代數上釋放點恰好等於**引言的總高**（body ＋ runway，見上方
+  //    Hero.scss 的 --intro-runway）——溶解若比引言撐開的高度還長，會在還沒溶解完
+  //    就先脫黏，影片邊淡邊被往上捲走。900 高換算引言 body 至少要 > 270px（實測約
+  //    488px，尚有餘裕）。**日後調大 $dissolve 務必重算這條**：超過的話沒有任何
+  //    錯誤訊息，只會肉眼看到影片脫黏滑走。
+  position: sticky;
+  top: 0;
   width: 100%;
-  height: vh();
+  // 扣 --chrome-inset 的理由：鎖住期間手機網址列不會收合，解鎖那一刻的可視高度是
+  // small viewport。不扣的話手機露出的引言會少掉工具列那一段（見 hero-body-lock-rules #5）。
+  height: calc(#{vh($dissolve + $intro-at)} - var(--chrome-inset));
+  // 黏住之後本元素會永久佔著螢幕上緣一大塊。它自己沒有背景也沒有互動內容
+  // （白底在 .sec1、skip 在 .is-visible 時自己覆寫回 auto），一律放行指標。
+  pointer-events: none;
+}
+
+// 影片舞台：只渲染一個視窗高（vh(1)），錨在 .sec1__hero（sticky）的頂端
+// （inset: 0 0 auto 0），不溢出那個比視窗高的佔位 —— 舞台被「黏」在螢幕上緣，
+// 佔位剩下的高度才是引言被蓋住、之後隨溶解露出的那一段。
+.sec1__hero-stage {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: vh(1);
+  // cover 溢出的裁切從 .sec1__hero 移到這裡。
   overflow: hidden;
-  background: #fff; // 影片淡出後露出的白底
+  // 4 ＞ .sec1__scene 的 3（見 Hero.scss 的層序說明）：引言頂端就是被這一層蓋住的。
+  // ⚠️ 這是**整個遮擋機制的全部** —— 沒有 clip-path、沒有狀態旗標、沒有 opacity 閘門。
+  // ⚠️ 本元素有 z-index 又是 positioned ⇒ 建立堆疊脈絡 ⇒ 內層的 skip（z-index 2）與
+  //    下滑提示都被關在這個脈絡裡，相對順序不變，兩者都**不必**跟著調 z-index。
+  z-index: 4;
+  // 它是覆蓋在引言上方的視覺層，攔下指標就等於讓露出來的引言選不到、點不到
+  // （實測 elementFromPoint 命中的是已經全透明的 .sec1__hero-video，而非底下的引言段落）。
+  // .sec1__hero-skip 自己在 .is-visible 時覆寫回 pointer-events: auto，不受影響。
+  pointer-events: none;
 }
 
 .sec1__hero-video {
@@ -517,18 +571,19 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.8s ease;
-
-  // 影片播放完畢（gone）：淡出，露出 hero 白底
-  &.is-ended {
-    opacity: 0;
-  }
 
   // canplay 之前 <video> 什麼都不畫（HERO_VIDEO_POSTER 三個裝置都是空字串），
-  // 露出的是 .sec1__hero 的白底。首次載入時看不到（載入層蓋著），但帶 #loop 進站
-  // 會略過載入層 —— 那時就是一瞬純白。先透明、ready 後靠上面那條 0.8s transition
-  // 淡入，與 gone 淡出露白底是同一套視覺語言。
-  // 與 .is-ended 同為 opacity: 0，兩者同時成立也不會打架。
+  // 露出的是 .sec1 的白底。首次載入時看不到（載入層蓋著），但帶 #loop 進站
+  // 會略過載入層 —— 那時就是一瞬純白。這與退場溶解無關，純粹是防白閃，
+  // 故不隨 dissolveST 一起拆掉。
+  //
+  // ⚠️ 這條 transition 只管「淡入」（is-loading → 非 is-loading），與退場溶解是兩件事：
+  //    退場溶解已經改由 scrub 直接寫 .sec1__hero-stage 的 style.opacity（見 script 的
+  //    applyDissolve），這裡的 opacity 只在 canplay 前後那一瞬切換一次。0.8s 是這個
+  //    一次性淡入自己的時間常數，原本餵它的常數已隨淡出保留機制一起刪掉，
+  //    故直接寫死字面值，不要為了「湊常數」又補一個只有這裡用得到的匯出。
+  transition: opacity 0.8s ease;
+
   &.is-loading {
     opacity: 0;
   }
