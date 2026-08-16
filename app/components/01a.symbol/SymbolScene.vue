@@ -13,6 +13,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 const {
   symbolMode,
+  symbolProgress,
   symbolTarget,
   setSymbolProgress,
   symbolLayerDone,
@@ -101,6 +102,27 @@ onBeforeUnmount(() => {
   symbolST = null;
 });
 
+// 錨點列的「論壇」要在**開場三行文案的第一行浮現**時就亮 —— 那是本章節在畫面上真正
+// 開演的時刻。交給 header 的幾何 spy 會晚 37vh：`.sec-symbol` 只是一把尺，畫面住在
+// hero 的 slot 裡 fixed 滿版（見檔頭），文字已經在視窗正中央演了一陣子，這個空佔位才
+// 剛捲進中央帶。所以改由本段自己宣告（見 ~/composables/useAnchorClaim）。
+// 起點與 <SymbolIntro> 的起播閘門是**同一個** SYMBOL_INTRO.in，不是另外抄一個數字。
+//
+// ⚠ 上界是 1（＝本段捲完）而不是「一路亮到底」：
+//   ① symbolProgress 在 onLeave 之後恆為 1、且跨導航存活 —— 不放手的話後面兩個錨點
+//      永遠亮不起來（claim 蓋過幾何 spy）。
+//   ② 放手之後不會有空窗：那一刻 `.sec-symbol` 早已橫跨整條中央帶（頂端在 −2.64vh、
+//      底緣正在視窗底），幾何 spy 靠它宣告的 data-anchor-target 接著亮同一個錨點。
+const { setAnchorClaim } = useAnchorClaim();
+const symbolOnScreen = computed(
+  () => symbolProgress.value >= SYMBOL_INTRO.in && symbolProgress.value < 1,
+);
+watch(symbolOnScreen, (on) => setAnchorClaim(on ? 'forum' : null), {
+  immediate: true,
+});
+// 換到子頁時本元件會 unmount，但 useState 活著 —— watch 停了就沒人放手了。
+onBeforeUnmount(() => setAnchorClaim(null));
+
 // scroll 主導：symbolProgress 解出的目標 → 指派 SymbolFace 的 mode 與轉場層的撤場旗標。
 // 分兩個 watch 只在「值真的改變」時觸發（mode 改變才會讓 SymbolFace 跑 2.2s 補間）。
 watch(() => symbolTarget.value.mode, (m) => (symbolMode.value = m), {
@@ -124,7 +146,9 @@ watch(() => symbolTarget.value.enter, (e) => (symbolLayerDone.value = e), {
        data-anchor-target：本段是論壇章節的開場（見檔頭：對應 Figma「智慧論壇05–08」），
        故錨點列在這整段就該亮「論壇」。它有 SYMBOL_VH 個視窗高，不宣告的話 header 剛滑入
        就會有那麼長一段三個錨點全不亮。宣告權在段落自己，AppHeader 只讀屬性、不認得
-       .sec-symbol —— 同 data-header-theme 的分工。值是靜態的，SSR 就在。 -->
+       .sec-symbol —— 同 data-header-theme 的分工。值是靜態的，SSR 就在。
+       ⚠ 這個屬性只管得到**本元素捲進中央帶之後**那一段（距段起點 45vh 起）。開頭那 37vh
+         畫面上早已是本章節（文案在 8vh 就浮現了），那一段改由上面的 anchor claim 補上。 -->
   <section
     ref="sceneRef"
     class="sec-symbol"

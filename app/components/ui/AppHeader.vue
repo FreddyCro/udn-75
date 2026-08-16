@@ -54,7 +54,14 @@ const router = useRouter();
 const logoHref = computed(() => router.resolve(homeIntent.value.to).href);
 
 const progress = ref(0);
-const activeTarget = ref<string>('');
+// 幾何 scroll-spy 推導出來的錨點（下方 IntersectionObserver 寫入）。
+const spyTarget = ref<string>('');
+// 段落主動宣告的錨點**優先於**幾何判定。幾何 spy 假設「段落在文件流裡的位置 ＝ 它在畫面上
+// 的位置」，那對 fixed 滿版視覺的段落不成立（01a.symbol 只是一把捲動尺）——
+// 那種段落自己有尺、知道自己何時開演，見 ~/composables/useAnchorClaim。
+// header 照舊不認得任何 section：它只讀「有沒有人宣告」，不知道宣告者是誰。
+const { anchorClaim } = useAnchorClaim();
+const activeTarget = computed(() => anchorClaim.value ?? spyTarget.value);
 const menuOpen = ref(false);
 const theme = ref<HeaderTheme>('light');
 let themeEls: HTMLElement[] = [];
@@ -141,7 +148,7 @@ onMounted(() => {
           else visible.delete(el);
         });
         // 同時命中兩區塊時取文件順序較前者（＝ anchors 的順序）。
-        activeTarget.value = pickActiveAnchor(
+        spyTarget.value = pickActiveAnchor(
           anchorOrder,
           sectionTargets,
           visible,
