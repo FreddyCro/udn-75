@@ -14,7 +14,24 @@ import str from '@/locales/section2.json';
 import { refreshScrollTriggers } from '~/utils/scroll-trigger';
 import type { UBtnVariant } from '~/types/ui';
 
-const { groups, actions } = str.agenda;
+const { groups } = str.agenda;
+
+// CTA 資料。download 欄位只掛在「要當附件存下來」的那顆（目前是下載完整議程），
+// 有它才把 href 前綴 APP_ASSETS_PATH —— 另一顆是 "#" 錨點，前綴上去會變成跨站絕對網址。
+// ⚠️ 暫時性：真的議程 PDF 還沒有，先指向 public/meta.jpg 代打，
+//    檔案到位後只要改 JSON 的 href／download，本檔不用動。
+// ⚠️ download 只在同源時有效；APP_ASSETS_PATH 若指到別的 origin，瀏覽器會改成直接開圖。
+type AgendaAction = {
+  label: string;
+  href: string;
+  variant: string;
+  download?: string;
+};
+const asset = useAssetUrl();
+const actions = (str.agenda.actions as AgendaAction[]).map((action) => ({
+  ...action,
+  href: action.download ? asset(action.href) : action.href,
+}));
 
 // 兩顆 CTA 的點擊音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
 // 見 useSfx.ts）；音效池由 pages/index.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
@@ -160,6 +177,7 @@ onBeforeUnmount(() => {
         class="agenda__action"
         :variant="action.variant as UBtnVariant"
         :href="action.href"
+        :download="action.download"
         @click="play('sfx01')"
       >
         {{ action.label }}

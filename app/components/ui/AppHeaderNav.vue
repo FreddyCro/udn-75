@@ -94,14 +94,12 @@ function onHomeSelect(target: string, e: MouseEvent) {
     transition: transform 0.2s ease;
   }
 
+  // 稿上的 active／hover 只有那條橘色底線 —— Figma 圖層名就叫「當前錨點＆hover 效果」，
+  // 內容是一條 line，三顆錨點的文字同為 #686868（＝--color-gray）。
+  // 故 active 不換文字色，一律吃 --hd-fg（白底灰字／黑底橘底白字）。
   &:hover::after,
   &--active::after {
     transform: scaleX(1);
-  }
-
-  // 白底主題的 active 文字換強調色；黑底／橘底維持白字
-  .app-header--light &--active {
-    color: var(--hd-accent);
   }
 }
 
