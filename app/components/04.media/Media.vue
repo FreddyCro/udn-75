@@ -156,6 +156,7 @@ useMediaIntroMotion({
 .media__bg {
   position: absolute;
   inset: 0;
+  pointer-events: none;
 
   // HeartMetaball 自帶 height: 100vh，改為填滿本層
   :deep(.metaballs) {

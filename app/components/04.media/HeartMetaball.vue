@@ -801,11 +801,13 @@ onMounted(() => {
   width: 100%;
   height: 100vh;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .metaballs canvas {
   display: block;
   width: 100%;
   height: 100%;
+  pointer-events: none;
 }
 </style>
