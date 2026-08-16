@@ -83,48 +83,51 @@ useMediaIntroMotion({
   >
     <!-- sticky 畫面組：hold 期間整組（含摺疊線下的清單）定住不動 -->
     <div ref="holdRef" class="media__hold">
-        <!-- 互動底紋 -->
-        <div ref="bgRef" class="media__bg" aria-hidden="true">
-          <!-- 章半徑/壽命一律吃元件預設：舊的 idle-blob-min/max 與 life 是為前一版
+      <!-- 互動底紋 -->
+      <div ref="bgRef" class="media__bg" aria-hidden="true">
+        <!-- 章半徑/壽命一律吃元件預設：舊的 idle-blob-min/max 與 life 是為前一版
                （legacy/HeartMetaballBlock，cellSize 14px）調的，換成 patch 版後
                會讓尾巴大上一倍。尾巴大小改在 HeartMetaball 的 tailBlobMin/Max 調。 -->
-          <HeartMetaball :roam-area="bgRoamArea" />
-        </div>
+        <HeartMetaball :roam-area="bgRoamArea" />
+      </div>
 
-        <div class="media__inner">
+      <div class="media__inner">
+        <!-- 上半部：pc 固定高（見 .media__head），清單自其下緣往下順推 -->
+        <div class="media__head">
           <MediaTitle ref="titleRef" />
 
           <p ref="bodyRef" class="media__body">{{ newmedia.body }}</p>
 
           <!-- 底紋活動帶：mob 固定高、pad 以上彈性撐開（同時把清單推到視窗底） -->
           <div ref="roamRef" class="media__roam" aria-hidden="true" />
-
-          <MediaList ref="listRef" />
         </div>
 
-        <!-- 開場 motion 舞台：morph 色塊、兩側 bar 與分裂直線（絕對置中於第一屏） -->
-        <div class="media__stage" aria-hidden="true">
-          <div ref="morphRef" class="media__morph" />
-          <div ref="lineLRef" class="media__line" />
-          <div ref="lineRRef" class="media__line" />
-          <img
-            ref="barLRef"
-            class="media__bar"
-            src="/img/media/bar.svg"
-            width="12"
-            height="82"
-            alt=""
-          />
-          <img
-            ref="barRRef"
-            class="media__bar"
-            src="/img/media/bar.svg"
-            width="12"
-            height="82"
-            alt=""
-          />
-        </div>
+        <MediaList ref="listRef" />
       </div>
+
+      <!-- 開場 motion 舞台：morph 色塊、兩側 bar 與分裂直線（絕對置中於第一屏） -->
+      <div class="media__stage" aria-hidden="true">
+        <div ref="morphRef" class="media__morph" />
+        <div ref="lineLRef" class="media__line" />
+        <div ref="lineRRef" class="media__line" />
+        <img
+          ref="barLRef"
+          class="media__bar"
+          src="/img/media/bar.svg"
+          width="12"
+          height="82"
+          alt=""
+        />
+        <img
+          ref="barRRef"
+          class="media__bar"
+          src="/img/media/bar.svg"
+          width="12"
+          height="82"
+          alt=""
+        />
+      </div>
+    </div>
 
     <!-- hold 緩衝 spacer：高度由 useMediaIntroMotion 寫入＝整段 motion 的
          scrub 行程。必須是 section 的內容才算進 sticky 活動範圍 -->
@@ -188,6 +191,19 @@ useMediaIntroMotion({
   }
 }
 
+// 上半部（標題＋內文＋底紋活動帶）：設計師指定「section 頂 → 清單上緣」固定 672，
+// 不隨視窗高變動（Figma 未做此圖層）。672 含 .media__inner 的 padding-top 80，
+// 故本區塊自身高度扣掉它；多出來的餘白留在 .media__roam 之後，清單往下順推。
+// pad 以下不設限制，維持原本流動版面
+.media__head {
+  @include rwd-min('pc') {
+    min-height: 572px - 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+}
+
 .media__body {
   max-width: 530px;
   margin: 16px 0 0;
@@ -217,7 +233,7 @@ useMediaIntroMotion({
   }
 
   @include rwd-min('pc') {
-    height: 114px;
+    height: 0;
     min-height: 0;
   }
 }
