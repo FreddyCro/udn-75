@@ -23,8 +23,13 @@ export const BEAT_IN = 0.5;
  */
 export const BEAT_LAST_FADE_FROM = 0.75;
 
-/** 藏起來時的 y 位移：還沒進場的藏在下方（回捲原路退回），演完的往上送走（與 hero 退場同向） */
-export const HIDE_Y = { before: 200, after: -120 } as const;
+/** 藏起來時的 y 位移：還沒進場的藏在下方（回捲原路退回），演完的往上送走（與 hero 退場同向）。
+ *
+ * `before` 36 ＝ 引言淡入時往上走的距離（2026-08-16 由 200 改；200 讀起來像整段滑進來，
+ * 不是「浮上來」）。實際只有引言吃得到：滿屏媒體走 shift: false（見 Subpage 的 makeFade），
+ * y 參數整個被忽略；hero 的載入進場另有自己的 REVEAL.y。
+ * `after` 維持 -120：那是「這段講完、被下一拍推走」的語彙，與進場不是同一件事。 */
+export const HIDE_Y = { before: 36, after: -120 } as const;
 
 /** before＝還沒進場、shown＝正在演、after＝演完（最後一塊之前的塊會被下一塊接手） */
 export type StageBlockState = 'before' | 'shown' | 'after';
