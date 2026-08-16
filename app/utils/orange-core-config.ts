@@ -147,10 +147,17 @@ export const FORUM_CENTER_KNOT_VH = 0.5;
 //               只治了順著滑的版本 —— 往回滑時那一拍**整段**沒有動畫，96vh 全是靜止的白。
 //               改成 progress 的純函式之後 converge 這一拍在兩個方向都被填滿，
 //               於是它的 vh 從「補間跑完後還要傻等多久」變回單純的「收攏要捲多久」。
+//   2026-08-17  converge 0.56 → 0.76（總長 3.44 → 3.64）。多出來的 20vh 是尾端切出來的
+//               新窗口 CORE_WARM_VH：「白 core → 橘」＋「底色黑→白」都搬到那裡發生。
+//               改版前這兩件事是這樣的 —— 實心化與轉橘共用同一個係數（vSolid），
+//               所以**根本沒有白 core 這個狀態**（凝成方塊的同一刻就是橘的）；
+//               而整片底色從這一拍的第一幀就開始泛灰，人像還完整時畫面已經不是黑的了。
+//               **收攏本身的 56vh 一字不動**（見 CORE_WARM_VH 的推導），face 那一拍也不動。
 export const SYMBOL_BEAT_VH = {
   disperse: 1.12,
   face: 1.36,
-  converge: 0.56,
+  // 收攏 56vh ＋ 尾端 CORE_WARM_VH（白 core → 橘、底色翻白）。兩段的分界是 CORE_WARM_START。
+  converge: 0.76,
   handoff: 0.4,
 } as const;
 
@@ -181,6 +188,42 @@ export function symbolProgressAt(vh: number): number {
   return vh / SYMBOL_VH;
 }
 
+// ── 「白 core → 橘」窗口：converge 那一拍的尾端 ───────────────────────────
+// 這段捲動距離內同時發生兩件事（曲線見 coreWarmAt / symbolBgLightAt）：
+//   ① 已凝成實心的那顆 core 由**白**轉橘（改版前這是實心化的附帶效果，沒有獨立窗口）
+//   ② 整片底色由黑轉白
+// 在這之前的 56vh 是純粹的收攏：黑底、粒子收緊、末段凝成一顆**白**方塊。
+//
+// **這是本段唯一為了這件事新增的旋鈕**，改它就等於改 SYMBOL_BEAT_VH.converge 的尾巴
+// （前段的收攏距離 ＝ converge − 本值，故要維持收攏節奏就得兩個一起動）。
+//
+// ⚠️ 下限來自「底色翻白要花多久」：改版前底色吃滿整拍 56vh，看起來從不刺眼；
+//    搬到這裡之後它只剩本值。20vh 在閱讀捲速（ASSUMED_READING_VH_PER_S ＝ 25vh/s）下
+//    約 0.8s —— 是一段可以看清楚的淡入。再短就會退化成白閃，那正是這次改版要避免的。
+// ⚠️ 上限則是「core 停著不動的時間」：這段期間粒子已經全部到位（uConverge ＝ 1），
+//    畫面上唯一在變的只有顏色。拉太長就會變回 2026-08-13 修掉的那種「一片靜止」。
+export const CORE_WARM_VH = 0.2;
+
+/** 白→橘在窗口內佔的比例（其後只剩底色還在追）。
+ *
+ *  < 1 是硬需求，不是美感偏好：core 的橘（相對亮度 ≈ 0.36）落在黑與白**之間**，
+ *  所以底色掃過去的途中一定有某一刻與它等亮 —— 那一刻 26px 的 core 會看不見。
+ *  改版前是靠「底色幾乎翻完了 core 才轉橘」繞開（白 core 在灰底上對比 2.6:1），
+ *  而本次改版要的順序恰好相反，繞不開了。能做的是**縮短**那一刻：
+ *  讓顏色先跑完，等亮的交會就只發生在底色自己的後段、且 core 已是最終色，
+ *  不會出現「白 core 溶進白底」那種完全消失的狀況。
+ *
+ *  ⚠️ 這是已接受的殘留風險（同 SYMBOL_INTRO 那段捲速的寫法）：整片畫面正在做
+ *     黑→白的大幅度變化，一顆 26px 方塊短暫等亮不會被讀成「東西不見了」。
+ *     真要根治只能不讓底色在這裡翻白 —— 那就是改版前的設計。 */
+export const CORE_WARM_COLOR_SPAN = 0.55;
+
+/** 窗口起點（symbolProgress）＝ 收攏結束、core 已是一顆白方塊的那一刻。
+ *  也就是 convergeAmountAt 的終點與 coreWarmAt / symbolBgLightAt 的起點，一個運算式、不會分家。 */
+export const CORE_WARM_START = symbolProgressAt(
+  BEAT_END_VH.converge - CORE_WARM_VH,
+);
+
 // 議程那 0.4s 的淡入必須發生在**畫面外**，判準是「符號段底緣距視窗底還有多遠」——
 // 這就是 agendaIn 距段尾要留的距離（× 視窗高）。已驗證可行，不得變小。
 //
@@ -190,10 +233,11 @@ export const AGENDA_OFFSCREEN_VH = 0.32;
 
 // ── forum 接棒門檻：converge 之後「白點 → 橘核心」的交接（symbolProgress 0..1）──
 // coreIn ：SymbolFace 收斂點交棒給 ForumCore 橘方塊。＝ converge 段終點，也是 enter 段的起點。
-//          **硬切、不是 crossfade** —— 收斂點在收攏末段（vSolid）已由白轉橘（SymbolFace 的
-//          convergeColor ＝ CORE.orange），到這裡兩顆同色同尺寸同位置，直接換人畫。
-//          白→橘那一段跟著 converge 的 2.2s 補間走，不吃捲動，故與本門檻的位置無關。
-// coreOut：橘核心的**黑底**淡出。coreIn~coreOut 之間橘核心停在黑畫面。
+//          **硬切、不是 crossfade** —— 收斂點在本門檻之前那段 CORE_WARM_VH 內已由白轉橘
+//          （SymbolFace 的 convergeColor ＝ CORE.orange），到這裡兩顆同色同尺寸同位置，
+//          直接換人畫。那段白→橘同樣吃捲動（coreWarmAt），且刻意比本門檻更早收齊到 1，
+//          故任何捲速下交棒時都已經是純橘。
+// coreOut：橘核心的滿版**白底**淡出。coreIn~coreOut 之間橘核心停在白畫面。
 // agendaIn：`.sec2__path` 與議程整組淡入。刻意**早於** coreOut，讓那 0.4s 發生在畫面外
 //          （此時符號段底緣還在視窗底下方，見 SymbolScene 的時序表），否則會在畫面底緣看到淡入。
 // 淡出入為「固定時間」（見 ForumCore 的 CSS transition）；往回捲自動倒退（CSS 轉場可逆）。
@@ -462,7 +506,12 @@ export const SYMBOL_STOPS: readonly {
 ];
 
 /** 匯聚那一拍的收攏量（0 ＝ 還是完整人像、1 ＝ 已收成一顆點）。
- *  SymbolFace 的 uConverge 與整片底色（黑→白）都吃這一個值。
+ *  SymbolFace 的 uConverge 吃這一個值。
+ *
+ *  ⚠️ 2026-08-17 起**整片底色不再吃它**（改吃 symbolBgLightAt）：底色翻白已經搬到
+ *     收攏之後那段 CORE_WARM_VH 的窗口去。所以這支的終點也從交棒點（coreIn）
+ *     縮到 CORE_WARM_START —— 粒子必須在窗口**開始前**就全部到位，
+ *     窗口內才會是一顆不動的白 core 在轉橘，而不是邊收邊轉色。
  *
  *  **這是本段唯一一個「值由捲動決定」而不是「由門檻觸發補間」的視覺**，2026-08-13 改的。
  *  改版前 converge 是 mode 翻面後跑一段固定 2.2s 的 gsap 補間（disperseDuration），
@@ -483,18 +532,60 @@ export const SYMBOL_STOPS: readonly {
  *
  *  純函式、不依賴 DOM —— 曲線由 test/symbol-sequence.spec.ts 守著。 */
 export function convergeAmountAt(p: number): number {
-  return smoothstep(symbolProgressAt(BEAT_END_VH.face), FORUM_HANDOFF.coreIn, p);
+  return smoothstep(symbolProgressAt(BEAT_END_VH.face), CORE_WARM_START, p);
 }
 
-/** 匯聚到一半沒有？＝ 底色已經過黑白的中點。
+/** 那顆 core 的「回溫量」：0 ＝ 還是白方塊、1 ＝ 已是 CORE.orange。
+ *  SymbolFace 只讓它作用在**已實心化**的粒子上（uWarm × solid，見該元件的 vWarm）。
+ *
+ *  ⚠️ 終點必須精確是 1，且必須落在 coreIn 或之前 —— 與 ForumCore 那顆橘方塊硬切交棒的
+ *     前提是「同色同尺寸同位置」，差一點點就會在接棒那一幀看到變色。
+ *     這裡讓它在窗口的 CORE_WARM_COLOR_SPAN 處就到 1（＝ 比交棒點更早收齊），
+ *     餘裕留給底色，理由見 CORE_WARM_COLOR_SPAN。
+ *
+ *  純函式、不依賴 DOM —— 曲線由 test/symbol-sequence.spec.ts 守著。 */
+export function coreWarmAt(p: number): number {
+  return smoothstep(
+    CORE_WARM_START,
+    CORE_WARM_START +
+      (FORUM_HANDOFF.coreIn - CORE_WARM_START) * CORE_WARM_COLOR_SPAN,
+    p,
+  );
+}
+
+/** 整片底色的翻白量（0 ＝ 全黑、1 ＝ 全白）。SymbolFace 的 scene.background 吃這一個值。
+ *
+ *  與 coreWarmAt 同一個窗口、**同時起跑**（使用者的描述就是「white core 變成 orange 的
+ *  過程，背景才會跟著變成白色」），但走完整個窗口 —— 顏色先收齊、底色殿後。
+ *
+ *  ⚠️ 終點同樣必須精確是 1：交棒那一刻轉場層開始淡出（0.35s，吃時間），底下露出的是
+ *     `.sec-symbol` 與 ForumCore 的白底。canvas 若還沒全白就會在那道接縫看到黑閃 ——
+ *     ForumCore 的 .forum-core__bg 註解記過同一類事故。
+ *  ⚠️ 這條的安全邊際比改版前小很多：改版前底色在交棒點前 28vh 就幾乎全白，現在是
+ *     **貼著**交棒點才到 1。往回捲時 ForumCore 的白底吃 0.4s CSS 淡出、本值吃捲動，
+ *     快速往回捲會有短暫的灰（半透明白疊在正在轉黑的底上）。已知、可接受：
+ *     那是往回捲專屬、且整片畫面本來就在做黑白翻轉。
+ *
+ *  純函式、不依賴 DOM —— 曲線由 test/symbol-sequence.spec.ts 守著。 */
+export function symbolBgLightAt(p: number): number {
+  return smoothstep(CORE_WARM_START, FORUM_HANDOFF.coreIn, p);
+}
+
+/** 底色已經過黑白的中點沒有？
  *
  *  段落底色（`.sec-symbol--light`）與 header 主題（data-header-theme）的翻面條件。
- *  改版前綁的是 `symbolMode === 'converge'`，那在 scrub 化之後會壞掉：mode 照舊在 248vh
- *  翻面，但底色此刻才剛要開始由黑轉白 —— header 會提早 56vh 宣告自己站在淺色底上、
- *  改用深色內容，而底下其實還是全黑，那 56vh 的 header 等於看不見。
- *  綁在收攏量的中點，翻面才跟著**真正的底色**走（而不是跟著 mode 這道指令）。 */
+ *  它要跟著**真正的底色**走，所以綁的是 symbolBgLightAt —— 這條規則沒變，變的是底色
+ *  自己搬去了 CORE_WARM_VH 那個窗口，故翻面點跟著搬（改版前是收攏量的中點）。
+ *
+ *  歷史：更早之前綁的是 `symbolMode === 'converge'`，那在 converge scrub 化之後會壞掉 ——
+ *  mode 在 face 結束的那一刻就翻，底色卻要更晚才開始變白，header 會提早宣告自己站在
+ *  淺色底上、改用深色內容，而底下其實還是全黑。這次改版把那個時間差從 56vh 拉到 66vh，
+ *  綁 mode 只會錯得更多。
+ *
+ *  ⚠️ 代價：翻面現在發生在一段只有 CORE_WARM_VH（20vh）的窗口內，header 換色的
+ *     那一下比改版前急。要更緩只能加大 CORE_WARM_VH。 */
 export function convergeLightAt(p: number): boolean {
-  return convergeAmountAt(p) >= 0.5;
+  return symbolBgLightAt(p) >= 0.5;
 }
 
 // ── 進場方塊的邊長（px）──────────────────────────────────────────────
@@ -718,8 +809,8 @@ export function coverHandoffAt(p: number): number {
 //      （序號只是方便口頭念），正式書寫一律用 `forum.face.59%`。
 //
 // 反算回程式碼（dashboard 會直接印出來）：
-//   forum.face.59% → symbolProgress = 0.3256 + 0.59 × (0.7209 − 0.3256) = 0.5588
-//                  → 距符號段起點 192.24vh（SYMBOL_VH 3.44 ＝ 344vh）
+//   forum.face.59% → symbolProgress = 0.3077 + 0.59 × (0.6813 − 0.3077) = 0.5281
+//                  → 距符號段起點 192.24vh（SYMBOL_VH 3.64 ＝ 364vh）
 //   ⚠️ 地址講的是**該拍內的比例**，所以 vh 只隨那一拍的 SYMBOL_BEAT_VH 變，不隨總長變 ——
 //      2026-08-13 把總長從 400 縮到 344vh 之後，face 的 vh 換算（112 + 0.59 × 136）一字不動，
 //      只有 progress 那個中間值變了。這正是「地址寫節點／拍，不寫 %」的用意。
@@ -810,7 +901,10 @@ export const SEQUENCE: readonly SequenceChapter[] = [
     parts: [
       { key: 'disperse', label: '粒子分散（前段疊開場三行文案）', drive: 'scrub', track: 'symbol', from: 0, until: SYMBOL_STOPS[0]!.until },
       { key: 'face', label: '集合人像（最長的一拍）', drive: 'scrub', track: 'symbol', from: SYMBOL_STOPS[0]!.until, until: SYMBOL_STOPS[1]!.until },
-      { key: 'converge', label: '匯聚成點', drive: 'scrub', track: 'symbol', from: SYMBOL_STOPS[1]!.until, until: FORUM_HANDOFF.coreIn },
+      // converge 那一拍在 dashboard 上切成兩段：前段收攏（底色仍是黑）、後段白 core 轉橘
+      // ＋底色翻白。兩段的分界是 CORE_WARM_START，與 convergeAmountAt / coreWarmAt 同一個值。
+      { key: 'converge', label: '匯聚成一顆白點（底色仍黑）', drive: 'scrub', track: 'symbol', from: SYMBOL_STOPS[1]!.until, until: CORE_WARM_START },
+      { key: 'warm', label: `白點轉橘、底色翻白（${CORE_WARM_VH * 100}vh）`, drive: 'scrub', track: 'symbol', from: CORE_WARM_START, until: FORUM_HANDOFF.coreIn },
       // agendaIn 是推導值（無窮小數），label 要自己捨入 —— 直接內插會印出 0.9069767441860465。
       { key: 'handoff', label: `交棒：白點→橘核心（agendaIn ${(FORUM_HANDOFF.agendaIn * 100).toFixed(1)}%）`, drive: 'scrub', track: 'symbol', from: FORUM_HANDOFF.coreIn, until: 1 },
       // 符號段捲完 → 黑白接縫再升 50vh 才到視窗中央，橘點在這段停著不動。

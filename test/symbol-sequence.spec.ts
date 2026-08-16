@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ASSUMED_READING_VH_PER_S,
+  CORE_WARM_START,
+  CORE_WARM_VH,
   FORUM_HANDOFF,
   INTRO_LINE_SHIFT,
   INTRO_REVEAL_SPAN,
@@ -12,6 +14,8 @@ import {
   SYMBOL_VH,
   convergeAmountAt,
   convergeLightAt,
+  coreWarmAt,
+  symbolBgLightAt,
   symbolIntroClear,
   symbolIntroGate,
   symbolIntroLineAt,
@@ -114,7 +118,7 @@ describe('符號段序列門檻', () => {
 // 與它的兩條硬需求（端點精確、翻面跟著底色），不是曲線的長相。
 describe('convergeAmountAt（匯聚那一拍：捲動 → 收攏量）', () => {
   const start = SYMBOL_STOPS[1]!.until; // face 那一拍的終點 ＝ 開始收攏
-  const end = FORUM_HANDOFF.coreIn; //    交棒點 ＝ 收成一顆點
+  const end = CORE_WARM_START; //         收成一顆白 core ＝ 白→橘窗口的起點
 
   // 這支是整個改動的用意：值只由 progress 決定，於是往回捲**必然**沿原路倒退。
   // 改版前那個定時補間做不到這件事 —— 它只知道「mode 剛剛翻了」，不知道捲到哪裡。
@@ -128,12 +132,21 @@ describe('convergeAmountAt（匯聚那一拍：捲動 → 收攏量）', () => {
 
   // 終點的 1 是「與 ForumCore 的橘方塊同尺寸同位置硬切」的前提（見 FORUM_HANDOFF.coreIn）——
   // 差一點點就會在接棒那一幀看到縮一下，而那是本專案的不變量之一。
-  it('端點精確：face 收尾時 0、交棒點 1', () => {
+  // 2026-08-17 起終點提前到 CORE_WARM_START：其後那段窗口要是一顆**不動**的 core 在轉色，
+  // 收攏若還沒跑完就會變成「邊收邊轉橘」——那正是這次改版要拆開的兩件事。
+  it('端點精確：face 收尾時 0、白→橘窗口起點時 1', () => {
     expect(convergeAmountAt(start)).toBe(0);
     expect(convergeAmountAt(end)).toBe(1);
   });
 
-  it('區間外夾住：之前恆 0、之後（含段尾 handoff 整拍）恆 1', () => {
+  it('收攏在交棒點之前就已經跑完（窗口內 core 不再移動）', () => {
+    expect(end).toBeLessThan(FORUM_HANDOFF.coreIn);
+    expect(convergeAmountAt(FORUM_HANDOFF.coreIn)).toBe(1);
+    // 窗口中段也已經是 1 —— 不是「快到 1」
+    expect(convergeAmountAt((end + FORUM_HANDOFF.coreIn) / 2)).toBe(1);
+  });
+
+  it('區間外夾住：之前恆 0、之後（含窗口與段尾 handoff 整拍）恆 1', () => {
     for (const p of [0, start / 2, start - 1e-6]) expect(convergeAmountAt(p)).toBe(0);
     for (const p of [(end + 1) / 2, 1, 2]) expect(convergeAmountAt(p)).toBe(1);
   });
@@ -157,14 +170,90 @@ describe('convergeAmountAt（匯聚那一拍：捲動 → 收攏量）', () => {
     }
   });
 
-  // 底色與 header 主題不能綁 mode：mode 在 start 就翻面，底色卻要走完整拍才變白。
-  // 這支守的是「翻面點落在這一拍**內部**」，綁回 mode 的話它會退回 start。
-  it('翻成淺色的時機在收攏中點，不在 mode 翻面的那一刻', () => {
+});
+
+// 2026-08-17：「白 core → 橘」與「底色黑→白」從收攏裡拆出來，搬到 converge 那一拍尾端
+// 那段 CORE_WARM_VH 的窗口。這一組守的是那個改動的**順序**與它的三條硬需求：
+// 收攏先跑完、顏色在交棒點前收齊、底色不准跑在顏色前面。
+describe('coreWarmAt / symbolBgLightAt（白 core → 橘 ＋ 底色翻白的窗口）', () => {
+  const start = CORE_WARM_START;
+  const end = FORUM_HANDOFF.coreIn;
+  const at = (t: number) => start + (end - start) * t; // 窗口內的相對位置 → progress
+
+  it('窗口的長度就是 CORE_WARM_VH（不是另外手寫的門檻）', () => {
+    expect((end - start) * SYMBOL_VH).toBeCloseTo(CORE_WARM_VH, 9);
+  });
+
+  // 這是整個改動的用意：白 core 要出現在**黑**底上。底色若在收攏期間就開始泛灰，
+  // 那顆白 core 根本沒有機會被看見 —— 那就是改版前的狀況。
+  it('收攏全程底色維持全黑（白 core 出現在黑底上）', () => {
+    expect(symbolBgLightAt(SYMBOL_STOPS[1]!.until)).toBe(0);
+    expect(symbolBgLightAt((SYMBOL_STOPS[1]!.until + start) / 2)).toBe(0);
+    expect(symbolBgLightAt(start)).toBe(0);
+    expect(coreWarmAt(start)).toBe(0); // 同一刻 core 也還是白的
+  });
+
+  // 交棒是硬切，兩顆必須同色 —— 顏色沒收齊就會在接棒那一幀看到變色。
+  // 這裡要求它比交棒點**更早**收齊（見 CORE_WARM_COLOR_SPAN），故不是「恰好在終點到 1」。
+  it('白→橘在交棒點之前就收齊到 1', () => {
+    expect(coreWarmAt(end)).toBe(1);
+    const done = at(0.9);
+    expect(coreWarmAt(done)).toBe(1);
+    expect(done).toBeLessThan(end);
+  });
+
+  // 底色的終點則必須**精確**壓在交棒點：轉場層在那裡開始淡出（吃時間），
+  // 底下露出的是白底，canvas 沒翻完就會看到黑閃。
+  it('底色端點精確：窗口起點 0、交棒點 1', () => {
+    expect(symbolBgLightAt(start)).toBe(0);
+    expect(symbolBgLightAt(end)).toBe(1);
+  });
+
+  // **這條是白 core 不會消失的守則。** core 的橘落在黑與白之間，底色掃過去時必有一刻
+  // 與它等亮；讓顏色恆不落後於底色，就不會出現「底色已經很亮、core 卻還是白的」——
+  // 那種情形下 core 會整顆溶進背景。反過來（底色跑在前面）沒有任何補救辦法。
+  it('顏色恆不落後於底色（core 不會溶進背景）', () => {
+    for (let i = 0; i <= 20; i++) {
+      const p = at(i / 20);
+      expect(coreWarmAt(p)).toBeGreaterThanOrEqual(symbolBgLightAt(p));
+    }
+  });
+
+  it('兩條都是 progress 的純函式（同一個位置恆得同值、可逆）', () => {
+    const fwd: number[] = [];
+    for (let i = 0; i <= 20; i++) fwd.push(coreWarmAt(at(i / 20)) + symbolBgLightAt(at(i / 20)));
+    const back: number[] = [];
+    for (let i = 20; i >= 0; i--) back.unshift(coreWarmAt(at(i / 20)) + symbolBgLightAt(at(i / 20)));
+    expect(back).toEqual(fwd);
+  });
+
+  it('區間外夾住：窗口之前恆 0、之後（含段尾 handoff 整拍）恆 1', () => {
+    for (const p of [0, start / 2, start - 1e-6]) {
+      expect(coreWarmAt(p)).toBe(0);
+      expect(symbolBgLightAt(p)).toBe(0);
+    }
+    for (const p of [(end + 1) / 2, 1, 2]) {
+      expect(coreWarmAt(p)).toBe(1);
+      expect(symbolBgLightAt(p)).toBe(1);
+    }
+  });
+
+  it('超出範圍的輸入不會回傳 NaN', () => {
+    for (const p of [-10, 10, Number.MAX_SAFE_INTEGER]) {
+      expect(Number.isNaN(coreWarmAt(p))).toBe(false);
+      expect(Number.isNaN(symbolBgLightAt(p))).toBe(false);
+    }
+  });
+
+  // 段落底色與 header 主題要跟著**真正的底色**走。綁 mode 的話會退回 face 那一拍的終點
+  // （提早 66vh）；綁收攏量的話會退回收攏中點（提早 28vh）——兩者都會讓 header 在畫面
+  // 還全黑時就宣告自己站在淺色底上、改用深色內容。
+  it('翻成淺色的時機落在白→橘的窗口內，不在收攏期間', () => {
+    expect(convergeLightAt(SYMBOL_STOPS[1]!.until)).toBe(false);
     expect(convergeLightAt(start)).toBe(false);
     expect(convergeLightAt(end)).toBe(true);
-    const mid = (start + end) / 2;
-    expect(convergeLightAt(mid - (end - start) * 0.1)).toBe(false);
-    expect(convergeLightAt(mid + (end - start) * 0.1)).toBe(true);
+    expect(convergeLightAt(at(0.4))).toBe(false);
+    expect(convergeLightAt(at(0.6))).toBe(true);
   });
 });
 

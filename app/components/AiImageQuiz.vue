@@ -68,6 +68,7 @@ function pick(i: number) {
         v-for="(o, i) in options"
         :key="i"
         class="ai-quiz__btn"
+        :class="{ 'ai-quiz__btn--picked': picked === i }"
         type="button"
         :aria-pressed="picked === i"
         @click="pick(i)"
@@ -81,19 +82,15 @@ function pick(i: number) {
             alt=""
           />
         </span>
-        <img
+        <span
           v-if="i === 0"
           class="ai-quiz__btn-pixel ai-quiz__btn-pixel--left"
-          src="/img/udn75_arrow_pixel.svg"
-          alt=""
           aria-hidden="true"
         />
         <span class="ai-quiz__btn-label">{{ o.label }}</span>
-        <img
+        <span
           v-if="i !== 0"
           class="ai-quiz__btn-pixel ai-quiz__btn-pixel--right"
-          src="/img/udn75_arrow_pixel.svg"
-          alt=""
           aria-hidden="true"
         />
         <span
@@ -211,6 +208,15 @@ function pick(i: number) {
   background: none;
   color: var(--color-gray);
   cursor: pointer;
+  transition:
+    color 0.25s ease,
+    border-color 0.25s ease;
+
+  // 選中後停在橘色（等同 hover 的橘，但不隨滑鼠移開消失）
+  &--picked {
+    border-color: var(--color-orange);
+    color: var(--color-orange);
+  }
 
   &:last-child {
     justify-content: flex-end;
@@ -268,6 +274,11 @@ function pick(i: number) {
     opacity: 0;
     transition: opacity 0.25s ease;
 
+    // 選中後橘底圓鈕常駐
+    .ai-quiz__btn--picked & {
+      opacity: 1;
+    }
+
     @media (hover: hover) {
       .ai-quiz__btn:hover & {
         opacity: 1;
@@ -276,11 +287,21 @@ function pick(i: number) {
   }
 }
 
-// mob 專用像素箭頭：素材朝下，旋轉指向外側
+// mob 專用像素箭頭：素材朝下，旋轉指向外側。
+// 走 mask + background-color 上色（<img> 載入的 svg 無法用 CSS 改色），選中時轉橘
 .ai-quiz__btn-pixel {
+  flex-shrink: 0;
   display: block;
   width: 22px;
   height: 12px;
+  background: var(--color-gray-light); // 同素材原色
+  mask: url('/img/udn75_arrow_pixel.svg') no-repeat center / contain;
+  -webkit-mask: url('/img/udn75_arrow_pixel.svg') no-repeat center / contain;
+  transition: background-color 0.25s ease;
+
+  .ai-quiz__btn--picked & {
+    background: var(--color-orange);
+  }
 
   @include rwd-min('tablet') {
     display: none;

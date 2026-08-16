@@ -502,8 +502,9 @@
     "actions": [
       {
         "label": "下載完整議程",
-        "href": "#",
-        "variant": "outline"
+        "href": "/meta.jpg",
+        "variant": "outline",
+        "download": "udn75-完整議程.jpg"
       },
       {
         "label": "立即報名",

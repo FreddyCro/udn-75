@@ -86,10 +86,11 @@ const props = defineProps({
   // ---------- 場景 / 動畫節奏 ----------
   /** 背景色（集合 / 散場漂浮時的底色） */
   bgColor: { type: String, default: '#ffffff' },
-  /** 匯聚成點狀態的背景色：收攏到底時整片底色會是這個顏色。
-   *  與粒子收攏**同步**（見 syncBg：兩者吃同一個驅動源 —— 有 convergeAmount 就吃它，
-   *  沒有就吃 mode ＋ disperseDuration ＋ 同一組 ease），故底色是隨著那團符號收緊而漸亮、
-   *  在收成一顆點的同一刻到位；反向（散回人像）會沿原路退回去。
+  /** 匯聚成點狀態的背景色：這段序列走完時整片底色會是這個顏色。
+   *  翻過去的**時機**由 syncBg 的驅動源決定，依序取 bgLightAmount → convergeAmount →
+   *  mode ＋ disperseDuration。正式站傳 bgLightAmount，故底色是在粒子收攏**之後**、
+   *  跟著那顆白 core 轉橘的同一段窗口才翻白（見 orange-core-config 的 CORE_WARM_VH）；
+   *  反向（往回捲）會沿原路退回去。
    *  ⚠️ 這是整片畫面的底色，不是元件外框 —— canvas 是滿版不透明的，翻的是 scene.background。 */
   convergeBgColor: { type: String, default: '#ffffff' },
   /** 組合（reveal）動畫秒數 */
@@ -109,10 +110,11 @@ const props = defineProps({
    *     沒有那道實心化的話，sprite 邊長 26px 畫出來的可見墨水只有約 12px：
    *     atlas 烘字只佔 cell 的 GLYPH_FONT_SCALE(0.78)，字身墨水又只有字級的 ~0.6。 */
   convergeSize: { type: Number, default: CORE.dotSize },
-  /** 匯聚成點時那顆點的顏色。預設 ＝ CORE.orange（同 ForumCore 的橘方塊）。
-   *  ⚠️ 只作用在**實心化之後**（vSolid，＝ uConverge 的最後 10%）—— 收攏途中粒子仍走
-   *     原本的 color ramp，故看起來是「那團符號收緊、凝成核心的同時由白轉橘」。
-   *     這一段白→橘讓接棒不再需要 crossfade：兩顆同色同尺寸同位置，直接硬切。 */
+  /** 匯聚成點時那顆點的**最終**顏色。預設 ＝ CORE.orange（同 ForumCore 的橘方塊）。
+   *  ⚠️ 只作用在**實心化之後**（vSolid，＝ uConverge 的最後 10%），且套用的量另外由
+   *     warmAmount 決定（vWarm ＝ solid × uWarm）—— 收攏途中粒子仍走原本的 color ramp。
+   *     所以順序是「那團符號收緊、凝成一顆**白**方塊，之後才由白轉橘」。
+   *     白→橘讓接棒不需要 crossfade：兩顆同色同尺寸同位置，直接硬切。 */
   convergeColor: {
     type: String,
     default: CORE_ORANGE_HEX,
@@ -127,10 +129,26 @@ const props = defineProps({
    *  demo 頁（側欄三顆按鈕）維持 null：那裡根本沒有捲動可以綁，按鈕按下去要有補間才看得到。
    *  所以這是**兩種驅動方式**，不是新舊版本 —— 兩條路都要留著。
    *
-   *  ⚠️ 接管的是 uConverge **與整片底色**兩樣，不是只有粒子（底色是「那團符號收緊」
-   *     的另一半，見 syncBg）。只接管一半的話收攏跟翻白會脫鉤。
+   *  ⚠️ 2026-08-17 起它**只**接管 uConverge（粒子的收攏）。底色與白→橘各自有自己的
+   *     驅動值（bgLightAmount / warmAmount），因為那兩件事已經搬到收攏**之後**的窗口
+   *     去發生了，見 orange-core-config 的 CORE_WARM_VH。
+   *     ——「只接管一半會脫鉤」那條警告仍然成立，只是現在有三個一半，正式站三個都要傳。
    *  ⚠️ disperse ↔ face 不受影響，仍走 mode ＋ disperseDuration。 */
   convergeAmount: { type: Number as PropType<number | null>, default: null },
+  /** 那顆已實心的 core 由白轉橘的量（0..1），由外部**逐幀**餵進來；
+   *  null ＝ 沿用 mode 觸發的補間（與 uConverge 同一組 duration / ease，
+   *  ＝ 改版前「實心化的同時就是橘的」那個行為，demo 頁走這條）。
+   *
+   *  正式站傳 `symbolCoreWarm`（＝ coreWarmAt(symbolProgress)）。
+   *  ⚠️ 只作用在已實心化的粒子上（vWarm ＝ solid × uWarm），所以收攏途中把它推到 1
+   *     也不會讓半空中的符號變橘。 */
+  warmAmount: { type: Number as PropType<number | null>, default: null },
+  /** 整片底色由 bgColor 翻到 convergeBgColor 的量（0..1），由外部**逐幀**餵進來；
+   *  null ＝ 退回吃 convergeAmount（再沒有就走 mode 補間，見 syncBg）。
+   *
+   *  正式站傳 `symbolBgLight`（＝ symbolBgLightAt(symbolProgress)）。它與 warmAmount
+   *  **同時起跑但刻意不同步**：底色殿後，理由見 orange-core-config 的 CORE_WARM_COLOR_SPAN。 */
+  bgLightAmount: { type: Number as PropType<number | null>, default: null },
   /** 匯聚的「速差」：每顆粒子起跑點的散佈比例（0..0.9）。
    *  0 ＝ 全員同步收攏 —— 那等同對原點做等比縮放，看起來是「整張臉變小」而不是
    *  「符號各自飛進核心」。>0 則把每顆的起跑點依 aSeed 亂序散在 0..此值，
@@ -330,26 +348,35 @@ onBeforeUnmount(() => {
 const mode = defineModel<SymbolMode>('mode', { default: 'face' });
 let disperseFn: ((animated?: boolean) => void) | null = null;
 
-// 狀態改變時，可逆地補間 uDisperse / uConverge（0↔1）與整片底色（見 syncBg）。
-// 兩者吃同一組 duration / ease，故「收攏」與「翻底色」是同一個動作的兩面。
-// ⚠️ 有 convergeAmount 時 uConverge 與底色改由捲動驅動，這兩支會讓開（見該 prop）；
-//    mode 本身照舊翻面 —— disperse↔face 仍歸它管，faceFormed 也還讀它。
+// 狀態改變時，可逆地補間 uDisperse / uConverge / uWarm（0↔1）與整片底色（見 syncBg）。
+// 全部吃同一組 duration / ease，故在 demo 那條路徑上「收攏」「轉橘」「翻底色」是同一個動作。
+// ⚠️ 外部有接管的那幾樣改由捲動驅動，這兩支會讓開（見 convergeAmount / warmAmount /
+//    bgLightAmount 三個 prop）；mode 本身照舊翻面 —— disperse↔face 仍歸它管，
+//    faceFormed 也還讀它。
 let syncBgFn: ((animated?: boolean) => void) | null = null;
 watch(mode, () => {
   disperseFn?.(true);
   syncBgFn?.(true);
 });
 
-/** props.convergeAmount 夾到 0..1；null ＝ 外部沒有接管，走 mode 補間（見該 prop）。 */
-const scrubbedConverge = () => {
-  const a = props.convergeAmount;
-  return a === null || a === undefined ? null : a < 0 ? 0 : a > 1 ? 1 : a;
-};
+/** 把外部餵進來的 0..1 夾住；null / undefined ＝ 外部沒有接管，走 mode 補間。 */
+const clampAmount = (a: number | null | undefined) =>
+  a === null || a === undefined ? null : a < 0 ? 0 : a > 1 ? 1 : a;
 
-// 外部接管時，uConverge 與底色**同時**改寫（同上：兩者是同一個動作的兩面）。
-// 逐幀會被捲動打到，故不做任何配置 —— 見 applyConverge 本體。
+const scrubbedConverge = () => clampAmount(props.convergeAmount);
+const scrubbedWarm = () => clampAmount(props.warmAmount);
+/** 底色的驅動量：沒傳 bgLightAmount 就退回吃 convergeAmount（＝ 2026-08-17 之前的行為）。 */
+const scrubbedBgLight = () =>
+  clampAmount(props.bgLightAmount) ?? scrubbedConverge();
+
+// 外部接管時的逐幀寫入點。三個值各自獨立：收攏、白→橘、底色翻白在正式站是**三段
+// 不同的窗口**（見 convergeAmount prop），共用一個 watch 只會讓其中兩個被多寫幾次。
+// 逐幀會被捲動打到，故這裡不做任何配置 —— 見各自的本體。
 let applyConvergeFn: (() => void) | null = null;
+let applyWarmFn: (() => void) | null = null;
 watch(() => props.convergeAmount, () => applyConvergeFn?.());
+watch(() => props.warmAmount, () => applyWarmFn?.());
+watch(() => props.bgLightAmount, () => syncBgFn?.(false));
 
 // 「完整集合」：mode 是 face、首次進場的 reveal 已跑完（uProgress=1）、且 uDisperse /
 // uConverge 都已回到 0。由 animate() 每幀依 uniform 實況推導（只在真的變動時才寫入，
@@ -519,17 +546,18 @@ onMounted(() => {
   const bgFrom = new THREE.Color();
   const bgTo = new THREE.Color();
 
-  // 匯聚態翻底色：converge → convergeBgColor、其餘（集合 / 散場）→ bgColor，可逆補間。
-  // 與 disperseFn 同一套寫法與同一組 duration / ease —— 底色是跟著 uConverge 一起走的，
-  // 不是另一段獨立動畫：那團符號收緊到成點的同時底色剛好到位，中途往回捲也沿原路退回。
-  // animated=false 用於初始定位、面板即時套色與重建粒子。
+  // 翻底色。兩條路徑：
+  //   scrub（正式站）—— 直接把 bgLightAmount 當 lerp 的 t，往回捲自動沿原路退回。
+  //   mode （demo）  —— converge → convergeBgColor、其餘（集合 / 散場）→ bgColor 的可逆補間，
+  //                     與 disperseFn 同一套寫法與同一組 duration / ease。
+  // animated=false 用於初始定位、面板即時套色與重建粒子（scrub 路徑則恆等於 false 的行為）。
   // ⚠️ 這裡用 new THREE.Color(hex) 而不是本檔的 srgbColor()：scene.background 走的是
   //    three 自己的 output 轉換鏈（會轉回 sRGB 再輸出），與 raw shader 的 uniform 不同。
   //    詳見 srgbColor 上方那段。
   const syncBg = (animated = true) => {
-    // 外部接管：底色不是「狀態之間的補間」而是「收攏量的函式」，與粒子吃同一個值
-    // （見 convergeAmount prop）。animated 在這條路徑上沒有意義 —— 補間的角色由捲動本身扮演。
-    const scrub = scrubbedConverge();
+    // 外部接管：底色不是「狀態之間的補間」而是**捲動位置的函式**（見 bgLightAmount prop）。
+    // animated 在這條路徑上沒有意義 —— 補間的角色由捲動本身扮演。
+    const scrub = scrubbedBgLight();
     if (scrub !== null) {
       gsap.killTweensOf(bgColor);
       bgColor.copy(bgFrom.set(cfg.bgColor)).lerp(bgTo.set(cfg.convergeBgColor), scrub);
@@ -820,6 +848,8 @@ onMounted(() => {
         uConvergePx: { value: cfg.convergeSize },
         // clamp 到 0.9：1.0 會讓 per-particle 的 smoothstep 窗寬變 0（見 convergeStagger prop）
         uConvergeStagger: { value: Math.min(Math.max(cfg.convergeStagger, 0), 0.9) },
+        // 白→橘的量（0 ＝ 白 core、1 ＝ uSolidColor）。與 uConverge 分開的理由見 warmAmount prop。
+        uWarm: { value: 0 },
         uSolidColor: { value: srgbColor(cfg.convergeColor) },
         uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
         uMouseInfluence: { value: 0 },
@@ -862,6 +892,7 @@ onMounted(() => {
         uniform float uConverge;
         uniform float uConvergePx;
         uniform float uConvergeStagger;
+        uniform float uWarm;
         uniform vec3 uMouse;
         uniform float uMouseInfluence;
         uniform float uPixelRatio;
@@ -888,6 +919,7 @@ onMounted(() => {
         varying vec3 vGlitchColor;
         varying float vGlitchOn;
         varying float vSolid;
+        varying float vWarm;
 
         float hash(float n) { return fract(sin(n) * 43758.5453123); }
 
@@ -942,6 +974,13 @@ onMounted(() => {
           //    等自己到位才轉橘。uConverge=1 時兩者皆為 1 → 全員實心，交棒不漏色。
           float solid = smoothstep(0.9, 1.0, min(cConv, uConverge));
           vSolid = solid;
+
+          // 轉橘的量。**乘上 solid** 而不是直接用 uWarm：兩者是不同的窗口（收攏之後才輪到
+          // 白→橘，見 orange-core-config 的 CORE_WARM_VH），少了這個乘數，往回捲到收攏
+          // 中段時 uWarm 還沒退回 0，半空中的符號會整片泛橘。
+          // ⚠️ 這一項與 vSolid 分家是 2026-08-17 改的：改版前顏色直接吃 vSolid，
+          //    於是「凝成方塊」與「轉橘」是同一件事 —— 沒有白 core 這個狀態可言。
+          vWarm = solid * uWarm;
 
           // 整體避讓：以游標到群中心(原點)的距離決定整群往反方向(遠離游標)的平移量，
           // uGroupNear 內(重疊)≈0 以保留中心環形真空、到 uGroupFar 達上限即停。
@@ -1020,6 +1059,7 @@ onMounted(() => {
         varying vec3 vGlitchColor;
         varying float vGlitchOn;
         varying float vSolid;
+        varying float vWarm;
         void main() {
           vec2 cell = vec2(mod(vGlyph, uAtlasGrid.x), floor(vGlyph / uAtlasGrid.x));
           vec2 uv = vec2(
@@ -1035,9 +1075,10 @@ onMounted(() => {
           if (a < 0.02) discard;
           vec3 ramp = texture2D(uColorRamp, vec2(clamp(vT, 0.0, 1.0), 0.5)).rgb;
           vec3 col = mix(ramp, vGlitchColor, vGlitchOn);
-          // 實心化的同時把顏色收斂到 uSolidColor（＝ CORE.orange）：那顆點在收攏最後
-          // 約 0.2s 由白轉橘，交棒給 ForumCore 時兩邊同色 → 不需要 crossfade，直接硬切。
-          col = mix(col, uSolidColor, vSolid);
+          // 實心化之後才輪到顏色：vT 已被收斂到漸層最亮端（＝白），再依 vWarm 補到
+          // uSolidColor（＝ CORE.orange）。所以畫面上是「凝成一顆白方塊 → 由白轉橘」，
+          // 而交棒給 ForumCore 時兩邊同色 → 不需要 crossfade，直接硬切。
+          col = mix(col, uSolidColor, vWarm);
           gl_FragColor = vec4(col, a);
         }
       `,
@@ -1056,7 +1097,18 @@ onMounted(() => {
       if (scrub === null || !mat) return;
       gsap.killTweensOf(mat.uniforms.uConverge);
       mat.uniforms.uConverge!.value = scrub;
-      syncBg(false); // 底色是同一個動作的另一半，一起走（syncBg 自己會走 scrub 分支）
+      // 底色也在這裡刷一次：沒傳 bgLightAmount 時它退回吃 convergeAmount（見 scrubbedBgLight），
+      // 那條路徑沒有自己的 watch。有傳的話這只是多寫一次同一個值。
+      syncBg(false);
+    };
+
+    // 外部接管 uWarm 時的寫入點（見 warmAmount prop）。與上面分開是因為兩者在正式站是
+    // 兩段不接續的窗口 —— 收攏跑完（convergeAmount 停在 1、不再變動）之後，才輪到這支逐幀被打到。
+    applyWarmFn = () => {
+      const scrub = scrubbedWarm();
+      if (scrub === null || !mat) return;
+      gsap.killTweensOf(mat.uniforms.uWarm);
+      mat.uniforms.uWarm!.value = scrub;
     };
 
     // 依目前 mode 補間 uDisperse / uConverge 到對應目標；animated=false 用於初始直接定位。
@@ -1068,6 +1120,17 @@ onMounted(() => {
       gsap.killTweensOf(mat.uniforms.uDisperse);
       if (animated) gsap.to(mat.uniforms.uDisperse, { value: dTarget, ...opts });
       else mat.uniforms.uDisperse.value = dTarget;
+
+      // uWarm：外部接管時**完全不碰**（同下方 uConverge）。沒接管時跟著 uConverge 一起補間 ——
+      // 顏色本來就只作用在已實心的粒子上（vWarm ＝ solid × uWarm），故 demo 按下「匯聚」
+      // 看到的仍是「收攏末段凝成核心的同時轉橘」，＝ 2026-08-17 之前的行為。
+      const wTarget = mode.value === 'converge' ? 1 : 0;
+      if (scrubbedWarm() !== null) applyWarmFn?.();
+      else {
+        gsap.killTweensOf(mat.uniforms.uWarm);
+        if (animated) gsap.to(mat.uniforms.uWarm, { value: wTarget, ...opts });
+        else mat.uniforms.uWarm.value = wTarget;
+      }
 
       // uConverge：外部接管時**完全不碰**，交給 applyConvergeFn 依捲動寫入。
       // 否則 mode 翻面（248vh 那一刻，兩種驅動方式都會發生）排下的 2.2s 補間會與捲動

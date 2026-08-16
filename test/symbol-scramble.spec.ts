@@ -3,7 +3,7 @@ import { SCRAMBLE_CHARS, scrambleText } from '../app/utils/symbol-scramble';
 
 // 取自 app/locales/section1.json：intro 第一行（無換行）與 phrases 第一則（有換行）
 const LINE = '人工智慧的預測五花八門';
-const MULTI = 'AI真假難辨\n眼見\n還一定為憑嗎\n？';
+const MULTI = 'AI真假難辨\n眼見還一定為憑嗎\n？';
 
 // 這支守的是「亂碼的形狀」，不是隨機值本身 —— 函式有隨機性，故只斷言
 // 長度、已落定的前綴、與未落定處的字元來源這三件確定的事。

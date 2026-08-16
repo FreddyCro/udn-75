@@ -49,6 +49,8 @@ const {
   symbolMode,
   symbolLayerDone,
   symbolConvergeAmount,
+  symbolCoreWarm,
+  symbolBgLight,
 } = useOrangeCoreProgress();
 
 // ── 符號人臉的縮放：手機要再小一號 ──────────────────────────────────
@@ -617,8 +619,10 @@ function applyScrollLock() {
         真正的符號粒子場：住在轉場層的 slot 內，故「左右展開時窗內已見粒子」是真的粒子。
         序列（disperse→face→converge）由 01a.symbol/SymbolScene 依捲動指派 symbolMode，
         本處只負責「在場」與外觀參數；兩邊透過 useOrangeCoreProgress 的 symbolMode 對接。
-        converge 那一拍例外：它不吃 mode 的定時補間，而是由 symbolConvergeAmount 逐幀
-        餵進去（那一拍要能往回捲倒帶，理由見 orange-core-config 的 convergeAmountAt）。
+        converge 那一拍例外：它不吃 mode 的定時補間，而是由三個 *Amount 逐幀餵進去
+        （那一拍要能往回捲倒帶，理由見 orange-core-config 的 convergeAmountAt）——
+        收攏（symbolConvergeAmount）→ 白 core 轉橘（symbolCoreWarm）＋底色翻白
+        （symbolBgLight）。後兩者是收攏跑完之後才開始的另一段窗口，見 CORE_WARM_VH。
         phrases 為 face 狀態下的宮格彩蛋句（row-major，對應 gridCols × gridRows）。
 
         active 由轉場層以 slot prop 交出（＝該層自己的顯隱條件），SymbolFace 據此停/續 rAF：
@@ -630,6 +634,8 @@ function applyScrollLock() {
           :active="symbolLayerActive"
           v-model:mode="symbolMode"
           :converge-amount="symbolConvergeAmount"
+          :warm-amount="symbolCoreWarm"
+          :bg-light-amount="symbolBgLight"
           :phrases="str.symbol.phrases"
           :hint="str.symbol.hint"
           :hint-mob="str.symbol.hintMob"

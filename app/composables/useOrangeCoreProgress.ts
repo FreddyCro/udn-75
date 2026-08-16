@@ -23,6 +23,8 @@ import {
   COVER_HANDOFF_SPAN,
   convergeAmountAt,
   convergeLightAt,
+  coreWarmAt,
+  symbolBgLightAt,
   coverHandoffAt,
   coverOrangeAt,
   partnersFadeAt,
@@ -166,7 +168,19 @@ export function useOrangeCoreProgress() {
   //   那樣收成 boolean（同 forumSlashDraw 的理由）。
   const symbolConvergeAmount = computed(() => convergeAmountAt(symbolProgress.value));
 
-  // 底色／header 主題該不該翻成淺色（＝ 收攏量過半，見 convergeLightAt）。
+  // 收攏之後那段窗口（CORE_WARM_VH）的兩個值，兩者**同時起跑**、但顏色先收齊：
+  //   symbolCoreWarm：那顆已實心的 core 由白轉橘（Hero 餵給 <SymbolFace> 的 warm-amount）
+  //   symbolBgLight ：整片底色由黑轉白（同上，bg-light-amount）
+  // 拆成兩個值而不是共用一個，是因為它們**刻意不同步** —— core 的橘落在黑與白之間，
+  // 底色掃過去時必有一刻與它等亮，讓顏色先跑完才不會出現「白 core 溶進白底」。
+  // 完整推導見 orange-core-config 的 CORE_WARM_COLOR_SPAN。
+  //
+  // ⚠ 兩者逐幀都在變，但消費端都是 prop 上的數字、不是 class 條件，故不收成 boolean
+  //   （同 symbolConvergeAmount 的理由）。
+  const symbolCoreWarm = computed(() => coreWarmAt(symbolProgress.value));
+  const symbolBgLight = computed(() => symbolBgLightAt(symbolProgress.value));
+
+  // 底色／header 主題該不該翻成淺色（＝ 底色過黑白中點，見 convergeLightAt）。
   // 收成 boolean：它是 class 與 data-attribute 的條件，整拍只翻一次，不該逐幀 re-render。
   const symbolConvergeLight = computed(() => convergeLightAt(symbolProgress.value));
 
@@ -343,6 +357,8 @@ export function useOrangeCoreProgress() {
     symbolProgress,
     symbolTarget,
     symbolConvergeAmount,
+    symbolCoreWarm,
+    symbolBgLight,
     symbolConvergeLight,
     forumCoreActive,
     forumCoreDotVisible,
