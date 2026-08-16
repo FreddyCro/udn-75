@@ -81,7 +81,9 @@ const introOpacity = computed(() => String(1 - introFade.value));
 const introRunway = vhLength(0.5 + INTRO_FADE_VH);
 
 // hero 影片四階段（main/loop/outro/gone）全域共享，定義見 composables/useHeroVideo。
-// 此處只讀狀態驅動畫面與捲動鎖：main / loop / outro 鎖捲動、gone 起解鎖。
+// 此處只讀狀態驅動畫面與捲動鎖：2026-08-16 起真值表縮成一條 ——
+// 只有 main 且未離開過 loop（!hasLeftLoop）才鎖，其餘（含 outro）皆不鎖，
+// 詳見下方 applyScrollLock 與 ~/utils/hero-scroll-lock 的 shouldLockHeroScroll。
 //
 // 載入層與影片的握手也走同一份全域狀態：
 //   videoReady — HeroVideo 的 <video> canplay（或逾時 / 載入失敗）時設 true → HeroLoader 收尾條件。
@@ -95,6 +97,9 @@ const {
   loaderDone,
   heroStarted,
   returnToLoop,
+  hasLeftLoop,
+  skipOpening,
+  scrubArmed,
 } = useHeroVideo();
 
 // 視窗高的單一來源（--vh）：轉場與引言淡出的尺長都吃它，不吃 window.innerHeight。
@@ -133,7 +138,10 @@ function bypassLoader() {
   loaderBypass.value = true;
   loaderDone.value = true;
   heroStarted.value = true;
-  setState('gone');
+  // 走 skipOpening() 而非 setState('gone')：後者不會設 openingSkipped，畫面上沒有
+  // 影片可淡（loader-cut，影片根本沒播過），之後 scrub 讀到的 p 只要越過門檻仍會
+  // 把 stage 淡回來 —— 等於把從未出現過的影片「復原」在畫面上。
+  skipOpening();
 }
 
 // 帶 #loop 進站（子頁 header logo 點回來、或直接開 /#loop）：略過 start 閘門，落在 loop
@@ -177,7 +185,9 @@ function bypassForInitialHash() {
 // 直接操作的 .is-scroll-locked 與 data-scroll-lock）。
 useHead({ htmlAttrs: { class: 'is-boot-locked' } });
 
-watch(heroState, applyScrollLock);
+// 綁 shouldLockScroll 而非 heroState：鎖不鎖的真值表吃兩個輸入（state、hasLeftLoop，
+// 見 ~/utils/hero-scroll-lock），只看 state 會漏掉 hasLeftLoop 單獨翻面的情形。
+watch(shouldLockScroll, applyScrollLock);
 
 // gone ＝ core 的進場時機。fromOutro 只用來回答「影片畫面裡有沒有一顆 core 可以交棒」——
 // 不是所有 gone 都經過退場段（SKIP、hero 捲出視窗的強制收尾都會直接跳過來）。
@@ -222,7 +232,7 @@ let entranceTween: gsap.core.Tween | null = null;
 
 onMounted(() => {
   // hero 影片體驗一律從頂端開始：停用瀏覽器捲動位置還原，
-  // 避免重整後還原到內容區、卻因 main/loop 狀態把 body 鎖死在中途。
+  // 避免重整後還原到內容區、卻因 main 狀態（!hasLeftLoop）把 body 鎖死在中途。
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
   // 轉向／拉視窗跨過 768 時換一組 worldScale（見上方 SYMBOL_WORLD_SCALE）。
@@ -236,8 +246,10 @@ onMounted(() => {
   // 重入由 bypassForInitialHash() 自己的 hashHandled 擋掉（client-side 導航時 setup 已經跑過）。
   if (initialHash) bypassForInitialHash();
 
-  // 捲動鎖由本元件「單一擁有」：載入層一掛上就上鎖（此時為 main），一路持有到
-  // gone 才解鎖（退場段也鎖，見 useHeroVideo）。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
+  // 捲動鎖由本元件「單一擁有」：載入層一掛上就上鎖（此時為 main），直到狀態離開 main
+  // （進 loop）才解鎖 —— outro／gone 都不鎖，捲動本身就是驅動 scrub 退場的動作，
+  // 鎖住會讓 loop 之後的一切死結（真值表見 ~/utils/hero-scroll-lock 的
+  // shouldLockHeroScroll）。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
   // 先解鎖、本元件下一 tick 才重新上鎖，中間會出現「瞬間可捲動」的破口。
   applyScrollLock();
 
@@ -276,9 +288,17 @@ onMounted(() => {
     });
   }
 
-  if (initialHash === HERO_RETURN_HASH) scrollToTopForLoop();
-  else if (initialHash) scrollToInitialHash(initialHash);
+  // ⚠️ arm 一定要排在落點確定之後（兩支函式都在 nextTick 內先 refreshScrollTriggers()
+  //    再 scrollTo）。提早 arm 的話，子頁帶過來的捲動位置會讓 scrub 先判 gone、
+  //    把影片 seek 到退場段，下一 tick 又被拉回 —— 使用者看到影片抽搐一下。
+  if (initialHash === HERO_RETURN_HASH) scrollToTopForLoop().then(armScrub);
+  else if (initialHash) scrollToInitialHash(initialHash).then(armScrub);
+  else nextTick(armScrub);
 });
+
+function armScrub() {
+  scrubArmed.value = true;
+}
 
 // 帶 #loop 進站：目標不是某個段落，而是「回到最開始」，所以要捲回頂端。
 // 不能倚賴既有的兩條路：
@@ -288,7 +308,7 @@ onMounted(() => {
 // → HeroVideo 的 heroIO 立刻 setState('gone')，功能在被看見之前就被撤銷。
 // nextTick + refreshScrollTriggers 的理由同 scrollToInitialHash：pin spacer 會改變文件高度。
 function scrollToTopForLoop() {
-  nextTick(() => {
+  return nextTick(() => {
     refreshScrollTriggers();
     window.scrollTo({ top: 0, behavior: 'auto' });
   });
@@ -300,7 +320,7 @@ function scrollToTopForLoop() {
 // ⚠ 這裡最需要 sort()：整份文件的高度是所有 pin 的佔位疊起來的，而各 pin 分散在不同
 //   元件、建立順序不保證由上到下 —— 漏算任何一段佔位，落點就少捲那一段的距離。
 function scrollToInitialHash(hash: string) {
-  nextTick(() => {
+  return nextTick(() => {
     refreshScrollTriggers();
 
     const target = document.getElementById(hash);
@@ -333,6 +353,16 @@ onBeforeUnmount(() => {
   document.body.classList.remove('is-scroll-locked');
   // data-scroll-lock 刻意留著（理由見 assets/styles/base.scss 的 .is-boot-locked 那段）
   //
+  // scrubArmed 是 useState，跨導航存活，不會自己歸零：不在這裡關掉的話，第二次進站
+  // （首頁 → 子頁 → 點 logo 回 /#loop）時它已經是 true，而子元件（HeroVideo）先於本
+  // 元件 mounted —— dissolveST 建立時的 onRefresh 會用子頁帶過來的 scrollY 立刻算出
+  // 一個很大的 p、直接寫狀態（很可能誤判 gone），之後才被 scrollToTopForLoop() 拉回，
+  // 正是 scrubArmed 當初要防的抽搐（見上方 arm 時序的註解）。關掉後每次重新掛載都要
+  // 重跑一次 arm 流程，落點確定後才重新武裝。
+  // ⚠️ 首頁就地倒帶（returnToLoop()）不會走到這裡（不 unmount），維持 armed 是對的，
+  //    不要把這行搬去 returnToLoop 或其他地方。
+  scrubArmed.value = false;
+  //
   // 轉場進度是全域共享的，必須歸零：header 在轉場期間刻意保持可點（疊在 z-10 的轉場層
   // 之上），使用者真的會在轉場進行到一半時離開。不歸零，下次回到首頁的第一個 render
   // 就會讓 HeroSymbolTransition 處於 active —— 在 ScrollTrigger refresh 之前蓋一層近乎
@@ -353,7 +383,11 @@ onBeforeUnmount(() => {
 //
 //   影片在畫面上 ＋ 播過退場 → 交棒：疊到影片裡那顆 orange core 身上（位置＋尺寸）
 //     再滑回落點。退場最後幾秒影片畫面裡就有一顆 core，直接淡入會「跳」一下。前提是
-//     「影片與視窗維持 1:1」—— outro 期間鎖住捲動就是為了這件事（見 shouldLockScroll）。
+//     「影片與視窗維持 1:1」—— 2026-08-16 起這個前提由 .sec1__hero 的 position: sticky
+//     提供（舞台被黏在螢幕上緣、跟視窗同尺寸，見 HeroVideo.vue 的 .sec1__hero 註解），
+//     **不再是**捲動鎖（outro 期間捲動鎖其實已經解開，見上方 shouldLockScroll 的真值表）。
+//     ⚠️ 日後若移除 sticky 改回別的定位方式，這裡的 1:1 前提要重新確認，否則交棒座標
+//     換算會悄悄跑掉（同類警告見 HeroVideo.vue 的 .sec1__hero 註解）。
 //     影片剪輯若已把 core 收在畫面正中心（＝ HERO_OUTRO_CORE_ANCHOR 的預設值），
 //     位移與縮放都是 0、這條等於沒作用；它是吸收剪輯落點誤差的保險。
 //
@@ -426,7 +460,8 @@ function resetCoreEntrance() {
   if (dot) gsap.set(dot, { clearProps: 'x,y,scale' });
 }
 
-// main / loop 期間鎖住頁面捲動；其餘（outro / gone）解鎖。
+// 只有 main 期間鎖住頁面捲動；loop 起解鎖 —— 不解鎖就沒有捲動可以驅動 scrub，會死結
+// （真值表見 ~/utils/hero-scroll-lock 的 shouldLockHeroScroll，2026-08-16 起只剩這一條）。
 // 樣式集中在 base.scss 的 .is-scroll-locked：overflow:hidden ＋ padding-right
 // 補回捲軸寬（--scrollbar-width，由 plugins/scrollbar-width.client.ts 量測）——
 // 否則上鎖期間沒有捲軸、可用寬多 15px，解鎖後捲軸回來就會撐出水平捲軸。
@@ -442,9 +477,15 @@ function applyScrollLock() {
   const root = document.documentElement;
   root.dataset.scrollLock = 'hero';
   if (shouldLockScroll.value) {
-    // 上鎖前先回頂端：否則重整後瀏覽器把位置還原到內容區、又處於 main/loop，
+    // 上鎖前先回頂端：否則重整後瀏覽器把位置還原到內容區、又處於 main，
     // 會被 overflow:hidden 永久鎖死在中途。
-    window.scrollTo(0, 0);
+    //
+    // ⚠️ hasLeftLoop 這條判斷式在目前規則下進到這裡時恆為 false —— shouldLockScroll
+    //    只在 state === 'main' && !hasLeftLoop 時為 true（見 ~/utils/hero-scroll-lock），
+    //    故能走進上面 if (shouldLockScroll.value) 分支，hasLeftLoop 必為 false。
+    //    保留這行判斷式是防禦性寫法：萬一日後真值表再改（例如恢復某個狀態也鎖），
+    //    這裡不必跟著改，也留下「這是有意的重新回頂端」這個語意。
+    if (!hasLeftLoop.value) window.scrollTo(0, 0);
     root.classList.add('is-scroll-locked');
     document.body.classList.add('is-scroll-locked');
   } else {

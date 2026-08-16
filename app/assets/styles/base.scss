@@ -66,7 +66,9 @@ html {
 }
 
 // 捲動鎖共兩把，各自獨立的 class（不共用，才不會互相清掉對方的鎖）：
-//   .is-scroll-locked — hero 影片 main / loop / outro 期間，見 01.hero/Hero.vue 的 applyScrollLock
+//   .is-scroll-locked — hero 影片只在 main 期間鎖住，loop 起解鎖（2026-08-16 起退場
+//                       改由捲動 scrub 驅動，不解鎖就沒有捲動可用來驅動它），
+//                       見 01.hero/Hero.vue 的 applyScrollLock
 //   .is-menu-locked   — <1280 漢堡選單開啟期間，見 AppHeaderMenu.vue
 // 兩把同時成立也沒問題：宣告完全相同，padding-right 只補一次。
 //
