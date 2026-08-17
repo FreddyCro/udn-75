@@ -93,7 +93,10 @@ export function useHeroVideo() {
   // SKIP、影片載入失敗、帶 hash 進站都會在 scrollY 0 直接進 gone —— 此時 p 是 0，
   // stage 的 opacity 若純綁 1 − p，影片會賴在畫面上不走。故這個旗標要蓋過 scrub：
   // 為 true 時 stage 一律隱藏，且 scrub 不再驅動狀態（否則往下捲會把已經跳過的人
-  // 送回 outro）。倒帶回 loop 時清掉。
+  // 送回 outro）。
+  // 清掉的點有二：returnToLoop()，以及**由下往上回捲跨回 page top**（同 outroSpent 的
+  // 重新武裝時機，見 HeroVideo 的 applyDissolve）—— 後者讓按過 SKIP 的人捲回頂端仍能
+  // 拿回影片、再往下捲重看一次退場段。
   const openingSkipped = useState('hero-opening-skipped', () => false);
 
   /** 不經 scrub 直接結束開場。SKIP／載入失敗／帶 hash 進站共用這一條。 */

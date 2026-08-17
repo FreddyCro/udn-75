@@ -263,6 +263,8 @@ watch(soundOn, (on) => {
 // 不 pin，只讀進度：pin 會插入 pin-spacer 改變文件高度，與本 section 既有的
 // transitionST 互相餵幾何（理由詳見設計文件第二節）。
 let dissolveST: ScrollTrigger | null = null;
+// 上一次 applyDissolve 收到的 p：用來辨識「回捲跨過 DISSOLVE_LEAVE」那一刻（見下方）。
+let lastDissolveP = 0;
 
 function buildDissolveST() {
   if (!heroEl.value) return;
@@ -283,6 +285,18 @@ function buildDissolveST() {
 
 function applyDissolve(p: number) {
   const stage = stageEl.value;
+
+  // ── 回到頂端 ＝ 整趟重新武裝（連「開場已被跳過」也解除）──────────────
+  // 判的是**跨越**而非 p < LEAVE 本身：SKIP／載入失敗／帶 hash 進站都發生在 p ＝ 0，
+  // 若只看當下值，skipOpening() 觸發的這次 applyDissolve 會立刻把旗子清回去，
+  // 影片根本不會消失（SKIP 等於失效）。只有「先離開過門檻、再回捲跨回來」才算數 ——
+  // 那正是使用者由下往上捲回 page top 的軌跡。
+  // 未 arm 期間的 p 是子頁帶過來的雜訊（見 scrubArmed），跨越照樣吞掉不處理。
+  const returnedToTop = p < DISSOLVE_LEAVE && lastDissolveP >= DISSOLVE_LEAVE;
+  lastDissolveP = p;
+  // 清掉後下方 alpha 才算得出 1（同一次呼叫內影片就淡回來，不必等下一個捲動事件）。
+  if (returnedToTop && scrubArmed.value) openingSkipped.value = false;
+
   // opacity 這行必須不論 scrubArmed／openingSkipped 都跑：SKIP／載入失敗當下 scrub
   // 可能還沒 arm（或已被跳過鎖死），stage 若少了這行會維持初始的完全不透明，
   // 影片永遠蓋在畫面上不走。
