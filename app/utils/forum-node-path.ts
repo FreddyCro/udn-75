@@ -157,9 +157,11 @@ const PAD_NODES: ForumPathNode[] = [
     join: { relIn: -37.3, relOut: 11.8, hIn: 0.257, hOut: 0.229 },
   },
   {
-    id: 'Q3', // 稿 (665.9, 792.5)；標眉＋英文名組下緣 728.65
+    id: 'Q3', // 稿 (665.9, 792.5)；日期／地點組上緣 816.65
     x: 0.867,
-    anchor: { event: '論壇一', sel: '.forum-event__head', edge: 'bottom', dy: 64 },
+    // 與 mob 的 P3 同一個修正（見該處）：原本掛 __head 下緣 +64，而實作的 __head
+    // 不含引言 → 頂點落在引言區塊**裡面**（實測 689.9，引言 657.9–797.9）。
+    anchor: { event: '論壇一', sel: '.forum-event__date', edge: 'top', dy: -24 },
     join: { relIn: 95.2, relOut: -47.2, hIn: 0.347, hOut: 0.661 }, // 髮夾彎
   },
   {
@@ -272,12 +274,16 @@ const MOB_NODES: ForumPathNode[] = [
     join: { relIn: -23.7, relOut: 7.2, hIn: 0.07, hOut: 0.75 },
   },
   {
-    id: 'P3', // 稿 (343.0, 763)；標眉＋英文名組下緣 768.6
+    id: 'P3', // 稿 (343.0, 763)；日期／地點組上緣 768.6
     x: 0.829,
-    // 掛 __head 而非 __subtitle：稿上這條界線是「標眉＋英文名組」整組的下緣，
-    // __head 正是那一組（tag → title → subtitle）。實測兩者下緣目前相同（647.7），
-    // 但日後若在 head 內補 __body，只有 __head 會跟著長。
-    anchor: { event: '論壇一', sel: '.forum-event__head', edge: 'bottom', dy: -6 },
+    // ⚠️ 2026-08-17 之前掛 `.forum-event__head` 下緣 −6。稿上這條界線是
+    //    「標眉＋大標＋副標＋**引言**」整組的下緣（＝日期組上緣 768.6），但實作的
+    //    __head 只到副標 —— 引言是 __meta 的子項，不在 __head 裡。於是髮夾彎的頂點
+    //    整整高了一個引言區塊（實測 590.7，該落在 818.7），線從副標下方就折回去。
+    //    黃金樣本沒抓到：fixture 直接把 __head 的 rect 填成稿的整組值（下緣 768.6），
+    //    產生器吃到對的數字、瀏覽器卻是錯的。
+    //    改掛日期組上緣後與 P4（掛 __venue 下緣）對稱 —— 一個咬這組的頭、一個咬尾。
+    anchor: { event: '論壇一', sel: '.forum-event__date', edge: 'top', dy: -6 },
     join: { relIn: 111.2, relOut: -35.8, hIn: 0.23, hOut: 1.01 }, // 髮夾彎
   },
   {

@@ -53,7 +53,11 @@ function endpoints(d: string): [number, number][] {
 const MOB_RECTS: Record<string, { top: number; height: number }> = {
   '.sec2__path': { top: 0, height: 7149 },
   '論壇一/.forum-event__tag': { top: 375.4, height: 34 },
-  '論壇一/.forum-event__head': { top: 375.4, height: 393.2 }, // 下緣 768.6
+  // ⚠️ 2026-08-17 之前這裡是 `.forum-event__head: { top: 375.4, height: 393.2 }`（下緣 768.6）
+  //    —— 那是稿上「標眉＋大標＋副標＋引言」整組的框，但實作的 __head 只到副標，
+  //    引言在 __meta 裡。fixture 用稿的組別去餵一個名字相同、範圍不同的 element，
+  //    於是 P3 在測試裡對、在瀏覽器裡高了 228。改掛日期組上緣後兩邊語意一致。
+  '論壇一/.forum-event__date': { top: 768.6, height: 160 }, // 下緣 928.6 ＝ 地點上緣
   '論壇一/.forum-event__venue': { top: 928.6, height: 144.87 }, // 下緣 1073.47
   '論壇一/.forum-event__photo': { top: 1073.47, height: 233 },
   '論壇一/.forum-event__speakers': { top: 1073.47, height: 1838 },
@@ -80,7 +84,9 @@ const MOB_VERTICES: [number, number][] = [
 const PAD_RECTS: Record<string, { top: number; height: number }> = {
   '.sec2__path': { top: 0, height: 6145 },
   '論壇一/.forum-event__tag': { top: 348, height: 34 }, // 標眉 348–382
-  '論壇一/.forum-event__head': { top: 348, height: 380.65 }, // 下緣 728.65
+  // 同 MOB_RECTS 的說明：原本是 `.forum-event__head: { top: 348, height: 380.65 }`（下緣 728.65）。
+  // 高度只有 top 會被 Q3 消費（edge: 'top'），故取到地點上緣即可。
+  '論壇一/.forum-event__date': { top: 816.65, height: 160 },
   '論壇一/.forum-event__meta': { top: 816.65, height: 284 }, // 日期＋地點 下緣 1100.65
   '論壇一/.forum-event__photo': { top: 1100.65, height: 233 },
   '論壇二/.forum-event__meta': { top: 3226.37, height: 366.65 },

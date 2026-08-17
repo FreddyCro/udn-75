@@ -85,6 +85,11 @@ const artVars = computed(() =>
   display: block;
   width: calc(var(--art-w-#{$bp}) / var(--art-base) * 1em);
 
+  // 素材原生寬常常正好等於稿的滿欄寬（論壇一 mob 大標 362 ＝ 414 − 26×2），
+  // 而實作的容器會被捲軸吃掉、窄機更小 → 沒有上限就會撐出內容欄。
+  // 實測 414 視窗：容器 398.7、內容欄 346.7，大標 362 溢出 15.3；375 機溢出 54。
+  max-width: 100%;
+
   // 撐出一個正好 = line-height 的行盒。
   // ⚠️ 這一行是整套機制的支點：少了它行盒塌成 0，.forum-event__title 的高度變 0，
   //    設計線的 W3／Q3／T1 全部偏掉（見 architecture/forum-node-path.md）。
@@ -94,15 +99,18 @@ const artVars = computed(() =>
 
   // 素材本體。垂直置中即對稿：活文字的字面上緣偏移 15.17、置中是 14.31，
   // 差 0.86px，不值得為此引入一組逐行的垂直常數（推導見設計文件第四節）。
-  // background-size: 100% 100% 不會變形 —— 盒子的寬高都是素材原生尺寸 ÷ 同一個
-  // --art-base，比例與素材一致。
+  // background-size: 100% 100% 不會變形 —— 盒子的寬高比恆等於素材原生的寬高比。
+  //
+  // ⚠️ 高度走 aspect-ratio 而非 `--art-h / --art-base * 1em`，是為了讓上面那個
+  //    max-width 夾住寬度時高度跟著等比縮（寫死高度會壓扁素材）。
+  //    沒被夾住時兩者**完全等值**：(W/base em) × (H/W) ＝ H/base em，故是零回歸的改法。
   &::after {
     content: '';
     position: absolute;
     top: 50%;
     left: 0;
     width: 100%;
-    height: calc(var(--art-h-#{$bp}) / var(--art-base) * 1em);
+    aspect-ratio: var(--art-w-#{$bp}) / var(--art-h-#{$bp});
     background: var(--art-url-#{$bp}) no-repeat 0 0 / 100% 100%;
     transform: translateY(-50%);
   }

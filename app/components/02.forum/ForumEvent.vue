@@ -340,11 +340,13 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       padding: 32px 80px 40px;
     }
 
+    // mob 稿的議程緊接在日期組之後（間距 0）。padding 收成 0 之後仍差 6.9 ——
+    // 那是日期行盒在墨跡下方的下懸，不用負值去追。
     @include rwd-max('tablet') {
       --date-base: 57;
       --date-lh: 56px;
 
-      padding: 32px 26px 32px;
+      padding: 32px 26px 0;
     }
   }
 
@@ -368,12 +370,15 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       padding: 200px 80px 80px;
     }
 
+    // padding-bottom 180 ＝ mob 稿「CTA 盒底 → 精彩活動標題盒頂」的總間距
+    // （稿把它拆成論壇四段尾 80 ＋ 精彩活動段首 100；實作全部掛在這裡）。
+    // ⚠️ 日後若替精彩活動補上自己的 padding-top，這個值要同步扣掉，否則會疊兩份。
     @include rwd-max('tablet') {
       --date-base: 58;
       --date-lh: 56px;
       --stair-x1: 66px;
 
-      padding: 112px 26px 100px;
+      padding: 112px 26px 180px;
     }
   }
 }
@@ -683,8 +688,9 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       margin-top: 100px;
     }
 
+    // mob：稿的間距 70（內文盒底 → 地點墨跡頂），實作的地點墨跡比盒頂低 6.5 → 63.5。
     @include rwd-max('tablet') {
-      margin-top: 80px;
+      margin-top: 63.5px;
     }
   }
 
@@ -695,8 +701,9 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       margin-top: 111px;
     }
 
+    // mob：稿的間距 60（內文盒底 → 日期墨跡頂），實作的日期墨跡比盒頂低 8 → 52。
     @include rwd-max('tablet') {
-      margin-top: 76px;
+      margin-top: 52px;
     }
   }
 
@@ -1041,11 +1048,15 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   }
 }
 
-// 論壇四的稿把時間排在地點之上（其餘三場都在之下）。__venue 是 flex column，
+// 論壇四的 pc／pad 稿把時間排在地點之上（其餘三場都在之下）。__venue 是 flex column，
 // 故用 order 換位即可，不必為此改 template 的順序。
+// ⚠️ mob 稿相反 —— 時間在地點下方（成功大學／國際會議中心／12－5PM），故限定在 pc 以上。
+// pad 沒有可查的稿，沿用 pc 的排法（改動前三個斷點都吃到這條）。
 .forum-event__time {
   .forum-event--youth & {
-    order: -1;
+    @include rwd-min('tablet') {
+      order: -1;
+    }
   }
 }
 
@@ -1114,8 +1125,8 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   // 左緣）與文字欄寬（251，故整組 567／520）。
   // 必須寫在上面那組之後才蓋得過去（兩者特異度同為 0,2,0）。
   //   pad 稿間距 83，實作地點墨跡收在 1044.1、__meta 盒底 1057.8 → 69
-  //   mob ⏳ 沒有稿可量（找不到 mob 論壇四的版面 frame），沿用另外三處的 83：
-  //         實作墨跡收在 825.4、__meta 盒底 830 → 78
+  //   mob 稿間距 40（時間墨跡底 → 照片上緣），實作時間墨跡比 __meta 盒底高 46.3 → 31.7
+  //     （2026-08-17 之前是 78 —— 那時沒有 mob 論壇四的版面稿可量，借用另外三處的 83）
   .forum-event--youth & {
     width: 567px;
     margin-left: 108px;
@@ -1127,7 +1138,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 
     @include rwd-max('tablet') {
       width: auto;
-      margin: 78px 0 0;
+      margin: 31.7px 0 0;
     }
   }
 }
