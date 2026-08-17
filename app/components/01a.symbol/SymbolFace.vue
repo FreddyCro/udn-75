@@ -13,6 +13,7 @@ import {
 } from '~/utils/symbol-atlas';
 import { sampleImageToGridWithLimit } from '~/utils/symbol-sampler';
 import { FACE_HOVER_INFLUENCE, faceUv } from '~/utils/symbol-hint';
+import { EGG_CLOSED, nextEggIndex, tapEggIndex } from '~/utils/symbol-egg';
 import {
   SYMBOL_CONFIG_KEYS,
   SYMBOL_LIVE_COLOR_KEYS,
@@ -85,10 +86,11 @@ const props = defineProps({
   // ---------- 場景 / 動畫節奏 ----------
   /** 背景色（集合 / 散場漂浮時的底色） */
   bgColor: { type: String, default: '#ffffff' },
-  /** 匯聚成點狀態的背景色：收攏到底時整片底色會是這個顏色。
-   *  與粒子收攏**同步**（見 syncBg：兩者吃同一個驅動源 —— 有 convergeAmount 就吃它，
-   *  沒有就吃 mode ＋ disperseDuration ＋ 同一組 ease），故底色是隨著那團符號收緊而漸亮、
-   *  在收成一顆點的同一刻到位；反向（散回人像）會沿原路退回去。
+  /** 匯聚成點狀態的背景色：這段序列走完時整片底色會是這個顏色。
+   *  翻過去的**時機**由 syncBg 的驅動源決定，依序取 bgLightAmount → convergeAmount →
+   *  mode ＋ disperseDuration。正式站傳 bgLightAmount，故底色是在粒子收攏**之後**、
+   *  跟著那顆白 core 轉橘的同一段窗口才翻白（見 orange-core-config 的 CORE_WARM_VH）；
+   *  反向（往回捲）會沿原路退回去。
    *  ⚠️ 這是整片畫面的底色，不是元件外框 —— canvas 是滿版不透明的，翻的是 scene.background。 */
   convergeBgColor: { type: String, default: '#ffffff' },
   /** 組合（reveal）動畫秒數 */
@@ -108,10 +110,11 @@ const props = defineProps({
    *     沒有那道實心化的話，sprite 邊長 26px 畫出來的可見墨水只有約 12px：
    *     atlas 烘字只佔 cell 的 GLYPH_FONT_SCALE(0.78)，字身墨水又只有字級的 ~0.6。 */
   convergeSize: { type: Number, default: CORE.dotSize },
-  /** 匯聚成點時那顆點的顏色。預設 ＝ CORE.orange（同 ForumCore 的橘方塊）。
-   *  ⚠️ 只作用在**實心化之後**（vSolid，＝ uConverge 的最後 10%）—— 收攏途中粒子仍走
-   *     原本的 color ramp，故看起來是「那團符號收緊、凝成核心的同時由白轉橘」。
-   *     這一段白→橘讓接棒不再需要 crossfade：兩顆同色同尺寸同位置，直接硬切。 */
+  /** 匯聚成點時那顆點的**最終**顏色。預設 ＝ CORE.orange（同 ForumCore 的橘方塊）。
+   *  ⚠️ 只作用在**實心化之後**（vSolid，＝ uConverge 的最後 10%），且套用的量另外由
+   *     warmAmount 決定（vWarm ＝ solid × uWarm）—— 收攏途中粒子仍走原本的 color ramp。
+   *     所以順序是「那團符號收緊、凝成一顆**白**方塊，之後才由白轉橘」。
+   *     白→橘讓接棒不需要 crossfade：兩顆同色同尺寸同位置，直接硬切。 */
   convergeColor: {
     type: String,
     default: CORE_ORANGE_HEX,
@@ -126,10 +129,26 @@ const props = defineProps({
    *  demo 頁（側欄三顆按鈕）維持 null：那裡根本沒有捲動可以綁，按鈕按下去要有補間才看得到。
    *  所以這是**兩種驅動方式**，不是新舊版本 —— 兩條路都要留著。
    *
-   *  ⚠️ 接管的是 uConverge **與整片底色**兩樣，不是只有粒子（底色是「那團符號收緊」
-   *     的另一半，見 syncBg）。只接管一半的話收攏跟翻白會脫鉤。
+   *  ⚠️ 2026-08-17 起它**只**接管 uConverge（粒子的收攏）。底色與白→橘各自有自己的
+   *     驅動值（bgLightAmount / warmAmount），因為那兩件事已經搬到收攏**之後**的窗口
+   *     去發生了，見 orange-core-config 的 CORE_WARM_VH。
+   *     ——「只接管一半會脫鉤」那條警告仍然成立，只是現在有三個一半，正式站三個都要傳。
    *  ⚠️ disperse ↔ face 不受影響，仍走 mode ＋ disperseDuration。 */
   convergeAmount: { type: Number as PropType<number | null>, default: null },
+  /** 那顆已實心的 core 由白轉橘的量（0..1），由外部**逐幀**餵進來；
+   *  null ＝ 沿用 mode 觸發的補間（與 uConverge 同一組 duration / ease，
+   *  ＝ 改版前「實心化的同時就是橘的」那個行為，demo 頁走這條）。
+   *
+   *  正式站傳 `symbolCoreWarm`（＝ coreWarmAt(symbolProgress)）。
+   *  ⚠️ 只作用在已實心化的粒子上（vWarm ＝ solid × uWarm），所以收攏途中把它推到 1
+   *     也不會讓半空中的符號變橘。 */
+  warmAmount: { type: Number as PropType<number | null>, default: null },
+  /** 整片底色由 bgColor 翻到 convergeBgColor 的量（0..1），由外部**逐幀**餵進來；
+   *  null ＝ 退回吃 convergeAmount（再沒有就走 mode 補間，見 syncBg）。
+   *
+   *  正式站傳 `symbolBgLight`（＝ symbolBgLightAt(symbolProgress)）。它與 warmAmount
+   *  **同時起跑但刻意不同步**：底色殿後，理由見 orange-core-config 的 CORE_WARM_COLOR_SPAN。 */
+  bgLightAmount: { type: Number as PropType<number | null>, default: null },
   /** 匯聚的「速差」：每顆粒子起跑點的散佈比例（0..0.9）。
    *  0 ＝ 全員同步收攏 —— 那等同對原點做等比縮放，看起來是「整張臉變小」而不是
    *  「符號各自飛進核心」。>0 則把每顆的起跑點依 aSeed 亂序散在 0..此值，
@@ -247,8 +266,9 @@ const srgbColor = (style: string) =>
 
 const wrapRef = ref<HTMLDivElement | null>(null);
 const eggRef = ref<HTMLDivElement | null>(null);
-// 目前游標所在宮格 index（-1 = 無），只在換格時更新 → slot 內容僅換格才 re-render
-const activeEgg = ref(-1);
+// 目前顯示的彩蛋句 index（EGG_CLOSED ＝ 不顯示），只在換句時更新 → slot 內容僅換句才 re-render。
+// 兩種驅動方式（見下方 isMob 那段）：桌機是游標所在宮格逐幀推導，手機是 tap／計時器寫入。
+const activeEgg = ref(EGG_CLOSED);
 
 // 彩蛋切換時的「亂碼跑動」出現動畫：activeEgg 換格時，文字由隨機字元逐步落定成句子，
 // 讓「切換到另一則彩蛋」更明顯。displayText 取代直接顯示 phrases[activeEgg]。
@@ -275,7 +295,50 @@ const runScramble = (target: string) => {
 watch(activeEgg, (idx) => {
   runScramble(idx >= 0 ? (cfg.phrases[idx] ?? '') : '');
 });
-onBeforeUnmount(() => cancelAnimationFrame(scrambleRaf));
+
+// ---------- 手機版彩蛋：tap 驅動 ----------
+// 手機沒有 hover，故 <768px 走另一套：點人臉**任一處**就依序換下一句（不分宮格，
+// 規則見 ~/utils/symbol-egg），開啟後每 EGG_AUTO_MS 自動換下一句，且**不因手指離開而收起**
+// —— 只有點在人臉以外、或整個離開集合態（見 faceFormed 的 watch）才關。
+// 桌機維持宮格 hover 對位，兩套只在 animate() 的彩蛋段分流。
+//
+// 斷點沿用 hint 那把尺（下方 HINT_ICON_UV 的 mob 版位也吃它）：與 hintMob 的文案
+// 「點擊人臉…」、Hero 的 worldScale 同一個 768 界線，全站一致。
+// ⚠️ 已知取捨（同 .hint 的 SCSS 註解）：≥768px 的觸控裝置仍走 hover 那套，在那些機器上
+//    彩蛋摸不到。改用 (hover: none) 可解，但會與吃寬度的 hint 版位脫鉤，故依專案慣例走斷點。
+const MOB_QUERY = '(max-width: 767.98px)'; // ＝ mixins.scss 的 rwd-max('tablet')
+// 非 reactive：animate() 每幀讀它分流，包成 ref 等於在熱迴圈多一次 getter。
+// 真正需要重繪的狀態是 activeEgg，那個才是 ref。初值與後續變動見 onMounted 的 matchMedia。
+let isMob = false;
+/** 自動換下一句的間隔（ms）。扣掉 480ms 的亂碼動畫還有 2.5 秒可讀。 */
+const EGG_AUTO_MS = 3000;
+let eggAutoTimer = 0;
+const advanceEgg = () => {
+  activeEgg.value = nextEggIndex(activeEgg.value, cfg.phrases.length);
+};
+const stopEggAuto = () => {
+  clearInterval(eggAutoTimer);
+  eggAutoTimer = 0;
+};
+/** 開始／重新計時。點擊本身就是一次「剛換過」，故要從頭算，不是接著上一輪的殘餘。 */
+const startEggAuto = () => {
+  stopEggAuto();
+  eggAutoTimer = window.setInterval(advanceEgg, EGG_AUTO_MS);
+};
+// 彩蛋開著時真空是「定住」的（見 onLeave），關閉就得有人把它鬆開，
+// 否則捲離集合態再回來時，influence 會停在 1 → 一回到人臉就有一個沒人點過的洞。
+// onMounted 內指派（targetInfluence 住在那層）。
+let releaseMouseFn: (() => void) | null = null;
+const closeEgg = () => {
+  stopEggAuto();
+  activeEgg.value = EGG_CLOSED;
+  releaseMouseFn?.();
+};
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(scrambleRaf);
+  stopEggAuto();
+});
 // 三種狀態：'face' = 集合（人像）/ 'disperse' = 分散（散場漂浮）/ 'converge' = 匯聚成點。
 // 三態互斥，由 uDisperse / uConverge 兩個 uniform 表示（同一時間至多一個為 1）。
 // v-model 由父層決定預設值並隨意切換（正式站是 SymbolScene 依捲動指派，
@@ -285,26 +348,35 @@ onBeforeUnmount(() => cancelAnimationFrame(scrambleRaf));
 const mode = defineModel<SymbolMode>('mode', { default: 'face' });
 let disperseFn: ((animated?: boolean) => void) | null = null;
 
-// 狀態改變時，可逆地補間 uDisperse / uConverge（0↔1）與整片底色（見 syncBg）。
-// 兩者吃同一組 duration / ease，故「收攏」與「翻底色」是同一個動作的兩面。
-// ⚠️ 有 convergeAmount 時 uConverge 與底色改由捲動驅動，這兩支會讓開（見該 prop）；
-//    mode 本身照舊翻面 —— disperse↔face 仍歸它管，faceFormed 也還讀它。
+// 狀態改變時，可逆地補間 uDisperse / uConverge / uWarm（0↔1）與整片底色（見 syncBg）。
+// 全部吃同一組 duration / ease，故在 demo 那條路徑上「收攏」「轉橘」「翻底色」是同一個動作。
+// ⚠️ 外部有接管的那幾樣改由捲動驅動，這兩支會讓開（見 convergeAmount / warmAmount /
+//    bgLightAmount 三個 prop）；mode 本身照舊翻面 —— disperse↔face 仍歸它管，
+//    faceFormed 也還讀它。
 let syncBgFn: ((animated?: boolean) => void) | null = null;
 watch(mode, () => {
   disperseFn?.(true);
   syncBgFn?.(true);
 });
 
-/** props.convergeAmount 夾到 0..1；null ＝ 外部沒有接管，走 mode 補間（見該 prop）。 */
-const scrubbedConverge = () => {
-  const a = props.convergeAmount;
-  return a === null || a === undefined ? null : a < 0 ? 0 : a > 1 ? 1 : a;
-};
+/** 把外部餵進來的 0..1 夾住；null / undefined ＝ 外部沒有接管，走 mode 補間。 */
+const clampAmount = (a: number | null | undefined) =>
+  a === null || a === undefined ? null : a < 0 ? 0 : a > 1 ? 1 : a;
 
-// 外部接管時，uConverge 與底色**同時**改寫（同上：兩者是同一個動作的兩面）。
-// 逐幀會被捲動打到，故不做任何配置 —— 見 applyConverge 本體。
+const scrubbedConverge = () => clampAmount(props.convergeAmount);
+const scrubbedWarm = () => clampAmount(props.warmAmount);
+/** 底色的驅動量：沒傳 bgLightAmount 就退回吃 convergeAmount（＝ 2026-08-17 之前的行為）。 */
+const scrubbedBgLight = () =>
+  clampAmount(props.bgLightAmount) ?? scrubbedConverge();
+
+// 外部接管時的逐幀寫入點。三個值各自獨立：收攏、白→橘、底色翻白在正式站是**三段
+// 不同的窗口**（見 convergeAmount prop），共用一個 watch 只會讓其中兩個被多寫幾次。
+// 逐幀會被捲動打到，故這裡不做任何配置 —— 見各自的本體。
 let applyConvergeFn: (() => void) | null = null;
+let applyWarmFn: (() => void) | null = null;
 watch(() => props.convergeAmount, () => applyConvergeFn?.());
+watch(() => props.warmAmount, () => applyWarmFn?.());
+watch(() => props.bgLightAmount, () => syncBgFn?.(false));
 
 // 「完整集合」：mode 是 face、首次進場的 reveal 已跑完（uProgress=1）、且 uDisperse /
 // uConverge 都已回到 0。由 animate() 每幀依 uniform 實況推導（只在真的變動時才寫入，
@@ -402,7 +474,7 @@ const HINT_ICON_UV = {
 };
 // 手機版說明文字與人像 bbox 底緣的距離（Figma 2065:120222：bbox 底 563 → 文字頂 594）。
 // 實際寫在 .hint-mob 的 margin-top，這裡只是註記出處。
-const HINT_MOB_QUERY = '(max-width: 767.98px)'; // ＝ mixins.scss 的 rwd-max('tablet')
+// 斷點判定共用上方彩蛋那支 isMob（同一把尺，見 MOB_QUERY）。
 
 const hintVisible = ref(false);
 const hintPos = ref<{ x: number; y: number } | null>(null);
@@ -432,6 +504,13 @@ watch(faceFormed, (formed) => {
   //    收起與復原會輪流發生，提示變成閃爍。
   if (!formed && !props.hintOnce) hintDismissed = false;
   hintVisible.value = formed && !hintDismissed && !!props.hint;
+
+  // 手機版彩蛋的第二個（也是最後一個）關閉入口：離開集合態 —— 捲到 disperse／converge、
+  // 捲出視口、切分頁（見 stopLoop 也會把 faceFormed 收成 false）。
+  // ⚠️ 少了這一段，捲到匯聚那一拍畫面只剩一顆橘核心，卻還飄著一句橘字，
+  //    而且背景那支 3 秒計時器會一直換句換下去。
+  // 桌機寫不寫都一樣：它的 index 由 animate() 每幀依游標重算，下一幀就蓋掉了。
+  if (!formed) closeEgg();
 });
 
 
@@ -440,6 +519,18 @@ onMounted(() => {
   if (!wrap) return;
   const width = wrap.clientWidth;
   const height = wrap.clientHeight;
+
+  // 手機版彩蛋走 tap（見 MOB_QUERY 那段），hint 的版位也吃同一把尺。
+  // 轉向／拉視窗跨過斷點時：先關掉彩蛋（換到桌機那套後，tap 開的那句沒有人會再收），
+  // 再重算 hint 錨點（pc 與 mob 的 HINT_ICON_UV 不同）。
+  const mobMq = window.matchMedia(MOB_QUERY);
+  isMob = mobMq.matches;
+  const onMobChange = (e: MediaQueryListEvent) => {
+    isMob = e.matches;
+    closeEgg();
+    updateHintAnchor();
+  };
+  mobMq.addEventListener('change', onMobChange);
 
   const scene = new THREE.Scene();
   // ⚠️ 這顆 Color 物件從頭到尾是同一個 instance（下方 syncBg 就地補間 r/g/b），
@@ -455,17 +546,18 @@ onMounted(() => {
   const bgFrom = new THREE.Color();
   const bgTo = new THREE.Color();
 
-  // 匯聚態翻底色：converge → convergeBgColor、其餘（集合 / 散場）→ bgColor，可逆補間。
-  // 與 disperseFn 同一套寫法與同一組 duration / ease —— 底色是跟著 uConverge 一起走的，
-  // 不是另一段獨立動畫：那團符號收緊到成點的同時底色剛好到位，中途往回捲也沿原路退回。
-  // animated=false 用於初始定位、面板即時套色與重建粒子。
+  // 翻底色。兩條路徑：
+  //   scrub（正式站）—— 直接把 bgLightAmount 當 lerp 的 t，往回捲自動沿原路退回。
+  //   mode （demo）  —— converge → convergeBgColor、其餘（集合 / 散場）→ bgColor 的可逆補間，
+  //                     與 disperseFn 同一套寫法與同一組 duration / ease。
+  // animated=false 用於初始定位、面板即時套色與重建粒子（scrub 路徑則恆等於 false 的行為）。
   // ⚠️ 這裡用 new THREE.Color(hex) 而不是本檔的 srgbColor()：scene.background 走的是
   //    three 自己的 output 轉換鏈（會轉回 sRGB 再輸出），與 raw shader 的 uniform 不同。
   //    詳見 srgbColor 上方那段。
   const syncBg = (animated = true) => {
-    // 外部接管：底色不是「狀態之間的補間」而是「收攏量的函式」，與粒子吃同一個值
-    // （見 convergeAmount prop）。animated 在這條路徑上沒有意義 —— 補間的角色由捲動本身扮演。
-    const scrub = scrubbedConverge();
+    // 外部接管：底色不是「狀態之間的補間」而是**捲動位置的函式**（見 bgLightAmount prop）。
+    // animated 在這條路徑上沒有意義 —— 補間的角色由捲動本身扮演。
+    const scrub = scrubbedBgLight();
     if (scrub !== null) {
       gsap.killTweensOf(bgColor);
       bgColor.copy(bgFrom.set(cfg.bgColor)).lerp(bgTo.set(cfg.convergeBgColor), scrub);
@@ -516,6 +608,14 @@ onMounted(() => {
   const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   const hit = new THREE.Vector3();
 
+  // 手機版彩蛋的錨點（world 座標）：文字與真空洞都停在最後一次點擊的位置。
+  // ⚠️ 存 world 而不是螢幕 px —— 轉向、網址列收合、捲軸出現都會改變 canvas 尺寸，
+  //    存 px 的話文字會釘在舊像素位置、與人臉脫節；存 world 則由 animate() 每幀投影，
+  //    自動跟著人臉走（同 hint 錨點的做法）。
+  const eggAnchor = new THREE.Vector3();
+  /** 手機彩蛋開著嗎 ＝ 真空是否該定住不放（見 onLeave）。 */
+  const eggHolding = () => isMob && activeEgg.value >= 0;
+
   const onMove = (e: PointerEvent) => {
     const rect = renderer.domElement.getBoundingClientRect();
     ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -528,10 +628,57 @@ onMounted(() => {
   };
   // 離開只把影響淡出，不把座標拉回 9999（否則真空會橫掃到角落）
   const onLeave = () => {
+    // 手機且彩蛋開著：不鬆手 —— 真空洞要與文字一起留在點擊處，直到彩蛋關閉為止。
+    // 觸控抬指一定會發 pointerleave，照原本淡出的話，手指一離開洞就闔起來、
+    // 只剩一句字浮在完好的人臉上。座標拉回錨點是因為抬指前可能滑了一段，
+    // 停在最後滑到的位置會讓洞與文字錯開。
+    if (eggHolding()) {
+      mouse.copy(eggAnchor);
+      return;
+    }
     targetInfluence = 0;
   };
   renderer.domElement.addEventListener('pointermove', onMove);
   renderer.domElement.addEventListener('pointerleave', onLeave);
+
+  // 彩蛋關閉時鬆開真空（closeEgg 走這條，見它的宣告處）。桌機不受影響：
+  // 那邊的 influence 一律由游標的進出決定，closeEgg 只是在離開集合態時順手收東西。
+  releaseMouseFn = () => {
+    if (isMob) targetInfluence = 0;
+  };
+
+  // 手機版彩蛋：點人臉換下一句、點人臉以外關閉（桌機讓開，走 animate() 的宮格路徑）。
+  // ⚠️ 用 click 而不是 pointerdown：捲動拖曳會走 pointercancel、不會合成 click，
+  //    故「捲頁時手指掃過人臉」不會誤開彩蛋 —— 這一段畫面本來就是靠捲動推進的。
+  const onTap = (e: MouseEvent) => {
+    // 集合途中／散場中點下去不該冒出彩蛋（同 PC 提示，理由見 faceFormed 宣告處）
+    if (!isMob || !faceFormed.value) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(ndc, camera);
+    if (!raycaster.ray.intersectPlane(plane, hit)) return;
+    // 命中框與桌機宮格同一套（faceUv），差別只在手機不再把它切成 gridCols × gridRows
+    const uv = faceUv(hit.x, hit.y, halfW, halfH);
+    const next = tapEggIndex(activeEgg.value, cfg.phrases.length, !!uv);
+    activeEgg.value = next;
+    // ⚠️ 分支看的是「真的開了嗎」而不是「點在臉上嗎」：沒有文案時（phrases 為空）
+    //    點人臉並不會開，那就不該留下一支永遠換不出東西的計時器。
+    if (next >= 0) {
+      eggAnchor.copy(hit); // next >= 0 蘊含命中人臉，hit 就是這一次的點擊處
+      // 真空跟著定位到同一點並拉滿：tap 不像 hover 會持續餵座標，不寫這兩行的話
+      // 洞只會靠點擊前那一下 pointermove 短暫出現，抬指就淡掉（見 onLeave）。
+      mouse.copy(hit);
+      targetInfluence = 1;
+      startEggAuto(); // 點擊＝剛換過一句，3 秒從頭算
+      // 手機的提示文案就是「點擊人臉…」，點到了就等於學會了 → 收起（收多久見 hintOnce）
+      if (!hintDismissed) dismissHint();
+    } else {
+      stopEggAuto();
+      targetInfluence = 0; // 點在人臉以外＝收工，洞跟著文字一起收掉
+    }
+  };
+  renderer.domElement.addEventListener('click', onTap);
 
   // atlas / colorRamp / points 改為 let，可在 refresh 時 dispose 重建
   let atlas: GlyphAtlas | null = null;
@@ -701,6 +848,8 @@ onMounted(() => {
         uConvergePx: { value: cfg.convergeSize },
         // clamp 到 0.9：1.0 會讓 per-particle 的 smoothstep 窗寬變 0（見 convergeStagger prop）
         uConvergeStagger: { value: Math.min(Math.max(cfg.convergeStagger, 0), 0.9) },
+        // 白→橘的量（0 ＝ 白 core、1 ＝ uSolidColor）。與 uConverge 分開的理由見 warmAmount prop。
+        uWarm: { value: 0 },
         uSolidColor: { value: srgbColor(cfg.convergeColor) },
         uMouse: { value: new THREE.Vector3(9999, 9999, 0) },
         uMouseInfluence: { value: 0 },
@@ -743,6 +892,7 @@ onMounted(() => {
         uniform float uConverge;
         uniform float uConvergePx;
         uniform float uConvergeStagger;
+        uniform float uWarm;
         uniform vec3 uMouse;
         uniform float uMouseInfluence;
         uniform float uPixelRatio;
@@ -769,6 +919,7 @@ onMounted(() => {
         varying vec3 vGlitchColor;
         varying float vGlitchOn;
         varying float vSolid;
+        varying float vWarm;
 
         float hash(float n) { return fract(sin(n) * 43758.5453123); }
 
@@ -823,6 +974,13 @@ onMounted(() => {
           //    等自己到位才轉橘。uConverge=1 時兩者皆為 1 → 全員實心，交棒不漏色。
           float solid = smoothstep(0.9, 1.0, min(cConv, uConverge));
           vSolid = solid;
+
+          // 轉橘的量。**乘上 solid** 而不是直接用 uWarm：兩者是不同的窗口（收攏之後才輪到
+          // 白→橘，見 orange-core-config 的 CORE_WARM_VH），少了這個乘數，往回捲到收攏
+          // 中段時 uWarm 還沒退回 0，半空中的符號會整片泛橘。
+          // ⚠️ 這一項與 vSolid 分家是 2026-08-17 改的：改版前顏色直接吃 vSolid，
+          //    於是「凝成方塊」與「轉橘」是同一件事 —— 沒有白 core 這個狀態可言。
+          vWarm = solid * uWarm;
 
           // 整體避讓：以游標到群中心(原點)的距離決定整群往反方向(遠離游標)的平移量，
           // uGroupNear 內(重疊)≈0 以保留中心環形真空、到 uGroupFar 達上限即停。
@@ -901,6 +1059,7 @@ onMounted(() => {
         varying vec3 vGlitchColor;
         varying float vGlitchOn;
         varying float vSolid;
+        varying float vWarm;
         void main() {
           vec2 cell = vec2(mod(vGlyph, uAtlasGrid.x), floor(vGlyph / uAtlasGrid.x));
           vec2 uv = vec2(
@@ -916,9 +1075,10 @@ onMounted(() => {
           if (a < 0.02) discard;
           vec3 ramp = texture2D(uColorRamp, vec2(clamp(vT, 0.0, 1.0), 0.5)).rgb;
           vec3 col = mix(ramp, vGlitchColor, vGlitchOn);
-          // 實心化的同時把顏色收斂到 uSolidColor（＝ CORE.orange）：那顆點在收攏最後
-          // 約 0.2s 由白轉橘，交棒給 ForumCore 時兩邊同色 → 不需要 crossfade，直接硬切。
-          col = mix(col, uSolidColor, vSolid);
+          // 實心化之後才輪到顏色：vT 已被收斂到漸層最亮端（＝白），再依 vWarm 補到
+          // uSolidColor（＝ CORE.orange）。所以畫面上是「凝成一顆白方塊 → 由白轉橘」，
+          // 而交棒給 ForumCore 時兩邊同色 → 不需要 crossfade，直接硬切。
+          col = mix(col, uSolidColor, vWarm);
           gl_FragColor = vec4(col, a);
         }
       `,
@@ -937,7 +1097,18 @@ onMounted(() => {
       if (scrub === null || !mat) return;
       gsap.killTweensOf(mat.uniforms.uConverge);
       mat.uniforms.uConverge!.value = scrub;
-      syncBg(false); // 底色是同一個動作的另一半，一起走（syncBg 自己會走 scrub 分支）
+      // 底色也在這裡刷一次：沒傳 bgLightAmount 時它退回吃 convergeAmount（見 scrubbedBgLight），
+      // 那條路徑沒有自己的 watch。有傳的話這只是多寫一次同一個值。
+      syncBg(false);
+    };
+
+    // 外部接管 uWarm 時的寫入點（見 warmAmount prop）。與上面分開是因為兩者在正式站是
+    // 兩段不接續的窗口 —— 收攏跑完（convergeAmount 停在 1、不再變動）之後，才輪到這支逐幀被打到。
+    applyWarmFn = () => {
+      const scrub = scrubbedWarm();
+      if (scrub === null || !mat) return;
+      gsap.killTweensOf(mat.uniforms.uWarm);
+      mat.uniforms.uWarm!.value = scrub;
     };
 
     // 依目前 mode 補間 uDisperse / uConverge 到對應目標；animated=false 用於初始直接定位。
@@ -949,6 +1120,17 @@ onMounted(() => {
       gsap.killTweensOf(mat.uniforms.uDisperse);
       if (animated) gsap.to(mat.uniforms.uDisperse, { value: dTarget, ...opts });
       else mat.uniforms.uDisperse.value = dTarget;
+
+      // uWarm：外部接管時**完全不碰**（同下方 uConverge）。沒接管時跟著 uConverge 一起補間 ——
+      // 顏色本來就只作用在已實心的粒子上（vWarm ＝ solid × uWarm），故 demo 按下「匯聚」
+      // 看到的仍是「收攏末段凝成核心的同時轉橘」，＝ 2026-08-17 之前的行為。
+      const wTarget = mode.value === 'converge' ? 1 : 0;
+      if (scrubbedWarm() !== null) applyWarmFn?.();
+      else {
+        gsap.killTweensOf(mat.uniforms.uWarm);
+        if (animated) gsap.to(mat.uniforms.uWarm, { value: wTarget, ...opts });
+        else mat.uniforms.uWarm.value = wTarget;
+      }
 
       // uConverge：外部接管時**完全不碰**，交給 applyConvergeFn 依捲動寫入。
       // 否則 mode 翻面（248vh 那一刻，兩種驅動方式都會發生）排下的 2.2s 補間會與捲動
@@ -1142,6 +1324,13 @@ onMounted(() => {
   const proj = new THREE.Vector3();
   let viewW = width;
   let viewH = height;
+  /** 把 .egg 的中心對到某個 world 座標（桌機餵游標、手機餵最後點擊處）。 */
+  const placeEgg = (el: HTMLElement, world: THREE.Vector3) => {
+    proj.copy(world).project(camera);
+    const sx = (proj.x * 0.5 + 0.5) * viewW;
+    const sy = (-proj.y * 0.5 + 0.5) * viewH;
+    el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%)`;
+  };
   if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
 
   // hint 錨點：人像 bbox 上的兩個定點投影到螢幕 px —— 圖示（HINT_ICON_UV）與手機文字（底緣中點）。
@@ -1161,11 +1350,9 @@ onMounted(() => {
     //    啟動 rAF），此時 camera.matrixWorldInverse 仍是單位矩陣、position.z 還沒烘進去，
     //    project() 的透視除法會除以 0 → Infinity。先手動更新矩陣，補上 renderer 尚未做的那一步。
     camera.updateMatrixWorld();
-    // 斷點在這裡即時判定就夠，不必另掛 matchMedia listener：跨斷點必然改變 .stage 的寬，
-    // 那會觸發下方的 ResizeObserver → 再呼叫本函式一次。
-    const [u, v] = window.matchMedia(HINT_MOB_QUERY).matches
-      ? HINT_ICON_UV.mob
-      : HINT_ICON_UV.pc;
+    // 斷點讀彩蛋那支 isMob（onMounted 內以 matchMedia 初始化並追蹤變動）：
+    // 跨斷點時 change 回呼會直接再呼叫本函式一次，不必在這裡重新查詢 media query。
+    const [u, v] = isMob ? HINT_ICON_UV.mob : HINT_ICON_UV.pc;
     // uv(0..1，左上原點) → world：x 由 -halfW 到 +halfW、y 由 +halfH 到 -halfH
     hintPos.value = projectAnchor(halfW * (u! * 2 - 1), -halfH * (v! * 2 - 1));
     hintMobPos.value = projectAnchor(0, -halfH);
@@ -1316,28 +1503,36 @@ onMounted(() => {
     // PC 提示：游標真的碰到人像 → 永久收起。
     // ⚠️ 判定用 bbox 而非「真的撞散粒子」（holeRadius 命中）—— 後者在臉的空白處移動不會觸發，
     //    提示會賴著不走。autoMouse 是無 hover 環境用的虛擬游標，會自己戳到，不算使用者互動。
-    if (onFace && !hintDismissed && !cfg.autoMouse) dismissHint();
+    // ⚠️ 手機讓開（!isMob）：那邊沒有 hover，收起時機改在 tap（見 onTap）——
+    //    不擋的話，手指為了捲動掃過人臉就會把「點擊人臉…」這句提示收掉，而使用者根本沒點過。
+    if (onFace && !hintDismissed && !cfg.autoMouse && !isMob) dismissHint();
 
-    // 彩蛋：算游標所在宮格 → 顯示對應句子
+    // 彩蛋：兩套驅動（見 MOB_QUERY 那段）
+    //   手機 ── index 由 tap／3 秒計時器寫入，這裡只負責定位；錨點是最後一次點擊處，
+    //           顯隱**不看 influence**（手指早就離開了，看它就會自己淡掉）。
+    //   桌機 ── index 由游標所在宮格逐幀推導，文字跟著游標跑、濃度跟著 influence 淡入淡出。
     const eggEl = eggRef.value;
     if (eggEl && halfW > 0) {
-      let idx = -1;
-      if (onFace && cfg.phrases.length) {
-        const col = Math.min(cfg.gridCols - 1, Math.floor(onFace.u * cfg.gridCols));
-        const row = Math.min(cfg.gridRows - 1, Math.floor(onFace.v * cfg.gridRows));
-        const i = row * cfg.gridCols + col;
-        if (i < cfg.phrases.length && cfg.phrases[i]) idx = i;
-      }
-      if (idx !== activeEgg.value) activeEgg.value = idx; // 僅換格才觸發 re-render
-      if (idx >= 0) {
-        proj.copy(smoothMouse).project(camera);
-        const sx = (proj.x * 0.5 + 0.5) * viewW;
-        const sy = (-proj.y * 0.5 + 0.5) * viewH;
-        // 文字中心對齊真空中心（游標位置）：水平+垂直皆置中
-        eggEl.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%)`;
-        eggEl.style.opacity = String(Math.min(1, influence));
+      if (isMob) {
+        const open = activeEgg.value >= 0;
+        if (open) placeEgg(eggEl, eggAnchor);
+        eggEl.style.opacity = open ? '1' : '0';
       } else {
-        eggEl.style.opacity = '0';
+        let idx = EGG_CLOSED;
+        if (onFace && cfg.phrases.length) {
+          const col = Math.min(cfg.gridCols - 1, Math.floor(onFace.u * cfg.gridCols));
+          const row = Math.min(cfg.gridRows - 1, Math.floor(onFace.v * cfg.gridRows));
+          const i = row * cfg.gridCols + col;
+          if (i < cfg.phrases.length && cfg.phrases[i]) idx = i;
+        }
+        if (idx !== activeEgg.value) activeEgg.value = idx; // 僅換格才觸發 re-render
+        if (idx >= 0) {
+          // 文字中心對齊真空中心（游標位置）
+          placeEgg(eggEl, smoothMouse);
+          eggEl.style.opacity = String(Math.min(1, influence));
+        } else {
+          eggEl.style.opacity = '0';
+        }
       }
     }
 
@@ -1445,6 +1640,8 @@ onMounted(() => {
     resizeObs.disconnect();
     renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('pointerleave', onLeave);
+    renderer.domElement.removeEventListener('click', onTap);
+    mobMq.removeEventListener('change', onMobChange);
     revealTween?.kill(); // gsap ticker 上的補間，不會隨 rAF 一起停
     revealTween = null;
     gsap.killTweensOf(bgColor); // 同上：底色補間也跑在 gsap 的 ticker 上

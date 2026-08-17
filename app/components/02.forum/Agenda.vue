@@ -3,7 +3,9 @@
   顯隱時機（agendaRevealed 淡入）由外層 .sec2__pin 控制。
   mob 版型（分類轉滿版橫幅、時間列平列）純由 CSS 切換，DOM 三斷點共用。
   核心（orange core）穿過本區時藏在 .agenda__group 背後、畫在 .agenda__actions 之上 ——
-  也就是「穿完整疊群組就現形」。箭頭的判定線是核心自己，不是視窗中央（見 sync 與 SCSS 註解）。
+  也就是「穿完整疊群組就現形」。箭頭的判定線是核心自己，不是視窗中央（見 sync 與 SCSS 註解），
+  而且頭尾各內縮一個核心半徑：核心整顆進來第一個箭頭才亮、核心開始露出底緣最後一個就熄
+  （見 CORE_HALF 與 ~/utils/agenda-active）。
   data-core-tail-end 是設計線終點（.agenda 底緣）的舊錨名，現由 forum-node-path 的
   AGENDA_END 直接選 .agenda，屬性本身已無人讀。
 -->
@@ -12,9 +14,28 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section2.json';
 import { refreshScrollTriggers } from '~/utils/scroll-trigger';
+import { stepToward, targetSlotAt } from '~/utils/agenda-active';
+import { CORE } from '~/utils/orange-core-config';
 import type { UBtnVariant } from '~/types/ui';
 
-const { groups, actions } = str.agenda;
+const { groups } = str.agenda;
+
+// CTA 資料。download 欄位只掛在「要當附件存下來」的那顆（目前是下載完整議程），
+// 有它才把 href 前綴 APP_ASSETS_PATH —— 另一顆是 "#" 錨點，前綴上去會變成跨站絕對網址。
+// ⚠️ 暫時性：真的議程 PDF 還沒有，先指向 public/meta.jpg 代打，
+//    檔案到位後只要改 JSON 的 href／download，本檔不用動。
+// ⚠️ download 只在同源時有效；APP_ASSETS_PATH 若指到別的 origin，瀏覽器會改成直接開圖。
+type AgendaAction = {
+  label: string;
+  href: string;
+  variant: string;
+  download?: string;
+};
+const asset = useAssetUrl();
+const actions = (str.agenda.actions as AgendaAction[]).map((action) => ({
+  ...action,
+  href: action.download ? asset(action.href) : action.href,
+}));
 
 // 兩顆 CTA 的點擊音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
 // 見 useSfx.ts）；音效池由 pages/index.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
@@ -23,21 +44,30 @@ const { play } = useSfx();
 // 追上目標的節奏：跟不上時每組至少亮這麼久才走下一步。
 const STEP_MS = 100;
 
+// 判定線頭尾各內縮一個核心半徑（核心是 26px 的方塊，播放頭是它的**中心**）。
+// 設計要求：箭頭不可以在核心還看得見的時候出現或消失 —— 核心整顆進了議程（＝已被
+// 群組的白底完全遮住）第一個箭頭才亮；核心一開始露出議程底緣，最後一個箭頭就得先熄。
+// 少了這一項，兩端都會差半顆核心（13px）—— 用視窗中央當播放頭時差的是一整組，
+// 這是同一個 bug 的最後一段（見 architecture/forum-node-path.md 第五節）。
+const CORE_HALF = CORE.dotSize / 2;
+
 // 判定線是**核心自己**，不是視窗中央 —— 回中節點表只讓核心大致跟著中央（實測 pc −280/+123px，
 // 比議程一組還高），拿中央當播放頭，箭頭就會在核心真正走進第一組之前先亮、在它離開最後一組
 // 之前先熄。這條軌是差值（核心 − 視窗中央），由 ForumCorePath.place() 每幀寫入。
 const { forumCoreCenterOffset } = useOrangeCoreProgress();
 
 const rootEl = ref<HTMLElement | null>(null);
-// 作用中的群組。區域 state：沒有跨元件消費者，故不進 useOrangeCoreProgress。
-const activeIndex = ref<number | null>(null);
+// 作用中的槽位（-1 ＝ 議程之上、0..n-1 ＝ 第幾組、n ＝ 議程之下，見 ~/utils/agenda-active）。
+// 區域 state：沒有跨元件消費者，故不進 useOrangeCoreProgress。
+// 界外的兩個值不等於任何一組的索引，故模板直接比 `activeSlot === i` 就等於「沒有作用中的組」。
+const activeSlot = ref(-1);
 
 // 各組的累積邊界（相對議程頂端）與議程頂端抵達視窗中央時的 scrollY。
 // ⚠ 刻意不逐幀量測：這些值只隨版面（字體／斷點）變化，不隨捲動變化。
 let bounds: number[] = [];
 let startScroll = 0;
-// 播放頭當下該落在哪一組（可以跳號）。activeIndex 一次只走一步去追它，故不會跳號。
-let target: number | null = null;
+// 播放頭當下該落在哪一個槽位（可以跳號）。activeSlot 一次只走一步去追它，故不會跳號。
+let target = -1;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 // 邊界相對議程自身頂端，故不受上游 pin spacer 的絕對位移影響；startScroll 是絕對值，
@@ -76,19 +106,19 @@ function measure() {
 function sync() {
   if (bounds.length < 2) return;
   const y = window.scrollY - startScroll + forumCoreCenterOffset.value;
-  setTarget(targetIndexAt(bounds, y));
+  setTarget(targetSlotAt(bounds, y, CORE_HALF));
 }
 
 // 追上目標：立刻走一步，之後每 STEP_MS 走一步。正常捲速下 target 一次只變一格，
 // 第一步就到位、感覺不到延遲；只有快捲跳號時才會排隊逐組補上。
 function pump() {
   timer = null;
-  if (activeIndex.value === target) return;
-  activeIndex.value = stepToward(activeIndex.value, target);
+  if (activeSlot.value === target) return;
+  activeSlot.value = stepToward(activeSlot.value, target);
   timer = setTimeout(pump, STEP_MS);
 }
 
-function setTarget(next: number | null) {
+function setTarget(next: number) {
   target = next;
   if (!timer) pump();
 }
@@ -125,7 +155,7 @@ onBeforeUnmount(() => {
       v-for="(group, i) in groups"
       :key="i"
       class="agenda__group"
-      :class="{ 'agenda__group--active': activeIndex === i }"
+      :class="{ 'agenda__group--active': activeSlot === i }"
     >
       <p class="agenda__category">{{ group.category }}</p>
 
@@ -160,6 +190,7 @@ onBeforeUnmount(() => {
         class="agenda__action"
         :variant="action.variant as UBtnVariant"
         :href="action.href"
+        :download="action.download"
         @click="play('sfx01')"
       >
         {{ action.label }}

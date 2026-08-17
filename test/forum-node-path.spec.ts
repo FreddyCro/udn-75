@@ -53,32 +53,46 @@ function endpoints(d: string): [number, number][] {
 const MOB_RECTS: Record<string, { top: number; height: number }> = {
   '.sec2__path': { top: 0, height: 7149 },
   '論壇一/.forum-event__tag': { top: 375.4, height: 34 },
-  '論壇一/.forum-event__head': { top: 375.4, height: 393.2 }, // 下緣 768.6
+  // ⚠️ 2026-08-17 之前這裡是 `.forum-event__head: { top: 375.4, height: 393.2 }`（下緣 768.6）
+  //    —— 那是稿上「標眉＋大標＋副標＋引言」整組的框，但實作的 __head 只到副標，
+  //    引言在 __meta 裡。fixture 用稿的組別去餵一個名字相同、範圍不同的 element，
+  //    於是 P3 在測試裡對、在瀏覽器裡高了 228。改掛日期組上緣後兩邊語意一致。
+  '論壇一/.forum-event__date': { top: 768.6, height: 160 }, // 下緣 928.6 ＝ 地點上緣
   '論壇一/.forum-event__venue': { top: 928.6, height: 144.87 }, // 下緣 1073.47
   '論壇一/.forum-event__photo': { top: 1073.47, height: 233 },
   '論壇一/.forum-event__speakers': { top: 1073.47, height: 1838 },
   '[data-forum-anchor="論壇二"]': { top: 3105.47, height: 140 },
-  '論壇二/.forum-event__speaker-label': { top: 3764.47, height: 34 },
-  '論壇二/.forum-event__speaker#0': { top: 3814.47, height: 180 },
-  '論壇二/.forum-event__speaker#1': { top: 4010.47, height: 180 }, // 下緣 4190.47
-  '論壇三/.forum-event__meta': { top: 4870.47, height: 199 },
+  // 論壇二講者組（2026-08-17 改版：兩張直排卡片 → 單人「照片左、文字右」）。
+  // 稿 2566:84799 → 論壇二 y=3014.47 內的 Frame 12742 y=805、180 高。
+  // 改版前是 label { 3764.47, 34 } ＋ speaker#0 { 3814.47, 180 } ＋ speaker#1 { 4010.47, 180 }。
+  '論壇二/.forum-event__speakers': { top: 3819.47, height: 180 }, // 下緣 3999.47
+  // 論壇二矮了 191（1418 → 1227），論壇三整段跟著上移同樣的量。
+  '論壇三/.forum-event__meta': { top: 4679.47, height: 199 },
 };
 
+// ⚠ P10 之後的四個頂點是**稿的 y 減 191**，不是稿的原值 —— 論壇二的講者組改單人後矮了
+//   191，而 mob 線稿沒有重畫（設計 2026-08-17 確認）。線的職責是貼實際版面，故整條線在
+//   講者組之後跟著上移；斷言「剛好上移 191」比對著過期的稿座標更有意義
+//   （dy／t 打錯仍然會被抓到）。見 architecture/forum-node-path.md 第七節第 8 條。
 const MOB_VERTICES: [number, number][] = [
   [207.0, 43], [207.0, 376.5], [291.5, 368.5], [343.0, 763], [59.0, 1069],
   [410.0, 1175], [0.5, 1938], [411.0, 3143.5], [107.0, 3786], [295.32, 3868.92],
-  [323.5, 4202], [323.5, 4867.5], [108.0, 4961.5], [198.5, 5018.5],
+  [323.5, 4011], [323.5, 4676.5], [108.0, 4770.5], [198.5, 4827.5],
 ];
 
 // pad：768 稿的 論壇一二三 frame 內座標（node id 見 architecture/forum-node-path.md 的相關檔案表）
 const PAD_RECTS: Record<string, { top: number; height: number }> = {
   '.sec2__path': { top: 0, height: 6145 },
   '論壇一/.forum-event__tag': { top: 348, height: 34 }, // 標眉 348–382
-  '論壇一/.forum-event__head': { top: 348, height: 380.65 }, // 下緣 728.65
+  // 同 MOB_RECTS 的說明：原本是 `.forum-event__head: { top: 348, height: 380.65 }`（下緣 728.65）。
+  // 高度只有 top 會被 Q3 消費（edge: 'top'），故取到地點上緣即可。
+  '論壇一/.forum-event__date': { top: 816.65, height: 160 },
   '論壇一/.forum-event__meta': { top: 816.65, height: 284 }, // 日期＋地點 下緣 1100.65
   '論壇一/.forum-event__photo': { top: 1100.65, height: 233 },
   '論壇二/.forum-event__meta': { top: 3226.37, height: 366.65 },
-  '論壇二/.forum-event__speakers': { top: 3593.02, height: 390 },
+  // 講者組改單人（稿 2652:53305 → 論壇二 y=2527.37 內的「講者」3399:29051 y=1086.63、233 高）。
+  // 改版前是 { 3593.02, 390 }。論壇二段落總高沒變（1541），故論壇三以下不受影響。
+  '論壇二/.forum-event__speakers': { top: 3614.0, height: 233 }, // 下緣 3847.0
   '論壇三/.forum-event__tag': { top: 4095.02, height: 34 },
   '論壇三/.forum-event__meta': { top: 4525.02, height: 228 }, // 下緣 4753.02
 };

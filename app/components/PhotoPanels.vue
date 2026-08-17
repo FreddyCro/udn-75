@@ -183,15 +183,11 @@ onBeforeUnmount(() => {
 }
 
 .photo-panels__caption {
-  margin-top: 12px;
+  margin-top: 8px;
   font-size: var(--text-caption);
   line-height: var(--text-caption--line-height);
   color: var(--color-gray);
   font-weight: 300;
-
-  @include rwd-min('tablet') {
-    margin-top: 16px;
-  }
 
   // 圖說內的外連結（v-html 輸出，scoped 樣式須 :deep）
   :deep(a) {

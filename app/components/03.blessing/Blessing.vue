@@ -625,6 +625,30 @@ onBeforeUnmount(() => {
   }
 }
 
+// mob 素材要服貼欄寬。
+// 稿寬 362 是畫在 414 的框上（362 ＋ 左右各 26 內距，見 .section3__face-inner），
+// 但 <UArtLine> 的 span 是**固定寬**的 block（art-w ÷ --art-base × 1em），
+// 視窗比 414 窄（375、360、320…）就會撐破 .section3__title 溢出畫面。
+//
+// 收成 max-width: 100% 之後，::after 原本寫死的 height 會讓 background-size: 100% 100%
+// 把素材壓扁，故改用 aspect-ratio 讓高度跟著寬度走 —— 沒被夾住時
+// width × h/w 恰好等於原本的 art-h ÷ --art-base × 1em，寬鬆情況下是零變化。
+//
+// 只改這裡、不動 UArtLine 的 mixin：那支是跨 section 共用的，論壇段的
+// .forum-event__head 是絕對定位 shrink-to-fit，加上 max-width 會有回歸風險。
+// 選擇器多帶一層 .section3__title 是為了穩定壓過 UArtLine 內部同特異度的 ::after 規則
+//（兩邊都是 0,2,0，靠檔案順序決勝不可靠）。
+.section3__title .section3__title-art {
+  @include rwd-max('tablet') {
+    max-width: 100%;
+
+    &::after {
+      height: auto;
+      aspect-ratio: var(--art-w-mob) / var(--art-h-mob);
+    }
+  }
+}
+
 .section3__body {
   margin: 0;
   font-size: var(--text-h5); // 20 / 32

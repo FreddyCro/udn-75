@@ -3,7 +3,6 @@ import {
   NmdAuthor,
   NmdFooter,
   NmdShare,
-  NmdToTop,
 } from '@udn-digital-center/common-components';
 import { shareURL_fb, shareURL_twitter, useLineShareUrl } from '@/utils/share';
 import strFooter from '@/locales/footer.json';
@@ -54,7 +53,7 @@ const CURRENT_YEAR = new Date().getFullYear();
         />
       </ClientOnly>
     </div>
-    <NmdToTop />
+    <!-- <NmdToTop /> -->
     <NmdFooter :year="CURRENT_YEAR" />
   </div>
 </template>

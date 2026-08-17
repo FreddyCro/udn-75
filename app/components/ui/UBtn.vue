@@ -119,15 +119,16 @@ const tag = computed(() => (props.href ? 'a' : 'button'));
   // --accent 只定義在 Forum.vue 的 .sec2 上，故一律帶 --color-orange 當 fallback，
   // 日後搬到別的 section 也不會沒色。
 
-  // 「立即報名」：橘底白字 → hover 深灰底（＝ Figma pad／mob 的 click 變體）。
+  // 「立即報名」：橘底白字。稿上 Default 與 hover 同色（hover 那版只是整顆等比放大），
+  // 故刻意不填 --u-btn-bg-hover —— 三個 hover 變數各自 fallback 回 inactive 值，
+  // 顏色不動，回饋只剩 pc 的 scale(1.03)。
   &--primary {
     --u-btn-bg: var(--accent, var(--color-orange));
     --u-btn-color: #fff;
-    --u-btn-bg-hover: var(--color-gray);
   }
 
-  // 「下載完整議程」：框線款。pc 稿是橘框橘字，pad／mob 稿改深灰框深灰字 Light。
-  // hover 反轉成橘底（＝ Figma pad／mob 的 click 變體）。
+  // 「下載完整議程」：框線款。Default 三個斷點都是深灰框深灰字，hover 反轉成橘底白字。
+  // pad／mob 的字重是 Light；pc 稿沒有，故那裡回到基底的繼承狀態。
   &--outline {
     --u-btn-color: var(--color-gray);
     --u-btn-border: var(--color-gray);
@@ -138,9 +139,6 @@ const tag = computed(() => (props.href ? 'a' : 'button'));
     font-weight: 300;
 
     @include rwd-min('pc') {
-      --u-btn-color: var(--accent, var(--color-orange));
-      --u-btn-border: var(--accent, var(--color-orange));
-
       // 回到基底的「不宣告、繼承」狀態（pc 稿沒有 Light）。
       font-weight: inherit;
     }

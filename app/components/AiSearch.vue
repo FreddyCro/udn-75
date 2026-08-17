@@ -215,9 +215,14 @@ onBeforeUnmount(() => {
 
       <div ref="foldRef" class="ai-search__fold">
         <!-- :key="runId"：每次搜尋重建節點，逐字動畫才會從頭播（同關鍵字重搜亦然） -->
-        <div :key="runId" class="ai-search__body">
-          <!-- 全文常駐 DOM：每字一個 span，delay = 全篇字序 × typeSpeed 依序淡入；
-               游標貼各段尾端，僅在該段淡入的時間窗內顯示（--delay/--dur） -->
+        <div
+          :key="runId"
+          class="ai-search__body"
+          :style="{ '--caret-dur': `${typeSpeed}ms` }"
+        >
+          <!-- 全文常駐 DOM：每字一個 span，--d = 全篇字序 × typeSpeed，依序淡入；
+               游標是每個字自己的 ::after（絕對定位、不占版面），只在該字的時間窗
+               （--d 起、--caret-dur 長）內可見，一字接一字交棒＝游標跟著打字位置走 -->
           <p
             v-for="(m, i) in paraMeta"
             :key="i"
@@ -228,18 +233,13 @@ onBeforeUnmount(() => {
               v-for="(ch, j) in m.chars"
               :key="j"
               class="ai-search__char"
-              :class="{ 'ai-search__char--in': typing }"
-              :style="typing ? { animationDelay: `${(m.offset + j) * typeSpeed}ms` } : undefined"
-              >{{ ch }}</span
-            ><span
-              v-if="typing"
-              class="ai-search__caret"
-              :style="{
-                '--delay': `${m.offset * typeSpeed}ms`,
-                '--dur': `${m.chars.length * typeSpeed + CHAR_FADE_MS}ms`,
+              :class="{
+                'ai-search__char--in': typing,
+                'ai-search__char--tail': typing && m.offset + j === totalChars - 1,
               }"
-              aria-hidden="true"
-            />
+              :style="typing ? { '--d': `${(m.offset + j) * typeSpeed}ms` } : undefined"
+              >{{ ch }}</span
+            >
           </p>
 
           <div class="ai-search__meta" :class="{ 'ai-search__meta--show': done }">
@@ -429,15 +429,47 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
 }
 
-// 逐字淡入：delay 由 template 帶入（全篇字序 × typeSpeed）。
+// 逐字淡入：delay（--d）由 template 帶入（全篇字序 × typeSpeed）。
 // fill-mode: both → delay 期間停在 0%（透明），但字始終占位，段落高度不變。
 // 沒有 --in（reduced-motion 降級或已收尾）時無動畫＝直接可見。
+//
+// 打字游標＝每個字自己的 ::after：全文常駐 DOM，版面一展開就定案，
+// 若把游標做成段尾的獨立節點，它會整段釘死在段尾、跟不上正在淡入的字。
+// 改掛在字上（left: 100% 絕對定位，不占版面、不影響換行），
+// 各字的時間窗首尾相接（--d 起、長 --caret-dur＝typeSpeed），
+// 一字接一字交棒，游標就準確停在剛打出來的那個字後面。
 .ai-search__char--in {
+  position: relative;
   animation: ai-search-char-in 0.3s ease both; // 時長須與 script 的 CHAR_FADE_MS 一致
+  animation-delay: var(--d, 0s);
+
+  // 預設 visibility: hidden，window 動畫（fill: none）期間才 visible，播完自動落回
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 100%;
+    width: 2px;
+    height: 1.1em;
+    margin-left: 2px;
+    visibility: hidden;
+    background: var(--color-gray);
+    transform: translateY(-50%);
+    animation: ai-search-caret-window var(--caret-dur, 0s) linear var(--d, 0s);
+  }
 
   @media (prefers-reduced-motion: reduce) {
     animation: none;
+
+    &::after {
+      content: none;
+    }
   }
+}
+
+// 全篇最後一字：游標多留一個淡入時長，才不會比文字早收
+.ai-search__char--tail::after {
+  animation-duration: calc(var(--caret-dur, 0s) + 300ms);
 }
 
 @keyframes ai-search-char-in {
@@ -450,32 +482,10 @@ onBeforeUnmount(() => {
   }
 }
 
-// 打字游標：貼在各段尾端，僅在該段逐字的時間窗內顯示 ——
-// 預設 visibility: hidden，window 動畫（--delay 起、--dur 長、fill: none）期間才 visible，
-// 播完自動落回 hidden；閃爍交給疊加的 blink 動畫。
-.ai-search__caret {
-  display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  margin-left: 2px;
-  vertical-align: -0.15em;
-  visibility: hidden;
-  background: var(--color-gray);
-  animation:
-    ai-search-blink 0.8s steps(1) infinite,
-    ai-search-caret-window var(--dur, 0s) linear var(--delay, 0s);
-}
-
 @keyframes ai-search-caret-window {
   from,
   to {
     visibility: visible;
-  }
-}
-
-@keyframes ai-search-blink {
-  50% {
-    opacity: 0;
   }
 }
 

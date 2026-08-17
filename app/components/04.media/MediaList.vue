@@ -46,13 +46,8 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
             >{{ a.title }}：<br class="media__break" />{{ a.subtitle }}</span
           >
         </span>
-        <img
-          class="media__arrow"
-          src="/img/udn75_arrow_circle.svg"
-          width="40"
-          height="40"
-          alt=""
-        />
+        <!-- 箭頭：用 mask 上色（非 <img>），hover 才能轉橘 -->
+        <span class="media__arrow" aria-hidden="true" />
       </NuxtLink>
     </li>
   </ol>
@@ -157,13 +152,28 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
   }
 }
 
-// 箭頭圓鈕：mob 48、pad 40（Figma buttons/Arrow right-circle）；pc 稿沒有
+// 箭頭圓鈕：mob 48、pad 40（Figma buttons/Arrow right-circle）；pc 稿沒有。
+// 素材是單色 #686868（＝--color-gray）＋外層 opacity .8，改用 mask 上色後外觀
+// 與原本的 <img> 相同（mask 吃 alpha，那層 .8 依然保留），但顏色交給 CSS，
+// hover 才轉得成橘色
 .media__arrow {
   display: block;
   width: 48px;
   height: 48px;
   justify-self: end;
   margin-left: auto;
+  background: var(--color-gray);
+  mask: url('/img/udn75_arrow_circle.svg') no-repeat center / contain;
+  -webkit-mask: url('/img/udn75_arrow_circle.svg') no-repeat center / contain;
+  transition:
+    background-color 0.25s ease,
+    transform 0.25s ease;
+
+  // hover：轉橘＋微放大（scale 走合成器，不佔版面、列高與分隔線不動）
+  .media__row:hover & {
+    background: var(--color-orange);
+    transform: scale(1.12);
+  }
 
   @include rwd-min('mobile') {
     width: 80px;

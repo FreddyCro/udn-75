@@ -9,36 +9,48 @@
 //
 // 解法：把「目標」與「當前」分開。目標由播放頭直接算出（可以跳），當前一次只走一步（不能跳），
 // 跟不上時排隊補上。代價是快捲時作用中的組會落後於播放頭，不再逐幀等於視窗中央底下那一組。
+//
+// ── 槽位（slot）─────────────────────────────────────────────────────
+// 議程外的上下兩側也編進同一條序列：
+//   -1 ＝ 議程之上、0..count-1 ＝ 第幾組、count ＝ 議程之下。
+//
+// ⚠ 上下兩側必須是**兩個不同的值**。改動前兩側共用一個 `null`，而 `null` 在序列上排在
+//   第 0 組之前 —— 往下捲出議程時 stepToward 會從最後一組**倒退**回第 0 組才回到 null，
+//   畫面上就是箭頭沿著議程反向倒帶一遍。（改動前其實看不到這件事：那時播放頭飛出下方是
+//   夾在最後一組，等於最後一組的箭頭出了議程還一直亮著 —— 也就是這次要修掉的另一半。）
 
 /**
- * 播放頭在議程內的偏移 y（相對議程頂端，px）落在第幾組。
+ * 播放頭（核心中心，相對議程頂端的 px）落在哪一個槽位。
  *
  * `bounds` 是各組的累積邊界，長度 ＝ 組數 + 1，`bounds[0]` 為 0。
- * 上緣含、下緣不含；y 超過議程底緣時夾在最後一組（播放頭已飛出下方）。
- * y 為負（播放頭還在議程上方）或沒有群組時回 null。
+ * 組與組之間的邊界仍以核心**中心**判定（上緣含、下緣不含）。
+ *
+ * `inset` ＝ 核心的半徑：議程的頭尾兩端各內縮這麼多，讓箭頭的生滅都發生在
+ * 「核心整顆被群組遮住」的期間內 ——
+ *   進入：核心整顆進了議程（`y − inset ≥ 議程頂端`）第一個箭頭才亮
+ *   離開：核心**開始**露出議程底緣（`y + inset ≥ 議程底緣`）最後一個箭頭就熄
+ * 兩者都是設計要求：箭頭不可以在核心還看得見的時候出現或消失。
+ *
+ * 沒有群組時回 -1（＝議程之外），不炸。
  */
-export function targetIndexAt(bounds: number[], y: number): number | null {
+export function targetSlotAt(bounds: number[], y: number, inset = 0): number {
   const count = bounds.length - 1;
-  if (count < 1 || y < 0) return null;
+  if (count < 1) return -1;
+  if (y - inset < bounds[0]!) return -1;
+  if (y + inset >= bounds[count]!) return count;
   for (let i = 0; i < count; i++) {
     if (y < bounds[i + 1]!) return i;
   }
+  // inset ≥ 0 時到不了這裡（上一個 if 已收掉 y ≥ 底緣）；純粹是浮點數的保險。
   return count - 1;
 }
 
 /**
  * 朝 target 走一步（±1），故不可能跳號。
  *
- * `null` 代表「議程之外」，它在序列上排在第 0 組之前：從 null 進入一律先落在第 0 組，
- * 往回捲出議程則逐組退到 0 再回 null。反覆套用會走訪每一個中間索引 ——
- * 這就是「每組都必須觸發一次」的保證。
+ * 反覆套用會走訪每一個中間槽位 —— 這就是「每組都必須觸發一次」的保證，
+ * 上下兩個方向都成立（含進出議程的那兩個界外槽位）。
  */
-export function stepToward(
-  current: number | null,
-  target: number | null,
-): number | null {
-  if (current === target) return current;
-  if (current === null) return 0;
-  if (target === null) return current === 0 ? null : current - 1;
+export function stepToward(current: number, target: number): number {
   return current + Math.sign(target - current);
 }

@@ -35,7 +35,7 @@
         "alt": "RSPCA 救援行動中發布的大量犬隻照片",
         "label": "左圖",
         "isAi": false,
-        "explain": "2026年4月英國皇家防止虐待動物協會 (RSPCA)在一次救援行動後，於網路發布了一張照片，卻受到公眾指責為AI工具生成，RSPCA不得不特別澄清，否認照片為人工智慧偽造的指控。"
+        "explain": "2026年4月英國皇家防止虐待動物協會 (RSPCA)在一次救援行動後，於網路發布了一張照片，卻受到公眾指責為AI工具生成，RSPCA不得不特別澄清，否認照片為人工智慧偽造的指控。照片提供/RSPCA 英國皇家防止虐待動物協會"
       },
       {
         "src": "/img/visual/udn75_pic05_02",
@@ -224,9 +224,7 @@
       {
         "title": "你體內也有永世之毒？ 無所不在的PFAS",
         "url": "https://vip.udn.com/event/newmedia_pfas_forever_chemicals",
-        "thumbs": [
-          "/img/visual/udn75_video13_01.mp4"
-        ],
+        "thumbs": ["/img/visual/udn75_video13_01.mp4"],
         "thumbW": 480,
         "thumbRatio": 1.33,
         "thumbLayout": [
@@ -265,9 +263,7 @@
       {
         "title": "氣候沸騰時代來臨",
         "url": "https://vip.udn.com/event/newmedia_era_of_global_boiling",
-        "thumbs": [
-          "/img/visual/udn75_video15_01.mp4"
-        ],
+        "thumbs": ["/img/visual/udn75_video15_01.mp4"],
         "thumbW": 480,
         "thumbRatio": 1.341,
         "thumbLayout": [

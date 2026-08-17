@@ -124,7 +124,20 @@ const { partner } = str;
   line-height: var(--text-h5--line-height);
   letter-spacing: 4px;
   color: var(--color-gray-light);
+  // pc／pad 的列只畫 border-bottom，分組標題與該組第一列之間沒人畫線，
+  // 所以下緣線由 tier 自己補（設計稿標題上下各一條）。
   border-top: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+
+  // 第二組以後，上緣線已由前一列的 border-bottom 畫過，再留 border-top 會疊成 2px。
+  &:not(:first-child) {
+    border-top: 0;
+
+    // mob 的列改用 border-top、不畫 border-bottom，分組上緣線得由 tier 自己負責。
+    @include rwd-max('tablet') {
+      border-top: 1px solid var(--color-line);
+    }
+  }
 
   @include rwd-max('tablet') {
     justify-content: center;
@@ -132,6 +145,8 @@ const { partner } = str;
     line-height: 32px;
     letter-spacing: 3.6px;
     color: var(--color-gray);
+    // 下緣線改由該組第一列的 border-top 提供，這裡再畫就重複了
+    border-bottom: 0;
   }
 }
 
@@ -146,11 +161,8 @@ const { partner } = str;
   color: inherit;
   text-decoration: none;
 
-  // 只有真的連得出去的列才給互動回饋（沒官網的是 <div>，選不到 [href]）
-  &[href]:hover .blessing-partners__name,
-  &[href]:focus-visible .blessing-partners__name {
-    color: var(--color-orange);
-  }
+  // hover 的回饋只有 logo 放大（見 __logo），文字一律維持原色不變。
+  // 鍵盤操作的可視焦點由下面的 outline 負責。
 
   // outline-offset 收成負值：列與列之間沒有間隙，外擴的框會被上下兩列的邊線切到
   &[href]:focus-visible {
@@ -178,6 +190,13 @@ const { partner } = str;
   width: 232px;
   height: 64px;
   object-fit: contain;
+  transition: transform 0.3s ease;
+
+  // 滑過整列就放大 logo。與 __name 變橘那條不同，這裡不限定 [href] ——
+  // 沒官網的列（<div>）一樣要有回饋。
+  .blessing-partners__item:hover & {
+    transform: scale(1.2);
+  }
 
   @include rwd-max('pc') {
     width: 160px;
@@ -234,7 +253,6 @@ const { partner } = str;
   font-weight: 300;
   line-height: var(--text-body--line-height);
   color: #808080; // 設計稿 Figma 的 black/B4 色，專案 token 表已無對應變數故寫字面值
-  transition: color 0.2s ease;
 
   @include rwd-max('tablet') {
     font-size: var(--text-caption); // 15 / 24

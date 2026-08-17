@@ -78,8 +78,11 @@ const { forumSlashDraw } = useOrangeCoreProgress();
 // 持有，聲音開關關著時 play() 靜默。
 const { play } = useSfx();
 
-// 設計稿的講者版式分兩種：單人是「照片左／文字右」，多人（論壇二）是並排卡片。
-const isSpeakerCards = computed(() => (props.event.speakers?.length ?? 0) > 1);
+// 講者版式全部是「照片左／文字右」，差別只在數字與標籤位置，由 --quote／--stair／--youth
+// 三個 layout modifier 分（見下方 SCSS）。
+// ⚠️ 2026-08-17 之前這裡有一個 `isSpeakerCards = speakers.length > 1`，用來切「並排卡片」
+//    版式。設計改成單人之後那個判斷會靜默翻成 false、整組卡片樣式消失 —— 版式**只能由
+//    layout 決定，不能由人數決定**，故整個拿掉，不要因為日後又變兩人就加回來。
 
 // ForumLine 的純文字。姓名可能是素材物件，但照片的 alt 需要字串 ——
 // 直接綁物件會印出 [object Object]。
@@ -173,12 +176,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       <p v-if="event.speakerLabel" class="forum-event__speaker-label">
         {{ event.speakerLabel }}
       </p>
-      <div
-        v-for="(sp, i) in event.speakers"
-        :key="i"
-        class="forum-event__speaker"
-        :class="{ 'forum-event__speaker--card': isSpeakerCards }"
-      >
+      <div v-for="(sp, i) in event.speakers" :key="i" class="forum-event__speaker">
         <!-- 照片框：尺寸與版位全在這一層（見 SCSS），內層的實圖與 placeholder 只負責填滿它。
              photo 未填時顯示帶編號的 placeholder；填了路徑就自動換成實圖，不需改程式碼。
              講者照只有一張正方圖（無 _pc/_pad/_mob 後綴）→ srcset 收成單一組、use-prefix 關掉。 -->
@@ -289,7 +287,11 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     --date-base: 132;
     --date-lh: 124px;
 
-    padding: 1157px 0 120px;
+    // pc 是絕對定位版式，講者組是唯一的流內子項 → padding-top 直接等於稿的講者塊頂端。
+    // 1177 ＝ 稿 2652:55087 的「講者」y；270 ＝ 稿的講者塊下緣 1457 到段落下緣 1727。
+    // 2026-08-17 之前是 1157 / 120：那時講者組頂端是「講者介紹」標籤列、且整組比現在高
+    // 130（兩張卡）。兩組數字的總和相同，故論壇三的起點沒有因為這次改版而位移。
+    padding: 1177px 0 270px;
 
     @include rwd-max('pc') {
       --date-base: 86;
@@ -304,7 +306,8 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       --coreslash-x: 190px;
       --coreslash-y: 96px;
 
-      padding: 32px 80px 80px;
+      // padding-bottom 221 ＝ 稿的講者塊下緣 1319.6 到論壇二段落下緣 1541（理由同 pc）。
+      padding: 32px 80px 221px;
     }
 
     @include rwd-max('tablet') {
@@ -337,11 +340,13 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       padding: 32px 80px 40px;
     }
 
+    // mob 稿的議程緊接在日期組之後（間距 0）。padding 收成 0 之後仍差 6.9 ——
+    // 那是日期行盒在墨跡下方的下懸，不用負值去追。
     @include rwd-max('tablet') {
       --date-base: 57;
       --date-lh: 56px;
 
-      padding: 32px 26px 32px;
+      padding: 32px 26px 0;
     }
   }
 
@@ -353,7 +358,9 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     --date-lh: 98px;
     --stair-x1: 115px;
 
-    padding: 816px 0 120px;
+    // 816 → 1018：同論壇二，pc 的 padding-top 就是稿的講者塊頂端（稿 2652:55136 的
+    // 「講者」y=1018.2）。改版前 816 對應的是「講者介紹」標籤列的頂端。
+    padding: 1018px 0 120px;
 
     @include rwd-max('pc') {
       --date-base: 82;
@@ -363,12 +370,15 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       padding: 200px 80px 80px;
     }
 
+    // padding-bottom 180 ＝ mob 稿「CTA 盒底 → 精彩活動標題盒頂」的總間距
+    // （稿把它拆成論壇四段尾 80 ＋ 精彩活動段首 100；實作全部掛在這裡）。
+    // ⚠️ 日後若替精彩活動補上自己的 padding-top，這個值要同步扣掉，否則會疊兩份。
     @include rwd-max('tablet') {
       --date-base: 58;
       --date-lh: 56px;
       --stair-x1: 66px;
 
-      padding: 112px 26px 100px;
+      padding: 112px 26px 180px;
     }
   }
 }
@@ -678,8 +688,9 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       margin-top: 100px;
     }
 
+    // mob：稿的間距 70（內文盒底 → 地點墨跡頂），實作的地點墨跡比盒頂低 6.5 → 63.5。
     @include rwd-max('tablet') {
-      margin-top: 80px;
+      margin-top: 63.5px;
     }
   }
 
@@ -690,8 +701,9 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       margin-top: 111px;
     }
 
+    // mob：稿的間距 60（內文盒底 → 日期墨跡頂），實作的日期墨跡比盒頂低 8 → 52。
     @include rwd-max('tablet') {
-      margin-top: 76px;
+      margin-top: 52px;
     }
   }
 
@@ -1036,15 +1048,31 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   }
 }
 
-// 論壇四的稿把時間排在地點之上（其餘三場都在之下）。__venue 是 flex column，
+// 論壇四的 pc／pad 稿把時間排在地點之上（其餘三場都在之下）。__venue 是 flex column，
 // 故用 order 換位即可，不必為此改 template 的順序。
+// ⚠️ mob 稿相反 —— 時間在地點下方（成功大學／國際會議中心／12－5PM），故限定在 pc 以上。
+// pad 沒有可查的稿，沿用 pc 的排法（改動前三個斷點都吃到這條）。
 .forum-event__time {
   .forum-event--youth & {
-    order: -1;
+    @include rwd-min('tablet') {
+      order: -1;
+    }
   }
 }
 
-// 講者組：論壇一設計稿 x=463 寬 709，論壇二 x=455 寬 528（兩張 250 卡片 ＋ 28 欄距）。
+// 講者組：論壇一設計稿 x=463 寬 709，論壇二 x=455 寬 528、論壇四 x=108 寬 567。
+//
+// 三場**同一個版式**（照片絕對定位在左上、標籤絕對定位、文字欄靠右），只有數字不同：
+//
+//   | | 照片 | 文字欄左緣 | __speaker padding-top | 標籤 top |
+//   | 論壇一（quote）    | 268 |  312 | 102 | 59 |
+//   | 論壇二四 pc        | 280 |  316 | 103 | 39 |
+//   | 論壇二四 pad       | 233 |  269 |  81 | 17 |
+//   | 論壇二四 mob       | 180 |  204 |  68 | 22 |
+//
+// ⚠️ 2026-08-17 之前論壇二／四是「兩張並排卡片」（照片在上、文字在下），由
+//    `.forum-event__speaker--card` 驅動，而那個 class 又由 `speakers.length > 1` 決定。
+//    設計改成單人後整套換掉 —— 版式改由 layout modifier 決定，**不要再用人數判斷**。
 .forum-event__speakers {
   position: relative;
 
@@ -1065,45 +1093,52 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
   }
 
+  // ⚠️ 這一層**不可以有 padding-top** —— 「講者介紹」標籤是 absolute、以本層的 padding box
+  //    為基準，補上內距只會把照片推下去、標籤留在原地（實測 pc 錯開 20、論壇四錯開 202）。
+  //    垂直位置一律交給外面：pc 給 .forum-event 的 padding-top，pad／mob 給本層的 margin。
+  //    這也讓「本層的 rect ＝ 照片框的 rect」成立，設計線的 Q8~Q10／P8~P10 直接吃它。
+  //
+  // 論壇二：pc 稿 x=455 寬 528（280 ＋ 36 ＋ 212）；pad 稿 x=220（＝內容欄左緣 +140，
+  // **不是**切齊右緣 —— 稿上距右緣還有 7）、寬 461（233 ＋ 36 ＋ 192）；mob 滿版。
+  //
+  // pad／mob 是流排版，margin 由「稿的墨跡間距」反推（稿的絕對 y 對不上實作，見
+  // architecture/forum-node-path.md 第七節第 7 條）：
+  //   pad 論壇二 稿間距 55.2，實作日期組墨跡收在 986.8、__meta 盒底 996.8 → 45
+  //   mob 論壇二 稿間距 82.8，實作墨跡收在 777.7、__meta 盒底 793      → 68
   .forum-event--stair &,
   .forum-event--youth & {
-    display: flex;
-    gap: 28px;
     width: 528px;
     margin-left: 455px;
-    padding-top: 44px;
 
-    // pad：標籤跨滿兩欄、卡片並排切齊右緣；mob 轉單欄（照片左、文字右，見 --card）。
     @include rwd-max('pc') {
-      display: grid;
-      grid-template-columns: repeat(2, 210px);
-      gap: 12px 28px;
-      justify-content: end;
-      width: auto;
-      margin: 100px 0 0 auto;
-      padding-top: 0;
+      width: 461px;
+      margin: 45px 0 0 140px;
     }
 
     @include rwd-max('tablet') {
-      grid-template-columns: 1fr;
-      gap: 16px;
-      margin: 60px 0 0;
+      width: auto;
+      margin: 68px 0 0;
     }
   }
 
-  // 論壇四的講者卡尺寸與論壇二一模一樣（pc 250、pad 210），差別只有水平位置：
-  // 論壇二切齊右緣、論壇四靠左（pc 稿 x=114、pad 稿 x=80 ＝ 版面左邊界）。
+  // 論壇四的講者組與論壇二一模一樣，差別只有水平位置（pc 稿 x=108、pad 稿 x=80 ＝內容欄
+  // 左緣）與文字欄寬（251，故整組 567／520）。
   // 必須寫在上面那組之後才蓋得過去（兩者特異度同為 0,2,0）。
+  //   pad 稿間距 83，實作地點墨跡收在 1044.1、__meta 盒底 1057.8 → 69
+  //   mob 稿間距 40（時間墨跡底 → 照片上緣），實作時間墨跡比 __meta 盒底高 46.3 → 31.7
+  //     （2026-08-17 之前是 78 —— 那時沒有 mob 論壇四的版面稿可量，借用另外三處的 83）
   .forum-event--youth & {
-    margin-left: 114px;
+    width: 567px;
+    margin-left: 108px;
 
     @include rwd-max('pc') {
-      justify-content: start;
-      margin: 32px auto 0 0;
+      width: 520px;
+      margin: 69px auto 0 0;
     }
 
     @include rwd-max('tablet') {
-      margin: 60px 0 0;
+      width: auto;
+      margin: 31.7px 0 0;
     }
   }
 }
@@ -1137,16 +1172,31 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
   }
 
+  // 論壇二／四：標籤是文字欄的第一行，落在照片右側（稿三斷點的 top／left 見 __speakers
+  // 的對照表）。base 在 rwd-max('pc') 把它改回 static，這裡要蓋回 absolute。
   .forum-event--stair &,
   .forum-event--youth & {
+    top: 39px;
+    left: 316px;
+
     @include rwd-max('pc') {
-      grid-column: 1 / -1;
+      position: absolute;
+      top: 17px;
+      left: 269px;
+    }
+
+    // mob 稿的標籤字面高 34（＝ 20px 字級的行盒），不是論壇一 mob 的 16。
+    @include rwd-max('tablet') {
+      top: 22px;
+      left: 204px;
+      font-size: 20px;
+      line-height: 34px;
     }
   }
 }
 
-// 單人（論壇一）：照片絕對定位在左，文字欄從 x=312 起（設計稿 268 ＋ 44 欄距）。
-// --card（多人）：照片在上、文字在下的並排卡片。
+// 論壇一：照片絕對定位在左，文字欄從 x=312 起（設計稿 268 ＋ 44 欄距）。
+// 論壇二／四同構，只是數字不同（對照表見 .forum-event__speakers）。
 //
 // ⚠ padding-top 102 ＝ 姓名相對講者組頂端的設計稿位移，**刻意寫成本層的 padding、
 //   不是姓名的 margin-top**：這一層與 .forum-event__speakers 都沒有上邊框／上內距，
@@ -1161,32 +1211,32 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   min-height: 268px;
   padding: 102px 0 0 312px;
 
-  &--card {
-    display: flex;
-    flex-direction: column;
-    width: 250px;
-    min-height: 0;
-    padding: 0;
-
-    @include rwd-max('pc') {
-      width: 210px;
-    }
-
-    // mob 稿的論壇二不是卡片，是「照片左、頭銜＋姓名右」的橫列。
-    // 頭尾兩條 1fr 是撐開用的空列：照片跨滿四列時，文字才會在照片高度內垂直置中。
-    @include rwd-max('tablet') {
-      display: grid;
-      grid-template-columns: 180px 1fr;
-      grid-template-rows: 1fr min-content min-content 1fr;
-      column-gap: 24px;
-      width: 100%;
-    }
-  }
-
   // 論壇一在 pad／mob 沒有自己的版位，讓照片／標籤／姓名／介紹直接參與講者組的直排。
   .forum-event--quote & {
     @include rwd-max('pc') {
       display: contents;
+    }
+  }
+
+  // 論壇二／四：稿的順序是「頭銜 → 姓名」，但 DOM 是「姓名 → 頭銜」（論壇一的順序，
+  // 且姓名要先於 bio）—— 改成 flex column 用 order 換位，不動 template。
+  // ⚠ 不要改成 display: contents 讓子項直接參與 __speakers —— 那會讓本層 rect 全 0，
+  //   mob 的 P9／P10 就量不到（見 architecture/forum-node-path.md 第四節）。
+  .forum-event--stair &,
+  .forum-event--youth & {
+    display: flex;
+    flex-direction: column;
+    min-height: 280px;
+    padding: 103px 0 0 316px;
+
+    @include rwd-max('pc') {
+      min-height: 233px;
+      padding: 81px 0 0 269px;
+    }
+
+    @include rwd-max('tablet') {
+      min-height: 180px;
+      padding: 68px 0 0 204px;
     }
   }
 }
@@ -1236,17 +1286,16 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
   }
 
-  // 卡片版式（論壇二／四）：照片在流內、寬度等於卡片；mob 改橫列，照片跨滿四列。
-  .forum-event__speaker--card & {
-    position: relative;
-    width: 250px;
+  // 論壇二／四：同樣是絕對定位在左上（沿用 base），只有尺寸不同。
+  .forum-event--stair &,
+  .forum-event--youth & {
+    width: 280px;
 
     @include rwd-max('pc') {
-      width: 210px;
+      width: 233px;
     }
 
     @include rwd-max('tablet') {
-      grid-row: 1 / -1;
       width: 180px;
     }
   }
@@ -1330,37 +1379,76 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
   }
 
-  .forum-event__speaker--card & {
+  // 論壇二／四：稿把姓名 outline 掉了，只留字面框（pc 201.18×54.11、pad 190×51、
+  // mob 111×30）。字級與字距是拿**實際渲染的字面**回推的（Noto Sans TC Light，
+  // 用 canvas actualBoundingBox 量到 CJK 字面 ＝ 0.92em 高、每字 advance 1em、
+  // 三字字面寬 2.92em）：
+  //     字級 ＝ 字面高 ÷ 0.92          → 58.8 / 55.4 / 32.6 → 59 / 55 / 33
+  //     字距 ＝ (字面寬 − 2.92×字級) ÷ 2 → 14.7 / 14.1 / 7.9 → 三個斷點都 ≈ 0.25em
+  //   還原後的字面框 201.8×54.3／188.1×50.6／112.9×30.4，與稿差 ≤ 1.9px。
+  //
+  // ⚠️ 不要只用字面**寬**反推 —— 稿的字距有 0.25em，只看寬會推出 69px（差 10px）。
+  //
+  // margin-top 把行盒擺到「字面落在稿的位置」（pc 187 / pad 165 / mob 128，相對照片頂）：
+  //     字面頂在行盒內的位移 ＝ (行高 − 1.45×字級) ÷ 2 + 0.32×字級
+  //     （1.45em ＝ fontBoundingBox 的 ascent 1.16 ＋ descent 0.29）
+  //   pc  行高 80 → 位移 16.1，行盒頂 170.9，頭銜行盒下緣 167 → 4
+  //   pad 行高 74 → 位移 14.7，行盒頂 150.3，頭銜下緣 145      → 5
+  //   mob 行高 45 → 位移  9.1，行盒頂 118.9，頭銜下緣 116      → 3
+  //
+  // order 2 讓它排在頭銜之後（稿是頭銜在上，DOM 是姓名在上）。
+  // ⚠️ nowrap 是必要的，不是保險。稿的文字欄寬是照**頭銜**自動長出來的（論壇二 pc 212、
+  //    pad 192），比帶 0.25em 字距的三字姓名還窄（221.3／206.3）—— 姓名會折成兩行，
+  //    講者組因此比照片高 51／65，而 `.forum-event__speakers` 的高度正是設計線
+  //    Q8~Q10／P8~P10 的錨點（見 architecture/forum-node-path.md）。
+  //    稿上姓名是 outline 的 vector、本來就溢出那個框，folding 不是設計意圖。
+  .forum-event--stair &,
+  .forum-event--youth & {
     order: 2;
+    margin-top: 4px;
+    font-size: 59px;
+    line-height: 80px;
+    letter-spacing: 0.25em;
+    white-space: nowrap;
+
+    @include rwd-max('pc') {
+      margin-top: 5px;
+      font-size: 55px;
+      line-height: 74px;
+    }
 
     @include rwd-max('tablet') {
-      grid-area: 3 / 2;
-      font-size: 32px;
-      line-height: 46px;
+      margin-top: 3px;
+      font-size: 33px;
+      line-height: 45px;
     }
   }
 }
 
-// 卡片版：照片底 ＋12 起排，並固定佔 68 高，讓兩張卡的姓名對齊同一條基線。
+// 頭銜。論壇二／四是文字欄的第二段（padding-top 已把它擺到稿的位置），
+// 不再需要卡片版那條「固定 68 高讓兩張卡的姓名對齊」的規則。
+//
+// ⚠️ pre-line：稿的頭銜是**兩個文字段**（Figma 裡就是硬換行，不是自動折行），文案因此在
+//    section2.json 裡帶 \n。不靠欄寬自動折 —— 論壇四的文字欄 251 寬，自動折會斷成
+//    「台積電執行副總經理 暨共」／「同營運長」（實測），與稿不符。
 .forum-event__speaker-role {
   order: 1;
-  min-height: 68px;
-  margin: 12px 0 0;
+  margin: 0;
   color: var(--color-gray-light);
   font-size: 20px;
   line-height: 32px;
   letter-spacing: 0.05em;
+  white-space: pre-line;
 
-  // mob 的橫列版式改由 grid 指派版位，不再需要那條對齊用的 68 高。
   @include rwd-max('tablet') {
-    grid-area: 2 / 2;
-    min-height: 0;
-    margin: 0;
     font-size: 16px;
     line-height: 24px;
   }
 
   .forum-event--quote & {
+    min-height: 68px;
+    margin-top: 12px;
+
     @include rwd-max('pc') {
       order: 4;
     }

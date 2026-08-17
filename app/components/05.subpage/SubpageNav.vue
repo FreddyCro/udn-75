@@ -16,12 +16,20 @@ withDefaults(
       <!-- 用 NuxtLink 而非原生 <a>：原生 href 是整頁重載，不走 vue-router，
            換頁轉場（app.pageTransition）不會觸發。to 收乾淨的 route path，baseURL 由 NuxtLink 處理。 -->
       <NuxtLink class="subpage-nav__link subpage-nav__link--back" :to="backUrl">
-        <img
+        <!-- 靜止／hover 同一顆圖示，只換顏色（圓：透明→橘、箭頭：灰→白）與尺寸——
+             <img> 載入的 svg 無法用 CSS 上色，故內嵌。
+             幾何＝udn75_nav_prev.svg／udn75_nav_prev_hover.svg（兩者箭頭路徑相同，只差顏色）。 -->
+        <svg
           class="subpage-nav__icon subpage-nav__icon--prev"
-          src="/img/udn75_nav_prev.svg"
-          alt=""
+          viewBox="0 0 68 68"
           aria-hidden="true"
-        />
+        >
+          <circle class="subpage-nav__icon-disc" cx="34" cy="34" r="33.75" />
+          <path
+            class="subpage-nav__icon-arrow"
+            d="M22 35.0039L22 38.0039L25 38.0039L25 35.0039L22 35.0039ZM22 29L22 32L25 32L25 29L22 29ZM25 38L25 41L28 41L28 38L25 38ZM25 26L25 29L28 29L28 26L25 26ZM28 41L28 44L31 44L31 41L28 41ZM31 44L31 47L34 47L34 44L31 44ZM28 23L28 26L31 26L31 23L28 23ZM31 20L31 23L34 23L34 20L31 20ZM19 32L19 35L49 35L49 32L19 32Z"
+          />
+        </svg>
         <span class="subpage-nav__label">{{ backLabel }}</span>
       </NuxtLink>
 
@@ -74,17 +82,14 @@ withDefaults(
   padding: 32px;
 }
 
+// 兩邊的 hover 回饋都只落在圓鈕（文字不變色、不加底線）：
+// 「返回」換成 84px 實心橘鈕，「下一篇」停在放大態
 .subpage-nav__link {
   display: inline-flex;
   align-items: center;
   gap: 16px;
   color: var(--color-gray);
   text-decoration: none;
-
-  // 底線僅保留給「返回」當 hover 回饋；「下一篇」的 hover 回饋是圓鈕停在放大態
-  &--back:hover .subpage-nav__label {
-    text-decoration: underline;
-  }
 }
 
 .subpage-nav__label {
@@ -104,9 +109,54 @@ withDefaults(
   flex-shrink: 0;
 }
 
+// 依設計稿，「返回」靜止＝68px 灰線框鈕＋灰箭頭，hover＝84px 實心橘鈕＋白箭頭。
+// 同一顆 svg 只換 fill / stroke 與尺寸，不換素材，顏色才能真的補間。
+// 盒維持 68px、放大交給 transform，文字與版面不會被推開。
 .subpage-nav__icon--prev {
   width: 68px;
   height: 68px;
+  transition: transform 0.2s ease;
+}
+
+// fill 用 transparent 而非 none：none 之間無法補間，換色會直接跳
+.subpage-nav__icon-disc {
+  fill: transparent;
+  stroke: var(--color-gray);
+  stroke-width: 0.5;
+  transition:
+    fill 0.2s ease,
+    stroke 0.2s ease;
+}
+
+.subpage-nav__icon-arrow {
+  fill: var(--color-gray);
+  transition: fill 0.2s ease;
+}
+
+.subpage-nav__link--back:hover {
+  .subpage-nav__icon--prev {
+    transform: scale(1.2353); // = 84px（84 / 68）
+  }
+
+  .subpage-nav__icon-disc {
+    fill: var(--color-orange);
+    stroke: var(--color-orange);
+  }
+
+  .subpage-nav__icon-arrow {
+    fill: #fff;
+  }
+}
+
+// 只留換色，不做放大位移
+@media (prefers-reduced-motion: reduce) {
+  .subpage-nav__icon--prev {
+    transition: none;
+  }
+
+  .subpage-nav__link--back:hover .subpage-nav__icon--prev {
+    transform: none;
+  }
 }
 
 // 圓鈕呼吸：盒維持 84×84（版面不動），以 scale 在 68px ↔ 84px 之間起伏；

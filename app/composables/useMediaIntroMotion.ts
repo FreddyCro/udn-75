@@ -14,7 +14,8 @@ export interface MediaTitleEls {
   sides: HTMLElement[];
   /** [上引號, 下引號] */
   quotes: HTMLImageElement[];
-  heart: HTMLImageElement;
+  /** 引號之間的「新」 */
+  newChar: HTMLImageElement;
 }
 
 interface MediaIntroMotionTargets {
@@ -41,7 +42,8 @@ interface MediaIntroMotionTargets {
  * no-JS／reduced-motion 不寫＝不 hold）。timeline 以 scrub 綁定這段捲動，
  * 捲完 buffer 剛好播完、sticky 同時解除。
  * 分鏡稿：pc / pad＝951-40360（橫向、有 bar）、mob＝6070-56570（直向、無 bar）；
- * 分件位置全在 D／BAR／QUOTE／HOME 常數表（分鏡稿 px、777 基準），改稿改表。
+ * 組裝態（分鏡 04）的字組改版為「智慧『新』媒體」＝2065-140592（753×96）。
+ * 分件位置全在 D／BAR／QUOTE／HOME 常數表（分鏡稿 px、753 基準），改稿改表。
  */
 export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   const route = useRoute();
@@ -75,9 +77,9 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const rows = targets.rows();
     if (!section || !hold || !buffer || !els) return;
     if (!morph || !barL || !barR || !lineL || !lineR) return;
-    const { title, final: titleFinal, motion: titleMotion, sides, quotes, heart } = els;
-    const heartBox = heart.parentElement as HTMLElement; // 引號＋心的外框
-    const all: Element[] = [...sides, ...quotes, heart];
+    const { title, final: titleFinal, motion: titleMotion, sides, quotes, newChar } = els;
+    const newCharBox = newChar.parentElement as HTMLElement; // 引號＋新的外框
+    const all: Element[] = [...sides, ...quotes, newChar];
 
     const isMob = window.matchMedia('(max-width: 767.98px)').matches;
     // 分鏡素材相對定位態標題的放大倍率（mob 素材同寸、定版標題較小 → 倍率較大）
@@ -93,7 +95,7 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     st?.kill();
     tl?.kill();
     gsap.set(
-      [title, titleFinal, titleMotion, ...all, heartBox, morph, barL, barR, lineL, lineR],
+      [title, titleFinal, titleMotion, ...all, newCharBox, morph, barL, barR, lineL, lineR],
       { clearProps: 'all' },
     );
     gsap.set(titleMotion, { autoAlpha: 1 });
@@ -106,21 +108,21 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const centerX = titleRect.left + titleRect.width / 2;
 
     // ── 分鏡距離表（與標題中心的距離，分鏡稿 px）──────────────────────────
-    // f＝現場 px／分鏡稿 px；分鏡稿的組裝態標題寬 777（518×1.5）
-    const f = (titleRect.width * SCALE) / 777;
+    // f＝現場 px／分鏡稿 px；分鏡稿（2065-140592）的組裝態標題寬 753（502×1.5）
+    const f = (titleRect.width * SCALE) / 753;
     const sgn = [-1, 1]; // [智慧, 媒體]＝[左/上, 右/下]
     // 貼齊中線（butt＝字形半寬/半高）→ 中停 →（pc/pad 隨 bar 外挪）→ 撐開
     const D = isMob
-      ? { butt: 48, inner: 96, inner2: 96, stack: 143 } // 直向走 y
-      : { butt: 118, inner: 152, inner2: 162, stack: 0 }; // 橫向走 x
+      ? { butt: 48, inner: 96, inner2: 96, stack: 143 } // 直向走 y（智慧半高 95.11/2）
+      : { butt: 119.4, inner: 152, inner2: 162, stack: 0 }; // 橫向走 x（智慧半寬 238.78/2）
     const BAR_IN = 281; // bar 中停（貼文字外緣）
     const BAR_OUT = 315; // bar 甩出
     const lineH = 96 * f; // 直線 8×96
-    const HOME = [-254, 259]; // settle 回家：字形中心在 media_title.svg 內的位置
-    // 引號中心相對心外框（210×98）中心的位置：上引號在左上、下引號在右下
-    const QUOTE = 85; // 水平（±）
-    const QUOTE_Y = 7; // 垂直（∓）
-    const QUOTE_H = 84; // 引號素材高（分鏡 6 直線收成此高再交棒）
+    const HOME = [-257.1, 257.5]; // settle 回家：字形中心在 media_title.svg 內的位置
+    // 引號中心相對標題中心的位置：上引號在左上、下引號在右下
+    const QUOTE = 89.16; // 水平（±）
+    const QUOTE_Y = 7.16; // 垂直（∓）
+    const QUOTE_H = 81.67; // 引號素材高（分鏡 6 直線收成此高再交棒）
 
     // 分件在放大 SCALE 倍的標題座標系內 → 分鏡距離除回 SCALE
     const dist = (d: number) => (d * f) / SCALE;
@@ -131,7 +133,7 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
 
     // 分件錨點統一移到標題中心，之後的 x/y＝與中心的距離。
     // gsap 設 x/y 會整段取代 CSS transform，置中須交給 xPercent/yPercent 承接
-    gsap.set([...sides, heartBox], {
+    gsap.set([...sides, newCharBox], {
       left: '50%',
       top: '50%',
       xPercent: -50,
@@ -293,8 +295,8 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
         { scaleX: 1, autoAlpha: 1, duration: 0.3, ease: 'power2.out' },
         'quotes+=0.5',
       )
-      // 7. 「心」淡入
-      .to(heart, { autoAlpha: 1, duration: 0.4 }, 'quotes+=0.6')
+      // 7. 「新」淡入
+      .to(newChar, { autoAlpha: 1, duration: 0.4 }, 'quotes+=0.6')
       // 8. settle：標題縮回定位、內容依序淡入
       .addLabel('settle', '+=0.35')
       .to(
@@ -302,7 +304,7 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
         { x: 0, y: 0, scale: 1, duration: 0.8, ease: 'power3.inOut' },
         'settle',
       )
-      // 文字滑回 media_title.svg 字形原位；心外框原本就在中心，不需回家
+      // 文字滑回 media_title.svg 字形原位；「新」外框原本就在中心，不需回家
       .to(sides[0]!, { x: dist(HOME[0]!), y: 0, duration: 0.8, ease: 'power3.inOut' }, 'settle')
       .to(sides[1]!, { x: dist(HOME[1]!), y: 0, duration: 0.8, ease: 'power3.inOut' }, 'settle')
       // 引號轉灰：與 CSS 完成態同值（#FF7F00 灰階後亮度 145，×0.717 ≈ #686868）

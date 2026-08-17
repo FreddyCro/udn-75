@@ -68,46 +68,51 @@ function pick(i: number) {
         v-for="(o, i) in options"
         :key="i"
         class="ai-quiz__btn"
+        :class="{ 'ai-quiz__btn--picked': picked === i }"
         type="button"
         :aria-pressed="picked === i"
         @click="pick(i)"
       >
-        <img
-          v-if="i === 0"
-          class="ai-quiz__btn-icon"
-          src="/img/udn75_nav_prev.svg"
-          alt=""
-          aria-hidden="true"
-        />
-        <img
+        <!-- 圓鈕：hover 版（橘底白箭頭）疊在預設版上淡入，橘底不透明所以不必藏底下那張 -->
+        <span v-if="i === 0" class="ai-quiz__btn-circle" aria-hidden="true">
+          <img class="ai-quiz__btn-icon" src="/img/udn75_nav_prev.svg" alt="" />
+          <img
+            class="ai-quiz__btn-icon ai-quiz__btn-icon--hover"
+            src="/img/udn75_nav_prev_hover.svg"
+            alt=""
+          />
+        </span>
+        <span
           v-if="i === 0"
           class="ai-quiz__btn-pixel ai-quiz__btn-pixel--left"
-          src="/img/udn75_arrow_pixel.svg"
-          alt=""
           aria-hidden="true"
         />
         <span class="ai-quiz__btn-label">{{ o.label }}</span>
-        <img
+        <span
           v-if="i !== 0"
           class="ai-quiz__btn-pixel ai-quiz__btn-pixel--right"
-          src="/img/udn75_arrow_pixel.svg"
-          alt=""
           aria-hidden="true"
         />
-        <img
+        <span
           v-if="i !== 0"
-          class="ai-quiz__btn-icon ai-quiz__btn-icon--flip"
-          src="/img/udn75_nav_prev.svg"
-          alt=""
+          class="ai-quiz__btn-circle ai-quiz__btn-circle--flip"
           aria-hidden="true"
-        />
+        >
+          <img class="ai-quiz__btn-icon" src="/img/udn75_nav_prev.svg" alt="" />
+          <img
+            class="ai-quiz__btn-icon ai-quiz__btn-icon--hover"
+            src="/img/udn75_nav_prev_hover.svg"
+            alt=""
+          />
+        </span>
       </button>
     </div>
 
+    <!-- 說明面板：未作答時整塊收合（含「說明：」），作答後才展開 -->
     <div class="ai-quiz__panel" :class="{ 'ai-quiz__panel--open': answered }">
-      <p class="ai-quiz__hint">說明：</p>
-      <div class="ai-quiz__body" :class="{ 'ai-quiz__body--open': answered }">
-        <div class="ai-quiz__body-inner">
+      <div class="ai-quiz__panel-clip">
+        <div class="ai-quiz__panel-inner">
+          <p class="ai-quiz__hint">說明：</p>
           <!-- 對稿只有圖示不帶文字；對錯文字保留在 alt 供 aria-live 朗讀 -->
           <p class="ai-quiz__badge" aria-live="polite">
             <img
@@ -122,7 +127,8 @@ function pick(i: number) {
               :alt="isCorrect ? correctLabel : wrongLabel"
             />
           </p>
-          <p v-if="explain" class="ai-quiz__explain">{{ explain }}</p>
+          <!-- 不加 v-if：作答當下才插入的節點沒有起始樣式可過渡，淡入會被跳過 -->
+          <p class="ai-quiz__explain">{{ explain }}</p>
         </div>
       </div>
     </div>
@@ -148,6 +154,7 @@ function pick(i: number) {
 
 .ai-quiz__options {
   display: flex;
+  gap: 8px;
 }
 
 .ai-quiz__option {
@@ -201,6 +208,15 @@ function pick(i: number) {
   background: none;
   color: var(--color-gray);
   cursor: pointer;
+  transition:
+    color 0.25s ease,
+    border-color 0.25s ease;
+
+  // 選中後停在橘色（等同 hover 的橘，但不隨滑鼠移開消失）
+  &--picked {
+    border-color: var(--color-orange);
+    color: var(--color-orange);
+  }
 
   &:last-child {
     justify-content: flex-end;
@@ -219,10 +235,13 @@ function pick(i: number) {
   }
 }
 
-.ai-quiz__btn-icon {
+// 圓鈕盒固定 48×48（版面不動），hover 以 scale 放大到對稿的 58px
+.ai-quiz__btn-circle {
+  position: relative;
   display: none;
   width: 48px;
   height: 48px;
+  transition: transform 0.25s ease;
 
   &--flip {
     transform: scaleX(-1);
@@ -231,13 +250,58 @@ function pick(i: number) {
   @include rwd-min('tablet') {
     display: block;
   }
+
+  // 觸控裝置沒有真正的 hover，避免點完卡在 hover 態
+  @media (hover: hover) {
+    .ai-quiz__btn:hover & {
+      transform: scale(1.2083); // 58 / 48
+    }
+
+    .ai-quiz__btn:hover &--flip {
+      transform: scaleX(-1) scale(1.2083);
+    }
+  }
 }
 
-// mob 專用像素箭頭：素材朝下，旋轉指向外側
+.ai-quiz__btn-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+
+  &--hover {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+
+    // 選中後橘底圓鈕常駐
+    .ai-quiz__btn--picked & {
+      opacity: 1;
+    }
+
+    @media (hover: hover) {
+      .ai-quiz__btn:hover & {
+        opacity: 1;
+      }
+    }
+  }
+}
+
+// mob 專用像素箭頭：素材朝下，旋轉指向外側。
+// 走 mask + background-color 上色（<img> 載入的 svg 無法用 CSS 改色），選中時轉橘
 .ai-quiz__btn-pixel {
+  flex-shrink: 0;
   display: block;
   width: 22px;
   height: 12px;
+  background: var(--color-gray-light); // 同素材原色
+  mask: url('/img/udn75_arrow_pixel.svg') no-repeat center / contain;
+  -webkit-mask: url('/img/udn75_arrow_pixel.svg') no-repeat center / contain;
+  transition: background-color 0.25s ease;
+
+  .ai-quiz__btn--picked & {
+    background: var(--color-orange);
+  }
 
   @include rwd-min('tablet') {
     display: none;
@@ -264,46 +328,73 @@ function pick(i: number) {
   }
 }
 
-// 說明面板：「說明：」常駐，作答後 body 以 grid-rows 0fr ↔ 1fr 下展。
-// 未展開時底線收邊（面板僅一行「說明：」）；展開後內容自己撐出範圍，底線移除
+// 說明面板 toggle：整塊以 grid-rows 0fr ↔ 1fr 下展（不用 height/max-height，
+// 只動 grid track，瀏覽器不必逐格重算 layout 以外的東西，也不需要寫死高度）。
+// margin 一起動畫，收合時按鈕下方不留空白
 .ai-quiz__panel {
-  margin-top: 28px;
-  padding: 16px 24px;
-  background: #f7f7f7; // 面板專用底色，非全站 token
-  border-bottom: 1px solid #d9d9d9; // 面板收邊線，非全站 token
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: 0;
+  transition:
+    grid-template-rows 0.4s ease,
+    margin-top 0.4s ease;
 
   &--open {
-    border-bottom-color: transparent; // 保留 1px 佔位，展開時不位移
+    grid-template-rows: 1fr;
+    margin-top: 28px;
   }
 }
 
+// 壓縮層：padding／底色不能放這裡，border-box 下 height 0 仍會留下 padding 的高度
+.ai-quiz__panel-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ai-quiz__panel-inner {
+  padding: 16px 24px;
+  background: #f7f7f7; // 面板專用底色，非全站 token
+}
+
+// 面板內容依序淡入：說明 → 對錯圖示 → 解說文字。
+// 面板本身展開要 0.4s，所以第一段從 0.3s 才起跑，之後每段隔 0.25s
 .ai-quiz__hint {
   margin: 0;
   font-size: 16px;
   line-height: 24px;
   font-weight: 300;
   color: var(--color-gray-light);
+  opacity: 0;
+  transition: opacity 0.4s ease 0.3s;
+
+  .ai-quiz__panel--open & {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
-.ai-quiz__body {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.4s ease;
-}
-
-.ai-quiz__body--open {
-  grid-template-rows: 1fr;
-}
-
-.ai-quiz__body-inner {
-  min-height: 0;
-  overflow: hidden;
-}
-
+// 圖示除了淡入，再從 0.8 撐到 1（cubic-bezier 尾段略帶回彈感）
 .ai-quiz__badge {
   display: flex;
   justify-content: center;
   margin: 12px 0 0;
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity 0.4s ease 0.55s,
+    transform 0.4s cubic-bezier(0.34, 1.3, 0.64, 1) 0.55s;
+
+  .ai-quiz__panel--open & {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 .ai-quiz__badge-icon {
@@ -319,5 +410,15 @@ function pick(i: number) {
   font-weight: 300;
   color: var(--color-body);
   text-align: left;
+  opacity: 0;
+  transition: opacity 0.4s ease 0.8s;
+
+  .ai-quiz__panel--open & {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 </style>

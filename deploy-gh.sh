@@ -1,22 +1,57 @@
 #!/usr/bin/env bash
 #
-# 產生 GitHub Pages 用的 staging branch。
+# 產生靜態站台用的部署 branch。
 #
-# 流程：砍掉本地 staging → 從目前 HEAD 重開 → 套用 ghpage 環境變數 → generate
+# 支援兩個部署目標：
+#   staging → branch staging，用 .env.ghpage.example（GitHub Pages）
+#   nmdap   → branch nmdap，用 .env.nmdap.example（nmdap.udn.com.tw 測試機）
+#
+# 流程：砍掉本地目標 branch → 從目前 HEAD 重開 → 套用對應環境變數 → generate
 #       → 把靜態輸出放到 docs/ → commit → force push。
 #
-# 用法：./github-page.sh
+# 用法：./deploy-gh.sh [staging|nmdap]
+#       不帶參數會跳互動選單。
 #
-# ⚠️ 會直接覆蓋 .env（內容換成 .env.ghpage.example）。跑完要回到開發設定的話，
+# ⚠️ 會直接覆蓋 .env（內容換成該目標的 example）。跑完要回到開發設定的話，
 #    自己把 .env.development.example 複製回 .env。
 
 set -euo pipefail
 
-BRANCH="staging"
 DOCS_DIR="docs"
-ENV_EXAMPLE=".env.ghpage.example"
 
 cd "$(dirname "$0")"
+
+# 0. 選擇部署目標
+TARGET="${1:-}"
+
+if [ -z "$TARGET" ]; then
+  echo "==> 選擇部署目標："
+  echo "    1) staging  (GitHub Pages)"
+  echo "    2) nmdap    (nmdap.udn.com.tw)"
+  read -r -p "請輸入 1 或 2（或直接輸入名稱）： " choice
+  case "$choice" in
+    1|staging) TARGET="staging" ;;
+    2|nmdap)   TARGET="nmdap" ;;
+    *) echo "!!! 無效的選擇：${choice}"; exit 1 ;;
+  esac
+fi
+
+case "$TARGET" in
+  staging)
+    BRANCH="staging"
+    ENV_EXAMPLE=".env.ghpage.example"
+    ;;
+  nmdap)
+    BRANCH="nmdap"
+    ENV_EXAMPLE=".env.nmdap.example"
+    ;;
+  *)
+    echo "!!! 未知的部署目標：${TARGET}（可用：staging、nmdap）"
+    exit 1
+    ;;
+esac
+
+echo "==> 部署目標：${TARGET}（branch=${BRANCH}, env=${ENV_EXAMPLE}）"
 
 ORIGINAL_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 echo "==> 目前分支：${ORIGINAL_BRANCH}"
@@ -79,7 +114,7 @@ git add -f "$DOCS_DIR"
 if git diff --cached --quiet; then
   echo "==> 沒有變更，略過 commit"
 else
-  git commit -m "test"
+  git commit -m "deploy: ${TARGET}"
 fi
 
 # 8. force push

@@ -139,11 +139,13 @@ export const HERO_CORE_DROP_IN = {
   ease: 'power2.out',
 } as const;
 
-// ── 退場段的保險絲 ────────────────────────────────────────────────────
-// outro 期間頁面是鎖住的（見 useHeroVideo 的 shouldLockScroll）—— 影片若卡住（緩衝、
-// seek 失敗、分頁被切走）就永遠等不到 gone、整頁鎖死。進 outro 時起算「該段應有長度
-// ＋ 這個寬限」，逾時直接進 gone。
-export const HERO_OUTRO_STALL_GRACE_MS = 3000;
-
-/** duration 還讀不到（outro.end 填 HERO_VIDEO_END）時，退場段的絕對上限（ms） */
-export const HERO_OUTRO_MAX_MS = 15000;
+// ── 退場溶解吃掉的捲動距離（× 視窗高）────────────────────────────────
+// 拿掉捲動鎖之後，**唯一還給退場影片時間的就是這段距離**：使用者捲得多快，
+// 退場就被截斷得多厲害（已裁決的「捲動優先」，見設計文件第三節的對照表）。
+// 1.2 與同專案的 TRANSITION_VH 同量級，是這份程式碼裡已被接受的節奏。
+//
+// ⚠️ 這個值必須與 HeroVideo.vue 的 SCSS 變數 $dissolve 相同 —— 前者算 ScrollTrigger
+//    的 end，後者算佔位高度。兩邊不一致，溶解結束的位置就不會落在 $intro-at 上。
+//    SCSS 變數無法從 JS 讀取，這是本專案已知且接受的雙寫（同 CORE.dotSize 與
+//    OrangeCore.vue 的關係）。改一邊就要改另一邊。
+export const HERO_DISSOLVE_VH = 1.2;

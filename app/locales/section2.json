@@ -65,7 +65,7 @@
             }
           },
           {
-            "text": "in the Newsroom Today:",
+            "text": "in the Newsroom Today :",
             "art": {
               "pc": { "src": "/img/forum/forum1-quote-pc-2.svg", "w": 454.006, "h": 35.2258 },
               "pad": { "src": "/img/forum/forum1-quote-pad-2.svg", "w": 317, "h": 24.5351 },
@@ -81,7 +81,7 @@
             }
           },
           {
-            "text": "and Artificial Intelligence.",
+            "text": "and Artificial Intelligence",
             "art": {
               "pc": { "src": "/img/forum/forum1-quote-pc-4.svg", "w": 454.006, "h": 35.437 },
               "pad": { "src": "/img/forum/forum1-quote-pad-4.svg", "w": 317, "h": 24.687 },
@@ -135,9 +135,9 @@
             "photo": "/img/udn75_pic01_01",
             "bio": [
               "美國哥倫比亞大學新聞研究所（Columbia University's Graduate School of Journalism）新聞設計資深顧問和兼職教授，創辦顧問公司García Media，該公司專注於新聞編輯室轉型、設計策略和行動優先敘事。",
-              "加西亞博士被公認為世界頂尖的媒體設計師之一，他領導了遍布122個國家的750多個重新設計和創新項目。他的客戶包括《華爾街日報》、《華盛頓郵報》、《南華早報》、挪威《Aftenposten》、德國《Handelsblatt》以及許多其他主流媒體機構。除了新聞領域，他的企業合作計畫涵蓋了與 Facebook、WalMart、聯合國、Hapag Lloyd 航運和 JetBlue 航空等公司的合作。他目前的計畫包括德國《Handelsblatt》和德國《Tagesspiegel》，並為包括英國《泰晤士報》、新加坡《海峽時報》和南非 Media 24 集團在內的多家媒體機構提供培訓研討會。",
-              "加西亞博士於 2013 年加入哥倫比亞大學，擔任赫斯特數位媒體駐校教授（Hearst Digital Media Professor in Residence），指導全球記者如何在行動平台和新興數位管道上有效地講述故事。他創立波因特學院（Poynter Institute）的圖像與設計學程，曾任該學院基金會理事，並深度參與了波因特學院具有里程碑意義的眼動追蹤研究系列。",
-              "加西亞博士著有17本書，代表作三部曲《故事：轉型·敘事·設計》以及《人工智慧：內容創作的下一場革命》和最新著作《用心諮詢》。書中探討了人工智慧時代下的創造力、同理心和領導力。",
+              "賈西亞博士被公認為世界頂尖的媒體設計師之一，他領導了遍布122個國家的750多個重新設計和創新項目。他的客戶包括《華爾街日報》、《華盛頓郵報》、《南華早報》、挪威《Aftenposten》、德國《Handelsblatt》以及許多其他主流媒體機構。除了新聞領域，他的企業合作計畫涵蓋了與 Facebook、WalMart、聯合國、Hapag–Lloyd 航運和 JetBlue 航空等公司的合作。他目前的計畫包括德國《Handelsblatt》和德國《Tagesspiegel》，並為包括英國《泰晤士報》、新加坡《海峽時報》和南非 Media24 集團在內的多家媒體機構提供培訓研討會。",
+              "賈西亞博士於 2013 年加入哥倫比亞大學，擔任赫斯特數位媒體駐校教授（Hearst Digital Media Professor in Residence），指導全球記者如何在行動平台和新興數位管道上有效地講述故事。他創立波因特學院（Poynter Institute）的圖像與設計學程，曾任該學院基金會理事，並深度參與了波因特學院具有里程碑意義的眼動追蹤研究系列。",
+              "賈西亞博士著有17本書，代表作三部曲《故事：轉型·敘事·設計》以及《人工智慧：內容創作的下一場革命》和最新著作《用心諮詢》。書中探討了人工智慧時代下的創造力、同理心和領導力。",
               "他畢生的成就獲得了新聞設計協會終身成就獎、密蘇里大學新聞學榮譽勳章，並入選《People》雜誌「100位最具影響力的西班牙裔人士」。"
             ]
           }
@@ -160,11 +160,11 @@
         "layout": "stair",
         "tag": "青年對談（一）",
         "brand": {
-          "text": "台積電",
+          "text": "台積電文教基金會",
           "art": {
-            "pc": { "src": "/img/forum/forum2-brand-pc-1.svg", "w": 160.9937, "h": 43.997 },
-            "pad": { "src": "/img/forum/forum2-brand-pad-1.svg", "w": 146.6802, "h": 40.0008 },
-            "mob": { "src": "/img/forum/forum2-brand-mob-1.svg", "w": 105.2689, "h": 28.5634 }
+            "pc": { "src": "/img/forum/forum4-brand-pc-1.svg", "w": 430.0036, "h": 43.9853 },
+            "pad": { "src": "/img/forum/forum4-brand-pad-1.svg", "w": 302.0028, "h": 30.9896 },
+            "mob": { "src": "/img/forum/forum2-brand-mob-1.svg", "w": 259, "h": 26.5189 }
           }
         },
         "title": [
@@ -195,36 +195,29 @@
           {
             "text": "集思台大會議中心",
             "art": {
-              "pc": { "src": "/img/forum/forum2-venue-pc-1.svg", "w": 373.8489, "h": 38.7642 }
+              "pc": { "src": "/img/forum/forum2-venue-pc-1.svg", "w": 413.547, "h": 42.9096 }
             }
           },
           {
-            "text": "國際會議廳",
+            "text": "B1 國際會議廳",
             "art": {
-              "pc": { "src": "/img/forum/forum2-venue-pc-2.svg", "w": 373.8489, "h": 38.6526 }
+              "pc": { "src": "/img/forum/forum2-venue-pc-2.svg", "w": 413.547, "h": 43.1794 }
             }
           }
         ],
         "time": {
-          "text": "2PM.－6PM.",
+          "text": "2－6PM",
           "art": {
-            "pc": { "src": "/img/forum/forum2-time-pc-1.svg", "w": 373.8489, "h": 35.226 }
+            "pc": { "src": "/img/forum/forum2-time-pc-1.svg", "w": 413.547, "h": 38.9932 }
           }
         },
         "speakerLabel": "講者介紹",
         "speakers": [
           {
-            "role": "台積電董事長暨總裁",
-            "name": "魏哲家",
+            "role": "台積電執行副總經理\n暨共同營運長",
+            "name": "米玉傑",
             "photoNo": "02",
-            "photo": "/img/udn75_pic01_02",
-            "bio": []
-          },
-          {
-            "role": "台積電執行副總經理 暨共同營運長",
-            "name": "秦永沛",
-            "photoNo": "03",
-            "photo": "/img/udn75_pic01_03",
+            "photo": "/img/udn75_pic01_12",
             "bio": []
           }
         ],
@@ -276,13 +269,13 @@
           {
             "text": "集思台大會議中心",
             "art": {
-              "pc": { "src": "/img/forum/forum3-venue-pc-1.svg", "w": 421.8854, "h": 43.1674 }
+              "pc": { "src": "/img/forum/forum3-venue-pc-1.svg", "w": 409, "h": 41.7615 }
             }
           },
           {
-            "text": "蘇格拉底廳",
+            "text": "B1 蘇格拉底廳",
             "art": {
-              "pc": { "src": "/img/forum/forum3-venue-pc-2.svg", "w": 421.8854, "h": 41.1882 }
+              "pc": { "src": "/img/forum/forum3-venue-pc-2.svg", "w": 409, "h": 41.0474 }
             }
           }
         ],
@@ -347,17 +340,10 @@
       "speakerLabel": "講者介紹",
       "speakers": [
         {
-          "role": "台積電文教基金會 董事長",
-          "name": "曾繁城",
-          "photoNo": "04",
-          "photo": "/img/udn75_pic01_10",
-          "bio": []
-        },
-        {
-          "role": "台積電文教基金會 執行長",
-          "name": "許峻郎",
-          "photoNo": "05",
-          "photo": "/img/udn75_pic01_11",
+          "role": "台積電執行副總經理\n暨共同營運長",
+          "name": "秦永沛",
+          "photoNo": "03",
+          "photo": "/img/udn75_pic01_03",
           "bio": []
         }
       ],
@@ -502,8 +488,9 @@
     "actions": [
       {
         "label": "下載完整議程",
-        "href": "#",
-        "variant": "outline"
+        "href": "/meta.jpg",
+        "variant": "outline",
+        "download": "udn75-完整議程.jpg"
       },
       {
         "label": "立即報名",
@@ -519,7 +506,7 @@
     ],
     "body": "由倡議家與凱度洞察合作發起《AI時代 跨世代永續與未來生活大調查》，剖析當代台灣不同世代對科技變革與永續福祉的真實看法。",
     "cta": {
-      "label": "融媒體世代訪談報告網站",
+      "label": "AI時代 <br/>跨世代永續與未來生活大調查",
       "href": "#"
     }
   },

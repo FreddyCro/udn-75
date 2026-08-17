@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import str from '@/locales/common.json';
 import logoUrl from '@/assets/img/logo.svg';
-import { PC_BREAKPOINTS } from '@/utils/constants';
+import { PC_BREAKPOINTS, SUBPAGE_HEADER_ANCHOR } from '@/utils/constants';
 import {
   pickHeaderTheme,
   type HeaderTheme,
   type ThemeSpan,
 } from '@/utils/header-theme';
 import { pickActiveAnchor } from '@/utils/anchor-spy';
+import { resolveHomeIntent } from '@/utils/home-intent';
 
 /**
  * AppHeader — 底色隨捲動段落切換白／黑／橘（見 data-header-theme、updateTheme）。
@@ -30,23 +31,57 @@ const props = defineProps({
   autoHide: { type: Boolean, default: true },
 });
 
-// 錨點列只在首頁顯示；子頁改用 SubpageAnchor / SubpageAnchorBar。
-// 用路由而非 autoHide 判斷，兩者語意不同，日後子頁若也想 autoHide 不會互相牽動。
 const route = useRoute();
-const showNav = computed(() => route.path === '/');
 
-// logo 連回站台首頁。硬寫 "/" 在子路徑部署（GitHub Pages 的 /udn-75/、nmdap 的 /test/udn75/）
-// 會連到網域根，故改取 .env 的 NUXT_URL（見 nuxt.config 的 runtimeConfig.public.APP_URL）。
-const homeUrl = useRuntimeConfig().public.APP_URL;
+// 錨點列首頁與子頁共用；只在 ≥1280 顯示（由 AppHeaderNav 自己的 CSS 決定，不必在此判斷）。
+// 子頁量不到 #forum / #blessing / #media 這些段落 → activeTarget 恆為 ''，
+// 故改用 navActiveTarget：子頁一律標成 SUBPAGE_HEADER_ANCHOR（見該常數的說明）。
+const navActiveTarget = computed(() =>
+  route.path === '/' ? activeTarget.value : SUBPAGE_HEADER_ANCHOR,
+);
+
+// logo 的目的地與點擊行為都由 resolveHomeIntent 決定（單一判定來源）。
+// 原本這裡用 runtimeConfig 的 APP_URL（絕對網址）+ 原生 <a>，那是整頁重載 ——
+// 首頁所有 section 重新 mount、全部 ScrollTrigger 重建。子頁改走 NuxtLink 後
+// baseURL 由 router 自己套，子路徑部署（GitHub Pages 的 /udn-75/）不必再靠絕對網址。
+const homeIntent = computed(() => resolveHomeIntent(route.path === '/'));
+const { returnToLoop, isGone } = useHeroVideo();
+
+const router = useRouter();
+// 原生 <a> 的 href 要自己套 router base：子路徑部署（GitHub Pages 的 /udn-75/）下
+// 直接寫 "/" 會連到網域根 —— 那正是這支 logo 原本用絕對網址要避開的事，
+// 中鍵／Ctrl 點擊會真的走到它。router.resolve() 回傳的 href 已含 base。
+const logoHref = computed(() => router.resolve(homeIntent.value.to).href);
 
 const progress = ref(0);
-const activeTarget = ref<string>('');
+// 幾何 scroll-spy 推導出來的錨點（下方 IntersectionObserver 寫入）。
+const spyTarget = ref<string>('');
+// 段落主動宣告的錨點**優先於**幾何判定。幾何 spy 假設「段落在文件流裡的位置 ＝ 它在畫面上
+// 的位置」，那對 fixed 滿版視覺的段落不成立（01a.symbol 只是一把捲動尺）——
+// 那種段落自己有尺、知道自己何時開演，見 ~/composables/useAnchorClaim。
+// header 照舊不認得任何 section：它只讀「有沒有人宣告」，不知道宣告者是誰。
+const { anchorClaim } = useAnchorClaim();
+const activeTarget = computed(() => anchorClaim.value ?? spyTarget.value);
 const menuOpen = ref(false);
 const theme = ref<HeaderTheme>('light');
 let themeEls: HTMLElement[] = [];
-// header 是否顯示。autoHide=false 時自始為 true（含 SSR），避免子頁載入時的滑入動畫；
-// autoHide=true 時初始隱藏，待 hero 完全捲離視窗才顯示。
-const isVisible = ref(!props.autoHide);
+// hero 是否已完全捲離視窗（由下方 heroObserver 寫入）。autoHide=false 時無人監看，
+// 直接視為 true —— 那些頁面根本沒有 #app-hero。
+const heroOut = ref(!props.autoHide);
+
+// header 是否顯示。autoHide=false 時恆為 true（含 SSR），避免子頁載入時的滑入動畫。
+//
+// autoHide=true（首頁）有兩個顯示條件，任一成立即顯示：
+//   heroOut  hero 完全捲離視窗 —— 原本的唯一條件。
+//   isGone   影片退場結束。2026-08-16 起 .sec1__hero 是 sticky 且高 2.05 個視窗，
+//            「完全捲離視窗」要到 scrollY 4000 以上才成立（實測 1440×900 約 4223），
+//            整段引言與轉場都還看不到 header。設計要的是「影片一消失 header 就在」，
+//            那正是 gone，故直接讀狀態，不再另外量幾何。
+//   ⚠️ 倒帶回 loop（logo 就地倒帶／往回捲）時 isGone 轉 false，header 會跟著收回去 ——
+//      這是對的：那時影片又回到畫面上了。
+const isVisible = computed(
+  () => !props.autoHide || heroOut.value || isGone.value,
+);
 const anchors = str.headerAnchors as Anchor[];
 // logo 的替代文字與漢堡的 aria-label 一律走文案檔（locales/common.json 的 header），
 // 元件內不寫死中文 —— 校稿時只需要改 JSON。
@@ -113,7 +148,7 @@ onMounted(() => {
           else visible.delete(el);
         });
         // 同時命中兩區塊時取文件順序較前者（＝ anchors 的順序）。
-        activeTarget.value = pickActiveAnchor(
+        spyTarget.value = pickActiveAnchor(
           anchorOrder,
           sectionTargets,
           visible,
@@ -135,7 +170,7 @@ onMounted(() => {
       if (hero) {
         heroObserver = new IntersectionObserver(
           ([entry]) => {
-            if (entry) isVisible.value = !entry.isIntersecting;
+            if (entry) heroOut.value = !entry.isIntersecting;
           },
           { threshold: 0 },
         );
@@ -148,7 +183,7 @@ onMounted(() => {
         return;
       }
       // 連續數幀仍找不到 hero → 保底直接顯示。
-      isVisible.value = true;
+      heroOut.value = true;
     };
     setupHeroObserver();
   }
@@ -216,6 +251,26 @@ function scrollToTop(e?: Event) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// logo：回到 hero 的 loop 段。首頁就地倒帶（不換頁），子頁交給 NuxtLink 導航到 /#loop。
+function onLogoClick(e: MouseEvent) {
+  // 修飾鍵點擊（Ctrl／⌘／Shift／Alt）是「開新分頁／新視窗」的意圖，一律放行給瀏覽器 ——
+  // 攔下來會讓使用者按了沒反應。中鍵在現代瀏覽器發的是 auxclick，本來就不會進來。
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+  // 選單開著時 logo 仍可點：.app-header__bar-wrap 的 z-index 2 疊在面板（z-index 1）之上。
+  // 就地倒帶不換頁 → 面板不會自己消失，.is-menu-locked 也還鎖著 html/body，
+  // 使用者會看到「按了 logo，選單沒關、頁面鎖死」。
+  menuOpen.value = false;
+
+  if (homeIntent.value.action !== 'in-page') return; // 子頁：讓 NuxtLink 走
+
+  e.preventDefault();
+  // auto 而非 smooth：returnToLoop() 是瞬間生效的，smooth 期間影片已經淡回、
+  // 轉場層還在漸進收，兩者會打架（理由同 Hero 的 scrollToInitialHash）。
+  window.scrollTo({ top: 0, behavior: 'auto' });
+  returnToLoop();
+}
+
 // 選單面板是白底（設計稿只有這一版），開啟期間 header 一併切白底
 const effectiveTheme = computed<HeaderTheme>(() =>
   menuOpen.value ? 'light' : theme.value,
@@ -225,7 +280,10 @@ const effectiveTheme = computed<HeaderTheme>(() =>
 <template>
   <header
     class="app-header"
-    :class="[`app-header--${effectiveTheme}`, { 'is-visible': isVisible }]"
+    :class="[
+      `app-header--${effectiveTheme}`,
+      { 'is-visible': isVisible, 'is-menu-open': menuOpen },
+    ]"
   >
     <!-- 閱讀進度 -->
     <div v-show="isVisible" class="app-header__progress">
@@ -238,10 +296,17 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     <!-- 頂部列（≥1280：logo ＋ 錨點列 ＋ 音效 ＋ share；<1280：logo ＋ 音效 ＋ 漢堡） -->
     <div class="app-header__bar-wrap">
       <div class="app-header__bar">
+        <!-- 首頁用原生 <a>，不用 NuxtLink：NuxtLink 內建的 click handler 會**先於**本元件的
+             @click 執行，且它是在那個時間點才檢查 e.defaultPrevented —— onLogoClick 的
+             preventDefault 還沒跑，攔不住它。結果是推入一次真正的導航到 /，多一筆歷史紀錄、
+             讓「上一頁」失效。就地倒帶一律走 onLogoClick（捲頂 ＋ returnToLoop）。
+             （同 AppHeaderNav / AppHeaderMenu 已修過的順序陷阱。） -->
         <a
+          v-if="homeIntent.action === 'in-page'"
           class="app-header__logo"
-          :href="homeUrl"
+          :href="logoHref"
           :aria-label="labels.logoLabel"
+          @click="onLogoClick"
         >
           <img
             class="app-header__logo-img"
@@ -251,11 +316,26 @@ const effectiveTheme = computed<HeaderTheme>(() =>
           <span class="app-header__logo-mask" aria-hidden="true" />
         </a>
 
+        <!-- 子頁：真的要換頁，交給 NuxtLink（client-side 導航）；onLogoClick 只負責關選單。 -->
+        <NuxtLink
+          v-else
+          class="app-header__logo"
+          :to="homeIntent.to"
+          :aria-label="labels.logoLabel"
+          @click="onLogoClick"
+        >
+          <img
+            class="app-header__logo-img"
+            :src="logoUrl"
+            :alt="labels.logoAlt"
+          />
+          <span class="app-header__logo-mask" aria-hidden="true" />
+        </NuxtLink>
+
         <div class="app-header__actions">
           <AppHeaderNav
-            v-if="showNav"
             :anchors="anchors"
-            :active-target="activeTarget"
+            :active-target="navActiveTarget"
             @select="scrollToTarget"
           />
 
@@ -285,7 +365,7 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     <AppHeaderMenu
       :open="menuOpen"
       :anchors="anchors"
-      :active-target="activeTarget"
+      :active-target="navActiveTarget"
       @close="menuOpen = false"
       @select="scrollToTarget"
     />
@@ -323,6 +403,21 @@ const effectiveTheme = computed<HeaderTheme>(() =>
     --hd-bg: color-mix(in srgb, var(--color-orange) 70%, transparent);
     --hd-fg: #fff;
     --hd-accent: #fff;
+  }
+
+  // 選單開啟期間，header 整層抬到子頁疊層之上（見 subpage.scss 的疊層總表）。
+  //
+  // 為什麼需要這條：子頁舞台被 ScrollTrigger pin 之後，GSAP 產生的 .pin-spacer 帶著
+  // **行內** `z-index: 1100`（抄自 `.subpage__stage--media`，且抄過去就不再更新，
+  // 見 Subpage.vue 的 :deep(.pin-spacer) 註解）⇒ 整段 pin 期間該佔位都是一個高於
+  // header（1000）的堆疊脈絡。AppHeaderMenu 的面板在 header 內（z-index 1），
+  // 被自己的祖先關在 1000 這層，於是子頁 pin 期間開選單，舞台的標題／滿屏媒體會
+  // 直接畫在白面板之上 —— 那不是選單自己的 z-index 不夠，抬面板毫無作用。
+  //
+  // 只在選單開著時抬：媒體那一拍本來就該蓋掉 header（滿屏照片要滿屏），
+  // 常態抬上去會把那一拍的設計弄壞。選單是 modal，開著時它贏過一切才合理。
+  &.is-menu-open {
+    z-index: 1200;
   }
 }
 

@@ -3,7 +3,14 @@
  * FormulaBlocks — 「Publish X 議題智囊包」放射圖（news 頁）。
  * 三段式版面：pc 中央放射 2×2、pad 上下兩排、mob 直排＋左側 rail；
  * 連接線由像素元件（PixelBranch／PixelRail)生成。中央塊常駐，
- * 捲動 scrub 驅動（不 pin、回捲倒退）：
+ * 捲動 scrub 驅動（不 pin、回捲倒退），**舞台以 sticky 定在畫面中央播完**：
+ *   分鏡從「Publish X 中央塊走到畫面正中」那一刻才起跑（見 build 的 start），
+ *   其後 HOLD_VH 個視窗高的捲動距離全程黏在中央，演完才隨頁面捲走。
+ *   不這麼做的話幾何上放不下：section 只有一屏高，中央塊抵達畫面中央時，
+ *   離它捲出上緣只剩約 150px —— 動態不是提早演完（原本 start: 'top 80%' 就是
+ *   在中央塊還在畫面下緣時就跑完），就是四格會在半空中被裁掉。
+ *   定住用 CSS sticky 而非 GSAP pin：同 useMediaIntroMotion 的理由（觸控 pin 卡頓、
+ *   pin-spacer 需全站 refresh，且會把 z-index 抄走 —— 見 Subpage 的 .pin-spacer 註解）。
  *   pc/pad：四格自中央塊後方現身 → 經 2×2 堆疊散開到四角，分支黏著格子角於末段推出。
  *   mob：中央塊常駐，由上而下逐組「rail 往下畫完 → 議題框原地現身」。
  */
@@ -64,6 +71,11 @@ const MOB_STOPS = {
 // mob 直排由上而下的視覺順序 → POS 索引（tl → bl → tr → br，見 .formula__box 定位）
 const MOB_ORDER = [0, 2, 1, 3];
 
+// 舞台黏在畫面中央的捲動距離（視窗高的倍數）＝ 整段分鏡的長度。
+// 0.8 是照舊值挑的：原本 start 'top 80%' → end 'bottom 70%' 在 1440×900 量到 690px，
+// 0.8 個視窗高（720px）與它同量級，節奏不會因為這次改動而變快或變慢。
+const HOLD_VH = 0.8;
+
 // 三段式舞台（Figma 座標系）：斷點切換版面、<舞台寬時整體 scale
 const STAGES = {
   pc: { w: 1064, h: 524 },
@@ -93,7 +105,25 @@ const scale = ref(1);
 const mode = ref<keyof typeof STAGES>('pc');
 const reduced = ref(false);
 
+// 視窗高的單一來源（--vh）：sticky 的偏移與分鏡長度都吃它，不吃 window.innerHeight
+// （後者在行動裝置上會隨網址列收合而變，見 useViewportHeight）。
+const { vhPx } = useViewportHeight();
+
 const isMob = computed(() => mode.value === 'mob');
+
+// 舞台可視框高：pc 固定 600（舞台 524 垂直置中），其餘＝舞台縮放後的自然高。
+// 同時餵給 CSS（--formula-vp-h）算 sticky 的置中偏移，故拉成 computed 而非寫在 template。
+const viewportH = computed(() =>
+  mode.value === 'pc' ? 600 : Math.round(STAGES[mode.value].h * scale.value),
+);
+
+// 分鏡長度＝舞台黏在中央的捲動距離。reduced-motion 不跑分鏡（progress 直接 1），
+// 那就不該平白多出一段空捲動 —— 收成 0，版面回到「就是一屏」。
+//
+// CSS 側走 vhLength()（吐 calc(var(--vh) * n) 字串）而非 px 數字：後者 SSR 算不出來，
+// 會與 hydration 後的值不同 → 屬性 mismatch。字串兩邊一模一樣。
+// JS 側（ScrollTrigger 的 end）另外用 vhPx()，兩者讀的是同一個 --vh。
+const holdLength = computed(() => (reduced.value ? '0px' : vhLength(HOLD_VH)));
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
@@ -211,13 +241,30 @@ function onResize() {
   scale.value = Math.min(1, w / stage.w);
 }
 
+// 舞台被 sticky 黏住那一刻，root 上緣距視窗頂的距離。
+// sticky 的偏移是「(視窗高 − 舞台可視框高) / 2」（見 SCSS 的 .formula__viewport），
+// 而 root 上緣還要再往上扣掉自己的 padding-top（pc 0、pad 50、mob 34）——
+// 量 computed 而非寫死，斷點改了不必跟著改。
+// ⚠️ trigger 用 root 而非 viewport：viewport 是 sticky 的，refresh 若剛好發生在它被黏住的
+//    當下，量到的起點會是「當下的捲動位置」而不是它在文件裡的位置。root 不會黏。
+function startOffsetPx() {
+  const root = rootRef.value;
+  const padTop = root
+    ? parseFloat(getComputedStyle(root).paddingTop) || 0
+    : 0;
+  return Math.round((vhPx(1) - viewportH.value) / 2 - padTop);
+}
+
 function build() {
   const root = rootRef.value;
   if (!root) return;
   st = ScrollTrigger.create({
     trigger: root,
-    start: 'top 80%',
-    end: 'bottom 70%',
+    // 起跑點＝ Publish X 中央塊走到畫面正中的那一刻（pc/pad 的中央塊正好落在舞台的
+    // 垂直中線上，故「舞台置中」＝「中央塊置中」；mob 的中央塊本來就在最上面，
+    // 由上而下的 rail 分鏡從它長出來，舞台置中同樣是對的起手式）。
+    start: () => `top ${startOffsetPx()}px`,
+    end: () => `+=${reduced.value ? 0 : Math.round(vhPx(HOLD_VH))}`,
     scrub: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => (progress.value = self.progress),
@@ -269,13 +316,18 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section ref="rootRef" class="formula" :class="{ 'is-settled': settled }">
-    <!-- pc 高度固定 600（舞台 524 垂直置中）；pad/mob＝舞台縮放後的自然高 -->
-    <div
-      ref="viewportRef"
-      class="formula__viewport"
-      :style="{ height: mode === 'pc' ? '600px' : `${STAGES[mode].h * scale}px` }"
-    >
+  <section
+    ref="rootRef"
+    class="formula"
+    :class="{ 'is-settled': settled }"
+    :style="{
+      '--formula-vp-h': `${viewportH}px`,
+      '--formula-hold': holdLength,
+    }"
+  >
+    <!-- 舞台可視框：sticky 黏在畫面垂直中央，分鏡演完才隨頁面捲走。
+         高度 pc 固定 600（舞台 524 垂直置中）；pad/mob＝舞台縮放後的自然高（見 viewportH） -->
+    <div ref="viewportRef" class="formula__viewport">
       <div
         class="formula__stage"
         :style="{
@@ -349,6 +401,11 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <!-- 分鏡的捲動跑道：舞台黏住期間被「吃掉」的那段距離。空 div 而非 padding-bottom ——
+         padding 這一維已經被三斷點的左右留白佔用（見 .formula 的 padding），
+         再疊一個語意不同的值上去，日後調留白會誤傷分鏡長度。 -->
+    <div class="formula__hold" aria-hidden="true" />
   </section>
 </template>
 
@@ -390,9 +447,26 @@ onBeforeUnmount(() => {
   }
 }
 
+// 舞台可視框：黏在畫面垂直中央（(視窗高 − 本框高) / 2），黏著範圍是 .formula 的
+// padding box —— 下面 .formula__hold 撐出的那一段就是它能黏多久。
+// 高與 sticky 偏移共用同一個變數（--formula-vp-h，由 script 的 viewportH 寫入），
+// 兩者不同步的話舞台就不會真的落在中央。
+// ⚠️ vh(1) 而非 100vh：行動裝置的 100vh 會隨網址列收合跳動，偏移跟著跳 → 舞台會抖
+//    （--vh 的單一來源見 useViewportHeight）。
+// ⚠️ 本框比視窗高時（窄長手機）偏移為負，等於「上緣切齊在視窗上方一點」，仍是置中，
+//    不必特別夾住。
+// ⚠️ sticky 靠祖先鏈上沒有 overflow: hidden/auto/scroll 才成立；子頁內文那條鏈目前
+//    全是 visible（同 Hero 的 .sec1__hero 註解），日後有人加上去這裡會**安靜失效**。
 .formula__viewport {
-  position: relative;
+  position: sticky;
+  top: calc((#{vh(1)} - var(--formula-vp-h, 600px)) / 2);
   width: 100%;
+  height: var(--formula-vp-h, 600px);
+}
+
+// 分鏡跑道：舞台黏住期間吃掉的捲動距離（reduced-motion 時為 0，見 script 的 holdPx）
+.formula__hold {
+  height: var(--formula-hold, 0px);
 }
 
 // 舞台依斷點定尺寸（Figma 座標系）；尺寸須與 script 的 STAGES 一致

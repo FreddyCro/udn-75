@@ -28,7 +28,11 @@ const { play } = useSfx();
       :href="cta.href"
       @click="play('sfx01')"
     >
-      {{ cta.label }}
+      <!-- 文案含「mob 才斷行」的 <br/>（見 locales 的 cta.label 與下方 :deep(br)），
+           故走 v-html —— 同 subpage 各頁 sp-h3／sp-lead 的既有慣例。
+           包一層 span 而非把 v-html 掛在 <UBtn> 上：v-html 會 fallthrough 成根節點的
+           innerHTML，等於在 render 後蓋掉 <slot/>，跟元件搶同一塊 DOM。 -->
+      <span class="agenda-report__cta-label" v-html="cta.label" />
     </UBtn>
   </section>
 </template>
@@ -100,27 +104,51 @@ const { play } = useSfx();
   }
 }
 
-// CTA：設計稿 422×74 深灰底白字（非橘色，與議程的 primary 按鈕區隔）——
-// 配色在 <UBtn variant="gray">，這裡只給尺寸與版位。pad 稿 440×80。
+// CTA：設計稿 600×80 深灰底白字（非橘色，與議程的 primary 按鈕區隔）——
+// 配色在 <UBtn variant="gray">，這裡只給尺寸與版位。pad 稿 440×80、mob 稿 362×98
+// （362 ＝ 414 稿寬 − 本區塊左右各 26 的 padding，故 mob 寬給 100% 而非寫死）。
+// mob 高 98 是因為文案在那裡折成兩行（見 __cta-label）：2×36 行距 ＋ 上下留白。
 // margin 的 auto 置中吃得到，是因為 UBtn 的根節點是 display: grid（block-level）。
 .agenda-report__cta {
-  --u-btn-w: 422px;
-  --u-btn-h: 74px;
+  --u-btn-w: 600px;
+  --u-btn-h: 80px;
 
   margin: 40px auto 0;
 
   @include rwd-max('pc') {
     --u-btn-w: 440px;
-    --u-btn-h: 80px;
 
     margin-top: 24px;
   }
 
   @include rwd-max('tablet') {
     --u-btn-w: 100%;
-    --u-btn-h: 70px;
+    // 高度給 auto ＋ min-height 而非寫死 98：mob 稿的 98 是「兩行」的高度，
+    // 但 320 這種窄機扣掉本區塊左右各 26 只剩 268，後半段 13 字（20px ＋ 0.1em
+    // 字距 ≈ 286）放不下會折成三行 —— 寫死就會從固定高的盒子上下溢出。
+    // 414／390／375 內容高（72）都小於 98，min-height 勝出＝仍是稿上的 98。
+    --u-btn-h: auto;
 
+    min-height: 98px;
     margin-top: 32px;
+  }
+}
+
+// 斷行位置逐斷點不同：mob 稿折成「AI時代」／「跨世代永續與未來生活大調查」兩行，
+// pad／pc 稿一行。走專案既有慣例 —— JSON 內寫「前段 <br/>後段」，pad 以上把 <br>
+// 藏掉就只剩那個半形空格（mob 則是行尾空白被 trim，看不出多一格）。
+//
+// ⚠️ 為什麼不靠自然換行：CJK 預設可在任意字之間斷，mob 寬度不夠時會斷在
+//    「…未來生」這種地方，不會剛好斷在空格上。也不用 word-break: keep-all ——
+//    那會讓 320 這種窄機完全不准斷，直接撐破按鈕；<br/> 是「指定一個斷點」，
+//    真的更窄時後半段仍可自然折行，壞得比較溫和。
+// ⚠️ :deep() 不可省：v-html 產生的 <br> 拿不到 scoped 的 data-v 屬性，
+//    直接寫 `br { … }` 會編成 `br[data-v-xxx]`，選不到。
+.agenda-report__cta-label {
+  :deep(br) {
+    @include rwd-min('tablet') {
+      display: none;
+    }
   }
 }
 </style>
