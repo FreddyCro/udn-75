@@ -17,6 +17,7 @@ import {
   type HeroVideoSegment,
 } from '@/utils/hero-video-config';
 import {
+  DISSOLVE_ENTER,
   DISSOLVE_LEAVE,
   dissolveAlpha,
   dissolveState,
@@ -33,6 +34,7 @@ const {
   skipOpening,
   openingSkipped,
   outroSpent,
+  outroForced,
 } = useHeroVideo();
 
 // 視窗高的單一來源（--vh）：scrub 的 end 吃它，不吃 window.innerHeight
@@ -313,7 +315,15 @@ function applyDissolve(p: number) {
   // 捲回頂端 ＝ 重新武裝：下一趟下滑要再放一次完整的退場段。
   // （設起的點在 setState('gone')，見 useHeroVideo 的 outroSpent。）
   if (p < DISSOLVE_LEAVE) outroSpent.value = false;
-  const next = dissolveState(p, heroState.value, outroSpent.value);
+  // 使用者真的開始捲了 → SKIP 那面栓退場，其後一切照常規則走。
+  // ⚠️ 不清的話，捲到一半再回頂端會卡在 outro 回不去 loop（栓會擋掉「回 loop」那一條）。
+  if (p >= DISSOLVE_ENTER) outroForced.value = false;
+  const next = dissolveState(
+    p,
+    heroState.value,
+    outroSpent.value,
+    outroForced.value,
+  );
   if (next !== heroState.value) setState(next);
 }
 
@@ -477,12 +487,18 @@ onBeforeUnmount(() => {
       />
 
       <!--
-        下滑看更多：僅 loop 狀態顯示（提示使用者向下滾動以觸發退場）。
-        設計稿（mob 2065:120052 / pad 2065:124031 / pc 2065:139395）只有一個 22×12 的
-        點陣 chevron，沒有文字也沒有那條垂直細線 —— 文案改掛 .visually-hidden：
-        這個提示對讀不到圖形的使用者更重要，稿上沒畫不代表不必說。
+        下滑看更多：loop 與 outro 顯示（提示使用者向下滾動以觸發／繼續退場）。
+        outro 也要顯示是因為 SKIP：它把狀態直接放到 outro，而人還在 page top ——
+        退場段播完會停在最後一格且全實，此時畫面上必須有個「請往下捲」的指引，
+        否則使用者面對的是一格不會動也沒說明的凍結畫面。正常流程的 outro 也吃得到，
+        但那時它本來就隨舞台一起在溶解（提示在 stage 內），跟著淡掉不會卡住。
+        設計稿只有一個 22×12 的點陣 chevron，沒有文字也沒有那條垂直細線 ——
+        文案改掛 .visually-hidden：這個提示對讀不到圖形的使用者更重要。
       -->
-      <div v-if="heroState === 'loop'" class="sec1__hero-scroll">
+      <div
+        v-if="heroState === 'loop' || heroState === 'outro'"
+        class="sec1__hero-scroll"
+      >
         <span class="visually-hidden">{{ str.hero.scrollHint }}</span>
         <!--
           點陣 chevron：11 顆 2×2 實心方塊排成階梯狀，與稿逐點相同。

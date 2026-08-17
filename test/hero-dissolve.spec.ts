@@ -73,4 +73,22 @@ describe('dissolveState', () => {
     // 還是要進 gone，否則 orange core 接不上。
     expect(dissolveState(1, 'loop', true)).toBe('gone');
   });
+
+  it('outroForced：SKIP 在 page top 放的 outro，不因 p 還是 0 就被收回 loop', () => {
+    // skip() 直接把狀態設成 outro，而此時人在 page top、p 是 0 —— 少了這面栓，
+    // 使用者捲一點點（p 尚未越過 ENTER）就會被判回 loop、影片 seek 回 30s，
+    // 再捲多一點又跳回 outro seek 36s，看起來就是抽一下。
+    expect(dissolveState(0, 'outro', false, true)).toBe('outro');
+    expect(dissolveState(DISSOLVE_LEAVE - 0.001, 'outro', false, true)).toBe(
+      'outro',
+    );
+  });
+
+  it('outroForced 只擋「回 loop」那一條，其餘規則照舊', () => {
+    // 捲到底仍要收尾（否則 orange core 接不上）；越過 ENTER 本來就是 outro；
+    // 已交棒過（outroSpent）仍優先 —— 那是「這一趟看過了」，與栓無關。
+    expect(dissolveState(1, 'outro', false, true)).toBe('gone');
+    expect(dissolveState(0.5, 'loop', false, true)).toBe('outro');
+    expect(dissolveState(0, 'gone', true, true)).toBe('loop');
+  });
 });

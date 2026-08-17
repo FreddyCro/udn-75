@@ -99,6 +99,15 @@ export function useHeroVideo() {
   // 拿回影片、再往下捲重看一次退場段。
   const openingSkipped = useState('hero-opening-skipped', () => false);
 
+  // 目前這個 outro 是 skip() 手動放的（＝在 page top、p ＝ 0 的位置放的）。
+  // dissolveState 的「p < LEAVE 就回 loop」對它不成立 —— 那條假設「還在頂端就是還沒開始
+  // 退場」，而 SKIP 的情形正好是「在頂端就已經開始退場」。少了這面栓，使用者捲一點點
+  // （p 尚未越過 ENTER）就會被送回 loop、影片 seek 回 30s，再捲多一點又跳回 outro
+  // seek 36s，看起來就是抽一下。
+  // 清掉的點只有一個：p 越過 ENTER（使用者真的開始捲了，見 HeroVideo 的 applyDissolve）。
+  // ⚠️ 那個清除點不是可有可無的收尾 —— 不清的話，捲到一半再回頂端會卡在 outro 回不去 loop。
+  const outroForced = useState('hero-outro-forced', () => false);
+
   /** 不經 scrub 直接結束開場。SKIP／載入失敗／帶 hash 進站共用這一條。 */
   const skipOpening = () => {
     openingSkipped.value = true;
@@ -106,17 +115,19 @@ export function useHeroVideo() {
   };
 
   /**
-   * SKIP：在 main / loop 時「跳過整支影片」— 直接進 gone（影片淡出、orange core 於第一屏
-   * 正中央淡入）。非 main / loop 時無作用。
+   * SKIP：在 main / loop 時「跳過正片，直接進退場段」（2026-08-17 使用者裁決；在此之前
+   * 是直接進 gone、連退場段都不放）。非 main / loop 時無作用。
    * 觸發者是 HeroVideo 右下角的 skip 按鈕（正片 3s 後淡入，見 HERO_SKIP_APPEAR_AT）。
    *
-   * 刻意「不」先播退場段：outro 2.5 秒（36–38.5，見 hero-video-config 的 HERO_VIDEO_SEGMENTS），
-   * 加上 seek 過去的緩衝，按了 SKIP 還要等它播完才看到結果，對開發與試看都是浪費。
-   * 要單獨預覽退場段，直接呼叫 setState('outro')。
+   * 收尾**不由這裡決定**：影片 seek 到 36s 播完 2.5 秒後停在最後一格（此時 p 仍是 0，
+   * 舞台全實），要等使用者捲動才溶解進 gone —— outro → gone 的唯一權威仍是 scrub
+   * （見 HeroVideo 的 onTimeUpdate 註解）。故這裡不設 openingSkipped：舞台若被強制隱藏，
+   * 退場段等於放給空氣看。
    */
   const skip = () => {
     if (state.value !== 'main' && state.value !== 'loop') return;
-    skipOpening();
+    outroForced.value = true;
+    setState('outro');
   };
 
   /**
@@ -165,5 +176,6 @@ export function useHeroVideo() {
     skipOpening,
     openingSkipped,
     outroSpent,
+    outroForced,
   };
 }

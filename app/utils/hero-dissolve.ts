@@ -28,6 +28,9 @@ export function dissolveAlpha(p: number): number {
  *  @param outroSpent 這一趟下滑是否已經抵達過 gone（＝退場段已經放完、交棒給 DOM core）。
  *    由呼叫端保管，抵達 gone 時設起、p 落回 LEAVE 之下（回到頂端）時清掉。
  *
+ *  @param outroForced 這個 outro 是 SKIP 手動放的（見 useHeroVideo 的 skip）。
+ *    由呼叫端保管，`p` 越過 ENTER（使用者真的開始捲了）時清掉。
+ *
  *  ⚠️ `main` 直接原樣返回：正片期間頁面是鎖住的、p 恆為 0，若讓它推導就會把狀態打成
  *     `loop`，等於正片被跳掉。scrub 只負責 loop 之後的事。
  *  ⚠️ 遲滯帶（LEAVE..ENTER）內維持現狀：停在邊界上的微小抖動（觸控板慣性、橡皮筋）
@@ -36,6 +39,7 @@ export function dissolveState(
   p: number,
   current: HeroState,
   outroSpent = false,
+  outroForced = false,
 ): HeroState {
   if (current === 'main') return 'main';
   if (p >= 1) return 'gone';
@@ -46,6 +50,11 @@ export function dissolveState(
   // 這一條擺在 gone 之後：再往下捲仍要收尾，否則 orange core 接不上。
   if (outroSpent) return 'loop';
   if (p > DISSOLVE_ENTER) return 'outro';
+  // SKIP 放的 outro 只擋下面那一條「還在頂端所以回 loop」—— 它發生在 p ＝ 0 的當下，
+  // 沒有這面栓的話使用者捲一點點就會被送回 loop、影片 seek 回 30s，再捲多一點又跳
+  // 回 outro seek 36s。上面兩條（抵達 1 收尾、越過 ENTER 進 outro）都在栓之前，
+  // 故栓不會把任何一條正常路徑關掉。
+  if (outroForced) return current;
   if (p < DISSOLVE_LEAVE) return 'loop';
   return current;
 }

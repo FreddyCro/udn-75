@@ -11,7 +11,7 @@ useSeoMeta({
   description: meta.metaDesc,
   'og:title': meta.metaTitle,
   'og:description': meta.metaXDesc,
-  'og:image': `${ASSETS_PATH}/img/${meta.metaImage}`,
+  'og:image': `${ASSETS_PATH}/${meta.metaImage}`,
   'twitter:title': meta.metaTitle,
   'twitter:description': meta.metaXDesc,
   twitterCard: 'summary_large_image',
