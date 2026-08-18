@@ -193,9 +193,15 @@ onMounted(() => {
   });
 
   // 03 → 04 過場第一拍：夥伴清單淡出。
-  // 終點固定在「section 下緣抵達視窗頂」，也就是 media 那條 ScrollTrigger 的起點
-  //（`top top`）—— 兩段首尾相接、不重疊。起點則往回退 BLESSING_OUT_VH 個視窗高，
-  // 那個常數就是整段退場的長度旋鈕（見 orange-core-config）。
+  // 終點固定在「section 下緣抵達視窗頂」；起點往回退 BLESSING_OUT_VH 個視窗高
+  // （那個常數是整段退場的長度旋鈕，見 orange-core-config）。
+  //
+  // ⚠️ 它與 media 拍 0（融合拍）現在是**同一段窗口**，不是首尾相接的兩段：
+  //   本條的起點就是 media 那條 ScrollTrigger 的 start（同一個捲動位置，
+  //   見 useMediaIntroMotion 的 st——它的 start 提前 runwayPx＝BLESSING_OUT_VH
+  //   個視窗高，與這裡的 outroBack 是同一個 BLESSING_OUT_VH）。清單淡出、veil
+  //   收窄、morph 收窄三件事吃的是同一段捲動距離，BLESSING_OUT_VH 是共用的
+  //   長度旋鈕，兩邊各自算自己的百分比只是因為 trigger 元素不同。
   //
   // 百分比先 Math.round：0.6 × 100 在 IEEE754 下是 60.000000000000006，
   // 直接內插會餵給 ScrollTrigger 一串沒必要的小數。

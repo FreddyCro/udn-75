@@ -100,9 +100,16 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     st?.kill();
     tl?.kill();
     gsap.set(
-      [title, titleFinal, titleMotion, ...all, newCharBox, morph, barL, barR, lineL, lineR, veil],
+      [title, titleFinal, titleMotion, ...all, newCharBox, morph, barL, barR, lineL, lineR],
       { clearProps: 'all' },
     );
+    // veil **不可**併入上面那份 clearProps: 'all' 清單：它是清單裡唯一一個 inline
+    // display 屬於別人（Vue 的 v-show，見 Blessing.vue 的 coverDone 條件）的元素。
+    // clearProps: 'all' 執行的是 style.cssText = ''，會把整個 inline style 屬性
+    // 連同 v-show 寫的 `display: none` 一起清掉；v-show 的 updated 只在值變動時
+    // 才重寫，值沒變就不會補回來 —— 於是 veil 在 coverDone 還是 false（覆蓋過場
+    // 期間）就變成滿版可見的橘幕，蓋住 `.sec2` 整段過場。只清本檔自己會寫的三個屬性。
+    gsap.set(veil, { clearProps: 'transform,opacity,visibility' });
     gsap.set(titleMotion, { autoAlpha: 1 });
     gsap.set(titleFinal, { autoAlpha: 0 });
     gsap.set(all, { autoAlpha: 0 });
@@ -174,6 +181,16 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     // morph 基準尺寸＝bar.svg（12×82），全程以 scale 變形（不觸發 reflow）
     const MORPH_W = 12;
     const MORPH_H = 82;
+
+    buffer.style.height = `${HOLD_BUFFER}px`;
+    // progress 0＝滿版橘塊，畫面上緣是整片橘。模板的預設值是 light（給
+    // reduced-motion 與 /#media 兩條降級路徑用），真的要播 motion 才改成 orange。
+    section.dataset.headerTheme = 'orange';
+    // buffer 高度提前在這裡設好（ScrollTrigger.create 之前、同一個同步區塊內）：
+    // 拍 0 稍後要量 document.documentElement.clientWidth 當 veil 的版位寬
+    // （見下方 veilW），若 buffer 還沒撐開，量到的是「加 buffer 之前」那個頁面
+    // 高度下的 ICB —— 目前不影響寬度，但 buffer 一旦哪天也開始影響捲軸出現與否，
+    // 這裡的順序就會變成 bug 的來源，故先在此把依賴關係釘死。
 
     tl = gsap.timeline({ paused: true });
 
@@ -350,26 +367,31 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       //    寬，整個拍 1 的收窄被它遮住。
       .set(veil, { autoAlpha: 0 }, NARROW_DUR);
 
-    buffer.style.height = `${HOLD_BUFFER}px`;
-    // progress 0＝滿版橘塊，畫面上緣是整片橘。模板的預設值是 light（給
-    // reduced-motion 與 /#media 兩條降級路徑用），真的要播 motion 才改成 orange。
-    section.dataset.headerTheme = 'orange';
-
     // trigger 掛 in-flow 的 section（sticky 的 hold 不可當 trigger）。
     //
-    // start 提前 BLESSING_OUT_VH 個視窗高 ＝ 融合拍的跑道，也**就是 blessing 的 outro
-    // 窗口**（那條的 start 是 `.section3` 的 bottom bottom-=40%，同一個捲動位置）。
-    // 兩段從此是同一段：清單淡出、veil 收窄、morph 收窄全部吃這一段。
+    // start / end 都吃 runwayPx（上面已凍結的 px 值），不重新算 BLESSING_OUT_VH *
+    // vhPx(1)：NARROW_DUR 是 buildMotion() 執行當下算出來的一次性數字，onMounted 之後
+    // 不會重建。若 start/end 在每次 refresh 各自重新換算 vh，一旦視窗高度真的改變
+    // （轉向、網址列收合），runwayPx 會變、NARROW_DUR 卻不會跟著變，三者就脫鉤 ——
+    // 症狀正是 narrowDurationFor 文件裡「收窄太晚結束」那條（接縫已到頂、交棒點卻
+    // 還沒到）。用同一個凍結值就不可能各自漂移；真的要跟上新的 vh，得整個
+    // buildMotion() 重跑（本檔目前沒有 resize 重建，同其餘 build-time 數字的限制一樣）。
     //
-    // end ＝ 跑道 ＋ HOLD_BUFFER：跑道跑在 sticky engage 之前，其後 buffer 被捲完的
-    // 同一刻 timeline 剛好播完、sticky 同時解除（與改版前同樣的收尾保證）。
+    // start 提前 runwayPx（＝融合拍的跑道，也**就是 blessing 的 outro 窗口**，那條
+    // 的 start 是 `.section3` 的 bottom bottom-=40%，同一個捲動位置）。兩段從此是
+    // 同一段：清單淡出、veil 收窄、morph 收窄全部吃這一段。
     //
-    // start / end 寫成函式並開 invalidateOnRefresh：跑道長度吃視窗高，轉向或網址列
-    // 收合之後必須重算。
+    // end ＝ runwayPx ＋ HOLD_BUFFER：跑道跑在 sticky engage 之前，其後 buffer 被捲完
+    // 的同一刻 timeline 剛好播完、sticky 同時解除（與改版前同樣的收尾保證）。
+    //
+    // start / end 仍寫成函式，是因為 ScrollTrigger 每次 refresh 都會重新呼叫它們——
+    // 但吃的是同一個凍結常數，值不會變。invalidateOnRefresh 開著是配合 animation
+    // （本 trigger 有掛 tl）：它讓 refresh 時對 tl 做 revert({kill:false}).invalidate()，
+    // 不是「因為它 start/end 才會重算」——那件事函式本身就會做，與這個旗標無關。
     st = ScrollTrigger.create({
       trigger: section,
-      start: () => `top ${BLESSING_OUT_VH * 100}%`,
-      end: () => `+=${HOLD_BUFFER + BLESSING_OUT_VH * vhPx(1)}`,
+      start: () => `top top+=${runwayPx}`,
+      end: () => `+=${HOLD_BUFFER + runwayPx}`,
       invalidateOnRefresh: true,
       animation: tl,
       scrub: true,
