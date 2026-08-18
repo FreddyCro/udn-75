@@ -47,29 +47,22 @@ interface MediaIntroMotionTargets {
  */
 export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   const route = useRoute();
-  // scrub 行程（px）＝sticky 定住距離＝buffer 高度。
-  // 2026-08-11：2000 → 2180。前面插了拍 0（滿版 → BLOCK_VW，長 NARROW_DUR），
-  // timeline 總長 pc 5.1 → 5.55、mob 4.8 → 5.25（mob 無 bar，phase2 少 0.3）。
-  // 等比加長是為了讓既有每一拍的 px 速度不變（pc 原 392 px/單位）；兩個斷點的
-  // px/拍 本來也不相等，這裡不改變那件事。
+  const { vhPx } = useViewportHeight();
+  const { setMediaMotionArmed } = useOrangeCoreProgress();
+  // scrub 行程（px）＝ HOLD_BUFFER（sticky 定住距離＝buffer 高度）＋ 融合拍的跑道。
   //
-  // ⚠️ 改 NARROW_DUR 要一起改這裡，否則等於連帶改了後面每一拍的速度：
-  //    HOLD_BUFFER ≈ (5.1 + NARROW_DUR) × 392
+  // HOLD_BUFFER 只涵蓋拍 1 之後：拍 0（融合拍）跑在 sticky engage **之前**那段跑道上，
+  // 不佔 buffer。故它回到 2000 ＝ 5.1 × 392（pc 原本的 px/單位）。
   //
-  // 2026-08-18：2180 → 2120，隨 NARROW_DUR 0.45 → 0.3 等比縮（見下）。
-  //   (5.1 + 0.3) × 392 ＝ 2116.8，取整 2120。
-  const HOLD_BUFFER = 2120;
-  // 拍 0 的長度，同時是 header 翻 light 的門檻（見 st 的 onUpdate）。
-  // 0.3 ＝ 約 12vh 的收窄行程（0.3 / 5.4 × 2120 ≈ 118px）。
-  //
-  // 2026-08-18：0.45 → 0.3（原 0.45 ＝ 約 20vh、177px）。
-  //   使用者回饋 03 → 04 之間有滿版純橘的空窗期。那段是兩截相連的橘：blessing 尾端的
-  //   呼吸拍 9vh（已歸零，見 BLESSING_OUT_FADE）＋本拍的滿版收窄。本拍的**開頭**在
-  //   幾何上必然是滿版（起點就是滿版橘塊），能做的只有讓它更短、並讓白邊立刻長出來
-  //   （ease 改 power2.out，見拍 0）。
-  //   ⚠️ 下限來自「收窄要看得出是一個動作」：12vh 在閱讀捲速（25vh/s）下約 0.5s。
-  //      再短會退化成硬切，滿版橘塊直接變成 60vw 的直條。
-  const NARROW_DUR = 0.3;
+  // 2026-08-11：2000 → 2180（前面插了拍 0，等比加長讓既有每一拍的 px 速度不變）
+  // 2026-08-18：2180 → 2120（NARROW_DUR 0.45 → 0.3）
+  // 2026-08-18（第二次）：2120 → 2000。拍 0 搬到 sticky 之前的跑道上，buffer 不再
+  //   需要為它加長；`(5.1 + NARROW_DUR) × 392` 那條手算連動同時廢除，
+  //   拍 0 的長度改由 narrowDurationFor 推導（見下）。
+  const HOLD_BUFFER = 2000;
+  // 拍 1（色塊左右縮成直條）的 timeline 長度。**同時是 header 翻 light 的地標**
+  // （見 st 的 onUpdate）—— 兩處讀同一個 const，不寫兩份 1。
+  const BEAT1_DUR = 1;
   let tl: gsap.core.Timeline | null = null;
   let st: ScrollTrigger | null = null;
 
@@ -86,8 +79,12 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const lineL = targets.lineL.value;
     const lineR = targets.lineR.value;
     const rows = targets.rows();
+    // 融合橘幕。跨元件取得（它住在 Blessing.vue）—— 同 AppHeader 的
+    // querySelectorAll('[data-header-theme]')，是本專案既有慣例。
+    // 用 data- 屬性而不是 class：class 是樣式的名字，改名重構不該把 motion 打斷。
+    const veil = document.querySelector<HTMLElement>('[data-morph-veil]');
     if (!section || !hold || !buffer || !els) return;
-    if (!morph || !barL || !barR || !lineL || !lineR) return;
+    if (!morph || !barL || !barR || !lineL || !lineR || !veil) return;
     const { title, final: titleFinal, motion: titleMotion, sides, quotes, newChar } = els;
     const newCharBox = newChar.parentElement as HTMLElement; // 引號＋新的外框
     const all: Element[] = [...sides, ...quotes, newChar];
@@ -95,9 +92,6 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const isMob = window.matchMedia('(max-width: 767.98px)').matches;
     // 分鏡素材相對定位態標題的放大倍率（mob 素材同寸、定版標題較小 → 倍率較大）
     const SCALE = isMob ? 2.15 : 1.5;
-    // 拍 0 的**終點**寬／拍 1 的起點寬（vw）＝分鏡 1 的色塊寬，三版共用。
-    // 拍 0 的起點是滿版（＝blessing 的橘底），故它不再是整段 motion 的第一個尺寸。
-    const BLOCK_VW = 0.6;
     const hasBars = !isMob; // 分鏡 4 左右 bar：mob 分鏡無此件
 
     const revealEls = [bg, body, ...rows].filter(Boolean);
@@ -106,7 +100,7 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     st?.kill();
     tl?.kill();
     gsap.set(
-      [title, titleFinal, titleMotion, ...all, newCharBox, morph, barL, barR, lineL, lineR],
+      [title, titleFinal, titleMotion, ...all, newCharBox, morph, barL, barR, lineL, lineR, veil],
       { clearProps: 'all' },
     );
     gsap.set(titleMotion, { autoAlpha: 1 });
@@ -181,71 +175,12 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const MORPH_W = 12;
     const MORPH_H = 82;
 
-    buffer.style.height = `${HOLD_BUFFER}px`;
-    // progress 0＝滿版橘塊，畫面上緣是整片橘。模板的預設值是 light（給
-    // reduced-motion 與 /#media 兩條降級路徑用），真的要播 motion 才改成 orange。
-    section.dataset.headerTheme = 'orange';
-
     tl = gsap.timeline({ paused: true });
 
-    // trigger 掛 in-flow 的 section（sticky 的 hold 不可當 trigger）；
-    // 行程與 buffer 同長，捲完剛好播完
-    st = ScrollTrigger.create({
-      trigger: section,
-      start: 'top top',
-      end: `+=${HOLD_BUFFER}`,
-      animation: tl,
-      scrub: true,
-      // header 底色：拍 0 期間畫面上緣是整片橘（blessing 橘底的延續），收到
-      // BLOCK_VW 之後兩側才露白。pickHeaderTheme 只比對縱向 top/bottom、判不出
-      // 橫向寬度，故直接改屬性值 —— AppHeader 只快取元素清單，每次 scroll 都
-      // 重讀 dataset，動態改有效。
-      //
-      // 門檻由 NARROW_DUR / duration 推導、不寫死比例 → 加減拍數不必重算。
-      // 比對 self.progress 而非 tl.time()：不必假設 ScrollTrigger 呼叫 onUpdate
-      // 之前已經推進過 timeline。也不用 tl.set(..., { attr })：那要賭零秒 tween
-      // 在 scrub 倒帶時的 revert 語意，這裡的可逆性是顯而易見的。
-      onUpdate: (self) => {
-        const d = tl?.duration() ?? 0;
-        section.dataset.headerTheme =
-          d > 0 && self.progress >= NARROW_DUR / d ? 'light' : 'orange';
-      },
-      onLeaveBack: () => {
-        section.dataset.headerTheme = 'orange';
-      },
-      onLeave: () => {
-        section.dataset.headerTheme = 'light';
-      },
-    });
-
     tl
-      // 0. 滿版橘塊左右收到 BLOCK_VW。
-      //    起點是滿版而非 BLOCK_VW，因為 .media__stage 是 absolute top: 0 且塊高
-      //    一個可視高 → 橘塊上緣恆等於 section 上緣（＝與 blessing 的接縫），
-      //    滿版起手在視覺上就是 blessing 橘底的延續，同色、看不出接縫。
-      //    ⚠️ 收窄不能比這一刻更早開始：接縫還在畫面上時收窄，接縫會變成一道看得見
-      //    的橫向缺口（上滿版、下 BLOCK_VW，左右各露一塊白）。這是 start 為什麼是
-      //    'top top' 而不能提早、也是把 morph 往上挪買不到跑道的原因。
-      .fromTo(
-        morph,
-        {
-          scaleX: window.innerWidth / MORPH_W,
-          scaleY: window.innerHeight / MORPH_H,
-          autoAlpha: 1,
-        },
-        {
-          scaleX: (window.innerWidth * BLOCK_VW) / MORPH_W,
-          duration: NARROW_DUR,
-          // power2.out 而非 inOut（2026-08-18）：inOut 的慢起讓本拍**開頭**那段幾乎
-          // 看不出白邊在長，滿版橘因此讀成「停住不動」——正是使用者回報的空窗期。
-          // out 把速度搬到前段：第一幀白邊就在動，落點仍然是軟的（power3.inOut 的
-          // 拍 1 接得上）。⚠️ 不可改成 'none' 或 'power2.in'：那會讓收窄在拍 1 交界
-          // 處還是全速，兩拍之間看得到轉折。
-          ease: 'power2.out',
-        },
-      )
-      // 1. 色塊左右縮成直條
-      .to(morph, { scaleX: 28 / MORPH_W, duration: 1, ease: 'power3.inOut' })
+      // 1. 色塊左右縮成直條。整段 motion 的第一拍**在 timeline 上**，但畫面上它接在
+      //    融合拍（拍 0）之後 —— 拍 0 稍後插到 time 0，見下方。
+      .to(morph, { scaleX: 28 / MORPH_W, duration: BEAT1_DUR, ease: 'power3.inOut' })
       // 2→3. 直條縮成短棒；文字貼齊中線淡入
       .to(morph, { scaleX: 1, scaleY: 1, duration: 0.6, ease: 'power3.inOut' })
       .to(sides, { autoAlpha: 1, duration: 0.3 }, '-=0.3')
@@ -353,6 +288,117 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
           'text+=0.6',
         );
     }
+
+    // ── 拍 0（融合拍）：滿版橘 → MEDIA_BLOCK_VW，veil 與 morph 同步 ──────────
+    // 它插在 time 0，而且是最後才建的：長度要由「拍 1 以後的總長」推導，所以得等
+    // 上面全部建完才算得出來。
+    //
+    // 為什麼收窄現在可以比接縫抵達視窗頂更早開始（改版前這裡有一條 ⚠️ 說不行）：
+    //   morph 上緣 ≡ .media 上緣 ≡ 接縫，這是構造上的恆等式（.media__stage 是
+    //   absolute top: 0、塊高一個可視高），所以 morph 只塗得到接縫**以下**。
+    //   單獨讓它提早收窄，橘柱會在接縫那條線上被水平切斷。
+    //   補上的那一塊是 `.section3__veil`（fixed 滿版、在 blessing 底色之上）：
+    //   它蓋住接縫以上的部分，於是收窄時整個視窗高度同步露白。同時 blessing 的底色
+    //   硬切成白（見 outroWhiteAt），兩側露出來的白與 .media 的 #fff 同色，
+    //   接縫因此不可見。
+    //
+    // ⚠️ 新的不變量取代舊的那條：**收窄提早多少，就必須有多少 veil 跑道**。
+    //    跑道長度 ＝ BLESSING_OUT_VH × 視窗高 ＝ ScrollTrigger 提早的量，
+    //    而拍 0 的 timeline 長度由 narrowDurationFor 從它推導。三者是同一個數字的
+    //    三種單位，不可各自手調。
+    //
+    // ⚠️ veil 的 scaleX **除回自己的版位寬度**，不是直接用 1 與 MEDIA_BLOCK_VW：
+    //    morph 吃 window.innerWidth（含捲軸），veil 是 fixed; inset: 0，版位是 ICB
+    //    （＝ documentElement.clientWidth，不含捲軸）。直接用比例的話，交棒那一幀會差
+    //    一個「捲軸寬 × MEDIA_BLOCK_VW」（Windows Chrome 約 10px）的跳動。
+    //    除回去之後兩者的**終點 px 相等**。
+    //    ⚠️ 用 clientWidth 而不是量 veil 自己：buildMotion() 跑在 Media 的 onMounted，
+    //       那時 cover 還沒跑完 → veil 是 display: none，getBoundingClientRect() 回 0，
+    //       量了會靜靜退回 innerWidth，等於這條修正完全沒生效。
+    const runwayPx = BLESSING_OUT_VH * vhPx(1);
+    const NARROW_DUR = narrowDurationFor(tl.duration(), runwayPx, HOLD_BUFFER);
+    // 把已建好的每一拍（含 label）整批右移，讓 time 0 空出拍 0 的位置
+    tl.shiftChildren(NARROW_DUR, true);
+
+    const veilW = document.documentElement.clientWidth;
+    tl.fromTo(
+      morph,
+      {
+        scaleX: window.innerWidth / MORPH_W,
+        scaleY: window.innerHeight / MORPH_H,
+        autoAlpha: 1,
+      },
+      {
+        scaleX: (window.innerWidth * MEDIA_BLOCK_VW) / MORPH_W,
+        duration: NARROW_DUR,
+        ease: FUSE_EASE,
+      },
+      0,
+    )
+      .fromTo(
+        veil,
+        { scaleX: window.innerWidth / veilW, autoAlpha: 1 },
+        {
+          scaleX: (window.innerWidth * MEDIA_BLOCK_VW) / veilW,
+          duration: NARROW_DUR,
+          ease: FUSE_EASE,
+        },
+        0,
+      )
+      // 交棒：veil 與 morph 此刻同色同寬同位，硬切不可見。
+      // ⚠️ 不可延後：veil 停在 MEDIA_BLOCK_VW 而 morph 繼續收窄的話，veil 會比 morph
+      //    寬，整個拍 1 的收窄被它遮住。
+      .set(veil, { autoAlpha: 0 }, NARROW_DUR);
+
+    buffer.style.height = `${HOLD_BUFFER}px`;
+    // progress 0＝滿版橘塊，畫面上緣是整片橘。模板的預設值是 light（給
+    // reduced-motion 與 /#media 兩條降級路徑用），真的要播 motion 才改成 orange。
+    section.dataset.headerTheme = 'orange';
+
+    // trigger 掛 in-flow 的 section（sticky 的 hold 不可當 trigger）。
+    //
+    // start 提前 BLESSING_OUT_VH 個視窗高 ＝ 融合拍的跑道，也**就是 blessing 的 outro
+    // 窗口**（那條的 start 是 `.section3` 的 bottom bottom-=40%，同一個捲動位置）。
+    // 兩段從此是同一段：清單淡出、veil 收窄、morph 收窄全部吃這一段。
+    //
+    // end ＝ 跑道 ＋ HOLD_BUFFER：跑道跑在 sticky engage 之前，其後 buffer 被捲完的
+    // 同一刻 timeline 剛好播完、sticky 同時解除（與改版前同樣的收尾保證）。
+    //
+    // start / end 寫成函式並開 invalidateOnRefresh：跑道長度吃視窗高，轉向或網址列
+    // 收合之後必須重算。
+    st = ScrollTrigger.create({
+      trigger: section,
+      start: () => `top ${BLESSING_OUT_VH * 100}%`,
+      end: () => `+=${HOLD_BUFFER + BLESSING_OUT_VH * vhPx(1)}`,
+      invalidateOnRefresh: true,
+      animation: tl,
+      scrub: true,
+      // header 底色：融合拍與拍 1 期間畫面上仍有一大塊橘（veil／橘柱），收成 28px
+      // 細條之後才翻 light。pickHeaderTheme 只比對縱向 top/bottom、判不出橫向寬度，
+      // 故直接改屬性值 —— AppHeader 只快取元素清單，每次 scroll 都重讀 dataset。
+      //
+      // 門檻是**拍 1 結束**（NARROW_DUR + BEAT1_DUR），不是拍 0 結束：拍 0 結束時
+      // 橘柱還有 MEDIA_BLOCK_VW 寬，header 一翻成 70% 白會在白帶中央透出一塊橘。
+      // 由 timeline 的地標推導、不寫死比例 → 加減拍數不必重算。
+      // 比對 self.progress 而非 tl.time()：不必假設 ScrollTrigger 呼叫 onUpdate
+      // 之前已經推進過 timeline。
+      onUpdate: (self) => {
+        const d = tl?.duration() ?? 0;
+        section.dataset.headerTheme =
+          d > 0 && self.progress >= (NARROW_DUR + BEAT1_DUR) / d
+            ? 'light'
+            : 'orange';
+      },
+      onLeaveBack: () => {
+        section.dataset.headerTheme = 'orange';
+      },
+      onLeave: () => {
+        section.dataset.headerTheme = 'light';
+      },
+    });
+
+    // veil 與底色翻白的共同閘門：走到這裡才算真的建起來（含 veil 守衛都通過）。
+    setMediaMotionArmed(true);
   };
 
   onMounted(() => {
@@ -374,5 +420,6 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     st = null;
     tl?.kill();
     tl = null;
+    setMediaMotionArmed(false);
   });
 }
