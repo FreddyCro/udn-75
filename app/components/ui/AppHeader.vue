@@ -15,6 +15,7 @@ import { resolveHomeIntent } from '@/utils/home-intent';
  * - ≥1280：logo 靠左 ＋ AppHeaderNav 錨點列 ＋ 音效 ＋ share，合併於頂部單一列。
  * - <1280：頂部 navbar（logo 置中／靠左 ＋ 音效 ＋ 漢堡）＋ 漢堡開啟 AppHeaderMenu 全螢幕選單。
  * - 頂部閱讀進度條（橘色進度 / 淺藍底軌）。
+ * - 轉場開窗時，窗內那一段反白（見下方 layers 與 useHeaderBand）。
  */
 
 interface Anchor {
@@ -275,88 +276,130 @@ function onLogoClick(e: MouseEvent) {
 const effectiveTheme = computed<HeaderTheme>(() =>
   menuOpen.value ? 'light' : theme.value,
 );
+
+// ── 轉場開窗時的反白層 ────────────────────────────────────────────────
+// 設計稿 Figma 2065:142710 的 `Mask group` 裡放了**第二份 header**（反白版），與展開中的
+// 深色場吃同一個遮罩 —— 這裡就是那第二份。窗的座標由轉場端交出來（見 ~/composables/
+// useHeaderBand），header 不認得任何轉場，只認得「現在有沒有窗、窗內是什麼主題」。
+//
+// 兩層都是同一份 bar 的渲染結果（下方 v-for，markup 只寫一份）：
+//   base ── 常駐，主題吃 effectiveTheme；開窗時被 .has-band 的遮罩挖掉窗內那一條。
+//   band ── 只在開窗期間掛上，主題吃 bandTheme，clip 成窗形疊在 base 之上。
+// ⚠️ band 那層是**純視覺副本**：inert（不進 tab 序、不吃事件）＋ pointer-events: none。
+//    它裡面的 <AppHeaderNav> / <AppHeaderShare> 只是畫出來給人看的，互動一律走 base。
+const { bandTheme } = useHeaderBand();
+
+interface HeaderLayer {
+  key: 'base' | 'band';
+  theme: HeaderTheme;
+}
+
+const layers = computed<HeaderLayer[]>(() => {
+  const base: HeaderLayer = { key: 'base', theme: effectiveTheme.value };
+  return bandTheme.value
+    ? [base, { key: 'band', theme: bandTheme.value }]
+    : [base];
+});
 </script>
 
 <template>
   <header
     class="app-header"
     :class="[
-      `app-header--${effectiveTheme}`,
-      { 'is-visible': isVisible, 'is-menu-open': menuOpen },
+      { 'is-visible': isVisible, 'is-menu-open': menuOpen, 'has-band': !!bandTheme },
     ]"
   >
-    <!-- 閱讀進度 -->
-    <div v-show="isVisible" class="app-header__progress">
-      <div
-        class="app-header__progress-bar"
-        :style="{ width: `${progress}%` }"
-      />
-    </div>
+    <!--
+      base ＋（開窗時）band 兩層，markup 只寫這一份（見 script 的 layers）。
+      band 那層是純視覺副本：aria-hidden ＋ inert ＋ pointer-events: none。
+      ⚠️ inert 用 `|| undefined` 而不是布林：inert 不在 Vue 的 special boolean attr 名單裡，
+         綁 false 會渲染成 inert="false" —— 而 HTML 的 boolean attribute 只看「在不在」，
+         那等於把常駐的 base 層也變成不可互動。
+    -->
+    <div
+      v-for="layer in layers"
+      :key="layer.key"
+      class="app-header__layer"
+      :class="[
+        `app-header__layer--${layer.key}`,
+        `app-header__layer--${layer.theme}`,
+      ]"
+      :aria-hidden="layer.key === 'band' || undefined"
+      :inert="layer.key === 'band' || undefined"
+    >
+      <!-- 閱讀進度 -->
+      <div v-show="isVisible" class="app-header__progress">
+        <div
+          class="app-header__progress-bar"
+          :style="{ width: `${progress}%` }"
+        />
+      </div>
 
-    <!-- 頂部列（≥1280：logo ＋ 錨點列 ＋ 音效 ＋ share；<1280：logo ＋ 音效 ＋ 漢堡） -->
-    <div class="app-header__bar-wrap">
-      <div class="app-header__bar">
-        <!-- 首頁用原生 <a>，不用 NuxtLink：NuxtLink 內建的 click handler 會**先於**本元件的
-             @click 執行，且它是在那個時間點才檢查 e.defaultPrevented —— onLogoClick 的
-             preventDefault 還沒跑，攔不住它。結果是推入一次真正的導航到 /，多一筆歷史紀錄、
-             讓「上一頁」失效。就地倒帶一律走 onLogoClick（捲頂 ＋ returnToLoop）。
-             （同 AppHeaderNav / AppHeaderMenu 已修過的順序陷阱。） -->
-        <a
-          v-if="homeIntent.action === 'in-page'"
-          class="app-header__logo"
-          :href="logoHref"
-          :aria-label="labels.logoLabel"
-          @click="onLogoClick"
-        >
-          <img
-            class="app-header__logo-img"
-            :src="logoUrl"
-            :alt="labels.logoAlt"
-          />
-          <span class="app-header__logo-mask" aria-hidden="true" />
-        </a>
+      <!-- 頂部列（≥1280：logo ＋ 錨點列 ＋ 音效 ＋ share；<1280：logo ＋ 音效 ＋ 漢堡） -->
+      <div class="app-header__bar-wrap">
+        <div class="app-header__bar">
+          <!-- 首頁用原生 <a>，不用 NuxtLink：NuxtLink 內建的 click handler 會**先於**本元件的
+               @click 執行，且它是在那個時間點才檢查 e.defaultPrevented —— onLogoClick 的
+               preventDefault 還沒跑，攔不住它。結果是推入一次真正的導航到 /，多一筆歷史紀錄、
+               讓「上一頁」失效。就地倒帶一律走 onLogoClick（捲頂 ＋ returnToLoop）。
+               （同 AppHeaderNav / AppHeaderMenu 已修過的順序陷阱。） -->
+          <a
+            v-if="homeIntent.action === 'in-page'"
+            class="app-header__logo"
+            :href="logoHref"
+            :aria-label="labels.logoLabel"
+            @click="onLogoClick"
+          >
+            <img
+              class="app-header__logo-img"
+              :src="logoUrl"
+              :alt="labels.logoAlt"
+            />
+            <span class="app-header__logo-mask" aria-hidden="true" />
+          </a>
 
-        <!-- 子頁：真的要換頁，交給 NuxtLink（client-side 導航）；onLogoClick 只負責關選單。 -->
-        <NuxtLink
-          v-else
-          class="app-header__logo"
-          :to="homeIntent.to"
-          :aria-label="labels.logoLabel"
-          @click="onLogoClick"
-        >
-          <img
-            class="app-header__logo-img"
-            :src="logoUrl"
-            :alt="labels.logoAlt"
-          />
-          <span class="app-header__logo-mask" aria-hidden="true" />
-        </NuxtLink>
+          <!-- 子頁：真的要換頁，交給 NuxtLink（client-side 導航）；onLogoClick 只負責關選單。 -->
+          <NuxtLink
+            v-else
+            class="app-header__logo"
+            :to="homeIntent.to"
+            :aria-label="labels.logoLabel"
+            @click="onLogoClick"
+          >
+            <img
+              class="app-header__logo-img"
+              :src="logoUrl"
+              :alt="labels.logoAlt"
+            />
+            <span class="app-header__logo-mask" aria-hidden="true" />
+          </NuxtLink>
 
-        <div class="app-header__actions">
-          <AppHeaderNav
-            :anchors="anchors"
-            :active-target="navActiveTarget"
-            @select="scrollToTarget"
-          />
+          <div class="app-header__actions">
+            <AppHeaderNav
+              :anchors="anchors"
+              :active-target="navActiveTarget"
+              @select="scrollToTarget"
+            />
 
-          <div class="app-header__icons">
-            <AppHeaderSound />
-            <!-- 包一層 div 而非把 class 掛在元件上：兩邊 scoped 樣式同特異度，
-                 靠檔案順序決勝不可靠（同 subpage.vue 那個 !important 的教訓） -->
-            <div class="app-header__share">
-              <AppHeaderShare />
+            <div class="app-header__icons">
+              <AppHeaderSound />
+              <!-- 包一層 div 而非把 class 掛在元件上：兩邊 scoped 樣式同特異度，
+                   靠檔案順序決勝不可靠（同 subpage.vue 那個 !important 的教訓） -->
+              <div class="app-header__share">
+                <AppHeaderShare />
+              </div>
+              <button
+                class="app-header__menu-toggle"
+                type="button"
+                :aria-label="
+                  menuOpen ? labels.menuCloseLabel : labels.menuOpenLabel
+                "
+                :aria-expanded="menuOpen"
+                @click="menuOpen = !menuOpen"
+              >
+                <AppHeaderIcon :name="menuOpen ? 'close' : 'menu'" />
+              </button>
             </div>
-            <button
-              class="app-header__menu-toggle"
-              type="button"
-              :aria-label="
-                menuOpen ? labels.menuCloseLabel : labels.menuOpenLabel
-              "
-              :aria-expanded="menuOpen"
-              @click="menuOpen = !menuOpen"
-            >
-              <AppHeaderIcon :name="menuOpen ? 'close' : 'menu'" />
-            </button>
           </div>
         </div>
       </div>
@@ -384,25 +427,10 @@ const effectiveTheme = computed<HeaderTheme>(() =>
   // glyph 只吃外框高的百分比、寬度按原生比例縮放，三顆都比外框窄，不會溢出。
   --hd-icon-w: 35px;
   --hd-icon-h: 28px;
-  --hd-bg: rgb(255 255 255 / 0.7);
-  --hd-fg: var(--color-gray);
-  --hd-accent: var(--color-orange);
 
   @include rwd-min('pc') {
     --hd-icon-w: 27.5px;
     --hd-icon-h: 22px;
-  }
-
-  &--dark {
-    --hd-bg: rgb(0 0 0 / 0.5);
-    --hd-fg: #fff;
-    --hd-accent: var(--color-orange);
-  }
-
-  &--orange {
-    --hd-bg: color-mix(in srgb, var(--color-orange) 70%, transparent);
-    --hd-fg: #fff;
-    --hd-accent: #fff;
   }
 
   // 選單開啟期間，header 整層抬到子頁疊層之上（見 subpage.scss 的疊層總表）。
@@ -421,6 +449,76 @@ const effectiveTheme = computed<HeaderTheme>(() =>
   }
 }
 
+/* 一層 header。三顆色票掛在**層**上而不是 header 根節點：開窗時兩層同時在場、
+   而且各自是不同主題（base 白底灰字、band 反白），掛在根節點就只能有一組。
+   icon 外框尺寸仍在根節點（兩層一致，見 .app-header）。 */
+.app-header__layer {
+  position: relative;
+  // 疊在選單面板（z-index 1）之上，主列不被面板蓋住
+  z-index: 2;
+  --hd-bg: rgb(255 255 255 / 0.7);
+  --hd-fg: var(--color-gray);
+  --hd-accent: var(--color-orange);
+}
+
+.app-header__layer--dark {
+  --hd-bg: rgb(0 0 0 / 0.5);
+  --hd-fg: #fff;
+  --hd-accent: var(--color-orange);
+}
+
+// ⚠️ 不透明，不是半透明（2026-08-18）：橘主題原本是
+//    color-mix(orange 70%, transparent)，疊在頁面上。這在「背後是實心橘」時
+//    看不出差別（70% 橘疊橘 ＝ 橘），但 03 → 04 融合拍期間橘柱會收窄，
+//    header 帶兩側的背後變成白 → 帶子被切成三塊（兩側淺橘、中間飽和橘），
+//    看起來像兩層東西。那是使用者回報的「露餡」。
+//    全站只有兩處宣告 orange（Blessing.vue 靜態、media 拍 0/1 動態），兩處背後
+//    本來都是實心橘，故這是既有畫面上的**零變化**；`.section3` 還是淺藍的那一段
+//    header 根本還沒進到它上面（接縫升到 header 底緣時 coverProgress ≈ 0.87，
+//    早已越過 COVER_CONTACT 0.5）。
+.app-header__layer--orange {
+  --hd-bg: var(--color-orange);
+  --hd-fg: #fff;
+  --hd-accent: #fff;
+}
+
+/* 反白層：疊在 base 之上，clip 成轉場交出來的窗（見 ~/composables/useHeaderBand）。
+   ⚠️ 必須宣告在 --dark / --orange **之後**：band 那層同時帶著兩個 class（例如
+      `--band --dark`），特異度相同 → 靠來源順序決勝，這裡的 --hd-bg 才蓋得掉主題的。
+   ⚠️ --hd-bg 是 transparent 而不是主題底色：窗內的底色**就是**轉場那層色場本身
+      （粒子場／橘幕），稿上是直接透出來的（Figma 2065:142822 那份 header 沒有底色）。 */
+.app-header__layer--band {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 3;
+  pointer-events: none;
+  --hd-bg: transparent;
+  clip-path: inset(0 calc(100% - var(--hd-band-r, 0px)) 0 var(--hd-band-l, 0px));
+
+  // 底色都透明了還糊一層 blur，只會把窗內的粒子糊掉
+  .app-header__bar-wrap {
+    backdrop-filter: none;
+  }
+}
+
+/* 開窗時把 base 層在窗內那一條**挖掉**（連 backdrop-filter 一起），窗內才是乾淨的色場。
+   只疊一層反白是不夠的：base 的 rgb(255 255 255 / 0.7) + blur(2px) 會蓋在深色場上
+   變成一條灰霧帶（見 temp/poc-off-085.png 的對照）。
+   ⚠️ 用 mask 而非 clip-path：一條直立缺口會把亮列切成左右**兩塊不連續**的區域，
+      clip-path 的單一多邊形表達不了；linear-gradient 遮罩天生就能。
+      代價是它只有水平資訊 —— 窗還沒蓋滿 header 那一列時不可以挖，那條閘門收在
+      useHeaderBand 的 syncHeaderBand（top > 0 就不開窗）。 */
+.app-header.has-band .app-header__layer--base {
+  --hd-band-mask: linear-gradient(
+    to right,
+    #000 0 var(--hd-band-l, 0px),
+    transparent var(--hd-band-l, 0px) var(--hd-band-r, 0px),
+    #000 var(--hd-band-r, 0px) 100%
+  );
+  -webkit-mask-image: var(--hd-band-mask);
+  mask-image: var(--hd-band-mask);
+}
+
 /* 顯示/隱藏：捲過 hero 後才滑入。
    注意：transform 不可加在 .app-header 上，否則會成為子層 AppHeaderMenu（position: fixed）的
    containing block，害它的 inset 定位跑掉。因此位移動畫只做在 bar-wrap 上。
@@ -429,7 +527,6 @@ const effectiveTheme = computed<HeaderTheme>(() =>
    同時被蓋掉。合併後 transition 要同時列出 transform 與 background-color 兩段。 */
 .app-header__bar-wrap {
   position: relative;
-  z-index: 2; // 疊在選單面板（z-index 1）之上，主列不被面板蓋住
   display: flex;
   justify-content: center;
   margin: 0 auto;
@@ -525,8 +622,8 @@ const effectiveTheme = computed<HeaderTheme>(() =>
   }
 }
 
-.app-header--dark,
-.app-header--orange {
+.app-header__layer--dark,
+.app-header__layer--orange {
   .app-header__logo-img {
     display: none;
   }

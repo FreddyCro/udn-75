@@ -1,6 +1,13 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { Ref } from 'vue';
+// ⚠️ 只有這一個常數要顯式 import：unimport 在本檔漏掉它 —— 實際送到瀏覽器的模組裡，
+//    同一支 orange-core-config 的自動 import 只有
+//    `{ BLESSING_OUT_VH, narrowDurationFor, FUSE_EASE }`，唯獨少了 MEDIA_BLOCK_VW，
+//    於是 buildMotion 跑到拍 0 就 ReferenceError → 整頁 500。
+//    ⚠️ 型別端看不出來：.nuxt/imports.d.ts 有列它，所以 TS 與 vitest 都是綠的，
+//       只有真的載入頁面才會炸 —— 別因為「其他常數都沒寫 import」而把這行刪掉。
+import { MEDIA_BLOCK_VW } from '~/utils/orange-core-config';
 
 /** MediaTitle 分件元素（getEls() 回傳；任一缺件時為 null，motion 降級不播） */
 export interface MediaTitleEls {
