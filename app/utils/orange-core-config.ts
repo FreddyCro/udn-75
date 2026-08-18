@@ -1001,8 +1001,8 @@ export const SEQUENCE: readonly SequenceChapter[] = [
       // 03 → 04 過場第一拍。放在 partners 之後還有一個副作用是修掉既有問題：
       // partners 是無軌 part，「結束了沒」靠下一段反推（useCoreSequence 的 ②），
       // 在此之前它是序列末端 → 永遠停在未完成，dashboard 的游標卡在那裡。
-      // label 不寫「其後純橘」：呼吸拍已歸零（BLESSING_OUT_FADE = 1.0），
-      // 而百分比是內插進來的 —— 旋鈕調回 < 1 時這句話仍然成立，不必再改一次。
+      // label 不寫「其後純橘」：這句話靠的是 BLESSING_OUT_FADE ≤ 1 這個性質（百分比
+      // 是內插進來的），不是它目前的數值 —— 旋鈕調到任何 ≤ 1 的值都成立，不必再改一次。
       // ⚠️ 百分比要 Math.round：BLESSING_OUT_FADE 不保證是能被 100 整除的「乾淨」小數
       //   （0.55 × 100 在 IEEE754 下是 55.00000000000001），捨入前那串尾數會直接流進
       //   dashboard 的 label 字串，讀起來像壞掉；捨到整數 % 對這個顯示用途夠精細。
