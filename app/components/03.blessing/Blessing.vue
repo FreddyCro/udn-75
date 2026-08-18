@@ -32,6 +32,8 @@ const {
   coverSeedVisible,
   coverFaceVisible,
   coverHandoff,
+  coverDone,
+  outroWhite,
 } = useOrangeCoreProgress();
 
 // 夥伴清單整塊的現身時機。
@@ -233,8 +235,29 @@ onBeforeUnmount(() => {
     ref="sectionRef"
     class="section3"
     data-header-theme="orange"
-    :style="{ '--cover-orange': coverOrange }"
+    :style="{ '--cover-orange': coverOrange, '--outro-white': outroWhite }"
   >
+    <!-- 融合橘幕：03 → 04 過場那塊會收窄的橘。它與 `.media__morph` 是**同一個 GSAP
+         tween 的兩個 target**（見 useMediaIntroMotion 拍 0），收窄到 MEDIA_BLOCK_VW
+         時同色同寬同位，硬切交棒。設計見
+         architecture/2026-08-18-blessing-media-morph-fusion-design.md。
+
+         ⚠️ 必須是 `.section3` 的**第一個**子元素：它要在本段底色之上（底色會切白，
+            由 veil 遮住）、在臉屏與夥伴清單**之下**（清單要照舊淡出，不能被橘幕蓋掉）。
+            兩件事靠 DOM 順序就成立，不需要 z-index —— 後面的兄弟都是 positioned
+            （relative / sticky），依樹序畫在它之上。挪到後面就會蓋掉夥伴清單。
+         ⚠️ 必須是 `v-show` 而不是 `v-if`：timeline 在 Media.vue 的 onMounted 就建好，
+            那時 cover 還沒跑完 —— `v-if` 之下元素不在 DOM，GSAP 抓不到 target，
+            整拍靜靜不播。`display: none` 與 GSAP 的 autoAlpha 互不干擾，兩層閘門可疊。
+         ⚠️ 掛載時機是 coverDone（覆蓋過場跑完）：veil 是 fixed 滿版，更早掛會在覆蓋
+            過場期間就蓋掉整個視窗，那段過場直接破功。 -->
+    <div
+      v-show="coverDone"
+      class="section3__veil"
+      data-morph-veil
+      aria-hidden="true"
+    />
+
     <!-- ① 逐格臉屏 -->
     <div
       ref="trackRef"
@@ -331,10 +354,17 @@ onBeforeUnmount(() => {
   // ——變透明、露出底下的 forum，整段覆蓋直接破功。給純橘 ＝ 降級成「全程橘、少了藍色那一拍」，
   // 那是這段轉場最安全的落點（橘是它最終、也是最長的狀態）。
   background: var(--color-orange);
+  // 藍 → 橘 → 白：外層那次 mix 是 03 → 04 融合拍的「底色切白」（--outro-white 由
+  // outroWhiteAt 餵入，二元），內層維持原本的藍 → 橘（--cover-orange）。
+  // 切白那一刻 `.section3__veil` 剛好是滿版、完全遮住，所以看不到硬切。
   background: color-mix(
     in srgb,
-    var(--color-orange) calc(var(--cover-orange, 1) * 100%),
-    var(--color-blue)
+    #fff calc(var(--outro-white, 0) * 100%),
+    color-mix(
+      in srgb,
+      var(--color-orange) calc(var(--cover-orange, 1) * 100%),
+      var(--color-blue)
+    )
   );
   color: #fff;
 
@@ -346,6 +376,27 @@ onBeforeUnmount(() => {
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
+}
+
+// 融合橘幕：03 → 04 過場那塊會收窄的橘（見 template 的三條 ⚠️）。
+// 全程只吃 scaleX（GSAP 寫入），不觸發 reflow。
+//
+// ⚠️ `fixed` 的定位基準是視窗，前提是祖先沒有 transform / filter / backdrop-filter /
+//    will-change。`.section3` 目前只有 position: relative 與 z-index: 1 ——
+//    **任何人給 `.section3` 加 transform，本層會安靜地退化成 section 相對定位**，
+//    症狀是過場期間橘幕只蓋住 section 自己的範圍、接縫變成看得見的橫線。
+// ⚠️ 不設 z-index：疊層完全靠 DOM 順序（見 template）。給了 z-index 反而要同時
+//    維護後面每個兄弟的值。
+// ⚠️ 初始 visibility: hidden（同 `.media__morph`）：timeline 的 fromTo 起播才現身。
+//    這同時是三條降級路徑（reduce-motion / #media / 無 JS）的正確落點 —— 那些路徑
+//    不建 timeline，本層就永遠不現身，而底色也不會切白（見 outroWhiteAt）。
+.section3__veil {
+  position: fixed;
+  inset: 0;
+  background: var(--color-orange);
+  transform-origin: 50% 50%;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .section3__face-track {

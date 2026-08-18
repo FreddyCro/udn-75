@@ -27,6 +27,7 @@ import {
   symbolBgLightAt,
   coverHandoffAt,
   coverOrangeAt,
+  outroWhiteAt,
   partnersFadeAt,
   seedTravelAt,
 } from '~/utils/orange-core-config';
@@ -151,6 +152,16 @@ export function useOrangeCoreProgress() {
   const blessingOutProgress = useState<number>('blessing-out-progress', () => 0);
   const setBlessingOutProgress = (p: number) =>
     (blessingOutProgress.value = clamp01(p));
+
+  // media 的開場 motion timeline 是否真的建起來了。由 useMediaIntroMotion 在
+  // buildMotion() 走完（含 veil 守衛都通過）時寫入 true。
+  //
+  // ⚠️ 資料流方向是「下游寫、上游讀」：寫的人在 Section 4，讀的人在 Section 3
+  //    （`.section3__veil` 與底色翻白都要它當閘門）。看起來像搞反了，但它成立 ——
+  //    值只在使用者捲到 03 → 04 的融合拍時才被讀，距 mount 很遠。
+  //    這個旗標存在的唯一理由是「veil 與底色翻白必須同生共死」，見 outroWhiteAt。
+  const mediaMotionArmed = useState<boolean>('media-motion-armed', () => false);
+  const setMediaMotionArmed = (v: boolean) => (mediaMotionArmed.value = v);
 
   // 階梯線逐格是否已播完（<BlessingStairs> 以 v-model:done 雙向控制，播完才讓夥伴清單淡入）。
   // 提升為全域而非 Blessing.vue 的區域 ref：SEQUENCE 的 blessing.stairs 是 'time' part，
@@ -291,6 +302,17 @@ export function useOrangeCoreProgress() {
     partnersFadeAt(blessingOutProgress.value),
   );
 
+  // 覆蓋過場（02 → 03）跑完了沒。`.section3__veil` 的 v-show 條件：
+  // 那一刻整個視窗已經是 `.section3` 的橘，掛上一塊同色滿版矩形不可見；
+  // 更早掛則會在覆蓋過場期間就滿版，整段覆蓋直接破功（veil 是 fixed）。
+  const coverDone = computed(() => coverProgress.value >= 1);
+
+  // `.section3` 底色的翻白量（曲線見 outroWhiteAt）。刻意**不**吃 reduceMotion：
+  // 閘門是 mediaMotionArmed（timeline 有沒有建起來），那才是它真正的前提條件。
+  const outroWhite = computed(() =>
+    outroWhiteAt(mediaMotionArmed.value, blessingOutProgress.value),
+  );
+
   // coverProgress → 色塊「橘的比例」（曲線見 coverOrangeAt）。
   // 標題與引言的 opacity 共用同一個值：它們是白字，色塊還是淺藍時必須藏著，
   // 而「底色變橘就看到白字標題」正是設計師的描述。
@@ -397,5 +419,9 @@ export function useOrangeCoreProgress() {
     coverHoldArmed,
     stairsDone,
     reduceMotion,
+    mediaMotionArmed,
+    setMediaMotionArmed,
+    coverDone,
+    outroWhite,
   };
 }

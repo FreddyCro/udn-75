@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BLESSING_OUT_FADE,
   BLESSING_OUT_VH,
+  outroWhiteAt,
   partnersFadeAt,
   SEQUENCE,
   TRACK_VH,
@@ -59,6 +60,30 @@ describe('partnersFadeAt', () => {
     const tail = d(F - step, F);
     expect(head).toBeLessThan(middle);
     expect(tail).toBeLessThan(middle);
+  });
+});
+
+// veil 與底色切白必須同生共死。任一單獨生效都是破圖：
+//   只有白底 ＝ blessing 變成白底白字（reduce-motion / 無 JS / #media 深連結）
+//   只有 veil ＝ 收窄後兩側露出的是橘、不是白，接縫變成一條可見的橫線
+// 閘門是「media 的 timeline 真的建起來了嗎」（mediaMotionArmed）。
+describe('outroWhiteAt', () => {
+  it('timeline 沒建起來時恆為 0（三條降級路徑）', () => {
+    expect(outroWhiteAt(false, 0)).toBe(0);
+    expect(outroWhiteAt(false, 0.5)).toBe(0);
+    expect(outroWhiteAt(false, 1)).toBe(0);
+  });
+
+  it('窗口還沒開始時是 0', () => {
+    expect(outroWhiteAt(true, 0)).toBe(0);
+  });
+
+  // 硬切、不補間：切換那一刻 veil 剛好是滿版（fromTo 的起點），完全遮住底色。
+  // 補間會多出一條要與 veil 對齊的曲線，那是白花的風險。
+  it('窗口一開始就是 1，全程維持', () => {
+    expect(outroWhiteAt(true, 0.001)).toBe(1);
+    expect(outroWhiteAt(true, 0.5)).toBe(1);
+    expect(outroWhiteAt(true, 1)).toBe(1);
   });
 });
 

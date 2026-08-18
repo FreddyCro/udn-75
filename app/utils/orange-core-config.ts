@@ -769,6 +769,21 @@ export function partnersFadeAt(p: number): number {
   return 1 - smoothstep(0, BLESSING_OUT_FADE, p);
 }
 
+/** `.section3` 底色的「翻白量」（0 ＝ 照原本的藍→橘、1 ＝ 白）。
+ *
+ *  二元、不內插 —— 切換的那一刻 `.section3__veil` 剛好是滿版（拍 0 `fromTo` 的起點），
+ *  底色被完全遮住，所以硬切看不到。補間只會多出一條要與 veil 對齊的曲線。
+ *
+ *  `armed` ＝ media 的 timeline 真的建起來了嗎（見 useMediaIntroMotion）。
+ *  ⚠️ 這個參數不是防禦性程式碼，是**必要條件**：reduce-motion / `/#media` 深連結 / 無 JS
+ *     三條路徑都不建 timeline ⇒ veil 停在 CSS 初始態不會現身，此時若底色照樣翻白，
+ *     blessing 整段會變成白底白字。veil 與底色必須同生共死。
+ *
+ *  純函式、不依賴 DOM —— 由 test/blessing-outro.spec.ts 守著。 */
+export function outroWhiteAt(armed: boolean, outProgress: number): 0 | 1 {
+  return armed && outProgress > 0 ? 1 : 0;
+}
+
 // ── forum → blessing 覆蓋過場（02 → 03）────────────────────────────────
 // cover 軌吃的捲動距離**恆等於 100vh**：軌是「`.section3` 上緣從視窗底緣升到視窗頂緣」，
 // 而它在一般流裡跟捲動 1:1 —— 幾何鎖死，沒有可調的長度，故本段沒有 *_VH 常數。
