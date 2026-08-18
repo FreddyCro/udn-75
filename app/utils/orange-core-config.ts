@@ -687,8 +687,66 @@ export const BLESSING_HOLD = 0.15;
 //   （smoothstep 的尾巴一階導數為 0，p ≈ 0.92 起 opacity 已 < 0.02，肉眼早就淨空）。
 //   ⚠️ 這是本值的上限：> 1 會讓淡出在接縫離開視窗頂之後才收完 —— 那時 media 已經
 //      在收窄，夥伴清單會殘留在橘塊上。
+//
+// 2026-08-18（第二次）：fade 1.0 → 0.55。方向與同日第一次相反，因為窗口的性質變了。
+//   第一次把它推到 1.0 是為了吃掉尾端那段靜止的呼吸拍（不淡完也沒事做）。融合拍改版
+//   之後**整段窗口都在動**（veil 與 morph 同步收窄），而夥伴清單面板約 72vw 寬、比
+//   veil 的終點 MEDIA_BLOCK_VW 寬 —— 清單若撐到窗口尾端才淡完，卡片（白底白框）的
+//   邊緣會落在已經露白的兩側上、失去輪廓。故清單必須比 veil 收到底更早淡乾淨。
+//   ⚠️ 下限來自「淡出要看得出是一個動作」：0.55 × 60vh ＝ 33vh，閱讀捲速下約 1.3s。
+//
+// 2026-08-18：本值同時成為 **media 拍 0 的跑道長度**（ScrollTrigger 提早這麼多），
+//   也就是整段融合拍的唯一長度旋鈕 —— 清單淡出、veil 收窄、morph 收窄全部吃這一段。
+//   見 narrowDurationFor 與融合設計文件。
 export const BLESSING_OUT_VH = 0.6;
-export const BLESSING_OUT_FADE = 1.0;
+export const BLESSING_OUT_FADE = 0.55;
+
+// ── 03 → 04 融合拍：veil 與 morph 的交棒 ──────────────────────────────
+// 完整設計見 architecture/2026-08-18-blessing-media-morph-fusion-design.md。
+//
+// MEDIA_BLOCK_VW：分鏡 1 的色塊寬（× 視窗寬）＝ 拍 0 的終點寬 ＝ 拍 1 的起點寬。
+//
+// ⚠️ 這個值原本是 useMediaIntroMotion 的區域 const `BLOCK_VW`。它現在是**兩個元件
+//    共用的交棒尺寸**（`.section3__veil` 與 `.media__morph` 在拍 0 結束時必須同寬），
+//    所以只能有一份。各寫一份就會在調值時脫鉤，而畫面上只是「交棒那一幀寬度跳一下」，
+//    不會有任何東西壞掉喊出來。
+export const MEDIA_BLOCK_VW = 0.6;
+
+// 拍 0 的 ease：veil 與 morph **共用同一條**（同一拍的兩個 target）。
+//
+// 頭必須快：使用者要的是「這一拍整個橘色區域在動」。power2.inOut 的慢起讓開頭幾乎
+//   看不出白邊在長，滿版橘因此讀成「停住不動」—— 那正是本次改版要消掉的空窗期。
+// 尾必須慢：拍 1 是 power3.inOut（慢起），拍 0 若在交界處還是全速就看得到轉折。
+//   power2.out 的尾端一階導數為 0，接得上。
+// ⚠️ 不可改成 'none' 或 'power2.in'。
+export const FUSE_EASE = 'power2.out';
+
+/** 拍 0 的 timeline 長度（單位同 timeline）。
+ *
+ *  **推導值，不是旋鈕** —— 要調融合拍的長短請改 BLESSING_OUT_VH（它同時是
+ *  ScrollTrigger 提早的跑道長度）。
+ *
+ *  推導：timeline 總長 `rest + narrow` 對映到捲動距離 `holdBuffer + runway`，
+ *  而拍 0 佔掉的 px 必須恰好等於 runway（提早的那段跑道）：
+ *
+ *      narrow / (rest + narrow) × (holdBuffer + runway) = runway
+ *      ⇒ narrow = rest × runway / holdBuffer
+ *
+ *  對不上的症狀是空窗期換個寬度重演：收窄提早結束 → 留下一段靜止的
+ *  MEDIA_BLOCK_VW 寬橘柱；收窄太晚結束 → 接縫已到頂、交棒點卻還沒到。
+ *
+ *  ⚠️ 這條取代了改版前「手寫 NARROW_DUR ＋ 手算 HOLD_BUFFER ≈ (5.1 + NARROW_DUR) × 392」
+ *     的雙向手動同步。rest 逐斷點不同（pc 5.1 / mob 4.8，mob 無 bar），故必須是參數，
+ *     不能寫死。
+ *
+ *  純函式、不依賴 DOM —— 關係由 test/media-fuse.spec.ts 守著。 */
+export function narrowDurationFor(
+  restDuration: number,
+  runwayPx: number,
+  holdBufferPx: number,
+): number {
+  return (restDuration * runwayPx) / holdBufferPx;
+}
 
 // ── 夥伴清單的閱讀定格（× 視窗高）────────────────────────────────────
 // `.section3__partners` 是 sticky top: 0，這個值是它定住的捲動距離
@@ -945,7 +1003,10 @@ export const SEQUENCE: readonly SequenceChapter[] = [
       // 在此之前它是序列末端 → 永遠停在未完成，dashboard 的游標卡在那裡。
       // label 不寫「其後純橘」：呼吸拍已歸零（BLESSING_OUT_FADE = 1.0），
       // 而百分比是內插進來的 —— 旋鈕調回 < 1 時這句話仍然成立，不必再改一次。
-      { key: 'outro', label: `夥伴清單淡出（窗口前 ${BLESSING_OUT_FADE * 100}% 淡完）`, drive: 'scrub', track: 'blessingOut' },
+      // ⚠️ 百分比要 Math.round：BLESSING_OUT_FADE 不保證是能被 100 整除的「乾淨」小數
+      //   （0.55 × 100 在 IEEE754 下是 55.00000000000001），捨入前那串尾數會直接流進
+      //   dashboard 的 label 字串，讀起來像壞掉；捨到整數 % 對這個顯示用途夠精細。
+      { key: 'outro', label: `夥伴清單淡出（窗口前 ${Math.round(BLESSING_OUT_FADE * 100)}% 淡完）`, drive: 'scrub', track: 'blessingOut' },
     ],
   },
 ];
