@@ -405,11 +405,13 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       // 比對 self.progress 而非 tl.time()：不必假設 ScrollTrigger 呼叫 onUpdate
       // 之前已經推進過 timeline。
       onUpdate: (self) => {
-        const d = tl?.duration() ?? 0;
-        section.dataset.headerTheme =
-          d > 0 && self.progress >= (NARROW_DUR + BEAT1_DUR) / d
-            ? 'light'
-            : 'orange';
+        section.dataset.headerTheme = mediaHeaderLightAt(
+          self.progress,
+          NARROW_DUR + BEAT1_DUR,
+          tl?.duration() ?? 0,
+        )
+          ? 'light'
+          : 'orange';
       },
       onLeaveBack: () => {
         section.dataset.headerTheme = 'orange';

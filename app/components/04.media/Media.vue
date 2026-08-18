@@ -72,8 +72,10 @@ useMediaIntroMotion({
 <template>
   <!-- data-header-theme 預設 light：屬性必須在 SSR 輸出裡就存在，AppHeader 才會在
        onMounted 的一次性 querySelectorAll 收到本元素；值由 useMediaIntroMotion 在
-       捲動中接管（拍 0 期間畫面上緣是整片橘 → orange）。reduced-motion 與 /#media
-       兩條降級路徑不建 timeline、橘塊不出現，留在 light 天然正確。 -->
+       捲動中接管 —— 融合拍與拍 1 期間是 orange（畫面上仍有一大塊橘：先是
+       `.section3__veil`，接著是收窄中的橘柱），橘柱收成 28px 細條之後才翻 light
+       （門檻見 mediaHeaderLightAt）。reduced-motion 與 /#media 兩條降級路徑不建
+       timeline，veil 與橘塊都不出現，留在 light 天然正確。 -->
   <section
     id="media"
     ref="sectionRef"

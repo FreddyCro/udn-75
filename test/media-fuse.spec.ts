@@ -3,6 +3,7 @@ import {
   BLESSING_OUT_VH,
   FUSE_EASE,
   MEDIA_BLOCK_VW,
+  mediaHeaderLightAt,
   narrowDurationFor,
 } from '../app/utils/orange-core-config';
 
@@ -54,5 +55,29 @@ describe('交棒常數', () => {
   it('BLESSING_OUT_VH 仍在一個視窗高以內', () => {
     expect(BLESSING_OUT_VH).toBeGreaterThan(0);
     expect(BLESSING_OUT_VH).toBeLessThanOrEqual(1);
+  });
+});
+
+// header 翻 light 的門檻。它是**推導的**（timeline 的地標 ÷ 總長），不是寫死的比例，
+// 所以加減拍數不必重算。這支守的是「地標對了、方向對了」。
+describe('mediaHeaderLightAt', () => {
+  const beat1End = 1.53 + 1; // NARROW_DUR + BEAT1_DUR 的一組代表值
+  const duration = 1.53 + 5.1;
+
+  it('拍 1 結束之前是 orange', () => {
+    expect(mediaHeaderLightAt(0, beat1End, duration)).toBe(false);
+    // 拍 0 結束的那一刻：橘柱還有 MEDIA_BLOCK_VW 寬，這裡若翻白，白帶中央會透出橘
+    expect(mediaHeaderLightAt(1.53 / duration, beat1End, duration)).toBe(false);
+  });
+
+  it('拍 1 結束（橘柱收成細條）起翻 light', () => {
+    expect(mediaHeaderLightAt(beat1End / duration, beat1End, duration)).toBe(true);
+    expect(mediaHeaderLightAt(1, beat1End, duration)).toBe(true);
+  });
+
+  // timeline 還沒建好時 duration 是 0 —— 不可以除以它，也不該提前宣告 light
+  // （那一刻畫面上是滿版橘）。
+  it('duration 為 0 時退回 orange', () => {
+    expect(mediaHeaderLightAt(0.5, beat1End, 0)).toBe(false);
   });
 });

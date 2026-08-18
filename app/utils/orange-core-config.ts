@@ -748,6 +748,25 @@ export function narrowDurationFor(
   return (restDuration * runwayPx) / holdBufferPx;
 }
 
+/** media 開場 motion：progress 走到這裡時 header 該翻 light 了嗎。
+ *
+ *  `beat1EndTime` ＝ 拍 1 結束的 timeline 時刻（＝ 拍 0 長度 ＋ 拍 1 長度）。門檻放在
+ *  這裡而不是拍 0 結束：拍 0 結束時橘柱還有 MEDIA_BLOCK_VW 寬，header 一翻成 70% 白
+ *  就會在白帶中央透出一塊橘 —— 那正是 2026-08-18 使用者回報的「露餡」。收成 28px
+ *  細條之後翻，帶子背後只剩一條細縫。
+ *
+ *  ⚠️ duration 為 0（timeline 還沒建好）時回 false（＝ orange）：那一刻畫面上是滿版橘，
+ *     提前宣告 light 會讓 header 用深色內容疊在橘底上。
+ *
+ *  純函式、不依賴 DOM —— 由 test/media-fuse.spec.ts 守著。 */
+export function mediaHeaderLightAt(
+  progress: number,
+  beat1EndTime: number,
+  duration: number,
+): boolean {
+  return duration > 0 && progress >= beat1EndTime / duration;
+}
+
 // ── 夥伴清單的閱讀定格（× 視窗高）────────────────────────────────────
 // `.section3__partners` 是 sticky top: 0，這個值是它定住的捲動距離
 //（由 `.section3__partners-hold` spacer 撐出來 —— sticky 的活動範圍是父層的
