@@ -677,8 +677,18 @@ export const BLESSING_HOLD = 0.15;
 //   整段過場 135vh，實測過長。改後 60 + 20 ＝ 80vh。
 //   代價：淡出起點提前，此時夥伴清單頂端已被視窗頂切掉約 240px（原本剛好完整）。
 //   要換回「面板完整時才開始淡」就把 OUT_VH 調回 0.75 以上。
+//
+// 2026-08-18：fade 0.85 → 1.0，**呼吸拍歸零**（窗口長度 0.6 不動）。
+//   使用者回饋：03 → 04 之間有一段「滿版純橘、什麼都不動」的空窗期。那段是兩截
+//   相連的橘：本檔的呼吸拍 9vh，接著 media 拍 0 的滿版收窄 17.7vh（那截另外處理，
+//   見 useMediaIntroMotion 的 NARROW_DUR 與拍 0 的 ease）。呼吸拍是這兩截裡唯一
+//   「畫面上真的沒有任何東西在變」的一段 —— 它原本的用意是「接縫離開視窗頂時只剩橘」，
+//   而 fade = 1.0 讓淡出**剛好**在接縫抵達視窗頂那一刻收乾淨，同一個保證仍然成立
+//   （smoothstep 的尾巴一階導數為 0，p ≈ 0.92 起 opacity 已 < 0.02，肉眼早就淨空）。
+//   ⚠️ 這是本值的上限：> 1 會讓淡出在接縫離開視窗頂之後才收完 —— 那時 media 已經
+//      在收窄，夥伴清單會殘留在橘塊上。
 export const BLESSING_OUT_VH = 0.6;
-export const BLESSING_OUT_FADE = 0.85;
+export const BLESSING_OUT_FADE = 1.0;
 
 // ── 夥伴清單的閱讀定格（× 視窗高）────────────────────────────────────
 // `.section3__partners` 是 sticky top: 0，這個值是它定住的捲動距離
@@ -933,7 +943,9 @@ export const SEQUENCE: readonly SequenceChapter[] = [
       // 03 → 04 過場第一拍。放在 partners 之後還有一個副作用是修掉既有問題：
       // partners 是無軌 part，「結束了沒」靠下一段反推（useCoreSequence 的 ②），
       // 在此之前它是序列末端 → 永遠停在未完成，dashboard 的游標卡在那裡。
-      { key: 'outro', label: `夥伴清單淡出（前 ${BLESSING_OUT_FADE * 100}% 淡完，其後純橘）`, drive: 'scrub', track: 'blessingOut' },
+      // label 不寫「其後純橘」：呼吸拍已歸零（BLESSING_OUT_FADE = 1.0），
+      // 而百分比是內插進來的 —— 旋鈕調回 < 1 時這句話仍然成立，不必再改一次。
+      { key: 'outro', label: `夥伴清單淡出（窗口前 ${BLESSING_OUT_FADE * 100}% 淡完）`, drive: 'scrub', track: 'blessingOut' },
     ],
   },
 ];

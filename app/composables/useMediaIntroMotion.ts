@@ -55,10 +55,21 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   //
   // ⚠️ 改 NARROW_DUR 要一起改這裡，否則等於連帶改了後面每一拍的速度：
   //    HOLD_BUFFER ≈ (5.1 + NARROW_DUR) × 392
-  const HOLD_BUFFER = 2180;
+  //
+  // 2026-08-18：2180 → 2120，隨 NARROW_DUR 0.45 → 0.3 等比縮（見下）。
+  //   (5.1 + 0.3) × 392 ＝ 2116.8，取整 2120。
+  const HOLD_BUFFER = 2120;
   // 拍 0 的長度，同時是 header 翻 light 的門檻（見 st 的 onUpdate）。
-  // 0.45 ＝ 約 20vh 的收窄行程（0.45 / 5.55 × 2180 ≈ 177px）。
-  const NARROW_DUR = 0.45;
+  // 0.3 ＝ 約 12vh 的收窄行程（0.3 / 5.4 × 2120 ≈ 118px）。
+  //
+  // 2026-08-18：0.45 → 0.3（原 0.45 ＝ 約 20vh、177px）。
+  //   使用者回饋 03 → 04 之間有滿版純橘的空窗期。那段是兩截相連的橘：blessing 尾端的
+  //   呼吸拍 9vh（已歸零，見 BLESSING_OUT_FADE）＋本拍的滿版收窄。本拍的**開頭**在
+  //   幾何上必然是滿版（起點就是滿版橘塊），能做的只有讓它更短、並讓白邊立刻長出來
+  //   （ease 改 power2.out，見拍 0）。
+  //   ⚠️ 下限來自「收窄要看得出是一個動作」：12vh 在閱讀捲速（25vh/s）下約 0.5s。
+  //      再短會退化成硬切，滿版橘塊直接變成 60vw 的直條。
+  const NARROW_DUR = 0.3;
   let tl: gsap.core.Timeline | null = null;
   let st: ScrollTrigger | null = null;
 
@@ -225,7 +236,12 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
         {
           scaleX: (window.innerWidth * BLOCK_VW) / MORPH_W,
           duration: NARROW_DUR,
-          ease: 'power2.inOut',
+          // power2.out 而非 inOut（2026-08-18）：inOut 的慢起讓本拍**開頭**那段幾乎
+          // 看不出白邊在長，滿版橘因此讀成「停住不動」——正是使用者回報的空窗期。
+          // out 把速度搬到前段：第一幀白邊就在動，落點仍然是軟的（power3.inOut 的
+          // 拍 1 接得上）。⚠️ 不可改成 'none' 或 'power2.in'：那會讓收窄在拍 1 交界
+          // 處還是全速，兩拍之間看得到轉折。
+          ease: 'power2.out',
         },
       )
       // 1. 色塊左右縮成直條

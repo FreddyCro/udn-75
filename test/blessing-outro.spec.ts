@@ -8,16 +8,28 @@ import {
 } from '../app/utils/orange-core-config';
 
 // 這支守的是曲線的**形狀**，不是 0.65 這個值 —— 值本來就該能自由微調（節奏要在
-// 真實畫面上調），但形狀壞了會出現說不清楚的破圖：淡出沒收乾淨就開始收窄、
-// 或呼吸拍被吃掉。
+// 真實畫面上調），但形狀壞了會出現說不清楚的破圖：淡出沒收乾淨就開始收窄。
+//
+// 2026-08-18：呼吸拍（1 − BLESSING_OUT_FADE）已刻意歸零，故它不再是本支要守的性質。
+// 剩下的不變量是「窗口結束時一定已經淡乾淨」——FADE ≤ 1 就成立，而 FADE > 1 會讓
+// 夥伴清單殘留到 media 開始收窄之後（見該常數的 ⚠️）。
 describe('partnersFadeAt', () => {
   it('窗口起點全不透明', () => {
     expect(partnersFadeAt(0)).toBe(1);
   });
 
-  it('淡出門檻處已全透明，其後維持 0（純橘呼吸拍）', () => {
+  // FADE = 1.0 時兩個斷言落在同一點（呼吸拍歸零）；調回 < 1 時第二個斷言才另外
+  // 守住「其後維持 0」。刻意兩個都留，旋鈕來回調都不必改測試。
+  it('淡出門檻處已全透明，窗口結束時仍是 0', () => {
     expect(partnersFadeAt(BLESSING_OUT_FADE)).toBe(0);
     expect(partnersFadeAt(1)).toBe(0);
+  });
+
+  // FADE > 1 會讓淡出在接縫離開視窗頂之後才收完 —— 那時 media 已在收窄，
+  // 夥伴清單會殘留在橘塊上。這是那個常數唯一的硬上限。
+  it('淡出不得晚於窗口結束', () => {
+    expect(BLESSING_OUT_FADE).toBeGreaterThan(0);
+    expect(BLESSING_OUT_FADE).toBeLessThanOrEqual(1);
   });
 
   // 取樣點一律用 BLESSING_OUT_FADE 的比例，不寫絕對值 —— 那個常數是要在真實畫面上
