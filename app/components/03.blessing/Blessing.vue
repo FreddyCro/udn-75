@@ -396,9 +396,22 @@ onBeforeUnmount(() => {
 // ⚠️ 初始 visibility: hidden（同 `.media__morph`）：timeline 的 fromTo 起播才現身。
 //    這同時是三條降級路徑（reduce-motion / #media / 無 JS）的正確落點 —— 那些路徑
 //    不建 timeline，本層就永遠不現身，而底色也不會切白（見 outroWhiteAt）。
+// ⚠️ width: 100vw（不是 inset: 0 / width: 100%）＋ left: 50% ＋ GSAP 的
+//    xPercent: -50 置中（同 .media__bar / .media__line 那招）：這是與 morph 共用
+//    寬度基準的唯一手段。`100vw` 含捲軸寬，`inset: 0` 的 ICB（＝documentElement.
+//    clientWidth）不含；而 morph 的 scaleX 吃的是 window.innerWidth（含捲軸）。
+//    2026-08-19 實測（1465×863、捲軸 15px）：inset: 0 版位量到 1450，
+//    比 innerWidth 少 15px，收窄終點因此恆定少 9px（15 × MEDIA_BLOCK_VW 0.6）
+//    ——即使 useMediaIntroMotion.ts 試著在 build time 量 clientWidth 除回去也救不了，
+//    因為 buildMotion() 跑在 onMounted，那一刻捲軸還沒撐出來，量到的其實是
+//    innerWidth（見該檔拍 0 的舊 ⚠️，已移除）。換成 inset: 0 或 width: 100% 都會
+//    重現這個落差，因為兩者的 ICB 都不含捲軸。
 .section3__veil {
   position: fixed;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
   background: var(--color-orange);
   transform-origin: 50% 50%;
   visibility: hidden;

@@ -172,6 +172,11 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       y: 0,
       autoAlpha: 0,
     });
+    // veil 同招置中：CSS 給的是 left: 50%，實際居中靠這裡的 xPercent: -50
+    // （見 Blessing.vue 的 .section3__veil ⚠️）。必須排在上面那組 clearProps
+    // 之後 —— clearProps 只清 transform/opacity/visibility 三個屬性（不含 left），
+    // 但寫入順序仍得晚於清除，否則這裡設的 xPercent 會被一併清掉。
+    gsap.set(veil, { xPercent: -50 });
 
     // 標題放大並組裝在舞台中心（以 morph 實際位置為準）；settle 再縮回定位
     const morphRect = morph.getBoundingClientRect();
@@ -193,11 +198,6 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     // progress 0＝滿版橘塊，畫面上緣是整片橘。模板的預設值是 light（給
     // reduced-motion 與 /#media 兩條降級路徑用），真的要播 motion 才改成 orange。
     section.dataset.headerTheme = 'orange';
-    // buffer 高度提前在這裡設好（ScrollTrigger.create 之前、同一個同步區塊內）：
-    // 拍 0 稍後要量 document.documentElement.clientWidth 當 veil 的版位寬
-    // （見下方 veilW），若 buffer 還沒撐開，量到的是「加 buffer 之前」那個頁面
-    // 高度下的 ICB —— 目前不影響寬度，但 buffer 一旦哪天也開始影響捲軸出現與否，
-    // 這裡的順序就會變成 bug 的來源，故先在此把依賴關係釘死。
 
     tl = gsap.timeline({ paused: true });
 
@@ -331,20 +331,26 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     //    而拍 0 的 timeline 長度由 narrowDurationFor 從它推導。三者是同一個數字的
     //    三種單位，不可各自手調。
     //
-    // ⚠️ veil 的 scaleX **除回自己的版位寬度**，不是直接用 1 與 MEDIA_BLOCK_VW：
-    //    morph 吃 window.innerWidth（含捲軸），veil 是 fixed; inset: 0，版位是 ICB
-    //    （＝ documentElement.clientWidth，不含捲軸）。直接用比例的話，交棒那一幀會差
-    //    一個「捲軸寬 × MEDIA_BLOCK_VW」（Windows Chrome 約 10px）的跳動。
-    //    除回去之後兩者的**終點 px 相等**。
-    //    ⚠️ 用 clientWidth 而不是量 veil 自己：buildMotion() 跑在 Media 的 onMounted，
-    //       那時 cover 還沒跑完 → veil 是 display: none，getBoundingClientRect() 回 0，
-    //       量了會靜靜退回 innerWidth，等於這條修正完全沒生效。
+    // ⚠️ veil 與 morph 的寬度基準現在由 CSS 保證同一個值，JS 不再持有任何 px：
+    //    veil 是 width: 100vw（見 Blessing.vue），morph 吃 window.innerWidth——
+    //    兩者都含捲軸寬，所以 scaleX 可以直接用同一組比例（1 → MEDIA_BLOCK_VW），
+    //    不必像 morph 那樣除回 MORPH_W（veil 的基準寬本身就是 1 倍版位，不像 morph
+    //    是縮小的 bar.svg）。build time 與 render time 的差異因此不可能再讓兩者脫鉤。
+    //
+    //    事故記錄（2026-08-19）：這裡曾經在 build time 讀
+    //    `document.documentElement.clientWidth` 除回版位寬，想讓交棒時 veil 與 morph
+    //    的終點 px 相等。但 buildMotion() 跑在 onMounted，那一刻捲軸還沒撐出來，
+    //    `clientWidth` 量到的其實是 innerWidth（Playwright 實測 1465×863、捲軸 15px：
+    //    clientWidth 回傳 1465 而非渲染時的 1450），除出來的 scaleX 因此靜靜退化成
+    //    跟沒除一樣，交棒時 veil 比 morph 窄了「捲軸寬 × MEDIA_BLOCK_VW」＝9px。
+    //    量到的 px 基準與渲染時的實際版位不一致，是與本檔另一條「量了會靜靜退回
+    //    innerWidth」失敗模式同源的教訓：能在 CSS 裡用相對單位讓兩者天生同源，
+    //    就不要在 JS 裡用一次性量測去追齊。
     const runwayPx = BLESSING_OUT_VH * vhPx(1);
     const NARROW_DUR = narrowDurationFor(tl.duration(), runwayPx, HOLD_BUFFER);
     // 把已建好的每一拍（含 label）整批右移，讓 time 0 空出拍 0 的位置
     tl.shiftChildren(NARROW_DUR, true);
 
-    const veilW = document.documentElement.clientWidth;
     tl.fromTo(
       morph,
       {
@@ -361,12 +367,8 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     )
       .fromTo(
         veil,
-        { scaleX: window.innerWidth / veilW, autoAlpha: 1 },
-        {
-          scaleX: (window.innerWidth * MEDIA_BLOCK_VW) / veilW,
-          duration: NARROW_DUR,
-          ease: FUSE_EASE,
-        },
+        { scaleX: 1, autoAlpha: 1 },
+        { scaleX: MEDIA_BLOCK_VW, duration: NARROW_DUR, ease: FUSE_EASE },
         0,
       )
       // 交棒：veil 與 morph 此刻同色同寬同位，硬切不可見。

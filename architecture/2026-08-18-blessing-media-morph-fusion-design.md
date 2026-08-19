@@ -284,10 +284,18 @@ self.progress >= (NARROW_DUR + 1) / d ? 'light' : 'orange'
 4. **`.section3` 不可有 transform**，否則 `fixed` 的 veil 安靜退化。
 5. **拍 0 的 px 長度 ＝ 提早的跑道長度**。`NARROW_DUR` 推導而來，不手寫。
 6. **`BLOCK_VW` 只有一份**（`MEDIA_BLOCK_VW`）。
-7. **veil 與 morph 的寬度算在同一個 px 基準上**。morph 吃 `window.innerWidth`（含捲軸），
-   veil 是 `fixed; inset: 0`（＝ `clientWidth`，不含捲軸）—— 直接各自用 1.0 與
-   `MEDIA_BLOCK_VW` 當 scaleX，交棒那一幀會差一個「捲軸寬 × 0.6」（Windows Chrome 約
-   10px）的跳動。veil 的 scaleX 必須除回自己的實際寬度，讓兩者的**終點 px 相等**。
+7. **veil 與 morph 的寬度基準由 CSS 共用，不可用任何 build-time 量測**。morph 吃
+   `window.innerWidth`（含捲軸）；veil 的版位改成 `width: 100vw`（同樣含捲軸），
+   不是 `inset: 0`（其 ICB ＝ `clientWidth`，不含捲軸）。兩者基準相等後，veil 的
+   scaleX 可以直接用 `1 → MEDIA_BLOCK_VW`，與 morph 的比例同源，JS 不需要、也不可以
+   再持有任何 px 基準——build time 量到的 px 與 render time 的實際版位永遠有機會不一致。
+   2026-08-19 實測（Playwright，視窗 1465×863、捲軸 15px）證明了這件事：曾經的做法是在
+   `buildMotion()`（跑在 onMounted）當下讀 `document.documentElement.clientWidth` 除回
+   veil 版位寬，想讓交棒終點的 px 相等；但那一刻捲軸還沒撐出來，`clientWidth` 量到的其實
+   是 `innerWidth`＝1465，而非渲染時 `inset: 0` 版位的實際寬 1450，於是除出來的係數退化成
+   跟沒除一樣，交棒時 veil 比 morph 恆定窄了 9px（捲軸寬 15 × `MEDIA_BLOCK_VW` 0.6）。
+   任何在 JS 裡「量一次再拿去算比例」的做法都可能重演這個失效模式——量測時機與渲染時機
+   一旦不同步，就會靜靜退回錯的基準。
 
 ## 十、驗證
 
