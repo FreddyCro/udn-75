@@ -472,8 +472,11 @@ export const SYMBOL_LIVE_COLOR_KEYS = [
 /** 漸層色票數量上限（純 UI 約束，buildColorRamp 本身沒有上限） */
 export const SYMBOL_MAX_COLOR_STOPS = 6;
 
-/** glitch 組數上限：GLSL ES 1.0 的陣列 uniform 是固定長度 4，見 SymbolFace 的 shader */
-export const SYMBOL_MAX_GLITCH_ITEMS = 4;
+/** glitch 組數上限。GLSL ES 1.0 的陣列 uniform 必須是固定長度，SymbolFace 以
+ *  GLITCH_SLOTS 讀這個常數、再插值進 shader（宣告長度與迴圈上界）—— 故這裡是**唯一**
+ *  的來源，改這個數字就會一路帶到 shader 與面板的「+ 新增顏色」上限。
+ *  6 是 2026-08-20 設計師 preset 的組數（見 temp/matrix_preset_.json）。 */
+export const SYMBOL_MAX_GLITCH_ITEMS = 6;
 
 /** n 個色標的等距位置（0..1）；n=1 時回傳 [0] */
 export const equidistantStops = (n: number): number[] =>

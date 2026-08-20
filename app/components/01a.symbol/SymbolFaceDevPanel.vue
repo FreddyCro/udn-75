@@ -199,7 +199,15 @@ const setStop = (i: number, value: number) => {
 };
 
 // ---------- glitch 卡片 ----------
-const GLITCH_PALETTE = ['#ffff00', '#ff00ff', '#00ffff', '#ff8800'];
+// 長度對齊 SYMBOL_MAX_GLITCH_ITEMS，否則後面幾組新增出來會是清一色的白（見 addGlitch 的 ??）
+const GLITCH_PALETTE = [
+  '#ffff00',
+  '#ff00ff',
+  '#00ffff',
+  '#ff8800',
+  '#54dd22',
+  '#ffa3d9',
+];
 const addGlitch = () => {
   if (glitch.value.length >= SYMBOL_MAX_GLITCH_ITEMS) return;
   glitch.value.push({

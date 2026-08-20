@@ -32,6 +32,15 @@ onMounted(() => {
 
 const panelOpen = ref(true);
 
+// 字元集提到這裡而不是寫在模板的 :chars="[...]" 裡：集合內含 `"`，而屬性值本身是用雙引號
+// 界定的 —— 寫成 '"' 會提前把屬性關掉（要留在模板就得寫成 &quot; 靠 HTML 實體解碼，太脆）。
+// 值與 Hero.vue 的 SYMBOL_CHARS 相同，來源見 SymbolFace 的 chars 註解。
+const SYMBOL_CHARS = [
+  'U', 'D', 'N', '7', '5',
+  'A', 'I', 'V', 'E', 'R', 'S', 'Y',
+  '/', ':', '_', '+', '.', '=', ')', '(', '#', '"', '>', '<',
+];
+
 // 彩蛋句與互動提示：與正式站共用同一份文案（見 locales/section1.json）
 const symbolPhrases = section1.symbol.phrases;
 const symbolHint = section1.symbol.hint;
@@ -62,24 +71,25 @@ const symbolHintMob = section1.symbol.hintMob;
         :world-scale="0.7"
         :float-amp="18"
         :float-micro="0.5"
-        :chars="[
-          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-          'A', 'B', 'C', 'D', 'E', 'F',
-        ]"
+        :chars="SYMBOL_CHARS"
         :color="['#000000', '#77c6e0', '#d1f4ff', '#ffffff']"
-        :color-stops="[0, 0.4, 0.75, 1]"
-        :cols="85"
+        :color-stops="[0, 0.55, 0.81, 1]"
+        :cols="89"
         :char-aspect="0.65"
-        :contrast="1.2"
+        :contrast="1.4"
         :invert="false"
-        :size-min="0.43"
-        :size-max="1.0"
+        :size-min="0.4"
+        :size-max="0.8"
         :weight-steps="5"
         :weight-min="100"
-        :weight-max="900"
+        :weight-max="500"
         :glitch-items="[
-          { color: '#ff0055', density: 3, fps: 12 },
-          { color: '#00ffcc', density: 2, fps: 8 },
+          { color: '#ffe357', density: 2, fps: 2 },
+          { color: '#33ffd6', density: 3, fps: 5 },
+          { color: '#ff8800', density: 4, fps: 2 },
+          { color: '#54dd22', density: 2, fps: 4 },
+          { color: '#ffa3d9', density: 3, fps: 2 },
+          { color: '#57beff', density: 8, fps: 4 },
         ]"
       />
     </div>

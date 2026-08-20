@@ -17,6 +17,7 @@ import { EGG_CLOSED, nextEggIndex, tapEggIndex } from '~/utils/symbol-egg';
 import {
   SYMBOL_CONFIG_KEYS,
   SYMBOL_LIVE_COLOR_KEYS,
+  SYMBOL_MAX_GLITCH_ITEMS,
 } from '~/utils/symbol-face-schema';
 import { scrambleText } from '~/utils/symbol-scramble';
 import type { SymbolMode } from '~/composables/useOrangeCoreProgress';
@@ -24,10 +25,18 @@ import type { SymbolMode } from '~/composables/useOrangeCoreProgress';
 const props = defineProps({
   /** 人像圖片（需含透明背景，alpha 即輪廓遮罩） */
   src: { type: String, default: portraitUrl },
-  /** 符號字元集（設計稿定案前先用範例集） */
+  /** 符號字元集。2026-08-20 起為設計師定案的集合（見 temp/matrix_preset_.json 的
+   *  customChars）—— 取自 "UDN75 ANNIVERSERIY/:_+.=)(#\"><" 去空白後的 24 個唯一字元。
+   *  ⚠️ 順序無意義：sortCharsByInk 會去重並**依墨水量重排**，字元是按該格亮度指派的，
+   *     畫面上不會排出可讀的單字（故原字串把 ANNIVERSARY 拼成 ANNIVERSERIY 不影響輸出，
+   *     但也不要「順手修正」—— 那會少一個 I、多一個 A ＝ 換掉字元集）。 */
   chars: {
     type: Array as () => string[],
-    default: () => ['M', 'F', 'O', 'A', 'B', 'I', '7', '5'],
+    default: () => [
+      'U', 'D', 'N', '7', '5',
+      'A', 'I', 'V', 'E', 'R', 'S', 'Y',
+      '/', ':', '_', '+', '.', '=', ')', '(', '#', '"', '>', '<',
+    ],
   },
   /** 顏色：單色字串，或多色標漸層陣列（如 ['#000','#77c6e0','#fff']），依 colorMode 取色 */
   color: {
@@ -52,20 +61,31 @@ const props = defineProps({
    *     硬切對位，不可跟著縮。 */
   worldScale: { type: Number, default: 1.0 },
   /** 橫向格數＝疏密主控，clamp 到 20..400。
-   *  85 而非 gemini 的 130：滿版一屏放不下 130 欄的可辨識字級（見 spec § 2 的對照表） */
-  cols: { type: Number, default: 85 },
+   *  89 ＝ 設計師 preset 的值（見 temp/matrix_preset_.json）。他的產生器畫在 578×840 的
+   *  canvas 上、cellW 6.5 / cellH 10 → 89 × 84 格；我們在 face.png（1013×1478）以
+   *  fit 500 × worldScale 0.9 取樣，computeGrid 算出的也是 89 × 84 —— 兩邊同一個格網，
+   *  故他的 px 級參數（sizeMin/sizeMax）可以直接除以 10 換成本檔的「佔格高比例」。
+   *  （曾為 85，理由是「滿版一屏放不下 gemini 預設的 130 欄」——89 同樣遠低於 130，
+   *    那個結論不受影響。） */
+  cols: { type: Number, default: 89 },
   /** monospace 寬高比：cellH = cellW / charAspect。0.65 取自 gemini 的 baseFontSize × 0.65 */
   charAspect: { type: Number, default: 0.65 },
-  /** 對比：繞中灰 0.5 放大明暗差（取代舊的 darkBoost 乘法增益） */
-  contrast: { type: Number, default: 1.2 },
+  /** 對比：繞中灰 0.5 放大明暗差（取代舊的 darkBoost 乘法增益）。
+   *  1.4 ＝ 設計師 preset；公式與他的產生器完全相同（見 symbol-sampler 的 toneMap）。 */
+  contrast: { type: Number, default: 1.4 },
   /** 負片：反轉明暗，決定人臉是「光雕」還是「陰影雕」 */
   invert: { type: Boolean, default: false },
   /** 字重階數；1 ＝ 單一字重 */
   weightSteps: { type: Number, default: 5 },
   /** 暗部字重 */
   weightMin: { type: Number, default: 100 },
-  /** 亮部字重 */
-  weightMax: { type: Number, default: 900 },
+  /** 亮部字重。500 ＝ 設計師 preset；與 weightMin 100 搭 weightSteps 5 恰好是他的產生器
+   *  在 100..500 間做 round(w/100)*100 的那 5 階。
+   *  ⚠️ 未驗證：atlas 烘字用 "Courier New", monospace（非可變字型，只有 regular/bold），
+   *     canvas 對 100–500 很可能一律選 regular ＝ 這五階畫出來一樣粗、字重滑桿是啞的。
+   *     他的產生器用 monospace 也有同樣限制，故兩邊一致、不是我們這邊的 bug；
+   *     真的要連續字重得換成 variable mono font。 */
+  weightMax: { type: Number, default: 500 },
   /** 漸層色標位置（0..1），長度需與 color 相同；空陣列＝等距 */
   colorStops: { type: Array as () => number[], default: () => [] },
   /** glitch 跳色：依 fps 隨機把少量粒子染色（取代舊的隨機換字），最多 4 組 */
@@ -75,11 +95,15 @@ const props = defineProps({
   },
   /** 格點隨機位移比例；0 ＝ 全規則格點 */
   jitter: { type: Number, default: 0 },
-  /** 暗部字級佔格高的比例（0..1） */
-  sizeMin: { type: Number, default: 0.43 },
-  /** 亮部字級佔格高的比例；1.0 ＝ 字級等於格高（墨水寬 ≈ 0.92 × cellW，同 gemini），
-   *  超過約 1.08 開始橫向重疊成塊 */
-  sizeMax: { type: Number, default: 1.0 },
+  /** 暗部字級佔格高的比例（0..1）。0.40 ＝ 設計師 preset 的 minSize 4px ÷ 他的 cellH 10px。 */
+  sizeMin: { type: Number, default: 0.4 },
+  /** 亮部字級佔格高的比例。0.80 ＝ 設計師 preset 的 maxSize 8px ÷ 他的 cellH 10px
+   *  （1.0 ＝ 字級等於格高、墨水寬 ≈ 0.92 × cellW；超過約 1.08 開始橫向重疊成塊）。
+   *  ⚠️ 待校準：inkGamma 的 0.6 是在 sizeMax = 1.0 下對照他的產生器校出來的。降到 0.8 後
+   *     sprite 由 ~10.3px 縮到 ~8.2px，而 atlas 烘的是 25px → 放大倍率 2.4 升到 3.0、
+   *     多吃一層 mipmap，筆劃會再被攤薄，預期 inkGamma 要往下調才追得回濃度。
+   *     這一項只能目視／量墨水量校，不能純換算，故先不動 inkGamma。 */
+  sizeMax: { type: Number, default: 0.8 },
   /** 粒子數上限；超過時自動遞減 cols 重新取樣（不隨機淘汰，那會打壞矩陣） */
   maxParticles: { type: Number, default: 24000 },
 
@@ -415,23 +439,33 @@ for (const key of SYMBOL_CONFIG_KEYS) {
 // 面板的唯讀資訊：實際採用的格數與粒子數（cols 可能因 maxParticles 被降過）
 const gridStats = ref({ cols: 0, rows: 0, count: 0 });
 
+/** glitch 的 uniform 陣列長度。與面板的組數上限共用同一個常數 —— 這個數字同時出現在
+ *  JS（備幾組 uniform）與 GLSL（陣列宣告與迴圈上界，靠字串插值帶進去），
+ *  兩邊分開寫的話擴組數時只會改到一半，多出來的組會安靜地不生效。
+ *  ⚠️ GLSL ES 1.0 的陣列 uniform 長度與 for 迴圈上界都必須是**編譯期常數**，
+ *     所以不能改成執行期依 glitchItems.length 動態決定。 */
+const GLITCH_SLOTS = SYMBOL_MAX_GLITCH_ITEMS;
+
 // glitch 跳色的 uniform 值。抽成函式是因為有兩個呼叫點：建材質時（buildParticles）
 // 與即時套色時（repaintColors）—— 後者要在材質已存在的情況下就地覆寫同一組 uniform。
-// GLSL ES 1.0 的陣列 uniform 必須是固定長度，故一律備 4 組，未使用的以 uGlitchCount 擋掉
-// （density 0 也不會命中）。
+// GLSL ES 1.0 的陣列 uniform 必須是固定長度，故一律備 GLITCH_SLOTS 組，未使用的以
+// uGlitchCount 擋掉（density 0 也不會命中）。
 // ⚠️ 顏色必須走 srgbColor（理由見該 helper 上方）：直接 new THREE.Color(hex) 會被
 //    ColorManagement 轉成 linear-sRGB，而本元件是 raw shader、沒有轉回來的那一段 ——
 //    #ff0055 會畫成約 #ff0017、#00ffcc 約 #00ff9a。
 // density 除以 100：gemini 的 density 單位是百分比（1–30）。
 const glitchUniforms = () => {
-  const items = (cfg.glitchItems ?? []).slice(0, 4);
+  const items = (cfg.glitchItems ?? []).slice(0, GLITCH_SLOTS);
   return {
     count: items.length,
-    colors: Array.from({ length: 4 }, (_, i) =>
+    colors: Array.from({ length: GLITCH_SLOTS }, (_, i) =>
       srgbColor(items[i]?.color ?? '#000000'),
     ),
-    density: Array.from({ length: 4 }, (_, i) => (items[i]?.density ?? 0) / 100),
-    fps: Array.from({ length: 4 }, (_, i) => items[i]?.fps ?? 0),
+    density: Array.from(
+      { length: GLITCH_SLOTS },
+      (_, i) => (items[i]?.density ?? 0) / 100,
+    ),
+    fps: Array.from({ length: GLITCH_SLOTS }, (_, i) => items[i]?.fps ?? 0),
   };
 };
 
@@ -917,9 +951,11 @@ onMounted(() => {
     dispAttr.setUsage(THREE.DynamicDrawUsage);
     geom.setAttribute('aDisp', dispAttr);
 
-    // glitch 跳色（4 組固定長度陣列 uniform 的理由見 glitchUniforms 上方註解）
-    if ((cfg.glitchItems ?? []).length > 4) {
-      console.warn('[SymbolFace] glitchItems 最多 4 組，其餘已忽略');
+    // glitch 跳色（固定長度陣列 uniform 的理由見 GLITCH_SLOTS 與 glitchUniforms 的註解）
+    if ((cfg.glitchItems ?? []).length > GLITCH_SLOTS) {
+      console.warn(
+        `[SymbolFace] glitchItems 最多 ${GLITCH_SLOTS} 組，其餘已忽略`,
+      );
     }
     const glitch = glitchUniforms();
 
@@ -996,9 +1032,9 @@ onMounted(() => {
         uniform float uGroupFar;
         uniform float uColorRandom;
         uniform int uGlitchCount;
-        uniform vec3 uGlitchColor[4];
-        uniform float uGlitchDensity[4];
-        uniform float uGlitchFps[4];
+        uniform vec3 uGlitchColor[${GLITCH_SLOTS}];
+        uniform float uGlitchDensity[${GLITCH_SLOTS}];
+        uniform float uGlitchFps[${GLITCH_SLOTS}];
         varying float vAlpha;
         varying float vGlyph;
         varying float vT;
@@ -1085,10 +1121,10 @@ onMounted(() => {
           vGlyph = aGlyph;
 
           // glitch 跳色：每組各自的 fps 決定換幀速率，density 決定命中比例。
-          // GLSL ES 1.0 迴圈上界必須是常數，故固定 4 次搭配 break。
+          // GLSL ES 1.0 迴圈上界必須是常數，故固定跑 GLITCH_SLOTS 次搭配 break。
           vGlitchColor = vec3(0.0);
           vGlitchOn = 0.0;
-          for (int i = 0; i < 4; i++) {
+          for (int i = 0; i < ${GLITCH_SLOTS}; i++) {
             if (i >= uGlitchCount) break;
             if (uGlitchFps[i] > 0.0 && uGlitchDensity[i] > 0.0) {
               // 引數必須維持在小範圍：hash 是 fract(sin(n)·43758)，而 GLSL 的 sin

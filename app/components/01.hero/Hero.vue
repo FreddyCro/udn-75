@@ -26,15 +26,35 @@ import { HERO_RETURN_HASH } from '@/utils/home-intent';
 // 於是每一個 scrub tick 都會重建這四個陣列與兩個物件。更貴的是**識別性**：新物件
 // 每幀都與上一幀不等，SymbolFace 的 props 因此永遠比對不相等 → 它的 template
 // （彩蛋、hint、hint-mob）也跟著逐幀重新 diff，全為了幾個從頭到尾沒變過的值。
+//
+// ⚠️ 下面四組值＋模板裡那幾個數字是 2026-08-20 設計師 preset 的移植結果
+//    （來源 temp/matrix_preset_.json，由他的 Matrix Image Generator 匯出）。
+//    改動前先看 SymbolFace 對應 prop 的註解 —— 那裡記著每個值是怎麼從他的 px / % 換算來的。
+//    demo 頁（pages/demo.vue）有一份一樣的，兩邊要同時改。
+//
+// 字元集：他的 customChars 去空白後的 24 個唯一字元。順序無意義（sortCharsByInk 會依
+// 墨水量重排），拼字也不影響輸出 —— 詳見 SymbolFace 的 chars 註解。
 const SYMBOL_CHARS = [
-  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  'A', 'B', 'C', 'D', 'E', 'F',
+  'U', 'D', 'N', '7', '5',
+  'A', 'I', 'V', 'E', 'R', 'S', 'Y',
+  '/', ':', '_', '+', '.', '=', ')', '(', '#', '"', '>', '<',
 ];
+// c1..c4：與 preset 完全一致，這組從一開始就沒變過
 const SYMBOL_COLOR_RAMP = ['#000000', '#77c6e0', '#d1f4ff', '#ffffff'];
-const SYMBOL_COLOR_STOPS = [0, 0.4, 0.75, 1];
+// pos2 55% / pos3 81%（原本是 40 / 75）
+const SYMBOL_COLOR_STOPS = [0, 0.55, 0.81, 1];
+// 六組跳色（原本兩組）。組數上限由 SYMBOL_MAX_GLITCH_ITEMS 控制，2026-08-20 為此從 4 放到 6。
+// ⚠️ 密度總和 22% → 命中率 1-Π(1-d) ≈ 20%（原本約 5%），每 5 顆就有 1 顆是非漸層色。
+//    這是畫面調性的大改而非微調；且他的產生器 hash 在 frame 大時會退化成非均勻分佈
+//    （我們的 shader 已修掉，見該處註解），所以他調 density 時對著的很可能不是名目值
+//    —— 最終要以他看我們這版的結果為準。
 const SYMBOL_GLITCH_ITEMS = [
-  { color: '#ff0055', density: 3, fps: 12 },
-  { color: '#00ffcc', density: 2, fps: 8 },
+  { color: '#ffe357', density: 2, fps: 2 },
+  { color: '#33ffd6', density: 3, fps: 5 },
+  { color: '#ff8800', density: 4, fps: 2 },
+  { color: '#54dd22', density: 2, fps: 4 },
+  { color: '#ffa3d9', density: 3, fps: 2 },
+  { color: '#57beff', density: 8, fps: 4 },
 ];
 
 // ref：
@@ -681,15 +701,15 @@ function applyScrollLock() {
           :color-stops="SYMBOL_COLOR_STOPS"
           bg-color="#000"
           :world-scale="symbolWorldScale"
-          :cols="85"
+          :cols="89"
           :char-aspect="0.65"
-          :contrast="1.2"
+          :contrast="1.4"
           :invert="false"
-          :size-min="0.43"
-          :size-max="1.0"
+          :size-min="0.4"
+          :size-max="0.8"
           :weight-steps="5"
           :weight-min="100"
-          :weight-max="900"
+          :weight-max="500"
           :glitch-items="SYMBOL_GLITCH_ITEMS"
           :float-amp="18"
           :float-micro="0.5"
