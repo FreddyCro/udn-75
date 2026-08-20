@@ -81,8 +81,23 @@ const introInnerRef = ref<HTMLElement | null>(null);
 const mediaRef = ref<HTMLElement | null>(null);
 
 /** <1280 底部錨點列是否出現：捲過 hero/引言舞台後才滑入。
- *  ⚠️ pc 右側 rail **不吃這面旗子**（全程顯示，理由見 template 的註解），別再接回去。 */
-const anchorVisible = ref(false);
+ *  ⚠️ pc 右側 rail **不吃這面旗子**（全程顯示，理由見 useSubpageAnchor），別再接回去。
+ *  狀態放在 useSubpageAnchor：錨點元件由 layouts/subpage.vue 渲染一次，不在本元件子樹內。 */
+const { visible: anchorVisible, mode: anchorMode } = useSubpageAnchor();
+
+/**
+ * 寫入錨點列的顯隱旗子。
+ *
+ * route 模式（獨立子頁）：舞台演完滑入、回捲進舞台收回 —— 維持原本行為。
+ * scroll 模式（連續閱讀頁）：**只進不退**。六篇各有自己的舞台，照 route 模式的規則走的話
+ *   捲進第二篇的 hero 舞台時錨點列會縮回視窗外 —— 而那時使用者早就在連續閱讀、正需要導覽。
+ *   閂鎖寫在這裡而不是給各篇一個 prop：六個 article 元件就不必為此轉發一個 prop，
+ *   規則也只有一份。
+ */
+function setAnchorVisible(v: boolean) {
+  if (!v && anchorMode.value === 'scroll') return;
+  anchorVisible.value = v;
+}
 
 /**
  * 舞台是否啟用 pin 模式（hero／引言／媒體疊在同一屏）。
@@ -159,8 +174,8 @@ onMounted(async () => {
         ScrollTrigger.create({
           trigger: stageRef.value,
           start: 'bottom top',
-          onEnter: () => (anchorVisible.value = true),
-          onLeaveBack: () => (anchorVisible.value = false),
+          onEnter: () => setAnchorVisible(true),
+          onLeaveBack: () => setAnchorVisible(false),
         }),
       );
     }
@@ -186,8 +201,38 @@ onMounted(async () => {
   // 媒體只淡不位移（見 makeFade 的 shift）
   const mediaFade = makeFade(mediaTarget, { shift: false });
 
-  // 載入即播 hero 進場；後面兩塊先藏著等進度線
-  if (heroTargets.length) tweens.push(gsap.from(heroTargets, REVEAL));
+  // hero 進場：**自己的舞台進視窗才播，只播一次**；後面兩塊先藏著等進度線。
+  //
+  // ⚠️ 為什麼不是 onMounted 直接播（原本的寫法）：連續閱讀頁（pages/subpage.vue）把六篇
+  //    串在同一份文件裡，六個 hero 會在載入那一刻同時演完 —— 使用者捲到第三篇時只看到
+  //    靜態畫面，進場動畫早就演給沒人看的畫面外區域了。
+  //
+  // 改綁舞台位置之後**兩種頁面共用同一條規則**，不必分支：獨立子頁（與連續閱讀頁的第一篇）
+  // 載入時舞台頂端已經在視窗底之上，ScrollTrigger 建立即判定已越過 start 而補觸發 onEnter，
+  // 等價於原本的「載入即播」。
+  //
+  // start 取 'top bottom'（舞台頂端碰到視窗底）而非更晚的線：晚於此的話 hero 會先以完整
+  // 樣貌露臉、再倒回透明重播一次，那是明顯的破格。
+  if (heroTargets.length && stageRef.value) {
+    gsap.set(heroTargets, { autoAlpha: 0, y: REVEAL.y });
+    triggers.push(
+      ScrollTrigger.create({
+        trigger: stageRef.value,
+        start: 'top bottom',
+        once: true,
+        onEnter: () =>
+          tweens.push(
+            gsap.to(heroTargets, {
+              autoAlpha: 1,
+              y: 0,
+              duration: REVEAL.duration,
+              ease: REVEAL.ease,
+              overwrite: 'auto',
+            }),
+          ),
+      }),
+    );
+  }
   gsap.set(introTarget, { autoAlpha: 0, y: HIDE_Y.before });
   // 沒有第三拍時 mediaTarget 是空陣列，gsap 會警告 target not found。
   // 這裡同樣不給 y —— 起手就位移的話第一次淡入會從偏移處滑回來。
@@ -214,6 +259,73 @@ onMounted(async () => {
   // ⚠️ 首頁 → 子頁換的是 layout，Nuxt 的 scrollBehavior 會等 layout 轉場結束才回捲到頂，
   //    同步狀態（不播過場），跳回 hero 則重播進場 → 只留「hero 淡入」。
   let lastScroll: number | null = null; // null = 尚未收到 update，初次一律視為跳捲
+
+  /**
+   * 依舞台進度套用三塊（hero／引言／媒體）的狀態。
+   *
+   * - instant：直接 set 到位，不播 0.4s 過場（跳捲、以及 refresh 後的同步）
+   * - replayHero：回到 hero 那一拍時重播進場動畫（跳捲時才要）
+   * - force：無視「狀態沒變就不動」的守衛，一律重新套一次。refresh 後同步用 ——
+   *   那時三塊的視覺可能與進度脫鉤，比對狀態變數會誤判成「不用動」。
+   */
+  function applyStage(
+    p: number,
+    { instant = false, replayHero = false, force = false } = {},
+  ) {
+    const wantHero = p < lines.heroOut;
+    if (force || wantHero !== heroShown) {
+      heroShown = wantHero;
+      if (!wantHero) heroFade.hide(HIDE_Y.after, instant);
+      else if (replayHero) heroFade.reveal();
+      else heroFade.show(instant);
+    }
+
+    // 沒有第三拍時 introOut 落在 1 之後，永遠進不了 after，行為與加入媒體前相同
+    const wantIntro = blockState(p, lines.introIn, lines.introOut);
+    if (force || wantIntro !== introState) {
+      introState = wantIntro;
+      if (wantIntro === 'shown') introFade.show(instant);
+      else introFade.hide(HIDE_Y[wantIntro], instant);
+    }
+
+    // 退場線給 1：媒體一路演到 pin 結束，中間的淡出由下面的 scrub 負責。
+    const wantMedia = blockState(p, lines.mediaIn, 1);
+    if (force || wantMedia !== mediaState) {
+      mediaState = wantMedia;
+      mediaAlpha = 1; // 離開 shown 就把 scrub 的記錄歸位，下次進來才會重新套
+      if (wantMedia === 'shown') {
+        mediaActive.value = true;
+        mediaFade.show(instant);
+      } else {
+        // 輪播要等淡出播完才停，否則會在淡出途中倒回第一張（被看見）；
+        // 停播即倒回第一張，回捲重看時才會從頭演（見 SubpageIntroMedia 的 active）。
+        // 但淡出播完時得重新確認「現在確實還不用演」—— 回捲落在淡出最後一格 frame 時
+        // 這個 onComplete 會晚於 show 才跑，不擋掉就會把剛打開的輪播又關掉且不會恢復
+        // （見 deferredStopStillApplies）
+        mediaFade.hide(HIDE_Y[wantMedia], instant, () => {
+          if (deferredStopStillApplies(mediaState)) mediaActive.value = false;
+        });
+      }
+    }
+
+    // 媒體退場：**綁 progress 的 scrub**，不是 0.4s 時間動畫。內文墊在它後面且
+    // 隨捲動 1:1 走，用時間動畫的話照片消失時內文已經滑掉「速度 × 0.4s」
+    // （實測 800px/s 滑 221px、1600px/s 滑 573px）。理由詳見 mediaFadeAlpha。
+    //
+    // 只在值真的變了才寫：淡入那段 a 恆為 1、mediaAlpha 也是 1 → 不寫，
+    // 才不會用 gsap.set 把 show() 的 0.4s 淡入 tween 蓋掉變成瞬間出現。
+    if (mediaState === 'shown' && mediaTarget.length) {
+      const a = mediaFadeAlpha(p, lines.mediaFadeFrom);
+      if (a !== mediaAlpha) {
+        mediaAlpha = a;
+        gsap.set(mediaTarget, { autoAlpha: a, overwrite: 'auto' });
+        // 淡光了才停輪播（停播＝倒回第一張，太早停會在還看得見時被看到）；
+        // 回捲時 a 會沿原路升回來，同一行就把它復播。
+        mediaActive.value = a > 0;
+      }
+    }
+  }
+
   if (stageRef.value) {
     triggers.push(
       ScrollTrigger.create({
@@ -227,64 +339,30 @@ onMounted(async () => {
           const jumped =
             lastScroll === null || Math.abs(sc - lastScroll) > window.innerHeight;
           lastScroll = sc;
-          const p = self.progress;
-          if (heroShown && p >= lines.heroOut) {
-            heroShown = false;
-            heroFade.hide(HIDE_Y.after, jumped);
-          } else if (!heroShown && p < lines.heroOut) {
-            heroShown = true;
-            if (jumped) heroFade.reveal();
-            else heroFade.show();
-          }
-
-          // 沒有第三拍時 introOut 落在 1 之後，永遠進不了 after，行為與加入媒體前相同
-          const wantIntro = blockState(p, lines.introIn, lines.introOut);
-          if (wantIntro !== introState) {
-            introState = wantIntro;
-            if (wantIntro === 'shown') introFade.show(jumped);
-            else introFade.hide(HIDE_Y[wantIntro], jumped);
-          }
-
-          // 退場線給 1：媒體一路演到 pin 結束，中間的淡出由下面的 scrub 負責。
-          const wantMedia = blockState(p, lines.mediaIn, 1);
-          if (wantMedia !== mediaState) {
-            mediaState = wantMedia;
-            mediaAlpha = 1; // 離開 shown 就把 scrub 的記錄歸位，下次進來才會重新套
-            if (wantMedia === 'shown') {
-              mediaActive.value = true;
-              mediaFade.show(jumped);
-            } else {
-              // 輪播要等淡出播完才停，否則會在淡出途中倒回第一張（被看見）；
-              // 停播即倒回第一張，回捲重看時才會從頭演（見 SubpageIntroMedia 的 active）。
-              // 但淡出播完時得重新確認「現在確實還不用演」—— 回捲落在淡出最後一格 frame 時
-              // 這個 onComplete 會晚於 show 才跑，不擋掉就會把剛打開的輪播又關掉且不會恢復
-              // （見 deferredStopStillApplies）
-              mediaFade.hide(HIDE_Y[wantMedia], jumped, () => {
-                if (deferredStopStillApplies(mediaState)) mediaActive.value = false;
-              });
-            }
-          }
-
-          // 媒體退場：**綁 progress 的 scrub**，不是 0.4s 時間動畫。內文墊在它後面且
-          // 隨捲動 1:1 走，用時間動畫的話照片消失時內文已經滑掉「速度 × 0.4s」
-          // （實測 800px/s 滑 221px、1600px/s 滑 573px）。理由詳見 mediaFadeAlpha。
-          //
-          // 只在值真的變了才寫：淡入那段 a 恆為 1、mediaAlpha 也是 1 → 不寫，
-          // 才不會用 gsap.set 把 show() 的 0.4s 淡入 tween 蓋掉變成瞬間出現。
-          if (mediaState === 'shown' && mediaTarget.length) {
-            const a = mediaFadeAlpha(p, lines.mediaFadeFrom);
-            if (a !== mediaAlpha) {
-              mediaAlpha = a;
-              gsap.set(mediaTarget, { autoAlpha: a, overwrite: 'auto' });
-              // 淡光了才停輪播（停播＝倒回第一張，太早停會在還看得見時被看到）；
-              // 回捲時 a 會沿原路升回來，同一行就把它復播。
-              mediaActive.value = a > 0;
-            }
-          }
+          applyStage(self.progress, { instant: jumped, replayHero: jumped });
+        },
+        // refresh 之後以新進度重新同步一次，不播過場。
+        //
+        // ⚠️ 為什麼非有不可：**捲動位置沒變時 ScrollTrigger 不會呼叫 onUpdate**，但 refresh
+        //    會重算 start／end ⇒ 同一個 scrollY 對應到的 progress 變了，三塊卻停在舊進度。
+        //    實測（390×844，直接開 /subpage#health）：字體載入完成後版面重排、落點重新對齊，
+        //    幾何完全正確（stage 已 pin 在 top 0、progress 0），畫面上卻是**引言媒體**
+        //    —— hero opacity 0、media opacity 1，停在重排前那個進度的狀態。
+        // ⚠️ 這不只是連續閱讀頁的問題：獨立子頁在 resize／轉向（會觸發 refresh）時同樣會
+        //    脫鉤，只是沒有落點跳動來提示，更難發現。
+        onRefresh: (self) => {
+          const sc = self.scroll();
+          lastScroll = sc;
+          // ⚠️ 不讀 self.progress：refresh 期間它可能還是重算前的值（pin 的量測與 progress
+          //    的更新不保證在這個 callback 之前完成）。start／end 這時已是新值，故自己算 ——
+          //    這也是「以新版面為準」語意上唯一正確的算法。
+          const span = self.end - self.start;
+          const p = span > 0 ? Math.min(1, Math.max(0, (sc - self.start) / span)) : 0;
+          applyStage(p, { instant: true, force: true });
         },
         // pin 結束＝舞台演完 → 錨點出現（pc rail 淡入、<1280 底部列滑入）；回捲進 pin 段則收回
         onLeave: () => {
-          anchorVisible.value = true;
+          setAnchorVisible(true);
           // 退場的收尾保險：scrub 要 progress 剛好等於 1 才會把 alpha 帶到 0，而 onUpdate
           // 不保證收得到那一格。漏收的話照片會留在畫面上，舞台的 z-index 1100 還會壓著
           // 內文擋掉點擊 —— 而且是靜默的。onLeave 一定會在越過 end 時觸發，補一刀。
@@ -294,7 +372,7 @@ onMounted(async () => {
             mediaActive.value = false;
           }
         },
-        onEnterBack: () => (anchorVisible.value = false),
+        onEnterBack: () => setAnchorVisible(false),
       }),
     );
 
@@ -382,15 +460,10 @@ onBeforeUnmount(() => {
       class="subpage__content"
       :class="{ 'subpage__content--under-stage': stagePinned && !!introMedia }"
     >
-      <!-- 錨點導覽（皆 position: fixed，不占版面）。
-           pc 右側 rail：**全程顯示**，不跟著舞台藏起來。hero／引言兩拍都是透明層
-           （只有文字與 KV 圖，見 .subpage__hero／.subpage__intro 都沒有背景），
-           擋不到 rail；真正會蓋住它的只有滿屏引言媒體那一拍，而那是靠疊層做掉的
-           （舞台 --media 1100 ＞ rail 900，見 SubpageAnchor），不需要再切一次顯隱。
-           <1280 的底部錨點列維持原本「舞台演完才滑入」：它橫在視窗下緣、是實心底，
-           在 hero 那一屏滑進來會壓到設計稿的首屏構圖，與 rail 不是同一回事。 -->
-      <SubpageAnchor visible />
-      <SubpageAnchorBar :visible="anchorVisible" />
+      <!-- ⚠️ 錨點導覽（SubpageAnchor rail / SubpageAnchorBar 底部列）**不在這裡渲染**，
+           改由 layouts/subpage.vue 渲染一次：連續閱讀頁（pages/subpage.vue）把六篇串在
+           同一份文件裡，留在這裡就會疊出六份底部錨點列。顯隱旗子改走 useSubpageAnchor，
+           由本元件的舞台進度線寫入（見上方 setAnchorVisible 與 drivesAnchor）。 -->
 
       <!-- 內文：各頁以預設 slot 撰寫，間距在頁面上逐塊標 Tailwind mt-*/mb-* -->
       <div class="subpage__body">

@@ -32,6 +32,8 @@ const {
   coverSeedVisible,
   coverFaceVisible,
   coverHandoff,
+  coverDone,
+  outroWhite,
 } = useOrangeCoreProgress();
 
 // 夥伴清單整塊的現身時機。
@@ -191,9 +193,15 @@ onMounted(() => {
   });
 
   // 03 → 04 過場第一拍：夥伴清單淡出。
-  // 終點固定在「section 下緣抵達視窗頂」，也就是 media 那條 ScrollTrigger 的起點
-  //（`top top`）—— 兩段首尾相接、不重疊。起點則往回退 BLESSING_OUT_VH 個視窗高，
-  // 那個常數就是整段退場的長度旋鈕（見 orange-core-config）。
+  // 終點固定在「section 下緣抵達視窗頂」；起點往回退 BLESSING_OUT_VH 個視窗高
+  // （那個常數是整段退場的長度旋鈕，見 orange-core-config）。
+  //
+  // ⚠️ 它與 media 拍 0（融合拍）現在是**同一段窗口**，不是首尾相接的兩段：
+  //   本條的起點就是 media 那條 ScrollTrigger 的 start（同一個捲動位置，
+  //   見 useMediaIntroMotion 的 st——它的 start 提前 runwayPx＝BLESSING_OUT_VH
+  //   個視窗高，與這裡的 outroBack 是同一個 BLESSING_OUT_VH）。清單淡出、veil
+  //   收窄、morph 收窄三件事吃的是同一段捲動距離，BLESSING_OUT_VH 是共用的
+  //   長度旋鈕，兩邊各自算自己的百分比只是因為 trigger 元素不同。
   //
   // 百分比先 Math.round：0.6 × 100 在 IEEE754 下是 60.000000000000006，
   // 直接內插會餵給 ScrollTrigger 一串沒必要的小數。
@@ -233,8 +241,29 @@ onBeforeUnmount(() => {
     ref="sectionRef"
     class="section3"
     data-header-theme="orange"
-    :style="{ '--cover-orange': coverOrange }"
+    :style="{ '--cover-orange': coverOrange, '--outro-white': outroWhite }"
   >
+    <!-- 融合橘幕：03 → 04 過場那塊會收窄的橘。它與 `.media__morph` 是**同一個 GSAP
+         tween 的兩個 target**（見 useMediaIntroMotion 拍 0），收窄到 MEDIA_BLOCK_VW
+         時同色同寬同位，硬切交棒。設計見
+         architecture/2026-08-18-blessing-media-morph-fusion-design.md。
+
+         ⚠️ 必須是 `.section3` 的**第一個**子元素：它要在本段底色之上（底色會切白，
+            由 veil 遮住）、在臉屏與夥伴清單**之下**（清單要照舊淡出，不能被橘幕蓋掉）。
+            兩件事靠 DOM 順序就成立，不需要 z-index —— 後面的兄弟都是 positioned
+            （relative / sticky），依樹序畫在它之上。挪到後面就會蓋掉夥伴清單。
+         ⚠️ 必須是 `v-show` 而不是 `v-if`：timeline 在 Media.vue 的 onMounted 就建好，
+            那時 cover 還沒跑完 —— `v-if` 之下元素不在 DOM，GSAP 抓不到 target，
+            整拍靜靜不播。`display: none` 與 GSAP 的 autoAlpha 互不干擾，兩層閘門可疊。
+         ⚠️ 掛載時機是 coverDone（覆蓋過場跑完）：veil 是 fixed 滿版，更早掛會在覆蓋
+            過場期間就蓋掉整個視窗，那段過場直接破功。 -->
+    <div
+      v-show="coverDone"
+      class="section3__veil"
+      data-morph-veil
+      aria-hidden="true"
+    />
+
     <!-- ① 逐格臉屏 -->
     <div
       ref="trackRef"
@@ -331,10 +360,17 @@ onBeforeUnmount(() => {
   // ——變透明、露出底下的 forum，整段覆蓋直接破功。給純橘 ＝ 降級成「全程橘、少了藍色那一拍」，
   // 那是這段轉場最安全的落點（橘是它最終、也是最長的狀態）。
   background: var(--color-orange);
+  // 藍 → 橘 → 白：外層那次 mix 是 03 → 04 融合拍的「底色切白」（--outro-white 由
+  // outroWhiteAt 餵入，二元），內層維持原本的藍 → 橘（--cover-orange）。
+  // 切白那一刻 `.section3__veil` 剛好是滿版、完全遮住，所以看不到硬切。
   background: color-mix(
     in srgb,
-    var(--color-orange) calc(var(--cover-orange, 1) * 100%),
-    var(--color-blue)
+    #fff calc(var(--outro-white, 0) * 100%),
+    color-mix(
+      in srgb,
+      var(--color-orange) calc(var(--cover-orange, 1) * 100%),
+      var(--color-blue)
+    )
   );
   color: #fff;
 
@@ -346,6 +382,40 @@ onBeforeUnmount(() => {
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
+}
+
+// 融合橘幕：03 → 04 過場那塊會收窄的橘（見 template 的三條 ⚠️）。
+// 全程只吃 scaleX（GSAP 寫入），不觸發 reflow。
+//
+// ⚠️ `fixed` 的定位基準是視窗，前提是祖先沒有 transform / filter / backdrop-filter /
+//    will-change。`.section3` 目前只有 position: relative 與 z-index: 1 ——
+//    **任何人給 `.section3` 加 transform，本層會安靜地退化成 section 相對定位**，
+//    症狀是過場期間橘幕只蓋住 section 自己的範圍、接縫變成看得見的橫線。
+// ⚠️ 不設 z-index：疊層完全靠 DOM 順序（見 template）。給了 z-index 反而要同時
+//    維護後面每個兄弟的值。
+// ⚠️ 初始 visibility: hidden（同 `.media__morph`）：timeline 的 fromTo 起播才現身。
+//    這同時是三條降級路徑（reduce-motion / #media / 無 JS）的正確落點 —— 那些路徑
+//    不建 timeline，本層就永遠不現身，而底色也不會切白（見 outroWhiteAt）。
+// ⚠️ width: 100vw（不是 inset: 0 / width: 100%）＋ left: 50% ＋ GSAP 的
+//    xPercent: -50 置中（同 .media__bar / .media__line 那招）：這是與 morph 共用
+//    寬度基準的唯一手段。`100vw` 含捲軸寬，`inset: 0` 的 ICB（＝documentElement.
+//    clientWidth）不含；而 morph 的 scaleX 吃的是 window.innerWidth（含捲軸）。
+//    2026-08-19 實測（1465×863、捲軸 15px）：inset: 0 版位量到 1450，
+//    比 innerWidth 少 15px，收窄終點因此恆定少 9px（15 × MEDIA_BLOCK_VW 0.6）
+//    ——即使 useMediaIntroMotion.ts 試著在 build time 量 clientWidth 除回去也救不了，
+//    因為 buildMotion() 跑在 onMounted，那一刻捲軸還沒撐出來，量到的其實是
+//    innerWidth（見該檔拍 0 的舊 ⚠️，已移除）。換成 inset: 0 或 width: 100% 都會
+//    重現這個落差，因為兩者的 ICB 都不含捲軸。
+.section3__veil {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  background: var(--color-orange);
+  transform-origin: 50% 50%;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .section3__face-track {

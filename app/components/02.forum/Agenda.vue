@@ -13,7 +13,7 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section2.json';
-import { refreshScrollTriggers } from '~/utils/scroll-trigger';
+import { refreshOnFontsReady } from '~/utils/scroll-trigger';
 import { stepToward, targetSlotAt } from '~/utils/agenda-active';
 import { CORE } from '~/utils/orange-core-config';
 import type { UBtnVariant } from '~/types/ui';
@@ -92,7 +92,8 @@ function measure() {
       next.push(el.getBoundingClientRect().bottom - rootTop);
     });
     bounds = next;
-    startScroll = rootTop + window.scrollY - window.innerHeight / 2;
+    lastScrollY = window.scrollY; // sync() 的快取值在這裡一併校準（見它的說明）
+    startScroll = rootTop + lastScrollY - window.innerHeight / 2;
   } finally {
     scope?.removeAttribute('data-path-measuring');
   }
@@ -103,10 +104,21 @@ function measure() {
 // `scrollY − startScroll` ＝ 視窗中央到議程頂端的距離，再加上核心相對中央的偏移即得。
 // 這樣拆而不直接讀核心的絕對座標，是為了保留「主項由 scroll 事件驅動」：偏移只是修正項，
 // 就算某次 tick 沒更新到，主項照樣把每一組都掃過一遍（見下方 onMounted 的註解）。
+// 捲動位置由下方的 scroll 監聽器記著，這裡不自己讀 window.scrollY —— 它是會強制 layout
+// 的讀取，而本函式除了 scroll 事件之外還掛在 forumCoreCenterOffset 的 watch 上，
+// 那個 ref 是 place() **逐幀**寫入的：等於每一幀都在 Vue 的 pre-flush 裡（place 剛寫完
+// 一批 transform 與兩個 SVG 屬性之後）再讀一次 layout。改成讀快取值就完全不碰 DOM。
+let lastScrollY = 0;
+
 function sync() {
   if (bounds.length < 2) return;
-  const y = window.scrollY - startScroll + forumCoreCenterOffset.value;
+  const y = lastScrollY - startScroll + forumCoreCenterOffset.value;
   setTarget(targetSlotAt(bounds, y, CORE_HALF));
+}
+
+function onScroll() {
+  lastScrollY = window.scrollY;
+  sync();
 }
 
 // 追上目標：立刻走一步，之後每 STEP_MS 走一步。正常捲速下 target 一次只變一格，
@@ -135,14 +147,17 @@ onMounted(async () => {
   gsap.registerPlugin(ScrollTrigger);
   await nextTick();
   measure();
-  window.addEventListener('scroll', sync, { passive: true });
+  window.addEventListener('scroll', onScroll, { passive: true });
   ScrollTrigger.addEventListener('refresh', measure);
-  // refresh 一律走 refreshScrollTriggers()（先 sort 再 refresh）—— 見 utils/scroll-trigger。
-  document.fonts?.ready.then(() => refreshScrollTriggers());
+  // 字體載入會改變文字高度 → 議程的量測要重跑（refresh 一律先 sort 再 refresh，
+  // 見 utils/scroll-trigger）。
+  // 走 refreshOnFontsReady() 而非自己 .then()：三個元件各掛一份的話，fonts.ready 一 resolve
+  // 就是連續三次全站重算（它只 resolve 一次，三個 callback 落在同一個 microtask batch）。
+  refreshOnFontsReady();
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('scroll', sync);
+  window.removeEventListener('scroll', onScroll);
   ScrollTrigger.removeEventListener('refresh', measure);
   if (timer) clearTimeout(timer);
   timer = null;

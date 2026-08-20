@@ -3,13 +3,14 @@
  * SubpageAnchor — 子頁右側錨點導覽（pc 限定，<1280 隱藏、改用 SubpageAnchorBar），
  * 資料來自 locales/common.json 的 subpageAnchors。藝術字以 CSS mask + currentColor
  * 上色，換色不需多份素材。hover 與 active 同為「不透明＋放大＋尾端橫線」，不變色。
- * 顯隱：**全程顯示**（Subpage.vue 直接傳 visible）。舞台的 hero／引言兩拍是透明層，
+ * 顯隱：**全程顯示**（layouts/subpage.vue 直接傳 visible）。舞台的 hero／引言兩拍是透明層，
  * 蓋不到 rail；只有滿屏引言媒體那一拍該蓋住它，那由疊層做掉（見下方 z-index）。
  * ⚠️ 與 SubpageAnchorBar 不同步 —— 那條橫在視窗下緣、是實心底，仍維持「舞台演完才滑入」。
  * rail 疊在**一般內文**之上（--subpage-anchor-z，預設 900），但滿版嵌入元件
  * （.sp-full，950）刻意蓋得過它 —— 滿版就要滿版。疊層總表見 subpage.scss 的 .sp-full。
  */
 import str from '~/locales/common.json';
+import { anchorSlug } from '~/utils/subpage-stream';
 
 defineProps<{
   /** true 時淡入；預設隱藏（舞台 hero／引言還在演） */
@@ -18,6 +19,24 @@ defineProps<{
 
 const { subpageAnchors } = str;
 const route = useRoute();
+
+// rail 是 pc 限定、連續閱讀頁是 <768 限定，兩者實務上不同時出現；但 /subpage 的 ≥768
+// 導回是 client 端才跑的，那一瞬間 rail 會以寬視窗渲染在連續閱讀頁上 —— 若沿用
+// `route.path === a.url`，六項會全部不亮（路徑是 /subpage）。故與底部列吃同一套判定。
+const { mode, activeSlug, jumpToSlug } = useSubpageAnchor();
+
+const isActive = (url: string) =>
+  mode.value === 'scroll' ? activeSlug.value === anchorSlug(url) : route.path === url;
+
+const linkTo = (url: string) => (mode.value === 'scroll' ? `#${anchorSlug(url)}` : url);
+
+function onClick(e: MouseEvent, url: string) {
+  if (mode.value !== 'scroll') return; // route 模式：交給 NuxtLink 換頁
+  e.preventDefault();
+  const slug = anchorSlug(url);
+  jumpToSlug(slug);
+  history.replaceState(history.state, '', `#${slug}`);
+}
 // 藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
 const assetUrl = useAssetUrl();
 </script>
@@ -32,8 +51,9 @@ const assetUrl = useAssetUrl();
       <li v-for="a in subpageAnchors" :key="a.url" class="subpage-anchor__item">
         <NuxtLink
           class="subpage-anchor__link"
-          :class="{ 'subpage-anchor__link--active': route.path === a.url }"
-          :to="a.url"
+          :class="{ 'subpage-anchor__link--active': isActive(a.url) }"
+          :to="linkTo(a.url)"
+          @click="onClick($event, a.url)"
         >
           <span class="subpage-anchor__art">
             <span

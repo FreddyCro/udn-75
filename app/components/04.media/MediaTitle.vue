@@ -150,12 +150,18 @@ defineExpose({ getEls });
 
 // 分件：智慧／媒體素材為「裁齊字形」的畫布（無留白，框中心＝字形中心）；
 // left / width 依 media_title.svg 內的字形實際邊界換算，垂直置中
+//
+// ⚠️ 本區塊（含 .media__quote、.media__newchar）刻意**不寫** will-change: transform：
+//    這六個元素都住在 .media__title-motion 裡，而那層在 settle 尾端就被 timeline
+//    設成 autoAlpha: 0 並且再也不回來（見 useMediaIntroMotion 的交棒那拍）。常駐
+//    宣告等於為一段約 2500px 的 scrub 換來六個「整個 page lifetime 都掛著」的
+//    compositing layer。位移全部是 GSAP 的 transform tween，force3D 預設 'auto'
+//    會在補間期間自己套上 translate3d 促成圖層、結束後撤掉 —— 該有的提升本來就有。
 .media__title-part {
   position: absolute;
   top: 50%;
   height: auto;
   transform: translateY(-50%);
-  will-change: transform;
 
   &--wisdom {
     left: 0; // 字形左緣即標題左緣
@@ -179,7 +185,6 @@ defineExpose({ getEls });
   position: absolute;
   width: 17.373%; // 37.5 / 215.82
   height: auto;
-  will-change: transform;
   // 完成態引號為灰：橘 #FF7F00 灰階後亮度 145，×0.717 ≈ #686868
   filter: grayscale(1) brightness(0.717);
 
@@ -201,6 +206,5 @@ defineExpose({ getEls });
   left: 23.447%; // 50.6 / 215.82
   width: 52.272%; // 112.81 / 215.82
   height: auto;
-  will-change: transform;
 }
 </style>

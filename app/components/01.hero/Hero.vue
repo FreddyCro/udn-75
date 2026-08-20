@@ -19,6 +19,23 @@ import {
 } from '@/utils/hero-video-config';
 import { HERO_RETURN_HASH } from '@/utils/home-intent';
 
+// ── <SymbolFace> 的常數 props ────────────────────────────────────────────
+// 提到模組層而不是寫成 template 裡的字面值：本元件的 render effect 會被捲動打到
+// （introFade 與 transitionProgress 兩個 onUpdate 都逐幀寫 ref，而兩者都進了 template），
+// 於是每一個 scrub tick 都會重建這四個陣列與兩個物件。更貴的是**識別性**：新物件
+// 每幀都與上一幀不等，SymbolFace 的 props 因此永遠比對不相等 → 它的 template
+// （彩蛋、hint、hint-mob）也跟著逐幀重新 diff，全為了幾個從頭到尾沒變過的值。
+const SYMBOL_CHARS = [
+  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+  'A', 'B', 'C', 'D', 'E', 'F',
+];
+const SYMBOL_COLOR_RAMP = ['#000000', '#77c6e0', '#d1f4ff', '#ffffff'];
+const SYMBOL_COLOR_STOPS = [0, 0.4, 0.75, 1];
+const SYMBOL_GLITCH_ITEMS = [
+  { color: '#ff0055', density: 3, fps: 12 },
+  { color: '#00ffcc', density: 2, fps: 8 },
+];
+
 // ref：
 //   sec1Ref       — 座標範圍 / ScrollTrigger trigger
 //   orangeCoreRef — orange core 元件（曝露 root / dot：root 供 path 驅動、dot 供進場動畫）
@@ -649,12 +666,9 @@ function applyScrollLock() {
           :velocity-follow="0.1"
           :max-speed="3000"
           :max-particles="24000"
-          :chars="[
-            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-            'A', 'B', 'C', 'D', 'E', 'F',
-          ]"
-          :color="['#000000', '#77c6e0', '#d1f4ff', '#ffffff']"
-          :color-stops="[0, 0.4, 0.75, 1]"
+          :chars="SYMBOL_CHARS"
+          :color="SYMBOL_COLOR_RAMP"
+          :color-stops="SYMBOL_COLOR_STOPS"
           bg-color="#000"
           :world-scale="symbolWorldScale"
           :cols="85"
@@ -666,10 +680,7 @@ function applyScrollLock() {
           :weight-steps="5"
           :weight-min="100"
           :weight-max="900"
-          :glitch-items="[
-            { color: '#ff0055', density: 3, fps: 12 },
-            { color: '#00ffcc', density: 2, fps: 8 },
-          ]"
+          :glitch-items="SYMBOL_GLITCH_ITEMS"
           :float-amp="18"
           :float-micro="0.5"
         />

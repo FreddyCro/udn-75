@@ -165,6 +165,14 @@ const props = withDefaults(
     tailBlobMax?: number;
     /** 強制「只自動遊走、不綁游標互動」（觸控環境自動啟用） */
     autoRoam?: boolean;
+    /** 暫停 render loop（父層把本層藏起來時傳 true）。
+     *  IntersectionObserver **看不到** opacity / visibility：`autoAlpha: 0` 的元素
+     *  仍有 layout box，IO 照樣回報 isIntersecting → 整個 loop 會在完全不可見的
+     *  情況下全速跑。開場 motion 期間 `.media__bg` 有將近九成的 scrub 行程是
+     *  `visibility: hidden`（見 useMediaIntroMotion 的 revealEls），而那正好是
+     *  GSAP 在 scrub 三十條 tween 的時候 —— 主執行緒最不該被搶的一段。
+     *  故「可見」這件事必須由父層明說，不能靠 IO 推斷。 */
+    paused?: boolean;
   }>(),
   {
     bgColor: '#ffffff',
@@ -212,6 +220,9 @@ const props = withDefaults(
     tailBlobMin: 0.1,
     tailBlobMax: 0.5,
     autoRoam: false,
+    // 預設不暫停：降級路徑（reduced-motion、/#media）不建 timeline，底紋從一開始
+    // 就是可見的，父層不會、也不該去翻這個旗標
+    paused: false,
   },
 );
 
@@ -263,14 +274,31 @@ onMounted(() => {
   // ---------- 三種紋理：純函式 (tex, gx, gy) → 該格是否實心 ----------
   // 皆以畫布絕對格座標取樣 → patch 漂移時圖案錨定不滑動
   const DASH_SEG = 6; // 線段紋每段長（格）：斷點以段為單位抽
+  // 線段紋的兩個 hash 都只取決於「列」與「段」，不是逐格：shift 只看 gy，
+  // 斷點只看 (seg, gy)。掃描是 gy 外圈 gx 內圈，同一列連續 DASH_SEG 格共用同一段
+  // → 單槽 memo 就能把每格 2 次 Math.sin 降到每 6 格 1 次（值完全相同，hash 是
+  // 純函式，跨幀也可續用，不必逐幀失效）。
+  let dashShiftGy = NaN;
+  let dashShift = 0;
+  let dashSegGy = NaN;
+  let dashSegIdx = NaN;
+  let dashSegOn = false;
   const texOn = (tex: number, gx: number, gy: number): boolean => {
     if (tex === 0) return ((gx + gy) & 1) === 0; // 紋路1｜1格棋盤（4px）
     if (tex === 1) return (((gx >> 1) + (gy >> 1)) & 1) === 0; // 紋路2｜2格棋盤（8px）
     // 紋路3｜線段紋：偶數列鋪橫線、逐列相位偏移、每段約 28% 機率斷開
     if ((gy & 1) !== 0) return false;
-    const shift = Math.floor(hash(gy * 3.31, 8.83) * DASH_SEG);
-    const seg = Math.floor((gx + shift) / DASH_SEG);
-    return hash(seg * 1.71, gy * 0.93) > 0.28;
+    if (gy !== dashShiftGy) {
+      dashShiftGy = gy;
+      dashShift = Math.floor(hash(gy * 3.31, 8.83) * DASH_SEG);
+    }
+    const seg = Math.floor((gx + dashShift) / DASH_SEG);
+    if (gy !== dashSegGy || seg !== dashSegIdx) {
+      dashSegGy = gy;
+      dashSegIdx = seg;
+      dashSegOn = hash(seg * 1.71, gy * 0.93) > 0.28;
+    }
+    return dashSegOn;
   };
 
   // ---------- 固定 patch 陣容：尺寸/基準偏移/疊放順序都不變，只漂移 ----------
@@ -310,7 +338,10 @@ onMounted(() => {
   // 四邊溶解，不見方形直角。也同時是「聯集縮到遮罩以內」時的防線：
   // 露出來的 patch 邊永遠是溶解圓角，不會出現生硬直線
   const PATCH_FEATHER = 0.4; // 羽化帶寬（佔半徑比例）
-  const SUPER_N = 4; // 超橢圓指數：4 ≈ 圓角方形（2=橢圓、越大越方）
+  // 超橢圓指數固定為 4（≈ 圓角方形；2＝橢圓、越大越方）。指數不再是個變數：
+  // 正規化半徑改寫成 sqrt(sqrt(nx⁴+ny⁴)) 的展開式（見下方逐格迴圈），因為那條
+  // 是「每格 × 每 patch」的內圈，三次 Math.pow 換成四次乘法與兩次 sqrt 有感。
+  // 真要改指數就得同時改那條展開式。
   // 逐 patch 的實際軌道半徑（格，含次諧波抖動）：公轉是有界的，
   // 所以「叢集半徑」與「兩塊中心最大距離」都能在這裡一次算死
   const ORB = ROSTER.map((p) => p.orb * props.driftRatio * (1 + WOBBLE));
@@ -325,6 +356,21 @@ onMounted(() => {
     );
   });
   const CLUSTER_PX = clusterC * props.patchScale * CELL;
+
+  // 本幀的 patch 矩形（格座標）：預配置後逐幀就地覆寫。原本是 ROSTER.map(...)，
+  // 每幀多配一個陣列與三個物件字面值；tex 是常數，只在這裡寫一次
+  const rects = ROSTER.map((p) => ({
+    x0: 0,
+    x1: 0,
+    y0: 0,
+    y1: 0,
+    // 超橢圓羽化用：矩形中心（格）與半寬/半高
+    cx: 0,
+    cy: 0,
+    hw: 0,
+    hh: 0,
+    tex: p.tex,
+  }));
 
   // 叢集焦點：pc 追游標（平滑緩動、不瞬間貼齊）、其餘閒置自走；
   // pointerX/Y = 游標原始位置（目標點），centerX/Y = 緩動後的實際焦點
@@ -342,6 +388,31 @@ onMounted(() => {
   let cols = 0;
   let rows = 0;
 
+  // 上一幀畫過的格範圍：下一幀只要清掉它就夠。畫面上唯一的非透明像素就是上一幀
+  // 畫下的那些，而它們必定落在上一幀的 bbox 內 —— 逐幀 clearRect(0, 0, w, h) 在
+  // DPR 2 的全螢幕等於每幀清一塊約 2900×1700 的 backing store，實際畫得到的卻
+  // 只有 bbox 那一小塊。畫布尺寸一變瀏覽器會自行清空，故 setSize 也要重設這裡
+  let lastGx0 = 0;
+  let lastGy0 = 0;
+  let lastGx1 = 0;
+  let lastGy1 = 0;
+
+  // 畫布左上角（視窗座標）：pointermove 要用它把 clientX/Y 換成畫布座標。
+  // 快取而不是每次事件都量 —— getBoundingClientRect() 會強制 style+layout flush，
+  // 而 pointermove 的觸發頻率可以高過 rAF。
+  // 失效點有兩個：尺寸變動（ResizeObserver → setSize）與捲動（.media__hold 是
+  // sticky，定住前後畫布會隨文件移動，top 不是捲動不變量）。捲動只把旗標拉起來、
+  // 不在監聽器裡量測，所以「滑鼠在動、頁面沒動」這個主要情境完全不碰 layout。
+  let rectL = 0;
+  let rectT = 0;
+  let rectDirty = true;
+  const readRect = () => {
+    const r = canvas.getBoundingClientRect();
+    rectL = r.left;
+    rectT = r.top;
+    rectDirty = false;
+  };
+
   const setSize = () => {
     width = wrap.clientWidth;
     height = wrap.clientHeight;
@@ -351,6 +422,10 @@ onMounted(() => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cols = Math.ceil(width / CELL);
     rows = Math.ceil(height / CELL);
+    rectDirty = true;
+    // 改過 canvas.width/height 的畫布是空的 → 沒有殘影要清
+    lastGx1 = lastGx0;
+    lastGy1 = lastGy0;
   };
   setSize();
 
@@ -363,6 +438,14 @@ onMounted(() => {
     born: -Infinity,
   }));
   let stampIndex = 0;
+  // 存活 stamp 的逐幀快照：預配置的平行陣列。原本每幀重新配一個陣列外加上百個
+  // 物件字面值（maxBalls 160、拖曳時常態約 120 顆存活 → 每秒約 7000 個短命物件），
+  // GC 壓力剛好落在最不能掉幀的那段捲動上。r 存成 r² —— 內圈是「每格 × 每顆」，
+  // 少一次乘法就是少幾萬次。
+  const liveX = new Float64Array(MAX);
+  const liveY = new Float64Array(MAX);
+  const liveR2 = new Float64Array(MAX);
+  let liveCount = 0;
   const lastSpawn = { x: -9999, y: -9999 };
   // 移動超過此距離才蓋下一章（越小尾巴越連續）。20 太密：拖曳 600px/s 時每秒
   // 產生約 41 章，life 內需要 100+ 個槽位，遠超過 maxBalls 的 ring buffer →
@@ -418,15 +501,18 @@ onMounted(() => {
   // pointer 只記錄「目標點」，實際焦點在 animate 裡逐幀緩動過去（平滑跟隨）；
   // 蓋章也改在 animate 沿緩動後的路徑做 → 尾巴永遠在團塊身後、不會超前
   const onPointerMove = (e: PointerEvent) => {
-    const rect = canvas.getBoundingClientRect();
+    if (rectDirty) readRect();
     lastPointerAt = now();
-    pointerX = e.clientX - rect.left;
-    pointerY = e.clientY - rect.top;
+    pointerX = e.clientX - rectL;
+    pointerY = e.clientY - rectT;
     // 首次進場（或從閒置切回）不做緩動，避免從畫布外/遠處掃一條長尾過來
     if (centerX < -9000) {
       centerX = pointerX;
       centerY = pointerY;
     }
+  };
+  const onScrollInvalidate = () => {
+    rectDirty = true;
   };
   const roamOnly =
     props.autoRoam ||
@@ -435,8 +521,9 @@ onMounted(() => {
   const listenEl =
     (wrap.closest('[data-metaball-scope]') as HTMLElement | null) ?? wrap;
   if (!roamOnly) {
-    listenEl.addEventListener('pointermove', onPointerMove);
-    listenEl.addEventListener('pointerdown', onPointerMove);
+    listenEl.addEventListener('pointermove', onPointerMove, { passive: true });
+    listenEl.addEventListener('pointerdown', onPointerMove, { passive: true });
+    window.addEventListener('scroll', onScrollInvalidate, { passive: true });
   }
 
   // ---------- 彗星尾參數 ----------
@@ -451,10 +538,23 @@ onMounted(() => {
   // 單章的尾巴可見半徑約 0.8r（門檻 TAIL_TH 下的等值線），取 1.15r 當 bbox 保險
   const TAIL_REACH = 1.15;
 
-  // ---------- render loop（IntersectionObserver 控制啟停） ----------
+  // ---------- 逐格 hash 的單槽 memo（值只取決於區塊，不是逐格） ----------
+  let blkBx = NaN;
+  let blkBy = NaN;
+  let blkRJit = 0;
+  let blkPhase = 0;
+  let tailBx = NaN;
+  let tailBy = NaN;
+  let tailTex = 0;
+
+  // ---------- render loop（IntersectionObserver + paused 控制啟停） ----------
   let raf = 0;
   let running = false;
   let prevT = now();
+  // reduced-motion：畫一幀靜態的就收工，不進 rAF。降級路徑不建 timeline ⇒
+  // `.media__bg` 從頭就是可見的，若照常跑 loop，偏好「減少動態效果」的人反而
+  // 拿到全站最長命的一段動畫
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const animate = () => {
     if (!running) return;
@@ -549,7 +649,7 @@ onMounted(() => {
     if (shouldSpawn) spawn(centerX, centerY, headR);
 
     // 計算每顆 stamp 的當前半徑（快進慢出），並求「尾巴帶」bounding box
-    const live: { x: number; y: number; r: number }[] = [];
+    liveCount = 0;
     let tMinX = Infinity;
     let tMinY = Infinity;
     let tMaxX = -Infinity;
@@ -565,7 +665,10 @@ onMounted(() => {
       // 改線性後尾巴由頭到尾均勻變稀，槽位也用在真的畫得出來的章上。
       const r = s.r0 * grow * decay;
       if (r <= 1) continue;
-      live.push({ x: s.x, y: s.y, r });
+      liveX[liveCount] = s.x;
+      liveY[liveCount] = s.y;
+      liveR2[liveCount] = r * r;
+      liveCount++;
       tMinX = Math.min(tMinX, s.x - r * TAIL_REACH);
       tMaxX = Math.max(tMaxX, s.x + r * TAIL_REACH);
       tMinY = Math.min(tMinY, s.y - r * TAIL_REACH);
@@ -576,7 +679,10 @@ onMounted(() => {
     const focalGX = Math.round(centerX / CELL);
     const focalGY = Math.round(centerY / CELL);
     const ds = t * props.driftSpeed;
-    const rects = ROSTER.map((p) => {
+    const f = props.patchScale * spread * clusterScale;
+    for (let pi = 0; pi < ROSTER.length; pi++) {
+      const p = ROSTER[pi]!;
+      const r = rects[pi]!;
       // 公轉：逐 patch 角速度不同（fq）→ 相對位置持續變化、會互相穿越交換位置；
       // 但半徑有界 → 中心距離有上限，三塊永遠相交。次諧波 WOBBLE 讓軌跡不是正圓
       const a = ds * ORBIT_W * p.fq + p.phase;
@@ -586,26 +692,21 @@ onMounted(() => {
         (Math.sin(a) + Math.sin(a * 1.7 + p.phase * 1.3) * WOBBLE) *
         rOrb *
         DRIFT_Y_MUL;
-      const f = props.patchScale * spread * clusterScale;
       const w = Math.max(2, Math.round(p.w * f));
       const h = Math.max(2, Math.round(p.h * f));
       const cx = focalGX + Math.round(dx * f);
       const cy = focalGY + Math.round(dy * f);
       const x0 = cx - (w >> 1);
       const y0 = cy - (h >> 1);
-      return {
-        x0,
-        x1: x0 + w,
-        y0,
-        y1: y0 + h,
-        // 超橢圓羽化用：矩形中心（格）與半寬/半高
-        cx: x0 + (w - 1) / 2,
-        cy: y0 + (h - 1) / 2,
-        hw: w / 2,
-        hh: h / 2,
-        tex: p.tex,
-      };
-    });
+      r.x0 = x0;
+      r.x1 = x0 + w;
+      r.y0 = y0;
+      r.y1 = y0 + h;
+      r.cx = x0 + (w - 1) / 2;
+      r.cy = y0 + (h - 1) / 2;
+      r.hw = w / 2;
+      r.hh = h / 2;
+    }
 
     // 掃描範圍 = patch 群 ∪ 尾巴帶。patch 格的上限就是 rects 本身，尾巴格的
     // 上限是各章的 TAIL_REACH 圈——都比「所有球 ×2.5r」的舊 bbox 緊，掃得更少
@@ -630,7 +731,19 @@ onMounted(() => {
     gx1 = Math.min(gx1, cols);
     gy1 = Math.min(gy1, rows);
 
-    ctx.clearRect(0, 0, width, height);
+    // 只清上一幀的 bbox（見宣告處）。兩幀的 bbox 未必重疊，所以不能只清這一幀的
+    if (lastGx1 > lastGx0 && lastGy1 > lastGy0) {
+      ctx.clearRect(
+        lastGx0 * CELL,
+        lastGy0 * CELL,
+        (lastGx1 - lastGx0) * CELL,
+        (lastGy1 - lastGy0) * CELL,
+      );
+    }
+    lastGx0 = gx0;
+    lastGy0 = gy0;
+    lastGx1 = gx1;
+    lastGy1 = gy1;
 
     // 逐格：先查 patch（便宜的矩形/紋理測試），命中才算 metaball 場（貴），
     // 場強 ≥ 該格隨機閾值才畫 → patch 拼貼被場遮罩收邊、外緣有機溶解
@@ -645,12 +758,13 @@ onMounted(() => {
           if (gx < r.x0 || gx >= r.x1 || gy < r.y0 || gy >= r.y1) continue;
           // 超橢圓羽化：中心 keep=1、邊緣降到 0 + 抖動 hash 讓位
           // → patch 呈圓角方形、四邊溶解，不見方形直角
-          const nx = Math.abs(gx - r.cx) / r.hw;
-          const ny = Math.abs(gy - r.cy) / r.hh;
-          const rn = Math.pow(
-            Math.pow(nx, SUPER_N) + Math.pow(ny, SUPER_N),
-            1 / SUPER_N,
-          );
+          const nx = (gx - r.cx) / r.hw;
+          const ny = (gy - r.cy) / r.hh;
+          // (nx⁴ + ny⁴)^(1/4) 的展開式：四次冪用平方的平方、開四次方用兩次 sqrt。
+          // 偶次冪吃得下負號，故上面連 Math.abs 都不需要
+          const nx2 = nx * nx;
+          const ny2 = ny * ny;
+          const rn = Math.sqrt(Math.sqrt(nx2 * nx2 + ny2 * ny2));
           const keep = 1 - smoothstep(1 - PATCH_FEATHER, 1, rn);
           if (keep <= 0) continue;
           if (
@@ -675,19 +789,29 @@ onMounted(() => {
           // 出現一圈誰都畫不到的空白，拖曳時場強掉到單章水準後特別明顯。
           // 收到 0.6~1.0 讓尾巴的淡入帶與本體外緣重疊；0.6×headR（≈82px）仍
           // 涵蓋三塊 patch 的重疊核心（軌道半徑 ~56px），構圖不會被填糊。
+          // Math.hypot 帶了溢位/NaN 的完整處理，比 sqrt 慢好幾倍；這裡的量是
+          // 螢幕 px，永遠不會溢位
+          const gdx = cx - centerX;
+          const gdy = cy - centerY;
           const gate =
             headR > 1
               ? smoothstep(
                   headR * 0.6,
                   headR * 1.0,
-                  Math.hypot(cx - centerX, cy - centerY),
+                  Math.sqrt(gdx * gdx + gdy * gdy),
                 )
               : 1;
           if (gate <= 0) continue;
+          // ttex 只取決於 TAIL_BLOCK 區塊（16 格見方）→ 同區塊的格子共用，
+          // 單槽 memo 把每格一次 Math.sin 降到每 16 格一次
           const tbx = Math.floor(gx / TAIL_BLOCK);
           const tby = Math.floor(gy / TAIL_BLOCK);
-          const ttex = Math.floor(hash(tbx * 5.1 + 2.3, tby * 7.3 + 8.9) * 3);
-          if (!texOn(ttex, gx, gy)) continue;
+          if (tbx !== tailBx || tby !== tailBy) {
+            tailBx = tbx;
+            tailBy = tby;
+            tailTex = Math.floor(hash(tbx * 5.1 + 2.3, tby * 7.3 + 8.9) * 3);
+          }
+          if (!texOn(tailTex, gx, gy)) continue;
           if (hash(gx * 4.3 + 1.1, gy * 6.7 + 5.9) > TAIL * gate) continue;
           tail = true;
         }
@@ -696,11 +820,11 @@ onMounted(() => {
         const thEpoch = Math.floor(t / EDGE_PERIOD + hash(gx * 3.7, gy * 9.1));
         const th = 0.6 + hash3(gx + 5.2, gy + 8.4, thEpoch + 2.6);
         let field = 0;
-        for (const b of live) {
-          const dx = cx - b.x;
-          const dy = cy - b.y;
+        for (let li = 0; li < liveCount; li++) {
+          const dx = cx - liveX[li]!;
+          const dy = cy - liveY[li]!;
           // 平移後的 inverse-square：在 d = 2.5r 處歸零（同正式版）
-          const q = (b.r * b.r) / (dx * dx + dy * dy + 1) - 0.16;
+          const q = liveR2[li]! / (dx * dx + dy * dy + 1) - 0.16;
           if (q > 0) field += q;
         }
         // 本體才吃持久球（尾巴只看拖尾章 → 頭部圓形不會被尾巴紋理填滿）；
@@ -719,18 +843,30 @@ onMounted(() => {
         // 顏色：預設藍；橘色 = 以焦點為中心的機率場，兩層慢速換抽落成色塊。
         // 密度連續衰減（無平台區）→ 中心密集、邊緣稀疏；半徑逐區塊抖動 ±15%
         // → 邊界不是完美同心圓
+        // rJit 與 bPhase 都只取決於 accentBlock 區塊 → 單槽 memo（掃描是 gy 外圈、
+        // gx 內圈，同列連續數格共用同一區塊）
         const bx = Math.floor(gx / ACCENT_BLOCK);
         const by = Math.floor(gy / ACCENT_BLOCK);
-        const rJit = 0.85 + hash(bx * 3.9 + 5.7, by * 5.3 + 1.9) * 0.3;
-        const rn = (Math.hypot(cx - centerX, cy - centerY) / ORANGE_R) * rJit;
+        if (bx !== blkBx || by !== blkBy) {
+          blkBx = bx;
+          blkBy = by;
+          blkRJit = 0.85 + hash(bx * 3.9 + 5.7, by * 5.3 + 1.9) * 0.3;
+          blkPhase = hash(bx * 7.1 + 1.3, by * 7.1 + 2.7);
+        }
+        const odx = cx - centerX;
+        const ody = cy - centerY;
+        const rn = (Math.sqrt(odx * odx + ody * ody) / ORANGE_R) * blkRJit;
         // 衰減起點退到 ORANGE_CORE：內核滿載、之後才開始掉，rn=1 一樣歸零
         const rc = Math.max(0, (rn - ORANGE_CORE) / (1 - ORANGE_CORE));
         const p = rn >= 1 ? 0 : props.orangeMax * Math.pow(1 - rc, ORANGE_GAMMA);
         // 區塊層：accentBlock 見方為單位、區塊 × epoch 穩定 hash、相位逐塊
-        // 錯開（switchPeriod）→ 橘色成小團塊、此起彼落地變橘/變回
-        const bPhase = hash(bx * 7.1 + 1.3, by * 7.1 + 2.7);
-        const epoch = Math.floor(t / SWITCH_PERIOD + bPhase);
-        let accent = p > 0 && hash3(bx, by, epoch + 0.5) < p;
+        // 錯開（switchPeriod）→ 橘色成小團塊、此起彼落地變橘/變回。
+        // 整段包在 p > 0 裡：橘色半徑之外的格子（場內佔多數）連 epoch 都不必算
+        let accent = false;
+        if (p > 0) {
+          const epoch = Math.floor(t / SWITCH_PERIOD + blkPhase);
+          accent = hash3(bx, by, epoch + 0.5) < p;
+        }
         // 格層挖空：被抽中的格子再逐格 dropout（自己的較慢 epoch、相位逐格
         // 錯開）→ 橘色團塊內部透空，不會有實心橘色大面積。
         // 挖空率隨半徑遞增（中心 ×HOLE_CENTER、rn≥1 為全額）→ 中心密實、
@@ -748,20 +884,38 @@ onMounted(() => {
       }
     }
 
+    // reduced-motion 只畫這一幀，不排下一幀
+    if (reduceMotion) {
+      running = false;
+      return;
+    }
     raf = requestAnimationFrame(animate);
   };
 
-  const observer = new IntersectionObserver(([entry]) => {
-    const shouldRun = entry?.isIntersecting ?? false;
+  // 啟停條件有兩個，缺一不可：進了視窗（IO）**且**父層沒把本層藏起來（paused）。
+  // IO 單獨判不出後者 —— 見 paused 的 prop 說明
+  let inView = false;
+  const syncRunning = () => {
+    const shouldRun = inView && !props.paused;
     if (shouldRun && !running) {
       running = true;
+      prevT = now();
+      // spread 是逐幀緩動（每幀往 1 靠 12%），只畫一幀的話團塊會縮成一小點 → 給滿
+      if (reduceMotion) spread = 1;
       animate();
     } else if (!shouldRun && running) {
       running = false;
       cancelAnimationFrame(raf);
     }
+  };
+
+  const observer = new IntersectionObserver(([entry]) => {
+    inView = entry?.isIntersecting ?? false;
+    syncRunning();
   });
   observer.observe(wrap);
+
+  const stopPausedWatch = watch(() => props.paused, syncRunning);
 
   const resizeObserver = new ResizeObserver(setSize);
   resizeObserver.observe(wrap);
@@ -771,8 +925,10 @@ onMounted(() => {
     cancelAnimationFrame(raf);
     observer.disconnect();
     resizeObserver.disconnect();
+    stopPausedWatch();
     listenEl.removeEventListener('pointermove', onPointerMove);
     listenEl.removeEventListener('pointerdown', onPointerMove);
+    window.removeEventListener('scroll', onScrollInvalidate);
   });
 });
 </script>

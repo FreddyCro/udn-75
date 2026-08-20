@@ -60,7 +60,11 @@ const onResize = () => {
 };
 const onRefresh = () => refreshCount.value++;
 
+// index.vue 現在用 `v-if` 只在 `?pathdebug` 時才掛載本元件，但這道守衛留著：
+// 沒有它，任何直接掛載本元件的地方都會拿到一組「面板不顯示、listener 照跑」的
+// 監聽器（原本 production 的每位訪客都在付這筆錢）。
 onMounted(() => {
+  if (!visible.value) return;
   onScroll();
   onResize();
   window.addEventListener('scroll', onScroll, { passive: true });

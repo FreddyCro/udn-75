@@ -33,6 +33,15 @@ interface MediaIntroMotionTargets {
   lineR: Ref<HTMLElement | null>;
   titleEls: () => MediaTitleEls | null;
   rows: () => HTMLElement[];
+  /**
+   * 底紋（`.media__bg`）是否已淡入。整段 motion 有將近九成的 scrub 行程把底紋
+   * 設成 `autoAlpha: 0`（＝`visibility: hidden`），而 HeartMetaball 內部的
+   * IntersectionObserver 看不到 visibility —— 隱藏的元素仍有 layout box，IO 照樣
+   * 回報 isIntersecting，於是那顆 canvas 會在完全看不見的情況下全速渲染，時間點
+   * 剛好是本檔在 scrub 三十條 tween 的時候。「可見」這件事只有這裡知道，所以由
+   * 這裡明說。未接（undefined）時 HeartMetaball 維持常跑，行為與改版前相同。
+   */
+  onBgReveal?: (revealed: boolean) => void;
 }
 
 /**
@@ -47,18 +56,22 @@ interface MediaIntroMotionTargets {
  */
 export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   const route = useRoute();
-  // scrub 行程（px）＝sticky 定住距離＝buffer 高度。
-  // 2026-08-11：2000 → 2180。前面插了拍 0（滿版 → BLOCK_VW，長 NARROW_DUR），
-  // timeline 總長 pc 5.1 → 5.55、mob 4.8 → 5.25（mob 無 bar，phase2 少 0.3）。
-  // 等比加長是為了讓既有每一拍的 px 速度不變（pc 原 392 px/單位）；兩個斷點的
-  // px/拍 本來也不相等，這裡不改變那件事。
+  const { vhPx } = useViewportHeight();
+  const { setMediaMotionArmed } = useOrangeCoreProgress();
+  // scrub 行程（px）＝ HOLD_BUFFER（sticky 定住距離＝buffer 高度）＋ 融合拍的跑道。
   //
-  // ⚠️ 改 NARROW_DUR 要一起改這裡，否則等於連帶改了後面每一拍的速度：
-  //    HOLD_BUFFER ≈ (5.1 + NARROW_DUR) × 392
-  const HOLD_BUFFER = 2180;
-  // 拍 0 的長度，同時是 header 翻 light 的門檻（見 st 的 onUpdate）。
-  // 0.45 ＝ 約 20vh 的收窄行程（0.45 / 5.55 × 2180 ≈ 177px）。
-  const NARROW_DUR = 0.45;
+  // HOLD_BUFFER 只涵蓋拍 1 之後：拍 0（融合拍）跑在 sticky engage **之前**那段跑道上，
+  // 不佔 buffer。故它回到 2000 ＝ 5.1 × 392（pc 原本的 px/單位）。
+  //
+  // 2026-08-11：2000 → 2180（前面插了拍 0，等比加長讓既有每一拍的 px 速度不變）
+  // 2026-08-18：2180 → 2120（NARROW_DUR 0.45 → 0.3）
+  // 2026-08-18（第二次）：2120 → 2000。拍 0 搬到 sticky 之前的跑道上，buffer 不再
+  //   需要為它加長；`(5.1 + NARROW_DUR) × 392` 那條手算連動同時廢除，
+  //   拍 0 的長度改由 narrowDurationFor 推導（見下）。
+  const HOLD_BUFFER = 2000;
+  // 拍 1（色塊左右縮成直條）的 timeline 長度。**同時是 header 翻 light 的地標**
+  // （見 st 的 onUpdate）—— 兩處讀同一個 const，不寫兩份 1。
+  const BEAT1_DUR = 1;
   let tl: gsap.core.Timeline | null = null;
   let st: ScrollTrigger | null = null;
 
@@ -75,8 +88,12 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const lineL = targets.lineL.value;
     const lineR = targets.lineR.value;
     const rows = targets.rows();
+    // 融合橘幕。跨元件取得（它住在 Blessing.vue）—— 同 AppHeader 的
+    // querySelectorAll('[data-header-theme]')，是本專案既有慣例。
+    // 用 data- 屬性而不是 class：class 是樣式的名字，改名重構不該把 motion 打斷。
+    const veil = document.querySelector<HTMLElement>('[data-morph-veil]');
     if (!section || !hold || !buffer || !els) return;
-    if (!morph || !barL || !barR || !lineL || !lineR) return;
+    if (!morph || !barL || !barR || !lineL || !lineR || !veil) return;
     const { title, final: titleFinal, motion: titleMotion, sides, quotes, newChar } = els;
     const newCharBox = newChar.parentElement as HTMLElement; // 引號＋新的外框
     const all: Element[] = [...sides, ...quotes, newChar];
@@ -84,9 +101,6 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const isMob = window.matchMedia('(max-width: 767.98px)').matches;
     // 分鏡素材相對定位態標題的放大倍率（mob 素材同寸、定版標題較小 → 倍率較大）
     const SCALE = isMob ? 2.15 : 1.5;
-    // 拍 0 的**終點**寬／拍 1 的起點寬（vw）＝分鏡 1 的色塊寬，三版共用。
-    // 拍 0 的起點是滿版（＝blessing 的橘底），故它不再是整段 motion 的第一個尺寸。
-    const BLOCK_VW = 0.6;
     const hasBars = !isMob; // 分鏡 4 左右 bar：mob 分鏡無此件
 
     const revealEls = [bg, body, ...rows].filter(Boolean);
@@ -98,10 +112,19 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       [title, titleFinal, titleMotion, ...all, newCharBox, morph, barL, barR, lineL, lineR],
       { clearProps: 'all' },
     );
+    // veil **不可**併入上面那份 clearProps: 'all' 清單：它是清單裡唯一一個 inline
+    // display 屬於別人（Vue 的 v-show，見 Blessing.vue 的 coverDone 條件）的元素。
+    // clearProps: 'all' 執行的是 style.cssText = ''，會把整個 inline style 屬性
+    // 連同 v-show 寫的 `display: none` 一起清掉；v-show 的 updated 只在值變動時
+    // 才重寫，值沒變就不會補回來 —— 於是 veil 在 coverDone 還是 false（覆蓋過場
+    // 期間）就變成滿版可見的橘幕，蓋住 `.sec2` 整段過場。只清本檔自己會寫的三個屬性。
+    gsap.set(veil, { clearProps: 'transform,opacity,visibility' });
     gsap.set(titleMotion, { autoAlpha: 1 });
     gsap.set(titleFinal, { autoAlpha: 0 });
     gsap.set(all, { autoAlpha: 0 });
     gsap.set(revealEls, { autoAlpha: 0 });
+    // 底紋此刻起是 visibility: hidden，直到 settle 尾端的淡入（見 onBgReveal）
+    targets.onBgReveal?.(false);
 
     // 素材皆已裁齊字形（框中心＝字形中心），只需量標題外框，其餘用常數表
     const titleRect = title.getBoundingClientRect();
@@ -153,6 +176,11 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       y: 0,
       autoAlpha: 0,
     });
+    // veil 同招置中：CSS 給的是 left: 50%，實際居中靠這裡的 xPercent: -50
+    // （見 Blessing.vue 的 .section3__veil ⚠️）。必須排在上面那組 clearProps
+    // 之後 —— clearProps 只清 transform/opacity/visibility 三個屬性（不含 left），
+    // 但寫入順序仍得晚於清除，否則這裡設的 xPercent 會被一併清掉。
+    gsap.set(veil, { xPercent: -50 });
 
     // 標題放大並組裝在舞台中心（以 morph 實際位置為準）；settle 再縮回定位
     const morphRect = morph.getBoundingClientRect();
@@ -177,59 +205,10 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
 
     tl = gsap.timeline({ paused: true });
 
-    // trigger 掛 in-flow 的 section（sticky 的 hold 不可當 trigger）；
-    // 行程與 buffer 同長，捲完剛好播完
-    st = ScrollTrigger.create({
-      trigger: section,
-      start: 'top top',
-      end: `+=${HOLD_BUFFER}`,
-      animation: tl,
-      scrub: true,
-      // header 底色：拍 0 期間畫面上緣是整片橘（blessing 橘底的延續），收到
-      // BLOCK_VW 之後兩側才露白。pickHeaderTheme 只比對縱向 top/bottom、判不出
-      // 橫向寬度，故直接改屬性值 —— AppHeader 只快取元素清單，每次 scroll 都
-      // 重讀 dataset，動態改有效。
-      //
-      // 門檻由 NARROW_DUR / duration 推導、不寫死比例 → 加減拍數不必重算。
-      // 比對 self.progress 而非 tl.time()：不必假設 ScrollTrigger 呼叫 onUpdate
-      // 之前已經推進過 timeline。也不用 tl.set(..., { attr })：那要賭零秒 tween
-      // 在 scrub 倒帶時的 revert 語意，這裡的可逆性是顯而易見的。
-      onUpdate: (self) => {
-        const d = tl?.duration() ?? 0;
-        section.dataset.headerTheme =
-          d > 0 && self.progress >= NARROW_DUR / d ? 'light' : 'orange';
-      },
-      onLeaveBack: () => {
-        section.dataset.headerTheme = 'orange';
-      },
-      onLeave: () => {
-        section.dataset.headerTheme = 'light';
-      },
-    });
-
     tl
-      // 0. 滿版橘塊左右收到 BLOCK_VW。
-      //    起點是滿版而非 BLOCK_VW，因為 .media__stage 是 absolute top: 0 且塊高
-      //    一個可視高 → 橘塊上緣恆等於 section 上緣（＝與 blessing 的接縫），
-      //    滿版起手在視覺上就是 blessing 橘底的延續，同色、看不出接縫。
-      //    ⚠️ 收窄不能比這一刻更早開始：接縫還在畫面上時收窄，接縫會變成一道看得見
-      //    的橫向缺口（上滿版、下 BLOCK_VW，左右各露一塊白）。這是 start 為什麼是
-      //    'top top' 而不能提早、也是把 morph 往上挪買不到跑道的原因。
-      .fromTo(
-        morph,
-        {
-          scaleX: window.innerWidth / MORPH_W,
-          scaleY: window.innerHeight / MORPH_H,
-          autoAlpha: 1,
-        },
-        {
-          scaleX: (window.innerWidth * BLOCK_VW) / MORPH_W,
-          duration: NARROW_DUR,
-          ease: 'power2.inOut',
-        },
-      )
-      // 1. 色塊左右縮成直條
-      .to(morph, { scaleX: 28 / MORPH_W, duration: 1, ease: 'power3.inOut' })
+      // 1. 色塊左右縮成直條。整段 motion 的第一拍**在 timeline 上**，但畫面上它接在
+      //    融合拍（拍 0）之後 —— 拍 0 稍後插到 time 0，見下方。
+      .to(morph, { scaleX: 28 / MORPH_W, duration: BEAT1_DUR, ease: 'power3.inOut' })
       // 2→3. 直條縮成短棒；文字貼齊中線淡入
       .to(morph, { scaleX: 1, scaleY: 1, duration: 0.6, ease: 'power3.inOut' })
       .to(sides, { autoAlpha: 1, duration: 0.3 }, '-=0.3')
@@ -316,8 +295,18 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       // 交棒：位移途中 crossfade 給完成態，位移會遮住分件與完成態的細微錯位
       .to(titleMotion, { autoAlpha: 0, duration: 0.5 }, 'settle+=0.25')
       .to(titleFinal, { autoAlpha: 1, duration: 0.5 }, 'settle+=0.25')
-      // 內容（底紋＋內文＋清單）整體淡入
-      .to(revealEls, { autoAlpha: 1, duration: 0.6 }, 'settle+=0.3');
+      // 內容（底紋＋內文＋清單）整體淡入。這一拍同時是 HeartMetaball 的 render loop
+      // 閘門：往前播＝底紋現身、往回捲＝再度隱形（scrub 兩向都會觸發這兩個回呼）
+      .to(
+        revealEls,
+        {
+          autoAlpha: 1,
+          duration: 0.6,
+          onStart: () => targets.onBgReveal?.(true),
+          onReverseComplete: () => targets.onBgReveal?.(false),
+        },
+        'settle+=0.3',
+      );
 
     // 分鏡 4／4b（pc / pad 限定）：bar 分裂飛到文字外緣，再變細甩出；文字同拍外挪
     if (hasBars) {
@@ -337,6 +326,134 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
           'text+=0.6',
         );
     }
+
+    // ── 拍 0（融合拍）：滿版橘 → MEDIA_BLOCK_VW，veil 與 morph 同步 ──────────
+    // 它插在 time 0，而且是最後才建的：長度要由「拍 1 以後的總長」推導，所以得等
+    // 上面全部建完才算得出來。
+    //
+    // 為什麼收窄現在可以比接縫抵達視窗頂更早開始（改版前這裡有一條 ⚠️ 說不行）：
+    //   morph 上緣 ≡ .media 上緣 ≡ 接縫，這是構造上的恆等式（.media__stage 是
+    //   absolute top: 0、塊高一個可視高），所以 morph 只塗得到接縫**以下**。
+    //   單獨讓它提早收窄，橘柱會在接縫那條線上被水平切斷。
+    //   補上的那一塊是 `.section3__veil`（fixed 滿版、在 blessing 底色之上）：
+    //   它蓋住接縫以上的部分，於是收窄時整個視窗高度同步露白。同時 blessing 的底色
+    //   硬切成白（見 outroWhiteAt），兩側露出來的白與 .media 的 #fff 同色，
+    //   接縫因此不可見。
+    //
+    // ⚠️ 新的不變量取代舊的那條：**收窄提早多少，就必須有多少 veil 跑道**。
+    //    跑道長度 ＝ BLESSING_OUT_VH × 視窗高 ＝ ScrollTrigger 提早的量，
+    //    而拍 0 的 timeline 長度由 narrowDurationFor 從它推導。三者是同一個數字的
+    //    三種單位，不可各自手調。
+    //
+    // ⚠️ veil 與 morph 的寬度基準現在由 CSS 保證同一個值，JS 不再持有任何 px：
+    //    veil 是 width: 100vw（見 Blessing.vue），morph 吃 window.innerWidth——
+    //    兩者都含捲軸寬，所以 scaleX 可以直接用同一組比例（1 → MEDIA_BLOCK_VW），
+    //    不必像 morph 那樣除回 MORPH_W（veil 的基準寬本身就是 1 倍版位，不像 morph
+    //    是縮小的 bar.svg）。build time 與 render time 的差異因此不可能再讓兩者脫鉤。
+    //
+    //    事故記錄（2026-08-19）：這裡曾經在 build time 讀
+    //    `document.documentElement.clientWidth` 除回版位寬，想讓交棒時 veil 與 morph
+    //    的終點 px 相等。但 buildMotion() 跑在 onMounted，那一刻捲軸還沒撐出來，
+    //    `clientWidth` 量到的其實是 innerWidth（Playwright 實測 1465×863、捲軸 15px：
+    //    clientWidth 回傳 1465 而非渲染時的 1450），除出來的 scaleX 因此靜靜退化成
+    //    跟沒除一樣，交棒時 veil 比 morph 窄了「捲軸寬 × MEDIA_BLOCK_VW」＝9px。
+    //    量到的 px 基準與渲染時的實際版位不一致，是與本檔另一條「量了會靜靜退回
+    //    innerWidth」失敗模式同源的教訓：能在 CSS 裡用相對單位讓兩者天生同源，
+    //    就不要在 JS 裡用一次性量測去追齊。
+    const runwayPx = BLESSING_OUT_VH * vhPx(1);
+    const NARROW_DUR = narrowDurationFor(tl.duration(), runwayPx, HOLD_BUFFER);
+    // 把已建好的每一拍（含 label）整批右移，讓 time 0 空出拍 0 的位置
+    tl.shiftChildren(NARROW_DUR, true);
+
+    tl.fromTo(
+      morph,
+      {
+        scaleX: window.innerWidth / MORPH_W,
+        scaleY: window.innerHeight / MORPH_H,
+        autoAlpha: 1,
+      },
+      {
+        scaleX: (window.innerWidth * MEDIA_BLOCK_VW) / MORPH_W,
+        duration: NARROW_DUR,
+        ease: FUSE_EASE,
+      },
+      0,
+    )
+      .fromTo(
+        veil,
+        { scaleX: 1, autoAlpha: 1 },
+        { scaleX: MEDIA_BLOCK_VW, duration: NARROW_DUR, ease: FUSE_EASE },
+        0,
+      )
+      // 交棒：veil 與 morph 此刻同色同寬同位，硬切不可見。
+      // ⚠️ 不可延後：veil 停在 MEDIA_BLOCK_VW 而 morph 繼續收窄的話，veil 會比 morph
+      //    寬，整個拍 1 的收窄被它遮住。
+      .set(veil, { autoAlpha: 0 }, NARROW_DUR);
+
+    // trigger 掛 in-flow 的 section（sticky 的 hold 不可當 trigger）。
+    //
+    // start / end 都吃 runwayPx（上面已凍結的 px 值），不重新算 BLESSING_OUT_VH *
+    // vhPx(1)：NARROW_DUR 是 buildMotion() 執行當下算出來的一次性數字，onMounted 之後
+    // 不會重建。若 start/end 在每次 refresh 各自重新換算 vh，一旦視窗高度真的改變
+    // （轉向、網址列收合），runwayPx 會變、NARROW_DUR 卻不會跟著變，三者就脫鉤 ——
+    // 症狀正是 narrowDurationFor 文件裡「收窄太晚結束」那條（接縫已到頂、交棒點卻
+    // 還沒到）。用同一個凍結值就不可能各自漂移；真的要跟上新的 vh，得整個
+    // buildMotion() 重跑（本檔目前沒有 resize 重建，同其餘 build-time 數字的限制一樣）。
+    //
+    // start 提前 runwayPx（＝融合拍的跑道，也**就是 blessing 的 outro 窗口**，那條
+    // 的 start 是 `.section3` 的 bottom bottom-=40%，同一個捲動位置）。兩段從此是
+    // 同一段：清單淡出、veil 收窄、morph 收窄全部吃這一段。
+    //
+    // end ＝ runwayPx ＋ HOLD_BUFFER：跑道跑在 sticky engage 之前，其後 buffer 被捲完
+    // 的同一刻 timeline 剛好播完、sticky 同時解除（與改版前同樣的收尾保證）。
+    //
+    // start / end 仍寫成函式，是因為 ScrollTrigger 每次 refresh 都會重新呼叫它們——
+    // 但吃的是同一個凍結常數，值不會變。invalidateOnRefresh 開著是配合 animation
+    // （本 trigger 有掛 tl）：它讓 refresh 時對 tl 做 revert({kill:false}).invalidate()，
+    // 不是「因為它 start/end 才會重算」——那件事函式本身就會做，與這個旗標無關。
+    st = ScrollTrigger.create({
+      trigger: section,
+      start: () => `top top+=${runwayPx}`,
+      end: () => `+=${HOLD_BUFFER + runwayPx}`,
+      invalidateOnRefresh: true,
+      animation: tl,
+      scrub: true,
+      // header 底色：融合拍與拍 1 期間畫面上仍有一大塊橘（veil／橘柱），收成 28px
+      // 細條之後才翻 light。pickHeaderTheme 只比對縱向 top/bottom、判不出橫向寬度，
+      // 故直接改屬性值 —— AppHeader 只快取元素清單，每次 scroll 都重讀 dataset。
+      //
+      // 門檻是**拍 1 結束**（NARROW_DUR + BEAT1_DUR），不是拍 0 結束：拍 0 結束時
+      // 橘柱還有 MEDIA_BLOCK_VW 寬，header 一翻成 70% 白會在白帶中央透出一塊橘。
+      // 由 timeline 的地標推導、不寫死比例 → 加減拍數不必重算。
+      // 比對 self.progress 而非 tl.time()：不必假設 ScrollTrigger 呼叫 onUpdate
+      // 之前已經推進過 timeline。
+      // 屬性值整段 scrub 只翻一次，卻是逐幀寫入 —— 加個相同值就不寫的守衛。
+      // 便宜，但它正好是 AppHeader 每幀讀 dataset 那個迴圈的寫入端
+      onUpdate: (self) => {
+        const next = mediaHeaderLightAt(
+          self.progress,
+          NARROW_DUR + BEAT1_DUR,
+          tl?.duration() ?? 0,
+        )
+          ? 'light'
+          : 'orange';
+        if (section.dataset.headerTheme !== next) section.dataset.headerTheme = next;
+      },
+      // 兩端的兜底：越過整段 motion 之後底紋必定已淡入、退回起點之前必定還沒。
+      // timeline 的 onStart/onReverseComplete 在 refresh 的 revert 之後可能不會
+      // 補發，這兩個回呼保證閘門不會停在跟畫面相反的狀態
+      onLeaveBack: () => {
+        section.dataset.headerTheme = 'orange';
+        targets.onBgReveal?.(false);
+      },
+      onLeave: () => {
+        section.dataset.headerTheme = 'light';
+        targets.onBgReveal?.(true);
+      },
+    });
+
+    // veil 與底色翻白的共同閘門：走到這裡才算真的建起來（含 veil 守衛都通過）。
+    setMediaMotionArmed(true);
   };
 
   onMounted(() => {
@@ -358,5 +475,6 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     st = null;
     tl?.kill();
     tl = null;
+    setMediaMotionArmed(false);
   });
 }

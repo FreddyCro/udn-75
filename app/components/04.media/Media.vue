@@ -53,6 +53,10 @@ onMounted(() => {
   };
 });
 
+// 底紋 render loop 的閘門：預設 true（降級路徑不建 timeline，底紋一開始就可見），
+// 由 useMediaIntroMotion 在 motion 建起來時翻成 false、settle 尾端淡入時翻回來
+const bgRevealed = ref(true);
+
 useMediaIntroMotion({
   section: sectionRef,
   hold: holdRef,
@@ -66,14 +70,19 @@ useMediaIntroMotion({
   lineR: lineRRef,
   titleEls: () => titleRef.value?.getEls() ?? null,
   rows: () => listRef.value?.getRows() ?? [],
+  onBgReveal: (revealed) => {
+    bgRevealed.value = revealed;
+  },
 });
 </script>
 
 <template>
   <!-- data-header-theme 預設 light：屬性必須在 SSR 輸出裡就存在，AppHeader 才會在
        onMounted 的一次性 querySelectorAll 收到本元素；值由 useMediaIntroMotion 在
-       捲動中接管（拍 0 期間畫面上緣是整片橘 → orange）。reduced-motion 與 /#media
-       兩條降級路徑不建 timeline、橘塊不出現，留在 light 天然正確。 -->
+       捲動中接管 —— 融合拍與拍 1 期間是 orange（畫面上仍有一大塊橘：先是
+       `.section3__veil`，接著是收窄中的橘柱），橘柱收成 28px 細條之後才翻 light
+       （門檻見 mediaHeaderLightAt）。reduced-motion 與 /#media 兩條降級路徑不建
+       timeline，veil 與橘塊都不出現，留在 light 天然正確。 -->
   <section
     id="media"
     ref="sectionRef"
@@ -88,7 +97,7 @@ useMediaIntroMotion({
         <!-- 章半徑/壽命一律吃元件預設：舊的 idle-blob-min/max 與 life 是為前一版
                （legacy/HeartMetaballBlock，cellSize 14px）調的，換成 patch 版後
                會讓尾巴大上一倍。尾巴大小改在 HeartMetaball 的 tailBlobMin/Max 調。 -->
-        <HeartMetaball :roam-area="bgRoamArea" />
+        <HeartMetaball :roam-area="bgRoamArea" :paused="!bgRevealed" />
       </div>
 
       <div class="media__inner">

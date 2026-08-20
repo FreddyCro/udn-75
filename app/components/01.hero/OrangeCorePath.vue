@@ -22,7 +22,10 @@
 <script setup lang="ts">
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  refreshScrollTriggers,
+  refreshOnFontsReady,
+} from '@/utils/scroll-trigger';
 
 const props = defineProps<{
   /** .sec1：core / path 的座標範圍，也是 ScrollTrigger 的 trigger */
@@ -48,6 +51,8 @@ let st: ScrollTrigger | null = null;
 let ready = false;
 // 驅動線總長：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用（避免 getTotalLength 熱路徑）。
 let motionLen = 0;
+// 驅動線的切線角（度）。同樣在 build() 定案一次 —— 這條 d 是直線，切線是常數（見 build）。
+let motionAngle = 0;
 
 // 依當前版面量測，重建驅動線的 d（imperative，避免 Vue patch 造成幾何延遲）。
 function build() {
@@ -73,26 +78,31 @@ function build() {
   // 幾何已定，量一次總長供 place() 每幀複用。
   motionLen = motion.getTotalLength();
 
+  // 切線角也在這裡定案，理由同總長：這條 d 是 `M{x} {sy}L{x} {ey}` ＝ 一條直線，
+  // 整條線上的切線是同一個值。原本 place() 每幀為它多做兩次 getPointAtLength
+  // （前後各取 1px 的鄰點）—— 兩次 SVG 幾何查詢換一個常數。
+  // 保留 rotation 的寫入本身（見 place 的說明：為之後論壇段的曲線路徑留位），
+  // 之後真的接上曲線時，把這裡的一次性計算改回 place() 裡的逐幀取樣即可。
+  const behind = motion.getPointAtLength(0);
+  const ahead = motion.getPointAtLength(motionLen);
+  motionAngle =
+    (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
+
   place(st ? st.progress : 0);
 }
 
 // 依 raw 捲動進度把 core 定位到驅動線上的點，並轉到該處的路徑切線方向（雲霄飛車感）。
-// 先過 easeMove（MOVE_EASE 速度曲線）→ 得 path 進度 p，再定位；切線由前後各取 1px 的鄰近點
-// 連線求得，兩端皆穩定（不會因 eps=0 歸零）。p 同時寫回 path 軌，故 stage 判定與定位一致。
-// 切線 rotation 對正方形 dot 無視覺差異，保留是為了之後論壇段的曲線路徑。
+// 先過 easeMove（MOVE_EASE 速度曲線）→ 得 path 進度 p，再定位。p 同時寫回 path 軌，
+// 故 stage 判定與定位一致。
+// 切線 rotation 對正方形 dot 無視覺差異，保留是為了之後論壇段的曲線路徑；角度本身是
+// build() 算好的常數（這條 d 是直線），逐幀只剩一次 getPointAtLength。
 function place(rawP: number) {
   const core = props.orangeCoreEl;
   const motion = motionEl.value;
   if (!core || !motion || !motionLen) return;
   const p = easeMove(rawP); // 套用移動速度曲線
-  const len = p * motionLen;
-  const pt = motion.getPointAtLength(len);
-  const d = 1; // 取樣間距（px）
-  const behind = motion.getPointAtLength(Math.max(0, len - d));
-  const ahead = motion.getPointAtLength(Math.min(motionLen, len + d));
-  const angle =
-    (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
-  gsap.set(core, { x: pt.x, y: pt.y, rotation: angle });
+  const pt = motion.getPointAtLength(p * motionLen);
+  gsap.set(core, { x: pt.x, y: pt.y, rotation: motionAngle });
   setPathProgress(p);
 }
 
@@ -122,9 +132,9 @@ function init() {
   refreshScrollTriggers();
 
   // 字體載入會改變引言文字高度 → section 高度變動 → 重新量測。
-  if (typeof document !== 'undefined' && document.fonts?.ready) {
-    document.fonts.ready.then(() => refreshScrollTriggers());
-  }
+  // 註冊集中在 utils/scroll-trigger（refreshOnFontsReady）：三個元件各掛一份的話，
+  // fonts.ready 一 resolve 就是連續三次全站重算 —— 每一次都含論壇段整條驅動線的重新量測。
+  if (typeof document !== 'undefined') refreshOnFontsReady();
 }
 
 onMounted(() => {

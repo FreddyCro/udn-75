@@ -677,8 +677,95 @@ export const BLESSING_HOLD = 0.15;
 //   整段過場 135vh，實測過長。改後 60 + 20 ＝ 80vh。
 //   代價：淡出起點提前，此時夥伴清單頂端已被視窗頂切掉約 240px（原本剛好完整）。
 //   要換回「面板完整時才開始淡」就把 OUT_VH 調回 0.75 以上。
+//
+// 2026-08-18：fade 0.85 → 1.0，**呼吸拍歸零**（窗口長度 0.6 不動）。
+//   使用者回饋：03 → 04 之間有一段「滿版純橘、什麼都不動」的空窗期。那段是兩截
+//   相連的橘：本檔的呼吸拍 9vh，接著 media 拍 0 的滿版收窄 17.7vh（那截另外處理，
+//   見 useMediaIntroMotion 的 NARROW_DUR 與拍 0 的 ease）。呼吸拍是這兩截裡唯一
+//   「畫面上真的沒有任何東西在變」的一段 —— 它原本的用意是「接縫離開視窗頂時只剩橘」，
+//   而 fade = 1.0 讓淡出**剛好**在接縫抵達視窗頂那一刻收乾淨，同一個保證仍然成立
+//   （smoothstep 的尾巴一階導數為 0，p ≈ 0.92 起 opacity 已 < 0.02，肉眼早就淨空）。
+//   ⚠️ 這是本值的上限：> 1 會讓淡出在接縫離開視窗頂之後才收完 —— 那時 media 已經
+//      在收窄，夥伴清單會殘留在橘塊上。
+//
+// 2026-08-18（第二次）：fade 1.0 → 0.55。方向與同日第一次相反，因為窗口的性質變了。
+//   第一次把它推到 1.0 是為了吃掉尾端那段靜止的呼吸拍（不淡完也沒事做）。融合拍改版
+//   之後**整段窗口都在動**（veil 與 morph 同步收窄），而夥伴清單面板約 72vw 寬、比
+//   veil 的終點 MEDIA_BLOCK_VW 寬 —— 清單若撐到窗口尾端才淡完，卡片（白底白框）的
+//   邊緣會落在已經露白的兩側上、失去輪廓。故清單必須比 veil 收到底更早淡乾淨。
+//   ⚠️ 下限來自「淡出要看得出是一個動作」：0.55 × 60vh ＝ 33vh，閱讀捲速下約 1.3s。
+//
+// 2026-08-18：本值同時成為 **media 拍 0 的跑道長度**（ScrollTrigger 提早這麼多），
+//   也就是整段融合拍的唯一長度旋鈕 —— 清單淡出、veil 收窄、morph 收窄全部吃這一段。
+//   見 narrowDurationFor 與融合設計文件。
 export const BLESSING_OUT_VH = 0.6;
-export const BLESSING_OUT_FADE = 0.85;
+export const BLESSING_OUT_FADE = 0.55;
+
+// ── 03 → 04 融合拍：veil 與 morph 的交棒 ──────────────────────────────
+// 完整設計見 architecture/2026-08-18-blessing-media-morph-fusion-design.md。
+//
+// MEDIA_BLOCK_VW：分鏡 1 的色塊寬（× 視窗寬）＝ 拍 0 的終點寬 ＝ 拍 1 的起點寬。
+//
+// ⚠️ 這個值原本是 useMediaIntroMotion 的區域 const `BLOCK_VW`。它現在是**兩個元件
+//    共用的交棒尺寸**（`.section3__veil` 與 `.media__morph` 在拍 0 結束時必須同寬），
+//    所以只能有一份。各寫一份就會在調值時脫鉤，而畫面上只是「交棒那一幀寬度跳一下」，
+//    不會有任何東西壞掉喊出來。
+export const MEDIA_BLOCK_VW = 0.6;
+
+// 拍 0 的 ease：veil 與 morph **共用同一條**（同一拍的兩個 target）。
+//
+// 頭必須快：使用者要的是「這一拍整個橘色區域在動」。power2.inOut 的慢起讓開頭幾乎
+//   看不出白邊在長，滿版橘因此讀成「停住不動」—— 那正是本次改版要消掉的空窗期。
+// 尾必須慢：拍 1 是 power3.inOut（慢起），拍 0 若在交界處還是全速就看得到轉折。
+//   power2.out 的尾端一階導數為 0，接得上。
+// ⚠️ 不可改成 'none' 或 'power2.in'。
+export const FUSE_EASE = 'power2.out';
+
+/** 拍 0 的 timeline 長度（單位同 timeline）。
+ *
+ *  **推導值，不是旋鈕** —— 要調融合拍的長短請改 BLESSING_OUT_VH（它同時是
+ *  ScrollTrigger 提早的跑道長度）。
+ *
+ *  推導：timeline 總長 `rest + narrow` 對映到捲動距離 `holdBuffer + runway`，
+ *  而拍 0 佔掉的 px 必須恰好等於 runway（提早的那段跑道）：
+ *
+ *      narrow / (rest + narrow) × (holdBuffer + runway) = runway
+ *      ⇒ narrow = rest × runway / holdBuffer
+ *
+ *  對不上的症狀是空窗期換個寬度重演：收窄提早結束 → 留下一段靜止的
+ *  MEDIA_BLOCK_VW 寬橘柱；收窄太晚結束 → 接縫已到頂、交棒點卻還沒到。
+ *
+ *  ⚠️ 這條取代了改版前「手寫 NARROW_DUR ＋ 手算 HOLD_BUFFER ≈ (5.1 + NARROW_DUR) × 392」
+ *     的雙向手動同步。rest 逐斷點不同（pc 5.1 / mob 4.8，mob 無 bar），故必須是參數，
+ *     不能寫死。
+ *
+ *  純函式、不依賴 DOM —— 關係由 test/media-fuse.spec.ts 守著。 */
+export function narrowDurationFor(
+  restDuration: number,
+  runwayPx: number,
+  holdBufferPx: number,
+): number {
+  return (restDuration * runwayPx) / holdBufferPx;
+}
+
+/** media 開場 motion：progress 走到這裡時 header 該翻 light 了嗎。
+ *
+ *  `beat1EndTime` ＝ 拍 1 結束的 timeline 時刻（＝ 拍 0 長度 ＋ 拍 1 長度）。門檻放在
+ *  這裡而不是拍 0 結束：拍 0 結束時橘柱還有 MEDIA_BLOCK_VW 寬，header 一翻成 70% 白
+ *  就會在白帶中央透出一塊橘 —— 那正是 2026-08-18 使用者回報的「露餡」。收成 28px
+ *  細條之後翻，帶子背後只剩一條細縫。
+ *
+ *  ⚠️ duration 為 0（timeline 還沒建好）時回 false（＝ orange）：那一刻畫面上是滿版橘，
+ *     提前宣告 light 會讓 header 用深色內容疊在橘底上。
+ *
+ *  純函式、不依賴 DOM —— 由 test/media-fuse.spec.ts 守著。 */
+export function mediaHeaderLightAt(
+  progress: number,
+  beat1EndTime: number,
+  duration: number,
+): boolean {
+  return duration > 0 && progress >= beat1EndTime / duration;
+}
 
 // ── 夥伴清單的閱讀定格（× 視窗高）────────────────────────────────────
 // `.section3__partners` 是 sticky top: 0，這個值是它定住的捲動距離
@@ -699,6 +786,21 @@ export const BLESSING_PARTNERS_HOLD_VH = 1;
  *  純函式、不依賴 DOM —— 曲線由 test/blessing-outro.spec.ts 守著。 */
 export function partnersFadeAt(p: number): number {
   return 1 - smoothstep(0, BLESSING_OUT_FADE, p);
+}
+
+/** `.section3` 底色的「翻白量」（0 ＝ 照原本的藍→橘、1 ＝ 白）。
+ *
+ *  二元、不內插 —— 切換的那一刻 `.section3__veil` 剛好是滿版（拍 0 `fromTo` 的起點），
+ *  底色被完全遮住，所以硬切看不到。補間只會多出一條要與 veil 對齊的曲線。
+ *
+ *  `armed` ＝ media 的 timeline 真的建起來了嗎（見 useMediaIntroMotion）。
+ *  ⚠️ 這個參數不是防禦性程式碼，是**必要條件**：reduce-motion / `/#media` 深連結 / 無 JS
+ *     三條路徑都不建 timeline ⇒ veil 停在 CSS 初始態不會現身，此時若底色照樣翻白，
+ *     blessing 整段會變成白底白字。veil 與底色必須同生共死。
+ *
+ *  純函式、不依賴 DOM —— 由 test/blessing-outro.spec.ts 守著。 */
+export function outroWhiteAt(armed: boolean, outProgress: number): 0 | 1 {
+  return armed && outProgress > 0 ? 1 : 0;
 }
 
 // ── forum → blessing 覆蓋過場（02 → 03）────────────────────────────────
@@ -933,7 +1035,12 @@ export const SEQUENCE: readonly SequenceChapter[] = [
       // 03 → 04 過場第一拍。放在 partners 之後還有一個副作用是修掉既有問題：
       // partners 是無軌 part，「結束了沒」靠下一段反推（useCoreSequence 的 ②），
       // 在此之前它是序列末端 → 永遠停在未完成，dashboard 的游標卡在那裡。
-      { key: 'outro', label: `夥伴清單淡出（前 ${BLESSING_OUT_FADE * 100}% 淡完，其後純橘）`, drive: 'scrub', track: 'blessingOut' },
+      // label 不寫「其後純橘」：這句話靠的是 BLESSING_OUT_FADE ≤ 1 這個性質（百分比
+      // 是內插進來的），不是它目前的數值 —— 旋鈕調到任何 ≤ 1 的值都成立，不必再改一次。
+      // ⚠️ 百分比要 Math.round：BLESSING_OUT_FADE 不保證是能被 100 整除的「乾淨」小數
+      //   （0.55 × 100 在 IEEE754 下是 55.00000000000001），捨入前那串尾數會直接流進
+      //   dashboard 的 label 字串，讀起來像壞掉；捨到整數 % 對這個顯示用途夠精細。
+      { key: 'outro', label: `夥伴清單淡出（窗口前 ${Math.round(BLESSING_OUT_FADE * 100)}% 淡完）`, drive: 'scrub', track: 'blessingOut' },
     ],
   },
 ];

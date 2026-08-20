@@ -38,6 +38,10 @@ const stageRef = ref<HTMLElement | null>(null);
 const { growY, colorSpan, faceIn, dark } = SYMBOL_TRANSITION;
 const { orange } = CORE;
 
+// 開窗的座標交給 header：窗內那一段 header 反白（設計稿 2065:142710 的 `Mask group` 裡
+// 那第二份 header）。本層只負責「窗現在在哪」，反白怎麼畫是 AppHeader 的事。
+const { syncHeaderBand } = useHeaderBand();
+
 // p>0 且尚未交棒才可見：p=0 時整層透明，避免在 core 移動途中疊一層同色方塊。
 const active = computed(() => !props.done && props.progress > 0);
 
@@ -50,6 +54,11 @@ const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
 //    pin 期間 core 本來就固定在視窗正中央，所以「量一次」與逐幀量的結果相同。
 // resize 時清掉重量（見 onResize）。
 let anchor: { cx: number; cy: number; w: number; h: number } | null = null;
+
+// field 自己的框（不含捲軸，見 apply 的 ⚠️）。-1 ＝ 待重量；與 anchor 共用同一組
+// 失效點（onResize）。
+let fieldW = -1;
+let fieldH = -1;
 
 // vw / vh 由呼叫端傳入（＝ field 自己的框，見 apply 的說明），fallback 才會與開窗同一座標系。
 function readAnchor(vw: number, vh: number) {
@@ -86,13 +95,27 @@ function apply(p: number) {
   //      在交棒給 SymbolScene 的那一刻透出 hero 白底（進到 symbol 段後底下換黑底才隱形，
   //      所以只有接縫那一瞬看得見）。
   //    field 的原點與 core rect 都是視窗左上（捲軸在右邊），故 cx / cy 可直接混用不必換算。
-  const vw = field.clientWidth;
-  const vh = field.clientHeight;
+  //
+  // 量測結果**快取**（同下面那行的 anchor，理由一樣）：apply() 是逐幀被 scrub 打到的，
+  // 而 clientWidth/clientHeight 是強制 layout 的讀取，緊接著這裡又要寫 clipPath /
+  // backgroundColor / opacity —— 讀寫交錯正是 layout thrash。field 是 fixed inset: 0，
+  // 這兩個值只會在視窗尺寸變動時變，而那條路徑已經有 onResize 在清 anchor 了。
+  if (fieldW < 0) {
+    fieldW = field.clientWidth;
+    fieldH = field.clientHeight;
+  }
+  const vw = fieldW;
+  const vh = fieldH;
 
   const { cx, cy, w: w0, h: h0 } = readAnchor(vw, vh);
 
   const pY = clamp01(p / growY); // 拉長段進度
   const pX = clamp01((p - growY) / (1 - growY)); // 展開段進度
+
+  // 窗的三條邊，同時餵給自己的 clip-path 與 header 的反白（見檔尾 syncHeaderBand）。
+  let bandTop = 0;
+  let bandLeft = 0;
+  let bandRight = vw;
 
   if (pX >= 1) {
     // 展開完成 → 直接寫死滿版，不靠 cx/cy 剛好等於中心。
@@ -109,7 +132,22 @@ function apply(p: number) {
     const left = Math.max(0, cx - w / 2);
     const right = Math.max(0, vw - (cx + w / 2));
     field.style.clipPath = `inset(${top.toFixed(1)}px ${right.toFixed(1)}px ${bottom.toFixed(1)}px ${left.toFixed(1)}px)`;
+
+    bandTop = top;
+    bandLeft = left;
+    bandRight = vw - right;
   }
+
+  // header 的反白：與色場**同一組座標**（兩者都是 fixed、都以不含捲軸的框為基準，
+  // 故可直接交出去，見 useHeaderBand 的座標系說明）。
+  // 條件與本層的 active 一致：p<=0（還沒進轉場）或 done（已交棒給 ForumCore）都要收掉，
+  // 否則窗已經不在畫面上、header 卻還留著一條反白。
+  // 「窗還沒蓋滿 header 那一列就不反白」那條閘門由 syncHeaderBand 依 top 判斷。
+  syncHeaderBand(
+    props.done || p <= 0
+      ? null
+      : { theme: 'dark', left: bandLeft, right: bandRight, top: bandTop },
+  );
 
   // 橘 → 深色：在拉長段的前 colorSpan 內完成（t2 的長條已是深色）。
   const t = clamp01(pY / colorSpan);
@@ -121,15 +159,26 @@ function apply(p: number) {
   }
 }
 
-watch(() => props.progress, apply, { immediate: true });
+// done 也要重跑一次：交棒是「progress 不動、done 翻面」的情形（symbol 序列跑完才撤場），
+// 只看 progress 的話 header 那條反白會留在畫面上到下一次捲動為止。
+watch([() => props.progress, () => props.done], () => apply(props.progress), {
+  immediate: true,
+});
 
 // 視窗尺寸變動時重新量錨點並以當前進度重算（pin 期間轉向 / 拖拉視窗）。
 function onResize() {
   anchor = null;
+  fieldW = -1; // field 的框也跟著重量（見 apply）
+  fieldH = -1;
   apply(props.progress);
 }
-onMounted(() => window.addEventListener('resize', onResize));
-onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+onMounted(() => window.addEventListener('resize', onResize, { passive: true }));
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize);
+  // ⚠️ bandTheme 是 useState，**跨 client-side 導航存活**（同 useAnchorClaim 的老問題）：
+  //    在轉場途中點 logo 進子頁的話，本層卸載但反白層會永遠留在那裡。
+  syncHeaderBand(null);
+});
 </script>
 
 <template>

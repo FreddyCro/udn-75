@@ -2,22 +2,37 @@ import { describe, expect, it } from 'vitest';
 import {
   BLESSING_OUT_FADE,
   BLESSING_OUT_VH,
+  outroWhiteAt,
   partnersFadeAt,
   SEQUENCE,
   TRACK_VH,
 } from '../app/utils/orange-core-config';
 
-// 這支守的是曲線的**形狀**，不是 0.65 這個值 —— 值本來就該能自由微調（節奏要在
-// 真實畫面上調），但形狀壞了會出現說不清楚的破圖：淡出沒收乾淨就開始收窄、
-// 或呼吸拍被吃掉。
+// 這支守的是曲線的**形狀**，不是常數的具體值 —— 值本來就該能自由微調（節奏要在
+// 真實畫面上調），但形狀壞了會出現說不清楚的破圖：淡出沒收乾淨就開始收窄。
+//
+// 2026-08-18（融合拍改版）：窗口尾端不再是一段靜止的呼吸拍——veil 與 morph 現在
+// 全程都在收窄（見 useMediaIntroMotion 的拍 0）。故本支要守的性質是「淡出必須
+// 早於窗口結束」：BLESSING_OUT_FADE ≤ 1 才成立，超過就會讓夥伴清單殘留到收窄
+// 已經開始之後（見該常數的 ⚠️）。
 describe('partnersFadeAt', () => {
   it('窗口起點全不透明', () => {
     expect(partnersFadeAt(0)).toBe(1);
   });
 
-  it('淡出門檻處已全透明，其後維持 0（純橘呼吸拍）', () => {
+  // BLESSING_OUT_FADE 現在 < 1，兩個斷言落在曲線上不同的兩點：第一個守住淡出
+  // 門檻處已全透明，第二個另外守住「其後（含窗口結束）仍維持 0」——這正是「淡出
+  // 必須早於窗口結束」那條性質。刻意兩個都留，旋鈕來回調都不必改測試。
+  it('淡出門檻處已全透明，窗口結束時仍是 0', () => {
     expect(partnersFadeAt(BLESSING_OUT_FADE)).toBe(0);
     expect(partnersFadeAt(1)).toBe(0);
+  });
+
+  // FADE > 1 會讓淡出在接縫離開視窗頂之後才收完 —— 那時 media 已在收窄，
+  // 夥伴清單會殘留在橘塊上。這是那個常數唯一的硬上限。
+  it('淡出不得晚於窗口結束', () => {
+    expect(BLESSING_OUT_FADE).toBeGreaterThan(0);
+    expect(BLESSING_OUT_FADE).toBeLessThanOrEqual(1);
   });
 
   // 取樣點一律用 BLESSING_OUT_FADE 的比例，不寫絕對值 —— 那個常數是要在真實畫面上
@@ -47,6 +62,30 @@ describe('partnersFadeAt', () => {
     const tail = d(F - step, F);
     expect(head).toBeLessThan(middle);
     expect(tail).toBeLessThan(middle);
+  });
+});
+
+// veil 與底色切白必須同生共死。任一單獨生效都是破圖：
+//   只有白底 ＝ blessing 變成白底白字（reduce-motion / 無 JS / #media 深連結）
+//   只有 veil ＝ 收窄後兩側露出的是橘、不是白，接縫變成一條可見的橫線
+// 閘門是「media 的 timeline 真的建起來了嗎」（mediaMotionArmed）。
+describe('outroWhiteAt', () => {
+  it('timeline 沒建起來時恆為 0（三條降級路徑）', () => {
+    expect(outroWhiteAt(false, 0)).toBe(0);
+    expect(outroWhiteAt(false, 0.5)).toBe(0);
+    expect(outroWhiteAt(false, 1)).toBe(0);
+  });
+
+  it('窗口還沒開始時是 0', () => {
+    expect(outroWhiteAt(true, 0)).toBe(0);
+  });
+
+  // 硬切、不補間：切換那一刻 veil 剛好是滿版（fromTo 的起點），完全遮住底色。
+  // 補間會多出一條要與 veil 對齊的曲線，那是白花的風險。
+  it('窗口一開始就是 1，全程維持', () => {
+    expect(outroWhiteAt(true, 0.001)).toBe(1);
+    expect(outroWhiteAt(true, 0.5)).toBe(1);
+    expect(outroWhiteAt(true, 1)).toBe(1);
   });
 });
 
