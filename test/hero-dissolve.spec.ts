@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   DISSOLVE_ENTER,
+  DISSOLVE_FADE_FROM,
   DISSOLVE_LEAVE,
+  OUTRO_HOLD_SCALE,
   dissolveAlpha,
   dissolveState,
+  outroHoldScale,
 } from '../app/utils/hero-dissolve';
 
 describe('dissolveAlpha', () => {
@@ -14,15 +17,45 @@ describe('dissolveAlpha', () => {
     expect(dissolveAlpha(1)).toBe(0);
   });
 
-  it('區間內線性', () => {
-    expect(dissolveAlpha(0.25)).toBeCloseTo(0.75, 5);
-    expect(dissolveAlpha(0.5)).toBeCloseTo(0.5, 5);
+  it('FADE_FROM 之前全程維持全實 —— 疊影只准出現在尾段', () => {
+    // 原本是全程線性（1 − x），整段行程都有半透明影片疊在引言上，那是設計要拿掉的。
+    expect(dissolveAlpha(0.25)).toBe(1);
+    expect(dissolveAlpha(0.5)).toBe(1);
+    expect(dissolveAlpha(DISSOLVE_FADE_FROM)).toBe(1);
+  });
+
+  it('FADE_FROM 之後線性收到 0', () => {
+    const mid = DISSOLVE_FADE_FROM + (1 - DISSOLVE_FADE_FROM) / 2;
+    expect(dissolveAlpha(mid)).toBeCloseTo(0.5, 5);
   });
 
   it('區間外要夾住，不吐出界的值', () => {
     // ScrollTrigger 在 refresh 前後偶爾會給出略超界的 progress。
     expect(dissolveAlpha(-0.3)).toBe(1);
     expect(dissolveAlpha(1.4)).toBe(0);
+  });
+});
+
+describe('outroHoldScale', () => {
+  it('端點：不捲時不縮放、捲完時吃滿', () => {
+    expect(outroHoldScale(0)).toBe(1);
+    expect(outroHoldScale(1)).toBeCloseTo(1 + OUTRO_HOLD_SCALE, 10);
+  });
+
+  it('區間內單調遞增 —— 這就是「捲動有反應」的全部來源', () => {
+    // 退場那段行程裡畫面上除了影片沒有東西可以動（引言還在視窗外），
+    // 沒有這條連動，捲與不捲畫面一模一樣。
+    let prev = outroHoldScale(0);
+    for (let p = 0.05; p <= 1; p += 0.05) {
+      const now = outroHoldScale(p);
+      expect(now).toBeGreaterThan(prev);
+      prev = now;
+    }
+  });
+
+  it('區間外要夾住', () => {
+    expect(outroHoldScale(-0.5)).toBe(1);
+    expect(outroHoldScale(2)).toBeCloseTo(1 + OUTRO_HOLD_SCALE, 10);
   });
 });
 

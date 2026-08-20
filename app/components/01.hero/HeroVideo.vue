@@ -20,7 +20,9 @@ import {
 import {
   DISSOLVE_ENTER,
   DISSOLVE_LEAVE,
+  dissolveAlpha,
   dissolveState,
+  outroHoldScale,
 } from '@/utils/hero-dissolve';
 // ── PoC：退場改由「sticky ＋ 揭露雙條件」驅動（2026-08-20 起）─────────
 // 取代原本的「stage opacity ＝ 1 − p」溶解。設計師的三條需求是：outro 走完才接 intro、
@@ -379,13 +381,33 @@ function applyDissolve(p: number) {
   //    （見 dissolveState 的 outroSpent 規則），outroProgress 會是負的、永遠等不到 1，
   //    再往下捲就永遠揭露不了引言。已經看過退場的人不必再等它一次。
   const videoDone = outroSpent.value || !v || outroProgress(v) >= 1;
-  // opacity 這行必須不論 scrubArmed／openingSkipped 都跑：SKIP／載入失敗當下 scrub
+  const revealed = openingSkipped.value || (p >= 1 && videoDone);
+
+  // ── 淡出進度＝「捲動與影片兩者取小」──────────────────────────────────
+  // 只綁捲動：捲很快的人會在退場還在演的時候就把引言露出來（違反「outro 走完才接」）。
+  // 只綁影片：失去捲動連動，畫面又變成跟捲動無關。
+  // 取小則兩者都成立 —— 慢慢捲的人由捲動主導（尾段隨手指淡），捲很快的人由影片主導
+  // （停在終點等它演完，那段時間淡出仍在進行、不會突然一刀切）。
+  const pVideo = v && !outroSpent.value ? outroProgress(v) : p;
+  const alpha = openingSkipped.value
+    ? 0
+    : dissolveAlpha(Math.min(p, Math.max(0, pVideo)));
+
+  // opacity 這幾行必須不論 scrubArmed／openingSkipped 都跑：SKIP／載入失敗當下 scrub
   // 可能還沒 arm（或已被跳過鎖死），stage 若少了這行會維持初始的完全不透明，
   // 影片永遠蓋在畫面上不走。
-  const revealed = openingSkipped.value || (p >= 1 && videoDone);
-  // 顯隱交給一個 class，淡出長度與 visibility 的時序都在 SCSS（見 .sec1__hero-stage）。
-  // 每幀重複 toggle 同一個值對 DOM 是 no-op，不會反覆重啟 transition。
-  if (stage) stage.classList.toggle('is-revealed', revealed);
+  if (stage) {
+    stage.style.opacity = String(alpha);
+    // 滿版渲染的層 opacity: 0 只是「畫成透明」，瀏覽器仍每幀合成它 ——
+    // 額外設 visibility: hidden 才真的停止合成（見設計文件第一節的表）。
+    // alpha 是明確夾邊過的（見 dissolveAlpha），故 === 0 精確比較。
+    stage.style.visibility = alpha === 0 ? 'hidden' : 'visible';
+  }
+  // 捲動連動的緩慢縮放：退場期間畫面上唯一會隨捲動變化的東西（理由見 outroHoldScale）。
+  // 寫在 <video> 上而非 stage：stage 的 opacity 正由上面逐幀寫，兩個屬性分層互不干擾。
+  if (videoEl.value) {
+    videoEl.value.style.transform = `scale(${outroHoldScale(p).toFixed(4)})`;
+  }
   if (!scrubArmed.value || openingSkipped.value) return;
   // 捲回頂端 ＝ 重新武裝：下一趟下滑要再放一次完整的退場段。
   // （設起的點在 setState('gone')，見 useHeroVideo 的 outroSpent。）
@@ -643,40 +665,15 @@ $dissolve-extra: 200px;
   pointer-events: none;
 }
 
-// 揭露引言那一刻的淡出長度。
-// ⚠️ 這個值同時決定 orange core 交棒看不看得出接縫：core 的進場（HERO_CORE_DROP_IN，
-//    0.9s）是從影片裡那顆 core 的座標滑進來的，若舞台瞬間消失，core 會從一個「已經
-//    沒有東西」的位置滑出來 —— 兩者需要重疊一段。調這個值要連著那邊一起看。
-$reveal-fade: 0.25s;
-
 // 影片舞台：只渲染一個視窗高（vh(1)），錨在 .sec1__hero 的頂端（inset: 0 0 auto 0）。
 // 舞台被 pin 釘在螢幕上緣，.sec1__hero 剩下的高度就是引言的起點（見上方高度推導）。
 .sec1__hero-stage {
   position: absolute;
   inset: 0 0 auto 0;
   height: vh(1);
-  // ── 揭露：0.25s 淡出，由 .is-revealed 這個 class 觸發 ────────────────
-  // 改用 class ＋ CSS transition 而非逐幀寫 style.opacity：這個 opacity 現在只在
-  // **一個離散時刻**改變（影片播完且捲動走完），不再是 scrub 每幀寫入 ——
-  // 而「每幀寫入會與 transition 打架」正是原本 1 − p 方案不能用 transition 的唯一理由。
-  //
-  // visibility 要分開處理：它無法被內插，但滿版影片層在 opacity: 0 之後瀏覽器仍會每幀
-  // 合成一層看不見的滿版影片（見設計文件第一節的表），必須真的隱藏。方向不對稱 ——
-  // 隱藏要**等淡完**、顯示要**立刻**（回捲時影片得馬上回來）。CSS 取的是**目標狀態**
-  // 的 transition，故兩個方向各寫在自己的規則裡。
-  opacity: 1;
-  visibility: visible;
-  transition:
-    opacity $reveal-fade ease,
-    visibility 0s;
-
-  &.is-revealed {
-    opacity: 0;
-    visibility: hidden;
-    transition:
-      opacity $reveal-fade ease,
-      visibility 0s linear $reveal-fade;
-  }
+  // ⚠️ 顯隱由 script 逐幀寫 style.opacity / style.visibility（見 applyDissolve），
+  //    這裡**不可以**加 transition —— 逐幀寫入會與 transition 打架（每一幀都在重啟一段
+  //    內插，結果是延遲又不平順）。淡出的形狀由 dissolveAlpha 的曲線決定，不由 CSS 決定。
   // cover 溢出的裁切從 .sec1__hero 移到這裡。
   overflow: hidden;
   // 4 ＞ .sec1__scene 的 3（見 Hero.scss 的層序說明）：引言頂端就是被這一層蓋住的。
@@ -815,10 +812,14 @@ $reveal-fade: 0.25s;
 
 @media (prefers-reduced-motion: reduce) {
   .sec1__hero-video,
-  .sec1__hero-skip,
-  .sec1__hero-stage,
-  .sec1__hero-stage.is-revealed {
-    transition: none; // 一律改為直接出現 / 消失（時間點不變）
+  .sec1__hero-skip {
+    transition: none; // skip 改為直接出現 / 消失（時間點不變）
+  }
+
+  // 捲動連動的縮放屬於「動態」：關掉動態偏好時不做。script 仍會寫 transform，
+  // 這條用 !important 蓋掉 inline style —— 逐幀寫入的 inline 值沒有別的辦法擋。
+  .sec1__hero-video-el {
+    transform: none !important;
   }
 }
 </style>

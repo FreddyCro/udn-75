@@ -13,14 +13,45 @@ export const DISSOLVE_ENTER = 0.02;
 /** 出遲滯：p 落回這裡之下才算「倒帶回 loop」。刻意低於 ENTER，中間是遲滯帶。 */
 export const DISSOLVE_LEAVE = 0.005;
 
-/** 溶解進度 p → stage 的 alpha（1 ＝ 影片全實、0 ＝ 全溶）。
+/** 開始淡出的門檻：進度低於這裡舞台維持全實。
+ *
+ *  0.85 ＝ 最後 15% 的行程才淡。原本是全程線性（`1 − p`），問題是整段退場距離裡都有
+ *  一層半透明影片疊在引言上 —— 那個疊影是設計上明確要拿掉的東西。收在尾段之後，
+ *  疊影只出現在最後約 190px（1280px 行程），其餘全實。 */
+export const DISSOLVE_FADE_FROM = 0.85;
+
+/** 退場進度 x → stage 的 alpha（1 ＝ 影片全實、0 ＝ 已收掉）。
+ *
+ *  ⚠️ 餵進來的 x **不是**捲動進度，而是「捲動與影片兩者取小」（見 HeroVideo 的
+ *     applyDissolve）。只綁捲動的話，捲很快的人會在退場還在演的時候就把引言露出來，
+ *     違反設計師的「outro 走完才接 intro」；只綁影片的話則失去捲動連動。
  *
  *  ⚠️ 兩個端點必須**精確**是 1 與 0：0 那端不精確，影片會留一層殘影蓋在引言上；
  *     1 那端不精確，開場第一幀就會看到影片半透明。故明確夾邊，不靠內插湊。 */
-export function dissolveAlpha(p: number): number {
-  if (p <= 0) return 1;
-  if (p >= 1) return 0;
-  return 1 - p;
+export function dissolveAlpha(x: number): number {
+  if (x <= DISSOLVE_FADE_FROM) return 1;
+  if (x >= 1) return 0;
+  return (1 - x) / (1 - DISSOLVE_FADE_FROM);
+}
+
+/** 退場期間影片的「被按住」縮放幅度（最大加成比例）。 */
+export const OUTRO_HOLD_SCALE = 0.06;
+
+/** 捲動進度 p → 影片的縮放倍率（1 → 1 + OUTRO_HOLD_SCALE）。
+ *
+ *  這是退場期間**唯一**跟捲動連動的視覺。為什麼需要它：退場那 1280px 的行程裡，
+ *  視窗整個落在 hero 自己的佔位框內 —— 引言上緣還在 2045，要到 scrollY > 1145 才進
+ *  視窗。也就是畫面上除了影片沒有任何東西可以動，於是「影片被釘住」這件事沒有對比
+ *  可以被感知，捲與不捲畫面一模一樣（2026-08-21 逐點實測）。
+ *
+ *  ⚠️ 為什麼是縮放而不是位移：位移由 JS 逐幀寫入時會慢一幀，而慢一幀的**位移**讀起來
+ *     是反向運動（那正是 pin 版本的抖動來源，實測位移量等於當幀捲動距離、真實滾輪
+ *     一格 100–140px）。縮放慢一幀只是 0.5% 的尺寸差，不構成同向運動，故安全。
+ *  ⚠️ 縮放不會露出邊緣（放大只會裁掉更多），這是它比視差位移安全的第二個理由 ——
+ *     位移必須先放大留出餘裕，那會改變設計核准過的裁切構圖。 */
+export function outroHoldScale(p: number): number {
+  const clamped = p <= 0 ? 0 : p >= 1 ? 1 : p;
+  return 1 + OUTRO_HOLD_SCALE * clamped;
 }
 
 /** 溶解進度 p ＋ 目前狀態 → 下一個狀態。
