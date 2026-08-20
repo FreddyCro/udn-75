@@ -2,9 +2,11 @@
 /**
  * SubpageAnchorBar — <1280 的子頁錨點列（固定在視窗下緣，捲過 hero 才滑入）；
  * pc 改用右側 rail（SubpageAnchor）。
- * 顯隱由 Subpage.vue 以 hero 的 ScrollTrigger 決定，本元件只負責呈現。
+ * 由 layouts/subpage.vue 渲染一次；顯隱旗子由 Subpage.vue 的舞台 ScrollTrigger 寫進
+ * useSubpageAnchor，本元件只負責呈現與兩種點擊語意（route／scroll，見下方 mode）。
  */
 import str from '~/locales/common.json';
+import { anchorSlug } from '~/utils/subpage-stream';
 
 defineProps<{
   /** true 時滑入；預設隱藏在視窗下緣之外 */
@@ -16,18 +18,45 @@ const route = useRoute();
 // 藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
 const assetUrl = useAssetUrl();
 
+// route / scroll 兩種模式的差異全收在這三個小函式裡（見 useSubpageAnchor）
+const { mode, activeSlug, jumpToSlug } = useSubpageAnchor();
+
+/** route 模式看網址；scroll 模式（連續閱讀頁）看 spy 判出的 slug */
+const isActive = (url: string) =>
+  mode.value === 'scroll' ? activeSlug.value === anchorSlug(url) : route.path === url;
+
+/** scroll 模式的 href 指向同頁 hash —— 長按複製、開新視窗都還是有意義的網址 */
+const linkTo = (url: string) => (mode.value === 'scroll' ? `#${anchorSlug(url)}` : url);
+
+function onClick(e: MouseEvent, url: string) {
+  if (mode.value !== 'scroll') return; // route 模式：交給 NuxtLink 換頁
+  e.preventDefault();
+  const slug = anchorSlug(url);
+  jumpToSlug(slug);
+  // 網址跟著換（分享得出去），但用 replace 不堆歷史：六篇之間點來點去不該讓上一頁鍵
+  // 變成「回上一節」的迷宮 —— 上一頁該回到來源（首頁）。
+  history.replaceState(history.state, '', `#${slug}`);
+}
+
 const listRef = ref<HTMLElement | null>(null);
 
 // 六項總寬（6×70 + 5×22 = 530）超出 mob 視窗 → 列可左右滑動；
-// 載入時把當前頁的項目捲到列中央（clamp 交給瀏覽器）
-onMounted(() => {
+// 把 active 的項目捲到列中央（clamp 交給瀏覽器）
+function centerActive() {
   const list = listRef.value;
   const active = list?.querySelector<HTMLElement>('.subpage-anchor-bar__link--active');
   if (!list || !active) return;
   const item = active.parentElement ?? active;
   const delta = item.getBoundingClientRect().left - list.getBoundingClientRect().left;
   list.scrollLeft += delta - (list.clientWidth - item.clientWidth) / 2;
-});
+}
+
+onMounted(centerActive);
+
+// scroll 模式：捲過一篇就把該項帶到中央。
+// 必須另外接這條 watch，不能只靠 onMounted —— active 是 spy 判出來的，掛載那一刻
+// activeSlug 還是空字串，querySelector 找不到 --active 就直接 return 了。
+watch(activeSlug, () => nextTick(centerActive));
 </script>
 
 <template>
@@ -40,8 +69,9 @@ onMounted(() => {
       <li v-for="a in subpageAnchors" :key="a.url" class="subpage-anchor-bar__item">
         <NuxtLink
           class="subpage-anchor-bar__link"
-          :class="{ 'subpage-anchor-bar__link--active': route.path === a.url }"
-          :to="a.url"
+          :class="{ 'subpage-anchor-bar__link--active': isActive(a.url) }"
+          :to="linkTo(a.url)"
+          @click="onClick($event, a.url)"
         >
           <span
             class="subpage-anchor-bar__title"

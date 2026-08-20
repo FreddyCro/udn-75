@@ -54,6 +54,10 @@ export default defineNuxtConfig({
     prerender: {
       crawlLinks: true,
       failOnError: false,
+      // ⚠️ /subpage 必須明列。它是手機版的連續閱讀頁，唯一的入口是 MediaList 在 <768
+      //    才產生的連結（見該檔的 linkFor）—— crawlLinks 是靜態掃 HTML，掃不到那條
+      //    client 端才成立的網址，漏了就是部署後 404，而且沒有任何建置警告。
+      routes: ['/subpage'],
     },
   },
 

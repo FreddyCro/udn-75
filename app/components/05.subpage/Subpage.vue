@@ -81,8 +81,23 @@ const introInnerRef = ref<HTMLElement | null>(null);
 const mediaRef = ref<HTMLElement | null>(null);
 
 /** <1280 底部錨點列是否出現：捲過 hero/引言舞台後才滑入。
- *  ⚠️ pc 右側 rail **不吃這面旗子**（全程顯示，理由見 template 的註解），別再接回去。 */
-const anchorVisible = ref(false);
+ *  ⚠️ pc 右側 rail **不吃這面旗子**（全程顯示，理由見 useSubpageAnchor），別再接回去。
+ *  狀態放在 useSubpageAnchor：錨點元件由 layouts/subpage.vue 渲染一次，不在本元件子樹內。 */
+const { visible: anchorVisible, mode: anchorMode } = useSubpageAnchor();
+
+/**
+ * 寫入錨點列的顯隱旗子。
+ *
+ * route 模式（獨立子頁）：舞台演完滑入、回捲進舞台收回 —— 維持原本行為。
+ * scroll 模式（連續閱讀頁）：**只進不退**。六篇各有自己的舞台，照 route 模式的規則走的話
+ *   捲進第二篇的 hero 舞台時錨點列會縮回視窗外 —— 而那時使用者早就在連續閱讀、正需要導覽。
+ *   閂鎖寫在這裡而不是給各篇一個 prop：六個 article 元件就不必為此轉發一個 prop，
+ *   規則也只有一份。
+ */
+function setAnchorVisible(v: boolean) {
+  if (!v && anchorMode.value === 'scroll') return;
+  anchorVisible.value = v;
+}
 
 /**
  * 舞台是否啟用 pin 模式（hero／引言／媒體疊在同一屏）。
@@ -159,8 +174,8 @@ onMounted(async () => {
         ScrollTrigger.create({
           trigger: stageRef.value,
           start: 'bottom top',
-          onEnter: () => (anchorVisible.value = true),
-          onLeaveBack: () => (anchorVisible.value = false),
+          onEnter: () => setAnchorVisible(true),
+          onLeaveBack: () => setAnchorVisible(false),
         }),
       );
     }
@@ -186,8 +201,38 @@ onMounted(async () => {
   // 媒體只淡不位移（見 makeFade 的 shift）
   const mediaFade = makeFade(mediaTarget, { shift: false });
 
-  // 載入即播 hero 進場；後面兩塊先藏著等進度線
-  if (heroTargets.length) tweens.push(gsap.from(heroTargets, REVEAL));
+  // hero 進場：**自己的舞台進視窗才播，只播一次**；後面兩塊先藏著等進度線。
+  //
+  // ⚠️ 為什麼不是 onMounted 直接播（原本的寫法）：連續閱讀頁（pages/subpage.vue）把六篇
+  //    串在同一份文件裡，六個 hero 會在載入那一刻同時演完 —— 使用者捲到第三篇時只看到
+  //    靜態畫面，進場動畫早就演給沒人看的畫面外區域了。
+  //
+  // 改綁舞台位置之後**兩種頁面共用同一條規則**，不必分支：獨立子頁（與連續閱讀頁的第一篇）
+  // 載入時舞台頂端已經在視窗底之上，ScrollTrigger 建立即判定已越過 start 而補觸發 onEnter，
+  // 等價於原本的「載入即播」。
+  //
+  // start 取 'top bottom'（舞台頂端碰到視窗底）而非更晚的線：晚於此的話 hero 會先以完整
+  // 樣貌露臉、再倒回透明重播一次，那是明顯的破格。
+  if (heroTargets.length && stageRef.value) {
+    gsap.set(heroTargets, { autoAlpha: 0, y: REVEAL.y });
+    triggers.push(
+      ScrollTrigger.create({
+        trigger: stageRef.value,
+        start: 'top bottom',
+        once: true,
+        onEnter: () =>
+          tweens.push(
+            gsap.to(heroTargets, {
+              autoAlpha: 1,
+              y: 0,
+              duration: REVEAL.duration,
+              ease: REVEAL.ease,
+              overwrite: 'auto',
+            }),
+          ),
+      }),
+    );
+  }
   gsap.set(introTarget, { autoAlpha: 0, y: HIDE_Y.before });
   // 沒有第三拍時 mediaTarget 是空陣列，gsap 會警告 target not found。
   // 這裡同樣不給 y —— 起手就位移的話第一次淡入會從偏移處滑回來。
@@ -284,7 +329,7 @@ onMounted(async () => {
         },
         // pin 結束＝舞台演完 → 錨點出現（pc rail 淡入、<1280 底部列滑入）；回捲進 pin 段則收回
         onLeave: () => {
-          anchorVisible.value = true;
+          setAnchorVisible(true);
           // 退場的收尾保險：scrub 要 progress 剛好等於 1 才會把 alpha 帶到 0，而 onUpdate
           // 不保證收得到那一格。漏收的話照片會留在畫面上，舞台的 z-index 1100 還會壓著
           // 內文擋掉點擊 —— 而且是靜默的。onLeave 一定會在越過 end 時觸發，補一刀。
@@ -294,7 +339,7 @@ onMounted(async () => {
             mediaActive.value = false;
           }
         },
-        onEnterBack: () => (anchorVisible.value = false),
+        onEnterBack: () => setAnchorVisible(false),
       }),
     );
 
@@ -382,15 +427,10 @@ onBeforeUnmount(() => {
       class="subpage__content"
       :class="{ 'subpage__content--under-stage': stagePinned && !!introMedia }"
     >
-      <!-- 錨點導覽（皆 position: fixed，不占版面）。
-           pc 右側 rail：**全程顯示**，不跟著舞台藏起來。hero／引言兩拍都是透明層
-           （只有文字與 KV 圖，見 .subpage__hero／.subpage__intro 都沒有背景），
-           擋不到 rail；真正會蓋住它的只有滿屏引言媒體那一拍，而那是靠疊層做掉的
-           （舞台 --media 1100 ＞ rail 900，見 SubpageAnchor），不需要再切一次顯隱。
-           <1280 的底部錨點列維持原本「舞台演完才滑入」：它橫在視窗下緣、是實心底，
-           在 hero 那一屏滑進來會壓到設計稿的首屏構圖，與 rail 不是同一回事。 -->
-      <SubpageAnchor visible />
-      <SubpageAnchorBar :visible="anchorVisible" />
+      <!-- ⚠️ 錨點導覽（SubpageAnchor rail / SubpageAnchorBar 底部列）**不在這裡渲染**，
+           改由 layouts/subpage.vue 渲染一次：連續閱讀頁（pages/subpage.vue）把六篇串在
+           同一份文件裡，留在這裡就會疊出六份底部錨點列。顯隱旗子改走 useSubpageAnchor，
+           由本元件的舞台進度線寫入（見上方 setAnchorVisible 與 drivesAnchor）。 -->
 
       <!-- 內文：各頁以預設 slot 撰寫，間距在頁面上逐塊標 Tailwind mt-*/mb-* -->
       <div class="subpage__body">
