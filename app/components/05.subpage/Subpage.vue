@@ -259,6 +259,73 @@ onMounted(async () => {
   // ⚠️ 首頁 → 子頁換的是 layout，Nuxt 的 scrollBehavior 會等 layout 轉場結束才回捲到頂，
   //    同步狀態（不播過場），跳回 hero 則重播進場 → 只留「hero 淡入」。
   let lastScroll: number | null = null; // null = 尚未收到 update，初次一律視為跳捲
+
+  /**
+   * 依舞台進度套用三塊（hero／引言／媒體）的狀態。
+   *
+   * - instant：直接 set 到位，不播 0.4s 過場（跳捲、以及 refresh 後的同步）
+   * - replayHero：回到 hero 那一拍時重播進場動畫（跳捲時才要）
+   * - force：無視「狀態沒變就不動」的守衛，一律重新套一次。refresh 後同步用 ——
+   *   那時三塊的視覺可能與進度脫鉤，比對狀態變數會誤判成「不用動」。
+   */
+  function applyStage(
+    p: number,
+    { instant = false, replayHero = false, force = false } = {},
+  ) {
+    const wantHero = p < lines.heroOut;
+    if (force || wantHero !== heroShown) {
+      heroShown = wantHero;
+      if (!wantHero) heroFade.hide(HIDE_Y.after, instant);
+      else if (replayHero) heroFade.reveal();
+      else heroFade.show(instant);
+    }
+
+    // 沒有第三拍時 introOut 落在 1 之後，永遠進不了 after，行為與加入媒體前相同
+    const wantIntro = blockState(p, lines.introIn, lines.introOut);
+    if (force || wantIntro !== introState) {
+      introState = wantIntro;
+      if (wantIntro === 'shown') introFade.show(instant);
+      else introFade.hide(HIDE_Y[wantIntro], instant);
+    }
+
+    // 退場線給 1：媒體一路演到 pin 結束，中間的淡出由下面的 scrub 負責。
+    const wantMedia = blockState(p, lines.mediaIn, 1);
+    if (force || wantMedia !== mediaState) {
+      mediaState = wantMedia;
+      mediaAlpha = 1; // 離開 shown 就把 scrub 的記錄歸位，下次進來才會重新套
+      if (wantMedia === 'shown') {
+        mediaActive.value = true;
+        mediaFade.show(instant);
+      } else {
+        // 輪播要等淡出播完才停，否則會在淡出途中倒回第一張（被看見）；
+        // 停播即倒回第一張，回捲重看時才會從頭演（見 SubpageIntroMedia 的 active）。
+        // 但淡出播完時得重新確認「現在確實還不用演」—— 回捲落在淡出最後一格 frame 時
+        // 這個 onComplete 會晚於 show 才跑，不擋掉就會把剛打開的輪播又關掉且不會恢復
+        // （見 deferredStopStillApplies）
+        mediaFade.hide(HIDE_Y[wantMedia], instant, () => {
+          if (deferredStopStillApplies(mediaState)) mediaActive.value = false;
+        });
+      }
+    }
+
+    // 媒體退場：**綁 progress 的 scrub**，不是 0.4s 時間動畫。內文墊在它後面且
+    // 隨捲動 1:1 走，用時間動畫的話照片消失時內文已經滑掉「速度 × 0.4s」
+    // （實測 800px/s 滑 221px、1600px/s 滑 573px）。理由詳見 mediaFadeAlpha。
+    //
+    // 只在值真的變了才寫：淡入那段 a 恆為 1、mediaAlpha 也是 1 → 不寫，
+    // 才不會用 gsap.set 把 show() 的 0.4s 淡入 tween 蓋掉變成瞬間出現。
+    if (mediaState === 'shown' && mediaTarget.length) {
+      const a = mediaFadeAlpha(p, lines.mediaFadeFrom);
+      if (a !== mediaAlpha) {
+        mediaAlpha = a;
+        gsap.set(mediaTarget, { autoAlpha: a, overwrite: 'auto' });
+        // 淡光了才停輪播（停播＝倒回第一張，太早停會在還看得見時被看到）；
+        // 回捲時 a 會沿原路升回來，同一行就把它復播。
+        mediaActive.value = a > 0;
+      }
+    }
+  }
+
   if (stageRef.value) {
     triggers.push(
       ScrollTrigger.create({
@@ -272,60 +339,26 @@ onMounted(async () => {
           const jumped =
             lastScroll === null || Math.abs(sc - lastScroll) > window.innerHeight;
           lastScroll = sc;
-          const p = self.progress;
-          if (heroShown && p >= lines.heroOut) {
-            heroShown = false;
-            heroFade.hide(HIDE_Y.after, jumped);
-          } else if (!heroShown && p < lines.heroOut) {
-            heroShown = true;
-            if (jumped) heroFade.reveal();
-            else heroFade.show();
-          }
-
-          // 沒有第三拍時 introOut 落在 1 之後，永遠進不了 after，行為與加入媒體前相同
-          const wantIntro = blockState(p, lines.introIn, lines.introOut);
-          if (wantIntro !== introState) {
-            introState = wantIntro;
-            if (wantIntro === 'shown') introFade.show(jumped);
-            else introFade.hide(HIDE_Y[wantIntro], jumped);
-          }
-
-          // 退場線給 1：媒體一路演到 pin 結束，中間的淡出由下面的 scrub 負責。
-          const wantMedia = blockState(p, lines.mediaIn, 1);
-          if (wantMedia !== mediaState) {
-            mediaState = wantMedia;
-            mediaAlpha = 1; // 離開 shown 就把 scrub 的記錄歸位，下次進來才會重新套
-            if (wantMedia === 'shown') {
-              mediaActive.value = true;
-              mediaFade.show(jumped);
-            } else {
-              // 輪播要等淡出播完才停，否則會在淡出途中倒回第一張（被看見）；
-              // 停播即倒回第一張，回捲重看時才會從頭演（見 SubpageIntroMedia 的 active）。
-              // 但淡出播完時得重新確認「現在確實還不用演」—— 回捲落在淡出最後一格 frame 時
-              // 這個 onComplete 會晚於 show 才跑，不擋掉就會把剛打開的輪播又關掉且不會恢復
-              // （見 deferredStopStillApplies）
-              mediaFade.hide(HIDE_Y[wantMedia], jumped, () => {
-                if (deferredStopStillApplies(mediaState)) mediaActive.value = false;
-              });
-            }
-          }
-
-          // 媒體退場：**綁 progress 的 scrub**，不是 0.4s 時間動畫。內文墊在它後面且
-          // 隨捲動 1:1 走，用時間動畫的話照片消失時內文已經滑掉「速度 × 0.4s」
-          // （實測 800px/s 滑 221px、1600px/s 滑 573px）。理由詳見 mediaFadeAlpha。
-          //
-          // 只在值真的變了才寫：淡入那段 a 恆為 1、mediaAlpha 也是 1 → 不寫，
-          // 才不會用 gsap.set 把 show() 的 0.4s 淡入 tween 蓋掉變成瞬間出現。
-          if (mediaState === 'shown' && mediaTarget.length) {
-            const a = mediaFadeAlpha(p, lines.mediaFadeFrom);
-            if (a !== mediaAlpha) {
-              mediaAlpha = a;
-              gsap.set(mediaTarget, { autoAlpha: a, overwrite: 'auto' });
-              // 淡光了才停輪播（停播＝倒回第一張，太早停會在還看得見時被看到）；
-              // 回捲時 a 會沿原路升回來，同一行就把它復播。
-              mediaActive.value = a > 0;
-            }
-          }
+          applyStage(self.progress, { instant: jumped, replayHero: jumped });
+        },
+        // refresh 之後以新進度重新同步一次，不播過場。
+        //
+        // ⚠️ 為什麼非有不可：**捲動位置沒變時 ScrollTrigger 不會呼叫 onUpdate**，但 refresh
+        //    會重算 start／end ⇒ 同一個 scrollY 對應到的 progress 變了，三塊卻停在舊進度。
+        //    實測（390×844，直接開 /subpage#health）：字體載入完成後版面重排、落點重新對齊，
+        //    幾何完全正確（stage 已 pin 在 top 0、progress 0），畫面上卻是**引言媒體**
+        //    —— hero opacity 0、media opacity 1，停在重排前那個進度的狀態。
+        // ⚠️ 這不只是連續閱讀頁的問題：獨立子頁在 resize／轉向（會觸發 refresh）時同樣會
+        //    脫鉤，只是沒有落點跳動來提示，更難發現。
+        onRefresh: (self) => {
+          const sc = self.scroll();
+          lastScroll = sc;
+          // ⚠️ 不讀 self.progress：refresh 期間它可能還是重算前的值（pin 的量測與 progress
+          //    的更新不保證在這個 callback 之前完成）。start／end 這時已是新值，故自己算 ——
+          //    這也是「以新版面為準」語意上唯一正確的算法。
+          const span = self.end - self.start;
+          const p = span > 0 ? Math.min(1, Math.max(0, (sc - self.start) / span)) : 0;
+          applyStage(p, { instant: true, force: true });
         },
         // pin 結束＝舞台演完 → 錨點出現（pc rail 淡入、<1280 底部列滑入）；回捲進 pin 段則收回
         onLeave: () => {

@@ -52,15 +52,37 @@ const SLUGS = common.subpageAnchors
     return false;
   });
 
-const route = useRoute();
-const target = streamTargetSlug(route.hash, SLUGS);
-
 // 錨點列切到「頁內捲動 ＋ scroll-spy」語意。**在 setup 就設**（不是 onMounted）：
 // 這樣 prerender 出來的 HTML 裡錨點連結已經是 hash 形式，hydration 不會對不上。
 // 還原由 layouts/subpage.vue 的 onBeforeUnmount 負責（見 useSubpageAnchor 檔頭）。
-const { mode, activeSlug, jumpToSlug } = useSubpageAnchor();
+const { mode, activeSlug, jumpToSlug, slugTop } = useSubpageAnchor();
 mode.value = 'scroll';
-activeSlug.value = target;
+
+/**
+ * 落點 slug：**延後到真的讀到 hash 才決定**，而且只認一次（之後 hash 隨捲動被
+ * replaceState 改掉，不能再當落點）。讀不到就回 null ＝「現在不要介入捲軸」。
+ *
+ * ⚠️ 為什麼不能在 setup 算好（踩過兩次）：
+ *    ① `useRoute().hash` 在 prerender 的 production 頁上是空字串（初始路由是從 prerender
+ *      的路徑還原的，那裡沒有 hash）；dev 模式反而讀得到，所以只在正式環境現形。
+ *    ② 連 `window.location.hash` 在 setup 那一刻也還是空的 —— Nuxt 初始導航會先正規化網址。
+ *    實測 production 的執行序（/subpage?v=3#data）：
+ *      2848 mount target=news   ← 在 setup 算，只能算出 fallback
+ *      3569 fix 27244->0        ← 於是我們親手把瀏覽器已經正確捲到的位置**拉回第一篇**
+ *    比「沒有落地」更糟：是主動破壞原生 hash 捲動的正確結果。
+ *
+ * ⚠️ 回 null 時什麼都不做，剛好也是「使用者開的是沒有 hash 的 /subpage」該有的行為 ——
+ *    那本來就該停在第一篇（＝文件頂端），不需要任何介入。
+ */
+let landingSlug: string | null = null;
+function resolveLanding(): string | null {
+  if (landingSlug) return landingSlug;
+  if (!import.meta.client) return null;
+  const raw = window.location.hash.replace(/^#/, '');
+  if (!raw) return null; // 還沒讀到（或本來就沒有）→ 不介入
+  landingSlug = streamTargetSlug(raw, SLUGS);
+  return landingSlug;
+}
 
 // 本頁是六篇的聚合，內容與 /news…/health 重複 → 不進索引。
 // 六個獨立子頁維持可索引：我們**不做** /news → /subpage 的轉址，所以不會出現
@@ -82,16 +104,60 @@ const markUserMoved = () => {
 };
 const USER_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
 
+/** 落點容許誤差（px）：小於此值就當已就位，不再寫捲軸 */
+const LANDING_EPSILON = 2;
 /**
- * 對齊落點。
- *
- * ⚠️ 一定要先 refreshScrollTriggers()：六篇的 pin 各自在 onMounted 建立，建立順序不保證
- *    由上到下，而 pin 的觸發點依賴上方所有 pin 的佔位都已算進去（理由見 utils/scroll-trigger
- *    的檔頭）。少這一刀，落點會漏算上游幾段佔位而偏高，且不會報錯。
+ * 「按住落點」的硬上限（ms）。
+ * 正常的結束條件是**使用者介入**（userMoved），這個上限只是防呆：萬一某個環境永遠不發
+ * 使用者事件，也不能無限期霸著捲軸。給到 8 秒是因為結束條件不是「等版面穩定」——
+ * 實測有晚到的角色會把捲軸拉回 0（見 holdLanding 的說明），時間上限開太小就會漏接。
  */
-function realign() {
-  refreshScrollTriggers();
-  jumpToSlug(target);
+const LANDING_HOLD_MS = 8000;
+/** rAF 排不到時（分頁不可見）的備援發車時間（ms） */
+const LANDING_KICK_FALLBACK_MS = 250;
+/** 按住落點的確認間隔（ms）；約當一幀，但不依賴 rAF */
+const LANDING_TICK_MS = 16;
+/**
+ * 等 hash 出現的上限（ms）。逾時就當「沒有 hash」處理（＝停在第一篇、不介入捲軸）。
+ * 需要這段等待是因為 hash 在 setup 當下讀不到（見 resolveLanding 的說明）。
+ */
+const LANDING_DECIDE_MS = 1000;
+
+/**
+ * 對齊落點，然後在短窗口內**每幀確認一次**，被別人推開就再拉回來。
+ *
+ * ⚠️ 為什麼不是「對齊一次」就好：初次載入會動到捲軸的不只一個角色 ——
+ *    ① Nuxt router 的 scrollBehavior（初次載入會處理 hash／回頂）
+ *    ② 六篇的 pin 在各自 onMounted 建立後，上方佔位才進到版面
+ *    ③ 字體載入與 --vh 重算（viewport-height plugin）觸發的 ScrollTrigger refresh
+ *    實測 390×844 直接開 /subpage#health：對齊後 health 的 offsetTop 仍從 37984
+ *    漂到 39322（+1338px）。把這些角色的先後順序一條條排出來既脆又難維護
+ *    （而且失敗是靜默的：人就是落在別節），改成「持續確認到穩定」。
+ *    每幀重讀目標 offsetTop → 會跟著漂移走，不是死記一個數字。
+ *
+ * ⚠️ 結束條件是「使用者介入」，**不是**計時器或「版面看起來穩了」。實測用 1.5 秒上限時
+ *    落地是時好時壞的：字體已快取時 fonts.ready 立刻 resolve、校正提早跑完，之後仍有
+ *    晚到的角色把捲軸拉回 0，就再也沒人糾正（scrollY 停在 0，人落在第一篇）。
+ *    只要使用者還沒碰，就持續確認 —— 那才是「他要求的落點」還有效的判準。
+ *
+ * ⚠️ 一定要先 refreshScrollTriggers()：六篇的 pin 建立順序不保證由上到下，而 pin 的觸發點
+ *    依賴上方所有 pin 的佔位都已算進去（理由見 utils/scroll-trigger 的檔頭）。
+ *
+ * 使用者一動就立刻放手（userMoved）—— 那之後再拉就是把人從閱讀位置拽走。
+ */
+function holdLanding(slug: string) {
+  const deadline = performance.now() + LANDING_HOLD_MS;
+  const tick = () => {
+    if (userMoved || performance.now() > deadline) return;
+    const top = slugTop(slug);
+    if (top !== null && Math.abs(window.scrollY - top) > LANDING_EPSILON) {
+      window.scrollTo({ top, behavior: 'auto' });
+    }
+    // 用 setTimeout 而非 rAF：分頁不可見時 rAF 完全不觸發，這個迴圈就停在半路
+    // （同 onMounted 裡發車的理由）。只有偏差超過 EPSILON 才寫捲軸，所以逐幀確認不花成本。
+    setTimeout(tick, LANDING_TICK_MS);
+  };
+  tick();
 }
 
 /**
@@ -100,8 +166,54 @@ function realign() {
  * 每次 refresh 都重新對齊；使用者一動就永久停手 —— 那之後再校正就是把人從閱讀位置拽走。
  */
 function onRefresh() {
-  if (userMoved) return;
-  jumpToSlug(target);
+  if (userMoved || !landingSlug) return;
+  jumpToSlug(landingSlug);
+}
+
+/** 只跑一次的發車閘：rAF 與 setTimeout 兩路都會叫它（見 onMounted） */
+let kicked = false;
+function kick() {
+  if (kicked) return;
+  kicked = true;
+  // 六篇的 pin 建立順序不保證由上到下，而 pin 的觸發點依賴上方所有 pin 的佔位都已算進去
+  // （理由見 utils/scroll-trigger 的檔頭）。量任何 offsetTop 之前先補這一刀。
+  refreshScrollTriggers();
+  awaitLandingDecision(performance.now() + LANDING_DECIDE_MS);
+}
+
+/**
+ * 等到「落點是哪一篇」有答案，才動捲軸、才啟動 spy。
+ *
+ * ⚠️ spy 一啟動就會隨捲動 replaceState 改寫 hash。若在落點決定之前就啟動，它會把 hash
+ *    改成當下所在的那一篇（初始為第一篇），resolveLanding 之後就只讀得到被覆寫的值 ——
+ *    落點永遠是第一篇，而且看起來像「hash 沒作用」。所以順序不能反。
+ *
+ * 逾時（讀不到 hash）＝ 使用者開的是沒有 hash 的 /subpage：不需要落地，直接啟動 spy。
+ */
+function awaitLandingDecision(deadline: number) {
+  const slug = resolveLanding();
+  if (!slug && !userMoved && performance.now() < deadline) {
+    setTimeout(() => awaitLandingDecision(deadline), LANDING_TICK_MS);
+    return;
+  }
+
+  // ≥768 沒有連續閱讀版型（pad/pc 稿是一篇一頁，右側 rail 的語意也不對）→ 導回獨立子頁。
+  // 分享連結與平板轉向都會走到這裡。**只在初次載入判斷、不監聽 resize**：
+  // pc 使用者縮視窗時把人讀到一半傳送走，比版型不完美更糟。
+  //
+  // ⚠️ 放在落點決定之後：導回的目標就是那一篇，早跑會只導回第一篇。
+  // ⚠️ 用 location.replace（整份文件重載）而不是 navigateTo：實測 1440×900 直接開
+  //    /subpage#service，navigateTo 被呼叫了卻**永遠不完成** —— 網址沒變、六節還在 DOM 裡。
+  //    這是邊緣情境（桌機開到手機版網址），不值得跟 router 的初始生命週期纏鬥。
+  //    resolve().href 會帶上 baseURL（本站部署在子路徑，見 nuxt.config 的 app.baseURL）。
+  if (window.innerWidth >= TABLET_BREAKPOINTS) {
+    location.replace(router.resolve(`/${slug || SLUGS[0]}`).href);
+    return;
+  }
+
+  activeSlug.value = slug || SLUGS[0] || '';
+  if (slug) holdLanding(slug);
+  startSpy();
 }
 
 function startSpy() {
@@ -128,14 +240,10 @@ function startSpy() {
   ScrollTrigger.addEventListener('refresh', onRefresh);
 }
 
+const router = useRouter();
+
 onMounted(async () => {
-  // ≥768 沒有連續閱讀版型（pad/pc 稿是一篇一頁，右側 rail 的語意也不對）→ 導回獨立子頁。
-  // 分享連結與平板轉向都會走到這裡。**只在初次載入判斷、不監聽 resize**：
-  // pc 使用者縮視窗時把人讀到一半傳送走，比版型不完美更糟。
-  if (window.innerWidth >= TABLET_BREAKPOINTS) {
-    await navigateTo(`/${target}`, { replace: true });
-    return;
-  }
+  await nextTick();
 
   // 落點自己算，不讓瀏覽器插手：瀏覽器的捲動還原會在我們對齊之後才把位置搶回去，
   // 而它記的是上一次的文件高度（那時 pin 還沒建立）。離場時還原成 'auto'。
@@ -145,16 +253,34 @@ onMounted(async () => {
     window.addEventListener(e, markUserMoved, { passive: true, once: true }),
   );
 
-  // 等六篇的 onMounted 跑完 —— 它們各自是 async（切 pin 版型 → nextTick → 建 pin）。
-  // 子元件的 onMounted 早於本頁，但那個 await 之後的部分要等一次微任務；
-  // 兩個 rAF 之後版面才是「pin 全部建好」的最終高度，此時量 offsetTop 才準。
-  await nextTick();
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      realign();
-      startSpy();
-    }),
-  );
+  // 啟動落點對齊與 spy。
+  //
+  // 上面那個 nextTick 同時也讓六篇的 onMounted 跑完 —— 它們各自是 async（切 pin 版型 →
+  // nextTick → 建 pin），子元件的 onMounted 雖然早於本頁，但那個 await 之後的部分要等一次
+  // 微任務。再加上兩個 rAF，版面才是「pin 全部建好」的最終高度，此時量 offsetTop 才準。
+  //
+  // ⚠️ 為什麼不能只靠 rAF：**分頁不可見時 rAF 不會觸發**（背景開連結、從別的 app 切回來
+  //    都算），雙 rAF 會一直排不到，落點對齊等於沒跑 —— 實測伺服器重啟後的第一次載入就是
+  //    這樣落在第一篇。所以 rAF 與 setTimeout 兩路都發車，誰先到誰算，kick 自帶只跑一次的閘。
+  //    仍保留 rAF 那一路：可見時它比 setTimeout 更早、且保證在一次繪製之後（版面已定）。
+  requestAnimationFrame(() => requestAnimationFrame(kick));
+  setTimeout(kick, LANDING_KICK_FALLBACK_MS);
+
+  // 網頁字體載入完成後的重排。
+  //
+  // ⚠️ 這是實測抓到、而且上面兩道網都攔不到的一項：字體 swap 之後六節的中文內文全部重排，
+  //    實測 390×844 的 /subpage 文件高從 47497 長到 48835（+1338），health 的落點跟著
+  //    位移約 250px。它發生在 holdLanding 的窗口之後，而**字體 swap 不會觸發
+  //    ScrollTrigger 的 refresh**，所以 onRefresh 也攔不到 —— 只能自己接 fonts.ready。
+  //
+  // ⚠️ 順帶把 pin 全體重算：重排之後各 pin 的絕對起點同樣是舊的。這一點對獨立子頁也成立
+  //    （那裡沒有落點問題，所以看不出來，但 pin 起點確實偏了），已回報給人類決定要不要
+  //    在全站層級補這一刀。
+  if (document.fonts) {
+    await document.fonts.ready;
+    refreshScrollTriggers();
+    if (!userMoved && landingSlug) jumpToSlug(landingSlug);
+  }
 });
 
 onBeforeUnmount(() => {
@@ -172,8 +298,12 @@ onBeforeUnmount(() => {
     <!-- 固定 01→06。每篇包一層帶 data-subpage-anchor 的 div，供錨點列的頁內捲動與
          scroll-spy 定位（屬性名的單一來源是 utils/subpage-stream 的 SUBPAGE_ANCHOR_ATTR）。
          包裝層不設 position／transform，不會變成 pin（position: fixed）的定位基準。 -->
+    <!-- id＝slug：讓 `#health` 這種網址對瀏覽器與 Nuxt router 也有意義（找不到對應元素
+         時 scrollBehavior 會直接回頂，等於跟我們的落點對打）。精準對齊仍由 holdLanding
+         負責 —— 原生 hash 捲動同樣會被後續的版面漂移甩掉。 -->
     <div
       v-for="slug in SLUGS"
+      :id="slug"
       :key="slug"
       :ref="(el) => setSection(el, slug)"
       :data-subpage-anchor="slug"

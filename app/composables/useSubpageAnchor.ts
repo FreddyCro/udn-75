@@ -45,13 +45,23 @@ export function useSubpageAnchor() {
    *    padding-top，對齊視窗頂即為設計稿的首屏構圖 —— 不需要再扣 header 高度。
    */
   const jumpToSlug = (slug: string) => {
-    if (!import.meta.client) return;
+    const top = slugTop(slug);
+    if (top === null) return;
+    window.scrollTo({ top, behavior: 'auto' });
+  };
+
+  /**
+   * 某一篇在文件裡的縱座標（null ＝ 找不到／SSR）。
+   * 與 jumpToSlug 分開匯出，是為了讓呼叫端能「先比對再決定要不要動捲軸」——
+   * 連續閱讀頁的落點會被多方推擠，需要每幀確認（見 pages/subpage.vue 的 holdLanding）。
+   */
+  const slugTop = (slug: string): number | null => {
+    if (!import.meta.client) return null;
     const el = document.querySelector<HTMLElement>(
       `[${SUBPAGE_ANCHOR_ATTR}="${slug}"]`,
     );
-    if (!el) return;
-    window.scrollTo({ top: el.offsetTop, behavior: 'auto' });
+    return el ? el.offsetTop : null;
   };
 
-  return { visible, mode, activeSlug, resetSubpageAnchor, jumpToSlug };
+  return { visible, mode, activeSlug, resetSubpageAnchor, jumpToSlug, slugTop };
 }
