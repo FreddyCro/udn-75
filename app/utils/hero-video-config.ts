@@ -149,3 +149,17 @@ export const HERO_CORE_DROP_IN = {
 //    SCSS 變數無法從 JS 讀取，這是本專案已知且接受的雙寫（同 CORE.dotSize 與
 //    OrangeCore.vue 的關係）。改一邊就要改另一邊。
 export const HERO_DISSOLVE_VH = 1.2;
+
+/**
+ * 退場再額外吃掉的固定捲動距離（px，不隨視窗高縮放）。
+ *
+ * 與佔位高度**同時**加同一個量，揭露那一刻的構圖才不變：
+ *   引言上緣螢幕位置 = 佔位高 − scrollY
+ *   佔位高 = vh($dissolve + $intro-at) + EXTRA、退場結束於 scrollY = vh($dissolve) + EXTRA
+ *   ⇒ 兩者相減仍是 vh($intro-at) —— 設計核准過的那一格不動。
+ *
+ * ⚠️ 同樣要與 HeroVideo.vue 的 SCSS 變數 `$dissolve-extra` 相同（理由同上方雙寫）。
+ * ⚠️ 是 px 而非 vh：需求是「固定 200px」。故它在小螢幕上占的比例更大，
+ *    下面那條脫黏約束在小螢幕上更緊，改大時務必實測（見 .sec1__hero 的註解）。
+ */
+export const HERO_DISSOLVE_EXTRA_PX = 200;

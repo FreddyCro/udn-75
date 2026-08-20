@@ -7,6 +7,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section1.json';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
 import {
+  HERO_DISSOLVE_EXTRA_PX,
   HERO_DISSOLVE_VH,
   HERO_SKIP_APPEAR_AT,
   HERO_VIDEO_POSTER,
@@ -304,8 +305,10 @@ function buildDissolveST() {
     //    反推起點 1080、終點 2160，整段退場落在錯的捲動區間、而 sticky 早在 1298 脫黏。
     //    退場的起點在語意上就是 page top（scrollY 0），寫成數值最直接、也繞開量測。
     // vhPx 而非 window.innerHeight：後者在行動裝置上會隨網址列收合而變（見 useViewportHeight）。
+    // ⚠️ EXTRA 這個固定 px 必須與 SCSS 的 $dissolve-extra 一起加進佔位高度，否則
+    //    揭露那一刻引言就不會落在 $intro-at（見 hero-video-config 的推導）。
     start: 0,
-    end: () => vhPx(HERO_DISSOLVE_VH),
+    end: () => vhPx(HERO_DISSOLVE_VH) + HERO_DISSOLVE_EXTRA_PX,
     // scrub 已移除：它只對「掛在 ST 上的 animation」有意義，本 ST 沒有動畫、只讀 progress。
     invalidateOnRefresh: true,
     onUpdate: (self) => applyDissolve(self.progress),
@@ -593,12 +596,16 @@ onBeforeUnmount(() => {
 // ── hero 佔位的兩個旋鈕 ───────────────────────────────────────────────
 // $intro-at：退場結束時，引言上緣落在螢幕的哪裡（0.85 ＝ 露出約三行，
 //            這是設計核准過的那一格構圖）。
-// $dissolve：退場吃掉多少捲動距離。**必須與 hero-video-config 的 HERO_DISSOLVE_VH
-//            相同**（那邊算 ScrollTrigger 的 end，這邊算佔位高度）。
-// 佔位高 = 兩者相加，是推導值、不是第三個旋鈕：
-//   引言上緣螢幕位置 = 佔位高 − scrollY ⇒ scrollY = $dissolve 時剛好等於 $intro-at。
+// $dissolve：退場吃掉多少捲動距離（× 視窗高）。**必須與 hero-video-config 的
+//            HERO_DISSOLVE_VH 相同**（那邊算 ScrollTrigger 的 end，這邊算佔位高度）。
+// $dissolve-extra：退場再額外吃掉的**固定** px。**必須與 HERO_DISSOLVE_EXTRA_PX 相同。**
+// 佔位高 = 三者相加，是推導值、不是第四個旋鈕：
+//   引言上緣螢幕位置 = 佔位高 − scrollY
+//   ⇒ scrollY = vh($dissolve) + $dissolve-extra 時剛好等於 vh($intro-at)
+//   ⇒ 額外的 px 必須**同時**加在佔位高與 ST 的 end 上，只加一邊構圖就跑掉。
 $intro-at: 0.85;
 $dissolve: 1.2;
+$dissolve-extra: 200px;
 
 .sec1__hero {
   // ⚠️ 必須是 sticky，**不可以改用 ScrollTrigger 的 pin**（2026-08-21 實測否決）。
@@ -616,15 +623,21 @@ $dissolve: 1.2;
   //    會在「佔位高 − 1vh」就脫離，撐不過退場。本元素的容器是很高的 .sec1__inner。
   // ⚠️ 脆弱點：日後若有人在 .sec1 到 <html> 之間任何一層加上 overflow: hidden/auto/scroll，
   //    sticky 會**安靜失效**（html 的 overflow-x: clip 不建立捲動容器，base.scss 已依賴此性質）。
-  // ⚠️ 黏著範圍被容器底緣卡住：實測（1440×900）釋放點在 scrollY 1298，退場在 1080 走完，
-  //    餘裕 218px。**調大 $dissolve 務必重算這條** —— 超過的話沒有錯誤訊息，只會看到
-  //    影片還在畫面上就被往上捲走。
+  // ⚠️ 黏著範圍被容器底緣卡住，而**釋放點恰好等於引言的總高**（body ＋ runway）——
+  //    代數上：釋放點 = innerBottom − 佔位高 = 引言總高，故佔位高一起長大時釋放點不變。
+  //    約束是「退場的捲動距離 < 引言總高」，超過就會在退場還沒走完時脫黏，影片邊播邊
+  //    被往上捲走，而且**沒有任何錯誤訊息**。
+  //    實測（1440×900）：引言總高 1298。加了 $dissolve-extra 200px 之後退場結束在
+  //    1080 + 200 = 1280 ⇒ 餘裕只剩 18px。**這條已經很緊，再調大務必先實測**，
+  //    小螢幕更緊（$dissolve-extra 是固定 px，占的比例更大）。
   position: sticky;
   top: 0;
   width: 100%;
   // 扣 --chrome-inset 的理由：main 鎖住期間手機網址列不會收合，解鎖那一刻的可視高度是
   // small viewport。不扣的話手機露出的引言會少掉工具列那一段（見 hero-body-lock-rules #5）。
-  height: calc(#{vh($dissolve + $intro-at)} - var(--chrome-inset));
+  height: calc(
+    #{vh($dissolve + $intro-at)} + #{$dissolve-extra} - var(--chrome-inset)
+  );
   // 黏住之後本元素會永久佔著螢幕上緣一大塊。它自己沒有背景也沒有互動內容
   // （白底在 .sec1、skip 在 .is-visible 時自己覆寫回 auto），一律放行指標。
   pointer-events: none;
