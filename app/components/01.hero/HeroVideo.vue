@@ -21,8 +21,9 @@ import {
   DISSOLVE_LEAVE,
   dissolveState,
 } from '@/utils/hero-dissolve';
+import { outroPlaybackRate } from '@/utils/hero-outro-rate';
 
-// ── PoC 旋鈕：退場改由「pin ＋ 影片追趕捲動」驅動（2026-08-20）──────────
+// ── PoC：退場改由「pin ＋ 影片追趕捲動」驅動（2026-08-20）──────────────
 // 取代原本的「stage opacity ＝ 1 − p」溶解。設計師的三條需求是：outro 走完才接 intro、
 // 不要 body lock、不要因為捲太快而看不到 outro。
 //
@@ -30,14 +31,8 @@ import {
 // 三支剪輯的關鍵幀平均間距 4.2s，退場段（36–38.5s）內 pc/pad 各只有 1 個、mob 一個都沒有，
 // 於是每次 seek 要重解 57–143 幀，實測單次 38–157ms ＝ 畫面只能更新 6–26 次／秒。
 //
-// OUTRO_RATE_MAX = 2：實測掉幀的上限**不是解碼、是螢幕刷新率**（三個裝置數字幾乎相同，
-// 1920×1080 與 720×1280 不可能有相同解碼上限）。影片 30fps，2× ＝ 60fps ＝ 60Hz，掉 0 幀；
-// 2.5× ＝ 75fps 掉 15 幀（正好是 75 − 60）、3× 掉 26–30。故 2× 是免費上限，再高只是把
-// 解好的幀丟掉。
-//
-// OUTRO_RATE_GAIN = 4：比例控制的增益 —— 落後四分之一個退場段就給滿 2×。
-const OUTRO_RATE_MAX = 2;
-const OUTRO_RATE_GAIN = 4;
+// ⚠️ 倍速為何只有兩檔、不做連續變化：見 hero-outro-rate 的說明（連續值在固定刷新率的
+//    螢幕上必然產生 cadence judder，2026-08-21 實測）。
 
 const {
   state: heroState,
@@ -278,7 +273,10 @@ watch(heroState, (s) => {
   alignToSegment(v);
   void play();
   // 追趕控制器只在退場期間有工作（見 tickOutro）。
-  if (s === 'outro') outroRaf = requestAnimationFrame(tickOutro);
+  if (s === 'outro') {
+    lastRateChangeAt = 0; // 這一趟的第一次換檔不必等駐留
+    outroRaf = requestAnimationFrame(tickOutro);
+  }
 });
 
 // 按下 start 後才開始播 main（見 useHeroVideo 的 heroStarted）
@@ -303,6 +301,9 @@ let dissolveST: ScrollTrigger | null = null;
 let lastDissolveP = 0;
 // 退場期間的 rAF：追趕控制器要每幀跑（見 tickOutro）。
 let outroRaf = 0;
+// 上次換檔的時間戳：餵 outroPlaybackRate 的最小駐留判定（見該檔說明 —— 切換次數
+// 才是抖動的主因）。進退場時歸零，讓那一趟的第一次換檔不必等駐留。
+let lastRateChangeAt = 0;
 
 function buildDissolveST() {
   if (!heroEl.value) return;
@@ -330,17 +331,21 @@ function buildDissolveST() {
   });
 }
 
-// 退場期間每幀跑一次：把 playbackRate 調到「追得上捲動」的值。
+// 退場期間每幀跑一次：依「影片落後捲動多少」選一個節奏安全的倍速。
 //
-// 比例控制而非「捲動速度 → 倍速」：餵的是**落後量**（pScroll − pVideo）。四個行為一次到位 ——
-//   沒在捲     pScroll 不動、影片自己追上 → 回到 1× 繼續播（設計師要的「沒 scroll 也要播」），
-//              而不是停下來等捲動
-//   捲得快     落後拉大 → 吃到 2× 上限
+// 餵給判定的是**落後量**（pScroll − pVideo），不是捲動速度。三個行為一次到位 ——
+//   沒在捲     pScroll 不動、影片自己追上 → 落後轉負 → 回到 1× 繼續播
+//              （設計師要的「沒 scroll 也要播」），而不是停下來等捲動
+//   捲得快     落後拉大 → 切到 2×
 //   永不 seek、永不暫停、永不倒退（瀏覽器不支援負的 playbackRate，退場因此是單向的）
+//
+// ⚠️ 只在值真的改變時才寫 playbackRate。不是為了效能 —— 是因為每一次寫入都是一次節奏
+//    改變，而 outroPlaybackRate 的整個用意就是讓節奏改變變成稀有事件（見該檔說明）。
+//    帶遲滯的離散值 ＋ 只在變化時寫入，兩者合起來才治得住抖動。
 //
 // 每幀都補叫 applyDissolve：揭露條件有一半是「影片播完」，而那不由捲動事件驅動 ——
 // 使用者可能早就停下手了，少了這一條，影片播完也不會有人去揭露引言。
-// applyDissolve 是幂等的（同一個 p 重複呼叫只會寫回相同的 style、setState 只在改變時發），
+// applyDissolve 是幂等的（同一個 p 重複呼叫只會寫回相同的 class、setState 只在改變時發），
 // 故直接每幀呼叫，不再多養一面「已播完」的旗子。
 function tickOutro() {
   outroRaf = 0;
@@ -348,10 +353,16 @@ function tickOutro() {
   if (!v || heroState.value !== 'outro') return;
 
   const pScroll = dissolveST?.progress ?? 0;
-  v.playbackRate = Math.min(
-    OUTRO_RATE_MAX,
-    Math.max(1, 1 + OUTRO_RATE_GAIN * (pScroll - outroProgress(v))),
+  const now = performance.now();
+  const rate = outroPlaybackRate(
+    pScroll - outroProgress(v),
+    v.playbackRate,
+    now - lastRateChangeAt,
   );
+  if (v.playbackRate !== rate) {
+    v.playbackRate = rate;
+    lastRateChangeAt = now;
+  }
   applyDissolve(pScroll);
 
   outroRaf = requestAnimationFrame(tickOutro);
@@ -392,12 +403,9 @@ function applyDissolve(p: number) {
   // 可能還沒 arm（或已被跳過鎖死），stage 若少了這行會維持初始的完全不透明，
   // 影片永遠蓋在畫面上不走。
   const revealed = openingSkipped.value || (p >= 1 && videoDone);
-  if (stage) {
-    // 這層是滿版渲染，opacity: 0 只是「畫成透明」，瀏覽器仍在每幀合成一層看不見的滿版
-    // 影片；額外設 visibility: hidden 才真的停止合成（見設計文件第一節的表）。
-    stage.style.opacity = revealed ? '0' : '1';
-    stage.style.visibility = revealed ? 'hidden' : 'visible';
-  }
+  // 顯隱交給一個 class，淡出長度與 visibility 的時序都在 SCSS（見 .sec1__hero-stage）。
+  // 每幀重複 toggle 同一個值對 DOM 是 no-op，不會反覆重啟 transition。
+  if (stage) stage.classList.toggle('is-revealed', revealed);
   if (!scrubArmed.value || openingSkipped.value) return;
   // 捲回頂端 ＝ 重新武裝：下一趟下滑要再放一次完整的退場段。
   // （設起的點在 setState('gone')，見 useHeroVideo 的 outroSpent。）
@@ -636,13 +644,40 @@ $dissolve: 1.2;
   pointer-events: none;
 }
 
-// 影片舞台：只渲染一個視窗高（vh(1)），錨在 .sec1__hero（sticky）的頂端
-// （inset: 0 0 auto 0），不溢出那個比視窗高的佔位 —— 舞台被「黏」在螢幕上緣，
-// 佔位剩下的高度才是引言被蓋住、之後隨溶解露出的那一段。
+// 揭露引言那一刻的淡出長度。
+// ⚠️ 這個值同時決定 orange core 交棒看不看得出接縫：core 的進場（HERO_CORE_DROP_IN，
+//    0.9s）是從影片裡那顆 core 的座標滑進來的，若舞台瞬間消失，core 會從一個「已經
+//    沒有東西」的位置滑出來 —— 兩者需要重疊一段。調這個值要連著那邊一起看。
+$reveal-fade: 0.25s;
+
+// 影片舞台：只渲染一個視窗高（vh(1)），錨在 .sec1__hero 的頂端（inset: 0 0 auto 0）。
+// 舞台被 pin 釘在螢幕上緣，.sec1__hero 剩下的高度就是引言的起點（見上方高度推導）。
 .sec1__hero-stage {
   position: absolute;
   inset: 0 0 auto 0;
   height: vh(1);
+  // ── 揭露：0.25s 淡出，由 .is-revealed 這個 class 觸發 ────────────────
+  // 改用 class ＋ CSS transition 而非逐幀寫 style.opacity：這個 opacity 現在只在
+  // **一個離散時刻**改變（影片播完且捲動走完），不再是 scrub 每幀寫入 ——
+  // 而「每幀寫入會與 transition 打架」正是原本 1 − p 方案不能用 transition 的唯一理由。
+  //
+  // visibility 要分開處理：它無法被內插，但滿版影片層在 opacity: 0 之後瀏覽器仍會每幀
+  // 合成一層看不見的滿版影片（見設計文件第一節的表），必須真的隱藏。方向不對稱 ——
+  // 隱藏要**等淡完**、顯示要**立刻**（回捲時影片得馬上回來）。CSS 取的是**目標狀態**
+  // 的 transition，故兩個方向各寫在自己的規則裡。
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity $reveal-fade ease,
+    visibility 0s;
+
+  &.is-revealed {
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity $reveal-fade ease,
+      visibility 0s linear $reveal-fade;
+  }
   // cover 溢出的裁切從 .sec1__hero 移到這裡。
   overflow: hidden;
   // 4 ＞ .sec1__scene 的 3（見 Hero.scss 的層序說明）：引言頂端就是被這一層蓋住的。
@@ -781,8 +816,10 @@ $dissolve: 1.2;
 
 @media (prefers-reduced-motion: reduce) {
   .sec1__hero-video,
-  .sec1__hero-skip {
-    transition: none; // skip 改為直接出現 / 消失（時間點不變）
+  .sec1__hero-skip,
+  .sec1__hero-stage,
+  .sec1__hero-stage.is-revealed {
+    transition: none; // 一律改為直接出現 / 消失（時間點不變）
   }
 }
 </style>
