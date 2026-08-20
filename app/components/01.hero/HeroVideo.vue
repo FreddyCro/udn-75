@@ -290,12 +290,8 @@ watch(soundOn, (on) => {
   if (v) v.muted = !on;
 });
 
-// ── 退場：pin ＋ 影片追趕捲動 ────────────────────────────────────────
-// ⚠️ PoC：這裡從 sticky 改成 ScrollTrigger 的 pin，**推翻了設計文件第二節的決定**。
-// 當初否決 pin 的理由（pin-spacer 改變文件高度、與 transitionST／OrangeCorePath 互餵幾何）
-// 依然有效，是要付的代價；換過來的理由是 sticky 的黏著範圍被容器底緣決定（實測 1298px，
-// 只剩 218px 餘裕、且無法調長），而這個機制需要「pin 範圍精確等於 end、且想調多長都行」。
-// **驗收時必須量 transitionST 與 orange core 的落點有沒有漂** —— 那才是這條路的真正成本。
+// ── 退場：sticky 保持影片在畫面上，這條 ST 只讀進度 ──────────────────
+// 不 pin（理由寫在 .sec1__hero 的 SCSS 註解：兩種 pinType 在這個 DOM 結構下都會抖）。
 let dissolveST: ScrollTrigger | null = null;
 // 上一次 applyDissolve 收到的 p：用來辨識「回捲跨過 DISSOLVE_LEAVE」那一刻（見下方）。
 let lastDissolveP = 0;
@@ -308,19 +304,15 @@ let lastRateChangeAt = 0;
 function buildDissolveST() {
   if (!heroEl.value) return;
   dissolveST = ScrollTrigger.create({
-    trigger: heroEl.value,
-    start: 'top top',
+    // ⚠️ 用**數值** start／end，不要 trigger ＋ 'top top'（2026-08-21 修正）：
+    //    以 .sec1__hero 當 trigger 時，ScrollTrigger 量到的起點是 scrollY 1080 而不是 0
+    //    —— 那是個 position: sticky 元素，量測會拿到它「黏住之後」的位置。實測基準線
+    //    （sticky ＋ 'top top'）：y=1080 時 stage 的 opacity 還是 1、y=1620 才 0.5，
+    //    反推起點 1080、終點 2160，整段退場落在錯的捲動區間、而 sticky 早在 1298 脫黏。
+    //    退場的起點在語意上就是 page top（scrollY 0），寫成數值最直接、也繞開量測。
     // vhPx 而非 window.innerHeight：後者在行動裝置上會隨網址列收合而變（見 useViewportHeight）。
-    end: () => `+=${vhPx(HERO_DISSOLVE_VH)}`,
-    pin: true,
-    pinSpacing: true,
-    // ⚠️ 必須是 'transform'，不能用預設的 'fixed'：.sec1__inner 從載入起就帶著 transform
-    //    （ScrollTrigger 的 pin 機制自己寫上去的），而 position: fixed 的容器塊會變成那個
-    //    有 transform 的祖先 —— 於是「固定」不再是對視窗固定，影片會跟著頁面捲走。
-    //    實測（1440×900，fixed 版本）：pin 區間內 stage 的 top 是 −200 / −540 / −900 而非
-    //    恆為 0，影片捲出視窗後 heroIO 又強制收尾 → 狀態被打回 loop、影片 seek 回 30s。
-    //    這正是設計文件第二節排除 fixed 的那個理由，pin 預設踩在同一個坑上。
-    pinType: 'transform',
+    start: 0,
+    end: () => vhPx(HERO_DISSOLVE_VH),
     // scrub 已移除：它只對「掛在 ST 上的 animation」有意義，本 ST 沒有動畫、只讀 progress。
     invalidateOnRefresh: true,
     onUpdate: (self) => applyDissolve(self.progress),
@@ -616,29 +608,38 @@ onBeforeUnmount(() => {
 // ── hero 佔位的兩個旋鈕 ───────────────────────────────────────────────
 // $intro-at：退場結束時，引言上緣落在螢幕的哪裡（0.85 ＝ 露出約三行，
 //            這是設計核准過的那一格構圖）。
-// $dissolve：退場吃掉多少捲動距離（＝ pin 的長度）。**必須與 hero-video-config 的
-//            HERO_DISSOLVE_VH 相同**（那邊算 ScrollTrigger 的 end，這邊算本元素高度）。
+// $dissolve：退場吃掉多少捲動距離。**必須與 hero-video-config 的 HERO_DISSOLVE_VH
+//            相同**（那邊算 ScrollTrigger 的 end，這邊算佔位高度）。
+// 佔位高 = 兩者相加，是推導值、不是第三個旋鈕：
+//   引言上緣螢幕位置 = 佔位高 − scrollY ⇒ scrollY = $dissolve 時剛好等於 $intro-at。
 $intro-at: 0.85;
 $dissolve: 1.2;
 
 .sec1__hero {
-  // ⚠️ PoC（2026-08-20）：改由 ScrollTrigger 的 pin 釘住，故**本元素不再 sticky**
-  //    —— 兩者不能並存（pin 靠 transform 把元素留在原處，sticky 會與它打架）。
-  //    這推翻了設計文件第二節的決定，代價與驗收項目寫在 script 的 buildDissolveST。
-  position: relative;
+  // ⚠️ 必須是 sticky，**不可以改用 ScrollTrigger 的 pin**（2026-08-21 實測否決）。
+  //    pin 只有兩種實作方式，兩條路在這個 DOM 結構下都不通：
+  //      pinType: 'fixed'     → position: fixed 的容器塊會變成帶 transform 的
+  //                             .sec1__inner，「固定」不再是對視窗固定，影片跟著捲走。
+  //      pinType: 'transform' → 位置由主執行緒的 JS 逐事件寫入，而頁面內容是由合成器
+  //                             捲動的 ⇒ 影片層**永遠慢一幀**，慢的量等於當幀的捲動距離。
+  //                             實測（每幀捲 10px）舞台的 top 恆為 −10；真實滾輪的每幀
+  //                             增量是暴衝的（0, 0, 120, 0…），於是影片層每幀上下彈跳
+  //                             ＝ 使用者回報的「嚴重不自然抖動」。
+  //    sticky 由瀏覽器與捲動同步合成，沒有這一幀的落後，也不動文件高度。
+  //
+  // ⚠️ sticky 必須下在**本元素**、不能下在內層的 stage：stage 只能在本元素的框內黏，
+  //    會在「佔位高 − 1vh」就脫離，撐不過退場。本元素的容器是很高的 .sec1__inner。
+  // ⚠️ 脆弱點：日後若有人在 .sec1 到 <html> 之間任何一層加上 overflow: hidden/auto/scroll，
+  //    sticky 會**安靜失效**（html 的 overflow-x: clip 不建立捲動容器，base.scss 已依賴此性質）。
+  // ⚠️ 黏著範圍被容器底緣卡住：實測（1440×900）釋放點在 scrollY 1298，退場在 1080 走完，
+  //    餘裕 218px。**調大 $dissolve 務必重算這條** —— 超過的話沒有錯誤訊息，只會看到
+  //    影片還在畫面上就被往上捲走。
+  position: sticky;
+  top: 0;
   width: 100%;
-  // ⚠️ 高度的推導在 pin 之下**變了**，不再是 $dissolve + $intro-at：
-  //    pinSpacing 會把 spacer 撐成「本元素高 ＋ pin 長度」，於是
-  //      引言的文件位置 = 本元素高 + $dissolve
-  //      pin 結束（scrollY = $dissolve）時，引言上緣螢幕位置 = 本元素高
-  //    要讓那一刻落在 $intro-at，本元素高就**等於** $intro-at。
-  //    （文件總高仍是 $intro-at + $dissolve = 2.05vh，與 sticky 版本相同 —— 這是
-  //     檢查有沒有算錯的好方法：換了機制但佔位總高不該變。）
-  // ⚠️ 影片舞台仍是滿版 vh(1)（見 .sec1__hero-stage），會溢出本元素的 0.85vh 框 ——
-  //    刻意如此，本元素只負責「引言從哪裡開始」這個幾何，不負責裁切舞台。
   // 扣 --chrome-inset 的理由：main 鎖住期間手機網址列不會收合，解鎖那一刻的可視高度是
   // small viewport。不扣的話手機露出的引言會少掉工具列那一段（見 hero-body-lock-rules #5）。
-  height: calc(#{vh($intro-at)} - var(--chrome-inset));
+  height: calc(#{vh($dissolve + $intro-at)} - var(--chrome-inset));
   // 黏住之後本元素會永久佔著螢幕上緣一大塊。它自己沒有背景也沒有互動內容
   // （白底在 .sec1、skip 在 .is-visible 時自己覆寫回 auto），一律放行指標。
   pointer-events: none;
