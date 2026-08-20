@@ -21,18 +21,17 @@ import {
   DISSOLVE_LEAVE,
   dissolveState,
 } from '@/utils/hero-dissolve';
-import { outroPlaybackRate } from '@/utils/hero-outro-rate';
-
-// ── PoC：退場改由「pin ＋ 影片追趕捲動」驅動（2026-08-20）──────────────
+// ── PoC：退場改由「sticky ＋ 揭露雙條件」驅動（2026-08-20 起）─────────
 // 取代原本的「stage opacity ＝ 1 − p」溶解。設計師的三條需求是：outro 走完才接 intro、
 // 不要 body lock、不要因為捲太快而看不到 outro。
 //
-// 為什麼是「追趕」而不是「用捲動 seek 影片」：逐幀 seek 這條路已實測否決 ——
-// 三支剪輯的關鍵幀平均間距 4.2s，退場段（36–38.5s）內 pc/pad 各只有 1 個、mob 一個都沒有，
-// 於是每次 seek 要重解 57–143 幀，實測單次 38–157ms ＝ 畫面只能更新 6–26 次／秒。
-//
-// ⚠️ 倍速為何只有兩檔、不做連續變化：見 hero-outro-rate 的說明（連續值在固定刷新率的
-//    螢幕上必然產生 cadence judder，2026-08-21 實測）。
+// 三條全部由**揭露的雙條件**滿足（見 applyDissolve）：影片播完 ＋ 捲動走完。
+// 影片全程以 1× 播放，不 seek、不變速、不暫停 —— 兩條被實測否決的路留在紀錄裡：
+//   逐幀 seek     三支剪輯關鍵幀平均間距 4.2s，退場段內 pc/pad 各 1 個、mob 0 個，
+//                 每次 seek 要重解 57–143 幀（實測 38–157ms）＝ 畫面只能更新 6–26 次／秒
+//   倍速追趕      連續值在固定刷新率螢幕上必然 cadence judder；改離散 {1,2} 後每次
+//                 改變 playbackRate 都讓媒體管線重新同步（約 200ms 擾動）反而更糟
+//                 （詳見 tickOutro 的註解）
 
 const {
   state: heroState,
@@ -272,11 +271,8 @@ watch(heroState, (s) => {
   v.playbackRate = 1;
   alignToSegment(v);
   void play();
-  // 追趕控制器只在退場期間有工作（見 tickOutro）。
-  if (s === 'outro') {
-    lastRateChangeAt = 0; // 這一趟的第一次換檔不必等駐留
-    outroRaf = requestAnimationFrame(tickOutro);
-  }
+  // 這個 rAF 只在退場期間有工作（見 tickOutro）。
+  if (s === 'outro') outroRaf = requestAnimationFrame(tickOutro);
 });
 
 // 按下 start 後才開始播 main（見 useHeroVideo 的 heroStarted）
@@ -295,11 +291,8 @@ watch(soundOn, (on) => {
 let dissolveST: ScrollTrigger | null = null;
 // 上一次 applyDissolve 收到的 p：用來辨識「回捲跨過 DISSOLVE_LEAVE」那一刻（見下方）。
 let lastDissolveP = 0;
-// 退場期間的 rAF：追趕控制器要每幀跑（見 tickOutro）。
+// 退場期間的 rAF（見 tickOutro）。
 let outroRaf = 0;
-// 上次換檔的時間戳：餵 outroPlaybackRate 的最小駐留判定（見該檔說明 —— 切換次數
-// 才是抖動的主因）。進退場時歸零，讓那一趟的第一次換檔不必等駐留。
-let lastRateChangeAt = 0;
 
 function buildDissolveST() {
   if (!heroEl.value) return;
@@ -323,40 +316,32 @@ function buildDissolveST() {
   });
 }
 
-// 退場期間每幀跑一次：依「影片落後捲動多少」選一個節奏安全的倍速。
+// 退場期間每幀跑一次，唯一的工作是補叫 applyDissolve。
 //
-// 餵給判定的是**落後量**（pScroll − pVideo），不是捲動速度。三個行為一次到位 ——
-//   沒在捲     pScroll 不動、影片自己追上 → 落後轉負 → 回到 1× 繼續播
-//              （設計師要的「沒 scroll 也要播」），而不是停下來等捲動
-//   捲得快     落後拉大 → 切到 2×
-//   永不 seek、永不暫停、永不倒退（瀏覽器不支援負的 playbackRate，退場因此是單向的）
-//
-// ⚠️ 只在值真的改變時才寫 playbackRate。不是為了效能 —— 是因為每一次寫入都是一次節奏
-//    改變，而 outroPlaybackRate 的整個用意就是讓節奏改變變成稀有事件（見該檔說明）。
-//    帶遲滯的離散值 ＋ 只在變化時寫入，兩者合起來才治得住抖動。
-//
-// 每幀都補叫 applyDissolve：揭露條件有一半是「影片播完」，而那不由捲動事件驅動 ——
-// 使用者可能早就停下手了，少了這一條，影片播完也不會有人去揭露引言。
+// 為什麼需要它：揭露引言的條件有一半是「影片播完」，而那**不由捲動事件驅動** ——
+// 使用者可能早就停下手了。少了這一條，影片播完也不會有人去揭露引言。
 // applyDissolve 是幂等的（同一個 p 重複呼叫只會寫回相同的 class、setState 只在改變時發），
-// 故直接每幀呼叫，不再多養一面「已播完」的旗子。
+// 故直接每幀呼叫，不必多養一面「已播完」的旗子。
+//
+// ── 為什麼這裡不再調 playbackRate ────────────────────────────────────
+// 曾經有一版讓影片以倍速「追趕」捲動（2026-08-21 刪除，見 git 紀錄的
+// hero-outro-rate.ts）。刪掉的理由是量測結果：
+//   ① 連續變化的倍速在固定刷新率螢幕上必然抖 —— 影片 30fps、螢幕 60Hz，只有 1× 與 2×
+//      能整除，中間值會讓影格在 1 與 2 次刷新之間不規則交替（cadence judder）。
+//   ② 改成離散 {1, 2} 之後**更糟**：每次**改變** playbackRate 都讓媒體管線重新同步
+//      （約 200ms 的節奏擾動），而切換頻繁時比連續值還難看。加了 600ms 最小駐留把
+//      切換壓到 0–1 次仍留有殘影。
+//   （附帶結論：每幀寫入**相同**值是無害的，代價全在改變那一刻。）
+//
+// 而「追趕」換到的好處其實很小：揭露條件本來就會等影片播完，倍速只影響「捲很快的人
+// 在最後等多久」（1.25s vs 2.5s）。用一個看得見的擾動換那個，不划算。
+//
+// 恆定 1× ⇒ 零次節奏改變，而設計師的三條需求一條都沒掉：退場照樣完整播完
+// （揭露的雙條件保證）、不鎖捲動、不會因為捲太快而看不到退場。
 function tickOutro() {
   outroRaf = 0;
-  const v = videoEl.value;
-  if (!v || heroState.value !== 'outro') return;
-
-  const pScroll = dissolveST?.progress ?? 0;
-  const now = performance.now();
-  const rate = outroPlaybackRate(
-    pScroll - outroProgress(v),
-    v.playbackRate,
-    now - lastRateChangeAt,
-  );
-  if (v.playbackRate !== rate) {
-    v.playbackRate = rate;
-    lastRateChangeAt = now;
-  }
-  applyDissolve(pScroll);
-
+  if (!videoEl.value || heroState.value !== 'outro') return;
+  applyDissolve(dissolveST?.progress ?? 0);
   outroRaf = requestAnimationFrame(tickOutro);
 }
 
