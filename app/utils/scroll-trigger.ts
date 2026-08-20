@@ -21,3 +21,23 @@ export function refreshScrollTriggers() {
   ScrollTrigger.sort();
   ScrollTrigger.refresh();
 }
+
+/**
+ * 字體載入完成後重算一次 —— **整個 app 只註冊一次**。
+ *
+ * 原本三個元件（02.forum/Agenda、02.forum/ForumCorePath、01.hero/OrangeCorePath）各自
+ * 寫 `document.fonts?.ready.then(() => refreshScrollTriggers())`。`fonts.ready` 只會
+ * resolve 一次，三個 callback 因此落在**同一個 microtask batch** → 載入時連續三次全站
+ * 重算：3 × (refreshInit → ForumCorePath.build() 整條線重新量測) ＋ 3 × Agenda.measure()
+ * ＋ 3 × 頁面上其餘每一條尺。ForumCorePath 自己的註解早就在講這一類浪費
+ * （它把單一元件內的三次 build 收成一次），只是跨元件那份重複還留著。
+ *
+ * 模組層的旗標（不是元件實例層）：換頁回來時元件會 remount，但字體早就載完了，
+ * `fonts.ready` 也早已 resolve —— 再註冊一次只會多打一次無意義的全站重算。
+ */
+let fontsRefreshHooked = false;
+export function refreshOnFontsReady() {
+  if (fontsRefreshHooked) return;
+  fontsRefreshHooked = true;
+  document.fonts?.ready.then(() => refreshScrollTriggers());
+}

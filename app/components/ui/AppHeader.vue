@@ -91,6 +91,7 @@ const labels = str.header;
 
 let observer: IntersectionObserver | null = null;
 let heroObserver: IntersectionObserver | null = null;
+let docObserver: ResizeObserver | null = null;
 let mqPc: MediaQueryList | null = null;
 let rafId = 0;
 let heroRafId = 0;
@@ -106,9 +107,20 @@ onMounted(() => {
   themeEls = Array.from(
     document.querySelectorAll<HTMLElement>('[data-header-theme]'),
   );
+  spans = themeEls.map((el) => ({
+    top: 0,
+    bottom: 0,
+    theme: (el.dataset.headerTheme ?? 'light') as HeaderTheme,
+  }));
   updateTheme();
   window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', onScroll, { passive: true });
+  window.addEventListener('resize', onResize, { passive: true });
+
+  // 文件高度變了就讓 scrollTotal 失效（見 updateProgress）。RO 只在真的變動時才發，
+  // 遠比每幀讀一次 scrollHeight 便宜
+  docObserver = new ResizeObserver(invalidateDocMetrics);
+  docObserver.observe(document.documentElement);
+  docObserver.observe(document.body);
 
   mqPc = window.matchMedia(`(min-width: ${PC_BREAKPOINTS}px)`);
   mqPc.addEventListener('change', closeMenuOnPc);
@@ -192,40 +204,61 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', onScroll);
-  window.removeEventListener('resize', onScroll);
+  window.removeEventListener('resize', onResize);
   mqPc?.removeEventListener('change', closeMenuOnPc);
   if (rafId) window.cancelAnimationFrame(rafId);
   if (heroRafId) window.cancelAnimationFrame(heroRafId);
   observer?.disconnect();
   heroObserver?.disconnect();
+  docObserver?.disconnect();
 });
 
 // 頂部固定列的高度（用於錨點捲動時的偏移補償），從 CSS variable --header-height 取得。
+//
+// 快取：getComputedStyle() 會強制 style flush，而這支原本每個捲動幀都被 updateTheme
+// 呼叫一次。--header-height 只隨斷點變（媒體查詢），捲動中是常數 → 失效點只有 resize。
+let headerOffsetPx: number | null = null;
 function getHeaderOffset() {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(
-    '--header-height',
-  );
-  return parseFloat(raw) || 0;
+  if (headerOffsetPx === null) {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(
+      '--header-height',
+    );
+    headerOffsetPx = parseFloat(raw) || 0;
+  }
+  return headerOffsetPx;
+}
+
+// 可捲動總距離。scrollHeight 是**強制整份文件 layout** 的讀取，同樣不該每幀來一次；
+// 它只在版面真的變高變矮時才變 → 交給下方的 ResizeObserver 與 resize 標記失效。
+// （pin-spacer 撐開、Media 的 hold buffer 寫入、字體載入後重排，全都會改到 body
+// 的高度，RO 都收得到 —— 不必去認識 ScrollTrigger 的 refresh 事件。）
+let scrollTotal = -1;
+function invalidateDocMetrics() {
+  scrollTotal = -1;
 }
 
 function updateProgress() {
-  const doc = document.documentElement;
-  const total = doc.scrollHeight - window.innerHeight;
+  if (scrollTotal < 0) {
+    scrollTotal = document.documentElement.scrollHeight - window.innerHeight;
+  }
   progress.value =
-    total > 0 ? Math.min(100, (window.scrollY / total) * 100) : 0;
+    scrollTotal > 0 ? Math.min(100, (window.scrollY / scrollTotal) * 100) : 0;
 }
 
 // 偵測線＝header 底緣。段落用 data-header-theme 宣告顏色，子頁不標 → 回落 light。
+// spans 預先配置、逐幀就地覆寫：元素數量固定（章節數），原本每幀重配一個陣列與
+// 每個章節一個物件字面值。rect 本身沒得快取 —— 它隨捲動變，那正是這支要問的事。
+let spans: ThemeSpan[] = [];
 function updateTheme() {
   const headerBottom = getHeaderOffset();
-  const spans: ThemeSpan[] = themeEls.map((el) => {
+  for (let i = 0; i < themeEls.length; i++) {
+    const el = themeEls[i]!;
     const r = el.getBoundingClientRect();
-    return {
-      top: r.top,
-      bottom: r.bottom,
-      theme: (el.dataset.headerTheme ?? 'light') as HeaderTheme,
-    };
-  });
+    const span = spans[i]!;
+    span.top = r.top;
+    span.bottom = r.bottom;
+    span.theme = (el.dataset.headerTheme ?? 'light') as HeaderTheme;
+  }
   theme.value = pickHeaderTheme(spans, headerBottom);
 }
 
@@ -236,6 +269,13 @@ function onScroll() {
     updateTheme();
     rafId = 0;
   });
+}
+
+// resize 走自己的入口：斷點可能換了（--header-height）、視窗高也變了（scrollTotal）
+function onResize() {
+  headerOffsetPx = null;
+  invalidateDocMetrics();
+  onScroll();
 }
 
 function scrollToTarget(target: string, e?: Event) {
@@ -303,8 +343,14 @@ const layers = computed<HeaderLayer[]>(() => {
 </script>
 
 <template>
+  <!-- data-header-band：useHeaderBand 逐幀寫 --hd-band-l/r 的目標。用 data- 而非 class
+       同本專案既有慣例（data-header-theme／data-morph-veil／data-metaball-scope）——
+       class 是樣式的名字，改名重構不該把轉場打斷。為什麼不寫在 documentElement 上：
+       那兩個變數是會繼承的自訂屬性，寫在根節點等於每一幀讓整棵樹的 computed style
+       失效，而真正的消費者只有本元件底下那兩層（見 SCSS 的 --hd-band-mask）。 -->
   <header
     class="app-header"
+    data-header-band
     :class="[
       { 'is-visible': isVisible, 'is-menu-open': menuOpen, 'has-band': !!bandTheme },
     ]"

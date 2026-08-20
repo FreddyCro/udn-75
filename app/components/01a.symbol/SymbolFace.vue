@@ -545,6 +545,25 @@ onMounted(() => {
   // 面板可以即時改色（見 repaintColors）。
   const bgFrom = new THREE.Color();
   const bgTo = new THREE.Color();
+  // 兩端色的**解析結果**也重複使用：THREE.Color.set() 吃的是 CSS 顏色字串，逐幀重解
+  // 兩次等於每幀兩次字串剖析。只有面板改色（repaintColors / rebuildParticles）才會
+  // 動到 cfg 的這兩個值，故拿字串本身當快取鍵 —— 面板即時改色照樣立刻生效。
+  let bgFromKey = '';
+  let bgToKey = '';
+  const ensureBgEnds = () => {
+    if (cfg.bgColor !== bgFromKey) {
+      bgFromKey = cfg.bgColor;
+      bgFrom.set(cfg.bgColor);
+    }
+    if (cfg.convergeBgColor !== bgToKey) {
+      bgToKey = cfg.convergeBgColor;
+      bgTo.set(cfg.convergeBgColor);
+    }
+  };
+  // scrub 接管後，bgColor 上不可能再有補間（唯一會排補間的是 syncBg 的第二條分支），
+  // 故 killTweensOf 只需要在接管的那一刻做一次。它每次呼叫都要走一遍 gsap 的
+  // root timeline 找目標，而那條路徑在捲動中是**逐幀**走到的。
+  let bgTweenKilled = false;
 
   // 翻底色。兩條路徑：
   //   scrub（正式站）—— 直接把 bgLightAmount 當 lerp 的 t，往回捲自動沿原路退回。
@@ -559,8 +578,12 @@ onMounted(() => {
     // animated 在這條路徑上沒有意義 —— 補間的角色由捲動本身扮演。
     const scrub = scrubbedBgLight();
     if (scrub !== null) {
-      gsap.killTweensOf(bgColor);
-      bgColor.copy(bgFrom.set(cfg.bgColor)).lerp(bgTo.set(cfg.convergeBgColor), scrub);
+      if (!bgTweenKilled) {
+        gsap.killTweensOf(bgColor);
+        bgTweenKilled = true;
+      }
+      ensureBgEnds();
+      bgColor.copy(bgFrom).lerp(bgTo, scrub);
       return;
     }
 
@@ -568,6 +591,7 @@ onMounted(() => {
       mode.value === 'converge' ? cfg.convergeBgColor : cfg.bgColor,
     );
     gsap.killTweensOf(bgColor);
+    bgTweenKilled = false; // 這條分支可能排下新的補間 → 鎖打開
     if (animated) {
       gsap.to(bgColor, {
         r: target.r,
@@ -593,7 +617,11 @@ onMounted(() => {
   const worldToPx = (h = wrap.clientHeight) =>
     h / (2 * camera.position.z * Math.tan((camera.fov * Math.PI) / 360));
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  // antialias: false —— 場景裡只有「取樣自 mipmap atlas 的 textured point sprite」，
+  // 沒有多邊形邊緣給 MSAA 平滑（字緣的柔邊來自 atlas 貼圖的 LinearFilter，見
+  // symbol-atlas.ts）。開著等於在 DPR 2 的全螢幕 canvas 上常駐一份多重取樣緩衝，
+  // 白付 fill rate 與 GPU 記憶體，畫面上換不到任何東西。
+  const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(width, height);
   wrap.appendChild(renderer.domElement);
@@ -616,10 +644,37 @@ onMounted(() => {
   /** 手機彩蛋開著嗎 ＝ 真空是否該定住不放（見 onLeave）。 */
   const eggHolding = () => isMob && activeEgg.value >= 0;
 
+  // canvas 左上角（視窗座標）：clientX/Y → NDC 的換算基準。
+  //
+  // 快取而不是每個事件都量：getBoundingClientRect() 會強制 style+layout flush，而這顆
+  // canvas 在整段轉場（120vh）與符號序列（364vh）都開著 pointer-events: auto —— 觸控
+  // 拖曳捲動會一路發 pointermove，等於在「ScrollTrigger 剛寫完 clipPath /
+  // backgroundColor / opacity」的同一幀又去讀 layout，典型的 read-after-write 抖動。
+  //
+  // 失效點：尺寸變動（ResizeObserver → applySize）與捲動。這一層目前是 fixed 滿版、
+  // 捲動時 left/top 不會變，但那是**別的元件的 CSS** 說了算（HeroSymbolTransition 的
+  // .stage）—— 與其把它當成不變量，不如捲動時把旗標拉起來，代價只是一個布林。
+  // 大小改用 viewW/viewH（applySize 已在維護，且是未取整的 contentRect）。
+  let rectL = 0;
+  let rectT = 0;
+  let rectDirty = true;
+  const readRect = () => {
+    const r = renderer.domElement.getBoundingClientRect();
+    rectL = r.left;
+    rectT = r.top;
+    rectDirty = false;
+  };
+  const invalidateRect = () => {
+    rectDirty = true;
+  };
+  const toNdc = (clientX: number, clientY: number) => {
+    if (rectDirty) readRect();
+    ndc.x = ((clientX - rectL) / viewW) * 2 - 1;
+    ndc.y = -((clientY - rectT) / viewH) * 2 + 1;
+  };
+
   const onMove = (e: PointerEvent) => {
-    const rect = renderer.domElement.getBoundingClientRect();
-    ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    toNdc(e.clientX, e.clientY);
     raycaster.setFromCamera(ndc, camera);
     if (raycaster.ray.intersectPlane(plane, hit)) {
       mouse.copy(hit);
@@ -638,8 +693,10 @@ onMounted(() => {
     }
     targetInfluence = 0;
   };
-  renderer.domElement.addEventListener('pointermove', onMove);
-  renderer.domElement.addEventListener('pointerleave', onLeave);
+  // passive：兩支都沒有 preventDefault，宣告出來瀏覽器才不必為了等它而延後捲動
+  renderer.domElement.addEventListener('pointermove', onMove, { passive: true });
+  renderer.domElement.addEventListener('pointerleave', onLeave, { passive: true });
+  window.addEventListener('scroll', invalidateRect, { passive: true });
 
   // 彩蛋關閉時鬆開真空（closeEgg 走這條，見它的宣告處）。桌機不受影響：
   // 那邊的 influence 一律由游標的進出決定，closeEgg 只是在離開集合態時順手收東西。
@@ -653,9 +710,7 @@ onMounted(() => {
   const onTap = (e: MouseEvent) => {
     // 集合途中／散場中點下去不該冒出彩蛋（同 PC 提示，理由見 faceFormed 宣告處）
     if (!isMob || !faceFormed.value) return;
-    const rect = renderer.domElement.getBoundingClientRect();
-    ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    toNdc(e.clientX, e.clientY);
     raycaster.setFromCamera(ndc, camera);
     if (!raycaster.ray.intersectPlane(plane, hit)) return;
     // 命中框與桌機宮格同一套（faceUv），差別只在手機不再把它切成 gridCols × gridRows
@@ -727,17 +782,43 @@ onMounted(() => {
   };
 
   // ---------- 圖片亮度採樣：網格化，亮部大/粗/淺色 ----------
+  //
+  // 取樣解析度：每個網格 cell 只要幾個像素就足以算出穩定的平均亮度。
+  //
+  // 原本是把原圖（1013×1478）整張 drawImage → getImageData → 逐像素走完：約 150 萬次
+  // 迭代加一個 6 MB 的 Uint8ClampedArray，而 cols 85 的網格每格平均吃掉 12×18 個像素
+  // —— 那些細節全被「整格平均」抹掉了。更糟的是 sampleImageToGridWithLimit 在粒子超量
+  // 時會降 cols 重新取樣，同一條迴圈可能跑好幾輪。而這一切發生在 onMounted，正好是
+  // hero loader 在等 9.8 MB 開場影片的時候。
+  //
+  // 先讓瀏覽器把圖縮到「每格約 SAMPLE_PX_PER_CELL 像素寬」再取樣：縮放本身就是箱型
+  // 濾波，等於預先做了同一件平均，逐格平均值幾乎不變（每格仍有 4×6 ≈ 24 個樣本），
+  // 迴圈次數與記憶體都掉一個數量級。
+  //
+  // ⚠️ 網格幾何只看**長寬比**，不看絕對像素數（見 computeGrid：worldW 是
+  //    fitWidth/imgW × imgW，imgW 會消掉）→ 縮圖不會動到任何粒子的 world 座標。
+  //    四捨五入造成的長寬比誤差在千分之一以下。
+  // ⚠️ 這裡省的是 CPU 與記憶體，**不是頻寬**：1.7 MB 的 face.png 照樣要下載完才能
+  //    drawImage。要省那一半得換一張小尺寸素材（原圖全庫只有本檔在用），那是另一件事。
+  const SAMPLE_PX_PER_CELL = 4;
+
   const buildFromImage = (img: HTMLImageElement) => {
     const W = img.naturalWidth;
     const H = img.naturalHeight;
+    // 不放大：素材本來就比取樣網格小時照原尺寸走
+    const sw = Math.max(1, Math.min(W, Math.round(cfg.cols * SAMPLE_PX_PER_CELL)));
+    const sh = Math.max(1, Math.round(H * (sw / W)));
     const c = document.createElement('canvas');
-    c.width = W;
-    c.height = H;
+    c.width = sw;
+    c.height = sh;
     const ctx2d = c.getContext('2d')!;
-    ctx2d.drawImage(img, 0, 0);
+    // 縮 3 倍用預設的 'low' 會有摩爾紋；'high' 才是真的多階箱型濾波
+    ctx2d.imageSmoothingEnabled = true;
+    ctx2d.imageSmoothingQuality = 'high';
+    ctx2d.drawImage(img, 0, 0, sw, sh);
     let imageData: ImageData;
     try {
-      imageData = ctx2d.getImageData(0, 0, W, H);
+      imageData = ctx2d.getImageData(0, 0, sw, sh);
     } catch (err) {
       // loadImage 已設 crossOrigin，正常情況走不到這裡。留著是為了讓「畫布被跨源圖片
       // 污染」這種只會在正式站出現的情形有明確訊息，而不是 onload 裡一個未捕捉的例外。
@@ -747,7 +828,7 @@ onMounted(() => {
     }
 
     const sample = sampleImageToGridWithLimit(
-      { data: imageData.data, width: W, height: H },
+      { data: imageData.data, width: sw, height: sh },
       {
         cols: cfg.cols,
         charAspect: cfg.charAspect,
@@ -1092,10 +1173,21 @@ onMounted(() => {
     // ⚠️ 仍要 killTweensOf：切換驅動方式的那一刻（或重建粒子後）可能還有一段 mode 補間
     //    在飛，不殺掉的話它會和捲動搶同一個 uniform —— 症狀是往回捲時收攏先倒退幾幀
     //    又被捲動拉回去，看起來像抖動。
+    //
+    // 但那個理由**只在接管的那一刻成立**，之後每幀再殺一次是白工（每次呼叫都要走一遍
+    // gsap 的 root timeline 找目標，而這兩支是逐幀被捲動打到的）。故上鎖：
+    //   ・鎖宣告在這個區塊裡 → 重建粒子時整段重跑，鎖自動打開（新的 mat、新的補間）
+    //   ・disperseFn 是唯一還會排 mode 補間的地方，它自己把鎖打開
+    let convergeTweenKilled = false;
+    let warmTweenKilled = false;
+
     applyConvergeFn = () => {
       const scrub = scrubbedConverge();
       if (scrub === null || !mat) return;
-      gsap.killTweensOf(mat.uniforms.uConverge);
+      if (!convergeTweenKilled) {
+        gsap.killTweensOf(mat.uniforms.uConverge);
+        convergeTweenKilled = true;
+      }
       mat.uniforms.uConverge!.value = scrub;
       // 底色也在這裡刷一次：沒傳 bgLightAmount 時它退回吃 convergeAmount（見 scrubbedBgLight），
       // 那條路徑沒有自己的 watch。有傳的話這只是多寫一次同一個值。
@@ -1107,7 +1199,10 @@ onMounted(() => {
     applyWarmFn = () => {
       const scrub = scrubbedWarm();
       if (scrub === null || !mat) return;
-      gsap.killTweensOf(mat.uniforms.uWarm);
+      if (!warmTweenKilled) {
+        gsap.killTweensOf(mat.uniforms.uWarm);
+        warmTweenKilled = true;
+      }
       mat.uniforms.uWarm!.value = scrub;
     };
 
@@ -1115,6 +1210,10 @@ onMounted(() => {
     // 三態互斥：分散→uDisperse=1、匯聚→uConverge=1、集合→兩者皆 0。
     disperseFn = (animated = true) => {
       if (!mat) return;
+      // 這支是唯一還會在 uConverge / uWarm 上排 mode 補間的地方 → 把 applyConvergeFn /
+      // applyWarmFn 的「已殺過」鎖打開，下一次接管會再殺一次（見那兩支的說明）
+      convergeTweenKilled = false;
+      warmTweenKilled = false;
       const dTarget = mode.value === 'disperse' ? 1 : 0;
       const opts = { duration: cfg.disperseDuration, ease: 'power2.inOut' };
       gsap.killTweensOf(mat.uniforms.uDisperse);
@@ -1619,6 +1718,7 @@ onMounted(() => {
     if (w <= 0 || h <= 0) return;
     viewW = w;
     viewH = h;
+    invalidateRect(); // 尺寸變了，快取的 canvas 左上角也要重量（見 toNdc）
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
@@ -1641,6 +1741,7 @@ onMounted(() => {
     renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('pointerleave', onLeave);
     renderer.domElement.removeEventListener('click', onTap);
+    window.removeEventListener('scroll', invalidateRect);
     mobMq.removeEventListener('change', onMobChange);
     revealTween?.kill(); // gsap ticker 上的補間，不會隨 rAF 一起停
     revealTween = null;

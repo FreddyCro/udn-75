@@ -71,6 +71,15 @@ interface UPicProps {
   /** 圖片載入策略，預設：'lazy' */
   loading?: 'eager' | 'lazy';
 
+  /**
+   * 抓取優先度（fetchpriority）。
+   *
+   * 與 loading 是**兩件不同的事**，容易混淆：`loading="eager"` 只是解除延遲載入的閘門，
+   * 它不會把這張圖在瀏覽器的請求佇列裡往前排。LCP 那張圖要的是後者 —— 首屏主視覺傳
+   * `fetch-priority="high"`，摺疊線下的裝飾圖可以傳 'low' 讓路。
+   */
+  fetchPriority?: 'high' | 'low' | 'auto';
+
   /** 是否使用 2x 高解析度圖片，預設：true */
   use2x?: boolean;
 
@@ -171,6 +180,7 @@ const parsedDefault = computed(() => {
       :alt="alt"
       :aria-labelledby="altby"
       :loading="loading"
+      :fetchpriority="fetchPriority"
       :width="width"
       :height="height"
     />

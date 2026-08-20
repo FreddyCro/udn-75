@@ -36,13 +36,17 @@ import {
   turnAngleDeg,
   type ForumTurn,
 } from '~/utils/forum-path-turns';
-import { refreshScrollTriggers } from '~/utils/scroll-trigger';
+import {
+  refreshScrollTriggers,
+  refreshOnFontsReady,
+} from '~/utils/scroll-trigger';
 import { pointKey } from '~/utils/sample-cache';
 import {
   forumKnotCache as knotCache,
   forumSlashCache as slashCache,
   forumSwapCache as swapCache,
   forumTurnCache as turnCache,
+  forumNodeLenCache,
 } from '~/utils/forum-path-cache';
 
 const rootEl = ref<HTMLElement | null>(null);
@@ -127,6 +131,9 @@ let tailEndY = 0;
 let knots: ArcKnot[] = [];
 // 變身點的弧長。量不到 → null → 全程維持橘方塊、不畫尾跡，但整條線照跑。
 let swapLen: number | null = null;
+// 上一次寫進尾跡遮罩的開窗值（見 place 末段）：值沒變就不寫屬性。NaN ＝ 尚未寫過。
+let lastTrailDash = NaN;
+let lastTrailOffset = NaN;
 // 那一撇的窗口換算成**弧長**（px）＋ 核心縮成筆尖的目標倍率。
 // 兩者都在 build() 定案（見 syncSlash），place() 每幀只做內插 —— 窗口本身是 0..1 的軌位置，
 // 在這裡先乘一次 pathLen，不要每幀再乘一遍。
@@ -161,6 +168,9 @@ function reset() {
   tailEndY = 0;
   knots = [];
   swapLen = null;
+  // 尾跡開窗的「上次寫入值」也要清：幾何重建後同一組數字仍該被寫回去（見 place 末段）
+  lastTrailDash = NaN;
+  lastTrailOffset = NaN;
   planeFrame.value = 0;
   // 姿態快取也要清：留著上一個斷點的座標，下潛的 watch 會把核心寫回那個位置
   // —— 同 planeFrame 那條，殘影會是一架停在錯誤位置的紙飛機。
@@ -303,20 +313,27 @@ function syncSwapLen(
 //   <svg> 內是為了保證它有 layout box（detached 元素的 getTotalLength 跨瀏覽器行為不一致）。
 // 量出**每個節點在驅動線上的弧長**。路徑事件的門檻與轉折清單都吃這一份，故獨立成一支
 // —— 兩邊各量一次會是 70 次 getTotalLength，而且兩份值萬一分歧會靜默錯開其中一邊。
+// 快取鍵吃完整的 d（見 forumNodeLenCache）：同一條 d 必然對應同一組 segs 與同一組
+// 弧長，而 build() 每次 refreshInit 都會來一輪。原本這是 build() 裡唯一沒快取的量測。
 function measureNodeLens(
   segs: { id: string; d: string }[],
+  d: string,
 ): Map<string, number> | null {
   const probe = probeEl.value;
   if (!probe || !pathLen || !segs.length) return null;
 
-  const lenAt = new Map<string, number>();
-  let acc = '';
-  for (const s of segs) {
-    acc += s.d;
-    probe.setAttribute('d', acc);
-    lenAt.set(s.id, probe.getTotalLength());
-  }
-  probe.removeAttribute('d'); // 量完就清，別讓它以完整長度留在 DOM 上
+  const entries = forumNodeLenCache.get(d, () => {
+    const out: [string, number][] = [];
+    let acc = '';
+    for (const s of segs) {
+      acc += s.d;
+      probe.setAttribute('d', acc);
+      out.push([s.id, probe.getTotalLength()]);
+    }
+    probe.removeAttribute('d'); // 量完就清，別讓它以完整長度留在 DOM 上
+    return out;
+  });
+  const lenAt = new Map(entries);
 
   // 末端必須等於驅動線總長。不符 ＝ segs 與 d 已經對不上（產生器改動最可能的破法），
   // 那會**靜默錯開所有事件與轉折** —— 故大聲說出來。門檻仍照算，少一點總比整段停掉好。
@@ -545,7 +562,7 @@ function build() {
     syncSlash(motion, out.d);
     // 事件門檻要在 pathLen 定案之後算（它是分母）。放在 setForumPathActive(true) 之前：
     // active 翻上去的同一幀消費端就會讀 marks，晚一步會有一幀讀到上一個斷點的表。
-    const lenAt = measureNodeLens(out.segs);
+    const lenAt = measureNodeLens(out.segs, out.d);
     const marks = syncEventMarks(list, lenAt);
     // 也要在下面 place() 之前：place() 會拿 turnLens 比大小並定錨 lastTurnLen。
     const turns = syncTurns(motion, lenAt, out.d);
@@ -669,8 +686,14 @@ function place(rawP: number) {
   const { dash, offset } = trailWindow(
     len, swapLen, FORUM_PLANE.tailLen, FORUM_PLANE.rearOffset,
   );
+  // 值沒變就不寫。morph 節點在議程之後（見 orange-core-config 的 FORUM_PLANE），
+  // 故整條路徑的**前半段** trailWindow 一律回 {dash: 0, offset: 0}（見 forum-trail）——
+  // 原本那段每一幀都在寫兩個一模一樣的字串、外加兩個模板字面值的配置，
+  // 而每次寫入都會讓一個覆蓋整條線的 SVG 遮罩失效。
   const maskPath = trailMaskPathEl.value;
-  if (maskPath) {
+  if (maskPath && (dash !== lastTrailDash || offset !== lastTrailOffset)) {
+    lastTrailDash = dash;
+    lastTrailOffset = offset;
     maskPath.setAttribute('stroke-dasharray', `${dash} 99999`);
     maskPath.setAttribute('stroke-dashoffset', `${offset}`);
   }
@@ -741,7 +764,10 @@ onMounted(async () => {
   // 字體載入會改變文字高度 → 錨點位移 → 重新量測。resize 由 ScrollTrigger 自己的
   // autoRefreshEvents 涵蓋（預設含 resize），故不另外掛 resize 監聽。
   // refresh 一律走 refreshScrollTriggers()（先 sort 再 refresh）—— 見 utils/scroll-trigger。
-  document.fonts?.ready.then(() => refreshScrollTriggers());
+  // 走 refreshOnFontsReady()：上面那條「mount 時跑三次」的教訓有一個跨元件的版本 ——
+  // 三個元件各自 .then() 的話，fonts.ready 一 resolve 就是連續三次全站重算，
+  // 每一次都含這裡的整條線重新量測。
+  refreshOnFontsReady();
   refreshScrollTriggers(); // ← 這一次同時完成首次 build()（refreshInit）
 });
 
@@ -836,7 +862,9 @@ onBeforeUnmount(() => {
 
   path {
     fill: none;
-    stroke: transparent;
+    // stroke: none 而非 transparent —— 一條約 13000px 的路徑，「完全透明的描邊」仍要
+    // 走一遍描邊的產生與合成，`none` 直接不畫。debug 那條規則在下面照樣覆蓋得回來。
+    stroke: none;
   }
 }
 

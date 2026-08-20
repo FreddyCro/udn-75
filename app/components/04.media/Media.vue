@@ -53,6 +53,10 @@ onMounted(() => {
   };
 });
 
+// 底紋 render loop 的閘門：預設 true（降級路徑不建 timeline，底紋一開始就可見），
+// 由 useMediaIntroMotion 在 motion 建起來時翻成 false、settle 尾端淡入時翻回來
+const bgRevealed = ref(true);
+
 useMediaIntroMotion({
   section: sectionRef,
   hold: holdRef,
@@ -66,6 +70,9 @@ useMediaIntroMotion({
   lineR: lineRRef,
   titleEls: () => titleRef.value?.getEls() ?? null,
   rows: () => listRef.value?.getRows() ?? [],
+  onBgReveal: (revealed) => {
+    bgRevealed.value = revealed;
+  },
 });
 </script>
 
@@ -90,7 +97,7 @@ useMediaIntroMotion({
         <!-- 章半徑/壽命一律吃元件預設：舊的 idle-blob-min/max 與 life 是為前一版
                （legacy/HeartMetaballBlock，cellSize 14px）調的，換成 patch 版後
                會讓尾巴大上一倍。尾巴大小改在 HeartMetaball 的 tailBlobMin/Max 調。 -->
-        <HeartMetaball :roam-area="bgRoamArea" />
+        <HeartMetaball :roam-area="bgRoamArea" :paused="!bgRevealed" />
       </div>
 
       <div class="media__inner">

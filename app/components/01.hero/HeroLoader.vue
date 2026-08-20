@@ -69,6 +69,7 @@ let prevState: number[] = [];
 let minBand = 1;
 
 let raf = 0;
+let prevPct = -1; // 上一次寫進計數器的整數百分比（見 frame）
 let prevNow = -1;
 let elapsed = 0; // 累積「可見」秒數（隱藏時不累積，避免切回分頁時快轉）
 let finished = false;
@@ -121,9 +122,16 @@ const buildOrder = (n: number) => {
 const bandWidth = (remaining: number) =>
   Math.max(minBand, Math.round(remaining * props.orangeRatio));
 
+// tileRefs 是 ref([])，`.value` 是個 reactive Proxy —— paint() 每格都要經過一次
+// get trap，而一幀要跑 273~459 格。每幀取一次 raw 陣列，迴圈裡就是純索引存取。
+let tiles: HTMLDivElement[] = [];
+const syncTiles = () => {
+  tiles = toRaw(tileRefs.value);
+};
+
 // 0=藍 1=橘 2=白（見 TILE_COLOR）
 const paint = (idx: number, state: number) => {
-  const el = tileRefs.value[idx];
+  const el = tiles[idx];
   if (!el || prevState[idx] === state) return;
   prevState[idx] = state;
   el.style.backgroundColor = TILE_COLOR[state] ?? TILE_COLOR[0];
@@ -131,6 +139,7 @@ const paint = (idx: number, state: number) => {
 
 const finish = () => {
   finished = true;
+  syncTiles();
   const n = count.value;
   // 全部翻白（含中央格）：載入層收在一片乾淨白底上，數字同時淡出。
   // 橘色交接不在本層做 —— 淡出那 0.6s 內 HeroStart 的 cube 由白底浮現，落點與尺寸
@@ -141,6 +150,7 @@ const finish = () => {
 };
 
 const frame = (now: number) => {
+  syncTiles();
   if (prevNow < 0) prevNow = now;
   // clamp 單幀 dt：分頁切回/掉幀時不會把進度一次推完
   const dt = Math.min((now - prevNow) / 1000, 0.05);
@@ -173,7 +183,12 @@ const frame = (now: number) => {
     paint(idx, rank < whiteCount ? 2 : rank < whiteCount + band ? 1 : 0);
   }
 
-  if (counterRef.value) counterRef.value.textContent = `${Math.round(p * 100)}%`;
+  // 字串只有約 100 種，卻每幀都寫一次（每次賦值都換掉整個 text node）→ 值變了才寫
+  const pct = Math.round(p * 100);
+  if (pct !== prevPct && counterRef.value) {
+    prevPct = pct;
+    counterRef.value.textContent = `${pct}%`;
+  }
 
   // duration 已到、且影片可播放才收尾；否則持續等待（RAF 續跑，ready 轉 true 後自動收尾）
   if (t >= 1 && props.ready) {
@@ -186,6 +201,7 @@ const frame = (now: number) => {
 const start = () => {
   buildOrder(count.value);
   prevNow = -1;
+  prevPct = -1; // 重跑要能寫回 0%
   elapsed = 0;
   finished = false;
   if (counterRef.value) counterRef.value.style.opacity = '1';

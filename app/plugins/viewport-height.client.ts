@@ -38,15 +38,21 @@ export default defineNuxtPlugin(() => {
   const vh = useState<number>('viewport-height', () => 0);
 
   // 離屏探測：不依賴當下畫面狀態，也不觸發任何可見的版面變化。
+  //
+  // 探測元素**常駐**（原本每次量測都 createElement → appendChild → 讀 rect → remove）：
+  // 插入與移除各自讓版面失效一次，等於每個 resize 事件兩次 layout invalidation，
+  // 而桌機拖視窗會連續發事件。常駐的成本是一個 width: 0 的 fixed 節點。
+  let probe: HTMLDivElement | null = null;
   const measure = () => {
-    const probe = document.createElement('div');
-    probe.style.cssText =
-      'position:fixed;top:-9999px;left:0;width:0;height:100vh;pointer-events:none;';
-    document.body.appendChild(probe);
+    if (!probe) {
+      probe = document.createElement('div');
+      probe.style.cssText =
+        'position:fixed;top:-9999px;left:0;width:0;height:100vh;pointer-events:none;';
+      probe.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(probe);
+    }
     // getBoundingClientRect 而非 offsetHeight：後者取整，DPR 非整數時會少算小數位。
-    const h = probe.getBoundingClientRect().height;
-    probe.remove();
-    return h;
+    return probe.getBoundingClientRect().height;
   };
 
   const commit = (h: number) => {
@@ -65,7 +71,7 @@ export default defineNuxtPlugin(() => {
   commitInset();
   let lastWidth = window.innerWidth;
 
-  window.addEventListener('resize', () => {
+  const handleResize = () => {
     const widthChanged = window.innerWidth !== lastWidth;
     lastWidth = window.innerWidth;
     const next = measure();
@@ -85,7 +91,21 @@ export default defineNuxtPlugin(() => {
     // 走 refreshScrollTriggers()（先 sort 再 refresh）—— 這是全站規模的重算，
     // 吃 --vh 的尺散在各 section，最需要照位置順序算（見 utils/scroll-trigger）。
     refreshScrollTriggers();
-  });
+  };
+
+  // 每幀最多跑一次：桌機拖視窗會連續發 resize，而這支處理器最重的那條路徑會一路
+  // 打到 refreshScrollTriggers()（全站 sort + refresh）。合併到 rAF 後，一次拖曳
+  // 從「每個事件一次全站重算」變成「每幀最多一次」。
+  let resizeRaf = 0;
+  const onResize = () => {
+    if (resizeRaf) return;
+    resizeRaf = requestAnimationFrame(() => {
+      resizeRaf = 0;
+      handleResize();
+    });
+  };
+
+  window.addEventListener('resize', onResize, { passive: true });
 
   // iOS Safari 的網址列收合有時只發 visualViewport 的事件、不發 window resize
   // （尤其在頁面鎖住、只有工具列自己在動的時候）。有就一起聽，沒有（舊瀏覽器）

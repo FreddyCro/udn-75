@@ -24,10 +24,29 @@ export const forumSlashCache = createSampleCache<SlashWindow | null>();
 export const forumSwapCache = createSampleCache<number>();
 export const forumTurnCache = createSampleCache<ForumTurn[]>();
 
-/** 測試與除錯用：一次清掉四份。 */
+/**
+ * 每個節點在驅動線上的弧長（measureNodeLens 的結果）。
+ *
+ * 上面四份是 getPointAtLength 的取樣，這一份是 getTotalLength 的量測 —— 原本是
+ * build() 裡**唯一沒有快取**的一支，而它的成本形狀更差：量法是逐段累加 d 字串
+ * （`acc += s.d` 後寫進量尺 path 再讀 getTotalLength），約 35 次寫入＋讀取，
+ * 每次讓 UA 重新剖析平均一半長的 d、重攤一次曲線 → 總攤平段數是 O(n²)。
+ * 而 build() 掛在 refreshInit 上：每次 resize、字體載入、每一次
+ * refreshScrollTriggers()、每一趟返回首頁都跑一輪。
+ *
+ * 鍵只吃完整的 d 就夠精確：`segs.map(s => s.d).join('') === d` 是產生器的恆等式
+ * （見 forum-node-path 的 buildNodesD），故同一條 d 必然對應同一組 segs。
+ *
+ * 存 entries 陣列而不是 Map：快取值會被多輪 build 共用，回傳可變的 Map 等於把
+ * 別人的快取交出去讓呼叫端有機會改。每輪重組一個 35 筆的 Map 是零成本。
+ */
+export const forumNodeLenCache = createSampleCache<[string, number][]>();
+
+/** 測試與除錯用：一次清掉全部。 */
 export function clearForumPathCaches() {
   forumKnotCache.clear();
   forumSlashCache.clear();
   forumSwapCache.clear();
   forumTurnCache.clear();
+  forumNodeLenCache.clear();
 }
