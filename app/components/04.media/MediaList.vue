@@ -1,8 +1,30 @@
 <script setup lang="ts">
 /** 智慧媒體 01–04 子頁清單（common.json subpageAnchors 驅動） */
 import common from '@/locales/common.json';
+import { TABLET_BREAKPOINTS } from '~/utils/constants';
+import { anchorSlug } from '~/utils/subpage-stream';
 
 const { subpageAnchors } = common;
+
+// <768 走連續閱讀頁（pages/subpage.vue）：六篇串成一份文件，hash 決定落在哪一篇。
+// pad/pc 維持一篇一頁。
+//
+// ⚠️ 起始值必須是 false（＝ pad/pc 的網址），不能在 setup 就讀 window：
+//    prerender 出來的 href 與 hydration 首次渲染必須一致，否則會是 hydration mismatch。
+//    onMounted 之後才切換 —— 那時 hydration 已經比對完了。
+const toStream = ref(false);
+let mq: MediaQueryList | null = null;
+const syncBreakpoint = () => (toStream.value = !!mq?.matches);
+
+onMounted(() => {
+  mq = window.matchMedia(`(max-width: ${TABLET_BREAKPOINTS - 0.02}px)`);
+  syncBreakpoint();
+  mq.addEventListener('change', syncBreakpoint);
+});
+
+onBeforeUnmount(() => mq?.removeEventListener('change', syncBreakpoint));
+
+const linkFor = (url: string) => (toStream.value ? `/subpage#${anchorSlug(url)}` : url);
 // 編號藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
 const assetUrl = useAssetUrl();
 
@@ -30,7 +52,7 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
     >
       <NuxtLink
         class="media__row"
-        :to="a.url"
+        :to="linkFor(a.url)"
         @mouseenter="play('sfx01')"
         @click="play('sfx01')"
       >
