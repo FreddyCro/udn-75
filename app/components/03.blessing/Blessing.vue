@@ -11,6 +11,9 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section3.json';
+// 明寫 import（本檔其他常數都吃 auto-import）：它是在 **template** 裡消費的，
+// 而 auto-import 只掃 script（同 BlessingFace.vue 的 FACE_GRID）。
+import { BLESSING_ANCHOR_VH } from '@/utils/orange-core-config';
 import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 const { partner } = str;
@@ -236,11 +239,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <!-- data-anchor-offset-vh：header 按下「永續祝福」時要落在段落內多深（× 視窗高）。
+       段落上緣是 02 → 03 覆蓋過場的接縫 —— 那一刻臉還沒開始畫，設計師要的落點是
+       「第一顆笑臉逐格走完」的那一刻。深度由本段自己宣告（header 不認得任何 section，
+       同 data-header-theme／data-anchor-target 的分工），算式與理由見 BLESSING_ANCHOR_VH
+       與 ~/utils/anchor-landing。 -->
   <section
     id="blessing"
     ref="sectionRef"
     class="section3"
     data-header-theme="orange"
+    :data-anchor-offset-vh="BLESSING_ANCHOR_VH"
     :style="{ '--cover-orange': coverOrange, '--outro-white': outroWhite }"
   >
     <!-- 融合橘幕：03 → 04 過場那塊會收窄的橘。它與 `.media__morph` 是**同一個 GSAP

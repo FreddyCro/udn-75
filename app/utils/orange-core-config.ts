@@ -7,6 +7,11 @@
 // 延伸做法：orange core 走到後續 section 時，在此新增該段的 *_STOPS / *_VH / 幾何，
 // 再於 useOrangeCoreProgress 加一條對應的 progress 軌 + resolver（照 path/pin/symbol 模式）。
 
+// 唯一的 import，且同樣是純資料模組（無 Vue runtime）：blessingFrameAt 要把 blessing 軌的
+// 進度換成格號，格數只有畫格資料本身知道。反向 import（讓畫格資料讀 BLESSING_HOLD）也可以，
+// 但那會讓「一份純畫格座標」變成依賴序列設定 —— 序列的行為歸這裡。
+import { FACE_FRAME_COUNT } from './blessing-face-frames';
+
 // 註：舊的 STAGE_STOPS（在 path 軌內部再切 stage 1–3）已於 2026-08-08 移除。
 // 它自 date 段下架後就沒有 production 消費者，且「stage」一詞與本檔末的 SEQUENCE
 // （章節 → part → progress 定址）撞名，留著只會讓溝通出錯。定址請一律用 SEQUENCE。
@@ -661,6 +666,39 @@ export const FORUM_PLANE = {
 // BLESSING_HOLD：捲動尺尾端「停在最後一格」的比例。臉畫完後定住一下再交棒給夥伴清單。
 export const BLESSING_VH = 1.2;
 export const BLESSING_HOLD = 0.15;
+
+/** blessing 軌 p 時的逐格臉格號（0-based 整數；**逐格 ＝ 不做補間**）。
+ *
+ *  尾端 BLESSING_HOLD 這段停在最後一格 —— 臉畫完後定住一下再交棒給夥伴清單。
+ *  消費端是 useOrangeCoreProgress 的 blessingFrame（那裡另外處理 reduce-motion：
+ *  減少動態時不隨捲動變化，直接停在完成的笑臉）。
+ *
+ *  抽成純函式而不留在 composable 裡：`#blessing` 的落點（BLESSING_ANCHOR_VH）就是
+ *  用這個映射定義的「最後一格出現的時刻」，而那條不變量只有在兩者共用同一份算式時
+ *  才守得住（見 test/header-anchors.spec.ts）。 */
+export function blessingFrameAt(p: number): number {
+  const span = 1 - BLESSING_HOLD;
+  const local = span > 0 ? p / span : 1;
+  const i = Math.floor(Math.min(1, Math.max(0, local)) * FACE_FRAME_COUNT);
+  return Math.min(FACE_FRAME_COUNT - 1, i);
+}
+
+/** header 的 `#blessing` 落在段落內多深（× 視窗高）。
+ *
+ *  設計師指定的落點是「第一顆笑臉逐格走完的那一刻」，不是段落上緣 ——
+ *  上緣是 02 → 03 覆蓋過場的**接縫**，那一刻臉還沒開始畫（第 0 格是一塊白方塊）。
+ *
+ *  ⚠️ 起算點是 `.section3` 的上緣，而落點的定義卻在**臉的捲動尺**（`.section3__face-track`）
+ *     的座標系裡 —— 兩者恆等：捲動尺是 `.section3` 的第一個**佔位**子元素（它前面只有
+ *     `.section3__veil`，那是 fixed），且 `.section3` 沒有 padding-top。這條性質壞掉的話
+ *     落點會整段偏移，畫面上不會有東西壞掉喊出來。
+ *
+ *  ⚠️ 取停格的起點（1 − BLESSING_HOLD），而不是「最後一格剛出現的那一刻」
+ *     （後者是 ×(格數−1)/格數，早 0.05 個進度）：停格的起點就是設計上「臉畫完」的
+ *     定義，且它離最後一格的邊界還有 0.05 個進度 ＝ 0.06 個視窗高（1080 高的視窗約
+ *     65px）的餘裕 —— 落在邊界上，量測誤差幾 px 就會退回前一格（嘴還沒上揚，不是笑臉）。
+ *     由 test/header-anchors.spec.ts 守著「落點必須是最後一格」。 */
+export const BLESSING_ANCHOR_VH = BLESSING_VH * (1 - BLESSING_HOLD);
 
 // ── 永續祝福退場：夥伴清單淡出（03 → 04 過場的第一拍）────────────────
 // 窗口的**終點**由幾何鎖死：`.section3` 下緣抵達視窗頂，也就是 media 的 `top top`

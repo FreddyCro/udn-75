@@ -8,7 +8,9 @@ import {
   type ThemeSpan,
 } from '@/utils/header-theme';
 import { pickActiveAnchor } from '@/utils/anchor-spy';
+import { anchorLanding, anchorOffsetVh } from '@/utils/anchor-landing';
 import { resolveHomeIntent } from '@/utils/home-intent';
+import type { HeaderAnchor } from '@/types/header';
 
 /**
  * AppHeader — 底色隨捲動段落切換白／黑／橘（見 data-header-theme、updateTheme）。
@@ -17,11 +19,6 @@ import { resolveHomeIntent } from '@/utils/home-intent';
  * - 頂部閱讀進度條（橘色進度 / 淺藍底軌）。
  * - 轉場開窗時，窗內那一段反白（見下方 layers 與 useHeaderBand）。
  */
-
-interface Anchor {
-  title: string;
-  target: string;
-}
 
 const props = defineProps({
   /**
@@ -47,6 +44,8 @@ const navActiveTarget = computed(() =>
 // baseURL 由 router 自己套，子路徑部署（GitHub Pages 的 /udn-75/）不必再靠絕對網址。
 const homeIntent = computed(() => resolveHomeIntent(route.path === '/'));
 const { returnToLoop, isGone } = useHeroVideo();
+// 錨點落點要換算「段落宣告的深度（× 視窗高）」，見 scrollToTarget。
+const { vhPx } = useViewportHeight();
 
 const router = useRouter();
 // 原生 <a> 的 href 要自己套 router base：子路徑部署（GitHub Pages 的 /udn-75/）下
@@ -83,7 +82,7 @@ const heroOut = ref(!props.autoHide);
 const isVisible = computed(
   () => !props.autoHide || heroOut.value || isGone.value,
 );
-const anchors = str.headerAnchors as Anchor[];
+const anchors = str.headerAnchors as HeaderAnchor[];
 // logo 的替代文字與漢堡的 aria-label 一律走文案檔（locales/common.json 的 header），
 // 元件內不寫死中文 —— 校稿時只需要改 JSON。
 // 刻意不取名 header：模板根節點是 <header>，同名讀起來會混淆（原生標籤不受影響，純為可讀性）。
@@ -278,12 +277,21 @@ function onResize() {
   onScroll();
 }
 
+// 錨點列與漢堡選單的就地捲動。落點的算式不在這裡 —— 段落可以宣告
+// data-anchor-offset-vh 把落點推進段落內某一刻（`#blessing` 就是這樣落在「笑臉逐格
+// 走完」那一格），見 ~/utils/anchor-landing。header 只負責量與捲。
 function scrollToTarget(target: string, e?: Event) {
   const el = document.getElementById(target);
   if (!el) return;
   e?.preventDefault();
-  const top =
-    el.getBoundingClientRect().top + window.scrollY - getHeaderOffset();
+  const { top } = anchorLanding({
+    elementTop: el.getBoundingClientRect().top + window.scrollY,
+    headerOffset: getHeaderOffset(),
+    offsetVh: anchorOffsetVh(el.dataset.anchorOffsetVh),
+    // 凍結值而非 window.innerHeight：宣告的深度是一把捲動尺上的位置，而那些尺全部
+    // 以 --vh 為單位（見 ~/composables/useViewportHeight），兩邊必須同一把尺。
+    vh: vhPx(),
+  });
   window.scrollTo({ top, behavior: 'smooth' });
 }
 
@@ -553,7 +561,23 @@ const layers = computed<HeaderLayer[]>(() => {
    ⚠️ 用 mask 而非 clip-path：一條直立缺口會把亮列切成左右**兩塊不連續**的區域，
       clip-path 的單一多邊形表達不了；linear-gradient 遮罩天生就能。
       代價是它只有水平資訊 —— 窗還沒蓋滿 header 那一列時不可以挖，那條閘門收在
-      useHeaderBand 的 syncHeaderBand（top > 0 就不開窗）。 */
+      useHeaderBand 的 syncHeaderBand（top > 0 就不開窗）。
+
+   遮罩鋪成**兩層相加**（mask-composite 的初始值就是 add）：
+     ① 只鋪主列那一列（高 --header-height）：窗內挖掉 —— 就是上面說的那件事。
+     ② 主列底緣以下鋪 400px、整片不透明：什麼都不挖。
+   ②不是裝飾，是修 bug（2026-08-20）：AppHeaderShare 的 pc 展開列是掛在主列上、
+   **溢出盒外**的絕對定位元素，而遮罩預設 mask-clip: border-box —— 盒外一律當透明
+   ⇒ 一開窗，展開中的三顆分享 icon 整排消失。症狀看起來像「被 symbol 的粒子場蓋掉」
+   （回報時的說法是 z-index 不夠），其實是被 header 自己的遮罩裁掉的 ——
+   base 是 1000、粒子場只有 10，本來就沒有輸的道理。故除了②，還要把 mask-clip 放成
+   no-clip，讓它鋪得到盒外那一段。
+   ⚠️ 400px 只需蓋住展開列（主列底緣以下 12 + 36×3 + 12×2 ＝ 144，見 AppHeaderShare），
+      留了寬鬆餘裕；刻意不寫 vh —— 這與視窗高無關（見 utils/viewport-height 的單一來源）。
+   ⚠️ mask-clip 必須寫在 mask／-webkit-mask **之後**：shorthand 會把它重設回 border-box。
+   ⚠️ 必須寫 no-repeat：預設的 repeat 會讓①往下一路鋪滿，展開列照樣被挖掉。
+   ⚠️ 舊 Safari（<15.4）只認 -webkit-mask-clip，而它沒有 no-clip 值 → 那些瀏覽器維持
+      改動前的行為（開窗期間展開列看不見），不是新的破口。 */
 .app-header.has-band .app-header__layer--base {
   --hd-band-mask: linear-gradient(
     to right,
@@ -561,8 +585,13 @@ const layers = computed<HeaderLayer[]>(() => {
     transparent var(--hd-band-l, 0px) var(--hd-band-r, 0px),
     #000 var(--hd-band-r, 0px) 100%
   );
-  -webkit-mask-image: var(--hd-band-mask);
-  mask-image: var(--hd-band-mask);
+  -webkit-mask:
+    var(--hd-band-mask) 0 0 / 100% var(--header-height) no-repeat,
+    linear-gradient(#000, #000) 0 var(--header-height) / 100% 400px no-repeat;
+  mask:
+    var(--hd-band-mask) 0 0 / 100% var(--header-height) no-repeat,
+    linear-gradient(#000, #000) 0 var(--header-height) / 100% 400px no-repeat;
+  mask-clip: no-clip;
 }
 
 /* 顯示/隱藏：捲過 hero 後才滑入。

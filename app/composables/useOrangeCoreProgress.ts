@@ -18,7 +18,7 @@
 import {
   SYMBOL_STOPS,
   FORUM_HANDOFF,
-  BLESSING_HOLD,
+  blessingFrameAt,
   COVER_CONTACT,
   COVER_HANDOFF_SPAN,
   convergeAmountAt,
@@ -284,15 +284,14 @@ function buildOrangeCoreProgress() {
   }
 
   // blessingProgress → 逐格臉的格號（0-based，整數；逐格＝不做補間）。
-  // 尾端 BLESSING_HOLD 這段停在最後一格；因 blessingProgress 每次 update 都重讀
-  // self.progress 寫入，往回捲會自動倒帶。
-  const blessingFrame = computed(() => {
-    if (reduceMotion.value) return FACE_FRAME_COUNT - 1;
-    const span = 1 - BLESSING_HOLD;
-    const local = span > 0 ? blessingProgress.value / span : 1;
-    const i = Math.floor(clamp01(local) * FACE_FRAME_COUNT);
-    return Math.min(FACE_FRAME_COUNT - 1, i);
-  });
+  // 映射本體在 blessingFrameAt（純函式，見 orange-core-config）—— header 的 `#blessing`
+  // 落點是用同一份算式定義的，兩邊不可各寫一份。本層只多做 reduce-motion 這一件事。
+  // 因 blessingProgress 每次 update 都重讀 self.progress 寫入，往回捲會自動倒帶。
+  const blessingFrame = computed(() =>
+    reduceMotion.value
+      ? FACE_FRAME_COUNT - 1
+      : blessingFrameAt(blessingProgress.value),
+  );
 
   // blessingOutProgress → 夥伴清單的 opacity（曲線見 partnersFadeAt）。
   // 與 blessingFrame 同一個角色：軌是原始值，這個是給模板消費的衍生值。

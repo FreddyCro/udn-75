@@ -55,7 +55,9 @@ const { partner } = str;
               <p v-if="item.quote" class="blessing-partners__quote">
                 「{{ item.quote }}」
               </p>
-              <p class="blessing-partners__name">—{{ item.name }}</p>
+              <!-- 名字前面那個破折號是**歸屬記號**，不是名字的一部分，且逐斷點不同
+                   （pc／pad 有、mob 沒有）→ 由 CSS 出，見 __name 的 ::before。 -->
+              <p class="blessing-partners__name">{{ item.name }}</p>
             </div>
           </component>
         </li>
@@ -253,6 +255,20 @@ const { partner } = str;
   font-weight: 300;
   line-height: var(--text-body--line-height);
   color: #808080; // 設計稿 Figma 的 black/B4 色，專案 token 表已無對應變數故寫字面值
+
+  // 歸屬記號（「語錄」— 企業名）。**pc／pad 有、mob 沒有**：
+  //   pc  2065:140521 ／ pad 2065:125593 — 都是「—台新新光金控」
+  //   mob 3511:46714              — 三列都是純企業名，沒有破折號
+  // 由 CSS 出而不是寫進 template：它逐斷點存在與否不同，那是排版的事
+  //（同 __row 換方向、__text 改置中都在這份 SCSS 裡）；寫成文字節點就得靠 JS 量斷點。
+  // 也不是文案 —— 與 __quote 的「」同一類，是版面上的標點，不進 locales。
+  &::before {
+    content: '—';
+
+    @include rwd-max('tablet') {
+      content: none;
+    }
+  }
 
   @include rwd-max('tablet') {
     font-size: var(--text-caption); // 15 / 24

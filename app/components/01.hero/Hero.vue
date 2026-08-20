@@ -5,6 +5,7 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section1.json';
+import { anchorLanding, anchorOffsetVh } from '@/utils/anchor-landing';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
 import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 import {
@@ -353,17 +354,25 @@ function scrollToInitialHash(hash: string) {
         ),
       ) || 0;
 
+    // 落點的算式與 header 錨點列共用一份（見 ~/utils/anchor-landing）：段落可以宣告
+    // data-anchor-offset-vh 把落點推進段落內某一刻，`#blessing` 就是這樣落在「笑臉
+    // 逐格走完」那一格 —— 深連結與就地捲動落在不同位置的話，是那種沒人會發現的不一致。
+    const landing = anchorLanding({
+      elementTop: target.getBoundingClientRect().top + window.scrollY,
+      headerOffset: headerHeight,
+      offsetVh: anchorOffsetVh(target.dataset.anchorOffsetVh),
+      vh: vhPx(),
+    });
+
     // ⚠️ 跨頁導航（子頁選單 → /#forum）時 Nuxt 的 scrollBehavior 會等頁面轉場結束後
     //    「再捲一次」到 hash 元素，蓋掉下面這次捲動。它的偏移量取自元素的 scroll-margin-top
     //    （見 nuxt/dist/pages/runtime/router.options 的 _getHashElementScrollMarginTop），
     //    故一併寫上去讓兩邊落在同一點 —— 比賽誰後捲更可靠。
-    target.style.scrollMarginTop = `${headerHeight}px`;
+    //    宣告了深度的錨點這個值是**負的**（往段落內走），那是對的。
+    target.style.scrollMarginTop = `${landing.scrollMarginTop}px`;
 
     // auto 而非 smooth：從別頁導進來時使用者預期「已經在那裡」，不是看著頁面自己捲。
-    window.scrollTo({
-      top: target.getBoundingClientRect().top + window.scrollY - headerHeight,
-      behavior: 'auto',
-    });
+    window.scrollTo({ top: landing.top, behavior: 'auto' });
   });
 }
 

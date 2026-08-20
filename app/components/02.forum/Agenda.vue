@@ -176,7 +176,11 @@ onBeforeUnmount(() => {
 
       <div class="agenda__rows">
         <span class="agenda__arrow" aria-hidden="true">
-          <svg class="agenda__arrow-head" viewBox="0 0 5 2" xmlns="http://www.w3.org/2000/svg">
+          <svg
+            class="agenda__arrow-head"
+            viewBox="0 0 5 2"
+            xmlns="http://www.w3.org/2000/svg"
+          >
             <rect x="0" y="0" width="1" height="1" />
             <rect x="4" y="0" width="1" height="1" />
             <rect x="1" y="1" width="1" height="1" />
@@ -221,16 +225,16 @@ onBeforeUnmount(() => {
   --agenda-line: var(--color-gray-light);
 
   position: relative;
-  max-width: 1064px;
+  padding: 0 26px;
   margin: 0 auto;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     max-width: 608px;
+    padding: 0;
   }
 
-  @include rwd-max('tablet') {
-    max-width: none;
-    padding: 0 26px;
+  @include rwd-min('pc') {
+    max-width: 1064px;
   }
 }
 
@@ -296,7 +300,7 @@ onBeforeUnmount(() => {
 .agenda__category {
   flex: 0 0 192px;
   margin: 0;
-  padding: 10px;
+  padding: 4px;
   font-size: 42px;
   font-weight: 300;
   line-height: 56px;
@@ -471,17 +475,17 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: center;
   gap: 14px;
-  margin: 48px 0 32px;
+  margin: 32px 0 80px;
 
   // pad：兩顆各 296 剛好併滿 608 的內容寬；mob 轉直排滿版。
   @include rwd-max('pc') {
     gap: 16px;
-    margin: 40px 0 80px;
+    margin: 60px 0 60px;
   }
 
   @include rwd-max('tablet') {
     flex-direction: column;
-    margin-top: 32px;
+    margin: 40px 0 80px;
   }
 }
 

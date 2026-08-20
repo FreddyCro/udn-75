@@ -6,8 +6,10 @@
  * 子頁也要渲染的理由 —— 漢堡在 ≥1280 是 display:none，錨點列若又只在首頁渲染，
  * 子頁 PC 的 header 就只剩 logo ＋ 音效 ＋ share，完全沒有導覽。
  */
+import type { HeaderAnchor } from '~/types/header';
+
 defineProps<{
-  anchors: { title: string; target: string }[];
+  anchors: HeaderAnchor[];
   activeTarget: string;
 }>();
 
@@ -15,6 +17,11 @@ const emit = defineEmits<{ select: [target: string] }>();
 
 const route = useRoute();
 const isHome = computed(() => route.path === '/');
+
+// 錨點文字在稿上是 outline 過的 vector（Figma 3104:84736 的三個 botton 群組）。
+// 用 mask 而非 <img>：這一列的文字色隨 header 主題換（--hd-fg：白底灰字／黑底、橘底白字），
+// 且轉場開窗時同一份 markup 會以反白層再渲染一次（見 AppHeader 的 layers）。
+const artStyle = useArtMask();
 
 // 首頁：攔下瀏覽器的預設跳轉，改走 scrollToTarget（它會補掉 fixed header 的高度）。
 function onHomeSelect(target: string, e: MouseEvent) {
@@ -40,7 +47,9 @@ function onHomeSelect(target: string, e: MouseEvent) {
         :href="`#${anchor.target}`"
         @click="onHomeSelect(anchor.target, $event)"
       >
-        {{ anchor.title }}
+        <span class="app-header-nav__art" :style="artStyle(anchor.art.pc)" />
+        <!-- 真文字只有這一份（SR／SEO 的唯一來源），不做第二份複本 -->
+        <span class="visually-hidden">{{ anchor.title }}</span>
       </a>
     </template>
 
@@ -53,7 +62,8 @@ function onHomeSelect(target: string, e: MouseEvent) {
         :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
         :to="`/#${anchor.target}`"
       >
-        {{ anchor.title }}
+        <span class="app-header-nav__art" :style="artStyle(anchor.art.pc)" />
+        <span class="visually-hidden">{{ anchor.title }}</span>
       </NuxtLink>
     </template>
   </nav>
@@ -70,24 +80,25 @@ function onHomeSelect(target: string, e: MouseEvent) {
   }
 }
 
+// 稿上的量（Figma 3104:84736，換算成 header 內的絕對座標）：
+//   文字墨跡框 15px 高，框心 43 ＝ 主列（3–83）的中心 → 素材垂直置中即對稿。
+//   底線 y 60 高 2、寬 39，而「論壇」墨跡寬 35 → 底線比墨跡左右各寬 2px。
+// padding 11.5 ＝ 底線上緣 60 − 墨跡底緣 50.5；上下對稱才不會把素材推離中心。
+// 順帶把點擊區從 15px 撐成 38px（原本靠 font-size 的行盒撐，改素材後行盒沒了）。
 .app-header-nav__link {
   position: relative;
   flex-shrink: 0;
-  padding: 4px 0;
-  font-size: 18px;
-  font-weight: 400;
-  line-height: 1.4;
+  padding: 11.5px 0;
   color: var(--hd-fg);
   text-decoration: none;
-  white-space: nowrap;
   transition: color 0.3s ease;
 
   &::after {
     content: '';
     position: absolute;
-    right: 0;
+    right: -2px;
     bottom: 0;
-    left: 0;
+    left: -2px;
     height: 2px;
     background-color: var(--hd-accent);
     transform: scaleX(0); // transform-origin 預設 center → 由中心往兩側展開
@@ -101,6 +112,16 @@ function onHomeSelect(target: string, e: MouseEvent) {
   &--active::after {
     transform: scaleX(1);
   }
+}
+
+// 錨點文字（稿字形素材）。素材當形狀、顏色吃 currentColor ＝ 連結的 --hd-fg，
+// 故主題換色與 0.3s 的 color transition 一併生效，反白層也自動正確。
+// 寬高逐顆掛在 inline style（三顆稿寬不同：35／72／90.46），見 useArtMask。
+.app-header-nav__art {
+  display: block;
+  background-color: currentColor;
+  mask: var(--art) no-repeat center / 100% 100%;
+  -webkit-mask: var(--art) no-repeat center / 100% 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {

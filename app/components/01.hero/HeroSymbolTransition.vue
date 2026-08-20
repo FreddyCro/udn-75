@@ -56,9 +56,13 @@ const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
 let anchor: { cx: number; cy: number; w: number; h: number } | null = null;
 
 // field 自己的框（不含捲軸，見 apply 的 ⚠️）。-1 ＝ 待重量；與 anchor 共用同一組
-// 失效點（onResize）。
+// 失效點（onResize / ResizeObserver）。
 let fieldW = -1;
 let fieldH = -1;
+
+// field 自己的視窗座標原點（換算時要先扣掉；本層是 fixed inset:0，正常為 0）。
+let fieldLeft = 0;
+let fieldTop = 0;
 
 // vw / vh 由呼叫端傳入（＝ field 自己的框，見 apply 的說明），fallback 才會與開窗同一座標系。
 function readAnchor(vw: number, vh: number) {
@@ -71,8 +75,8 @@ function readAnchor(vw: number, vh: number) {
     return { cx: vw / 2, cy: vh / 2, w: CORE.dotSize, h: CORE.dotSize };
   }
   anchor = {
-    cx: r.left + r.width / 2,
-    cy: r.top + r.height / 2,
+    cx: r.left + r.width / 2 - fieldLeft,
+    cy: r.top + r.height / 2 - fieldTop,
     w: r.width,
     h: r.height,
   };
@@ -100,9 +104,23 @@ function apply(p: number) {
   // 而 clientWidth/clientHeight 是強制 layout 的讀取，緊接著這裡又要寫 clipPath /
   // backgroundColor / opacity —— 讀寫交錯正是 layout thrash。field 是 fixed inset: 0，
   // 這兩個值只會在視窗尺寸變動時變，而那條路徑已經有 onResize 在清 anchor 了。
+  // ⚠️ 量 getBoundingClientRect() 而**不是** clientWidth / clientHeight —— 兩者只差在
+  //    「有沒有四捨五入」，而那個差在頁面被縮放時會露出來：
+  //      瀏覽器縮放 110%：clientWidth 1309、rect.width 1309.333
+  //      瀏覽器縮放  67%：clientHeight 1343、rect.height 1343.333
+  //    clip-path 的 inset 是以**本元素的實際框**（小數）解算的，拿整數的 clientWidth 當
+  //    vw，等於整段都用一把短了 0.333px 的尺：右緣與下緣各會殘留一條蓋不滿的縫
+  //    （實測 67% 時 `inset(… 0.7px …)`），而那條縫正好落在交棒點上。
+  //    core 的錨點本來就是用 rect 量的 —— 統一成同一把尺，cx - w/2 才會**正好**抵銷成 0，
+  //    「窗蓋滿 header 那一列」那個閘門（top <= 0）也才不會被 0.333px 的誤差擋掉。
+  //    rect 與 clientWidth 一樣**不含捲軸**（fixed inset:0 的框已經扣掉了），
+  //    故原本改用 clientWidth 要避開的 innerWidth 問題不會回來。
   if (fieldW < 0) {
-    fieldW = field.clientWidth;
-    fieldH = field.clientHeight;
+    const r = field.getBoundingClientRect();
+    fieldW = r.width;
+    fieldH = r.height;
+    fieldLeft = r.left;
+    fieldTop = r.top;
   }
   const vw = fieldW;
   const vh = fieldH;
@@ -168,13 +186,28 @@ watch([() => props.progress, () => props.done], () => apply(props.progress), {
 // 視窗尺寸變動時重新量錨點並以當前進度重算（pin 期間轉向 / 拖拉視窗）。
 function onResize() {
   anchor = null;
-  fieldW = -1; // field 的框也跟著重量（見 apply）
+  fieldW = -1; // field 的框與換算倍率也跟著重量（見 apply）
   fieldH = -1;
   apply(props.progress);
 }
-onMounted(() => window.addEventListener('resize', onResize, { passive: true }));
+
+// ⚠️ 除了 window 的 resize，還要盯 field 自己的框：瀏覽器縮放（Ctrl +/−）會同時改變
+//    **區域座標下的尺寸**（1425 → 950）與換算倍率，而那正是上面那組快取的內容。
+//    Chrome 的縮放確實會發 resize，但手機網址列收合只改高度、且各家行為不一 ——
+//    ResizeObserver 直接看被量的那個元素，是這兩件事共同的正確訊號
+//    （同 SymbolFace 用 RO 接住 canvas 尺寸變化的理由）。
+//    RO 在 observe 當下會先發一次：那只是多跑一次 apply()，冪等。
+let fieldRo: ResizeObserver | null = null;
+onMounted(() => {
+  window.addEventListener('resize', onResize, { passive: true });
+  if (fieldRef.value && 'ResizeObserver' in window) {
+    fieldRo = new ResizeObserver(onResize);
+    fieldRo.observe(fieldRef.value);
+  }
+});
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize);
+  fieldRo?.disconnect();
   // ⚠️ bandTheme 是 useState，**跨 client-side 導航存活**（同 useAnchorClaim 的老問題）：
   //    在轉場途中點 logo 進子頁的話，本層卸載但反白層會永遠留在那裡。
   syncHeaderBand(null);
