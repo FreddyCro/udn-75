@@ -62,7 +62,7 @@ function resolveSymbol(p: number): { mode: SymbolMode; enter: boolean } {
 
 const clamp01 = (p: number) => (p < 0 ? 0 : p > 1 ? 1 : p);
 
-export function useOrangeCoreProgress() {
+function buildOrangeCoreProgress() {
   // useState → SSR 安全的跨元件共享（同 key 全站一份）
   const pathProgress = useState<number>('core-path-progress', () => 0);
   // hero → SymbolScene 轉場進度（0..1）：Hero 的 transition pin scrub 寫入，
@@ -424,4 +424,35 @@ export function useOrangeCoreProgress() {
     coverDone,
     outroWhite,
   };
+}
+
+export type OrangeCoreProgress = ReturnType<typeof buildOrangeCoreProgress>;
+
+/**
+ * 共享狀態的入口。**衍生層每個 Nuxt app（＝每個 request）只建一次。**
+ *
+ * useState 讓原始軌（那十幾個 ref）全站共用一份，但上面那整段衍生層 —— 約 25 個
+ * computed，加上 `reactive(Object.fromEntries(FORUM_PATH_EVENTS.map(...)))` 又 8 個，
+ * 再加一次 matchMedia 探測 —— **原本是每個呼叫端各建一份**。首頁有 14 個呼叫端
+ * （論壇段自己就 7 個，見上方註解），等於 setup 期間白配約 450 個 computed 物件與
+ * 14 次媒體查詢；更要緊的是 forumPathProgress 的**逐幀**寫入要把 dirty flag 推給
+ * 14 倍的訂閱者。computed 是惰性的，重算成本有上限，但推播不是免費的。
+ *
+ * ⚠️ 快取掛在 **useNuxtApp()（每個 request 一份）**，絕不可用模組層單例：
+ *    SSR 下模組實例是跨 request 共用的，模組層快取會把一位使用者的狀態漏給下一位。
+ *    這也是上方那些狀態一開始就走 useState 而不是模組層 ref 的同一個理由。
+ *
+ * ⚠️ reduceMotion 的 onMounted 探測因此只由**第一個**呼叫端註冊。這是對的：探測結果
+ *    寫進共用的 useState，跑一次就夠，而 hydration 一致性靠的是「首次 client render
+ *    與 SSR 同值」—— 那件事不因少註冊幾次而改變。
+ */
+const CACHE_KEY = '$udn75OrangeCoreProgress';
+
+export function useOrangeCoreProgress(): OrangeCoreProgress {
+  const nuxt = useNuxtApp() as unknown as Record<string, unknown>;
+  const cached = nuxt[CACHE_KEY] as OrangeCoreProgress | undefined;
+  if (cached) return cached;
+  const api = buildOrangeCoreProgress();
+  nuxt[CACHE_KEY] = api;
+  return api;
 }

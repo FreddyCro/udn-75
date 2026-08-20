@@ -33,6 +33,15 @@ interface MediaIntroMotionTargets {
   lineR: Ref<HTMLElement | null>;
   titleEls: () => MediaTitleEls | null;
   rows: () => HTMLElement[];
+  /**
+   * 底紋（`.media__bg`）是否已淡入。整段 motion 有將近九成的 scrub 行程把底紋
+   * 設成 `autoAlpha: 0`（＝`visibility: hidden`），而 HeartMetaball 內部的
+   * IntersectionObserver 看不到 visibility —— 隱藏的元素仍有 layout box，IO 照樣
+   * 回報 isIntersecting，於是那顆 canvas 會在完全看不見的情況下全速渲染，時間點
+   * 剛好是本檔在 scrub 三十條 tween 的時候。「可見」這件事只有這裡知道，所以由
+   * 這裡明說。未接（undefined）時 HeartMetaball 維持常跑，行為與改版前相同。
+   */
+  onBgReveal?: (revealed: boolean) => void;
 }
 
 /**
@@ -114,6 +123,8 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     gsap.set(titleFinal, { autoAlpha: 0 });
     gsap.set(all, { autoAlpha: 0 });
     gsap.set(revealEls, { autoAlpha: 0 });
+    // 底紋此刻起是 visibility: hidden，直到 settle 尾端的淡入（見 onBgReveal）
+    targets.onBgReveal?.(false);
 
     // 素材皆已裁齊字形（框中心＝字形中心），只需量標題外框，其餘用常數表
     const titleRect = title.getBoundingClientRect();
@@ -284,8 +295,18 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       // 交棒：位移途中 crossfade 給完成態，位移會遮住分件與完成態的細微錯位
       .to(titleMotion, { autoAlpha: 0, duration: 0.5 }, 'settle+=0.25')
       .to(titleFinal, { autoAlpha: 1, duration: 0.5 }, 'settle+=0.25')
-      // 內容（底紋＋內文＋清單）整體淡入
-      .to(revealEls, { autoAlpha: 1, duration: 0.6 }, 'settle+=0.3');
+      // 內容（底紋＋內文＋清單）整體淡入。這一拍同時是 HeartMetaball 的 render loop
+      // 閘門：往前播＝底紋現身、往回捲＝再度隱形（scrub 兩向都會觸發這兩個回呼）
+      .to(
+        revealEls,
+        {
+          autoAlpha: 1,
+          duration: 0.6,
+          onStart: () => targets.onBgReveal?.(true),
+          onReverseComplete: () => targets.onBgReveal?.(false),
+        },
+        'settle+=0.3',
+      );
 
     // 分鏡 4／4b（pc / pad 限定）：bar 分裂飛到文字外緣，再變細甩出；文字同拍外挪
     if (hasBars) {
@@ -406,20 +427,28 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       // 由 timeline 的地標推導、不寫死比例 → 加減拍數不必重算。
       // 比對 self.progress 而非 tl.time()：不必假設 ScrollTrigger 呼叫 onUpdate
       // 之前已經推進過 timeline。
+      // 屬性值整段 scrub 只翻一次，卻是逐幀寫入 —— 加個相同值就不寫的守衛。
+      // 便宜，但它正好是 AppHeader 每幀讀 dataset 那個迴圈的寫入端
       onUpdate: (self) => {
-        section.dataset.headerTheme = mediaHeaderLightAt(
+        const next = mediaHeaderLightAt(
           self.progress,
           NARROW_DUR + BEAT1_DUR,
           tl?.duration() ?? 0,
         )
           ? 'light'
           : 'orange';
+        if (section.dataset.headerTheme !== next) section.dataset.headerTheme = next;
       },
+      // 兩端的兜底：越過整段 motion 之後底紋必定已淡入、退回起點之前必定還沒。
+      // timeline 的 onStart/onReverseComplete 在 refresh 的 revert 之後可能不會
+      // 補發，這兩個回呼保證閘門不會停在跟畫面相反的狀態
       onLeaveBack: () => {
         section.dataset.headerTheme = 'orange';
+        targets.onBgReveal?.(false);
       },
       onLeave: () => {
         section.dataset.headerTheme = 'light';
+        targets.onBgReveal?.(true);
       },
     });
 

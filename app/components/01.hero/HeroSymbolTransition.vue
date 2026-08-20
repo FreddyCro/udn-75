@@ -55,6 +55,11 @@ const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
 // resize 時清掉重量（見 onResize）。
 let anchor: { cx: number; cy: number; w: number; h: number } | null = null;
 
+// field 自己的框（不含捲軸，見 apply 的 ⚠️）。-1 ＝ 待重量；與 anchor 共用同一組
+// 失效點（onResize）。
+let fieldW = -1;
+let fieldH = -1;
+
 // vw / vh 由呼叫端傳入（＝ field 自己的框，見 apply 的說明），fallback 才會與開窗同一座標系。
 function readAnchor(vw: number, vh: number) {
   if (anchor) return anchor;
@@ -90,8 +95,17 @@ function apply(p: number) {
   //      在交棒給 SymbolScene 的那一刻透出 hero 白底（進到 symbol 段後底下換黑底才隱形，
   //      所以只有接縫那一瞬看得見）。
   //    field 的原點與 core rect 都是視窗左上（捲軸在右邊），故 cx / cy 可直接混用不必換算。
-  const vw = field.clientWidth;
-  const vh = field.clientHeight;
+  //
+  // 量測結果**快取**（同下面那行的 anchor，理由一樣）：apply() 是逐幀被 scrub 打到的，
+  // 而 clientWidth/clientHeight 是強制 layout 的讀取，緊接著這裡又要寫 clipPath /
+  // backgroundColor / opacity —— 讀寫交錯正是 layout thrash。field 是 fixed inset: 0，
+  // 這兩個值只會在視窗尺寸變動時變，而那條路徑已經有 onResize 在清 anchor 了。
+  if (fieldW < 0) {
+    fieldW = field.clientWidth;
+    fieldH = field.clientHeight;
+  }
+  const vw = fieldW;
+  const vh = fieldH;
 
   const { cx, cy, w: w0, h: h0 } = readAnchor(vw, vh);
 
@@ -154,9 +168,11 @@ watch([() => props.progress, () => props.done], () => apply(props.progress), {
 // 視窗尺寸變動時重新量錨點並以當前進度重算（pin 期間轉向 / 拖拉視窗）。
 function onResize() {
   anchor = null;
+  fieldW = -1; // field 的框也跟著重量（見 apply）
+  fieldH = -1;
   apply(props.progress);
 }
-onMounted(() => window.addEventListener('resize', onResize));
+onMounted(() => window.addEventListener('resize', onResize, { passive: true }));
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize);
   // ⚠️ bandTheme 是 useState，**跨 client-side 導航存活**（同 useAnchorClaim 的老問題）：
