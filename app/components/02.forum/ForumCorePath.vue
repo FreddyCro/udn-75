@@ -817,8 +817,12 @@ onBeforeUnmount(() => {
       >
         <path ref="trailMaskPathEl" fill="none" stroke="#fff" :stroke-width="FORUM_PATH_STROKE * 2" />
       </mask>
+      <!-- class 純粹是**定位用的把手**（DevTools／量測腳本要找到這條可見尾跡），
+           不掛任何樣式 —— 外觀全由上面那些 attribute 給。別因為「沒有對應的 SCSS 規則」
+           就當成死碼刪掉。 -->
       <path
         ref="trailEl"
+        class="forum-path__trail-line"
         fill="none"
         stroke="currentcolor"
         :stroke-width="FORUM_PATH_STROKE"

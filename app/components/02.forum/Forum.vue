@@ -87,9 +87,18 @@ onMounted(() => {
     pinRO = new ResizeObserver(syncPinHeight);
     pinRO.observe(pinRef.value);
   }
+  // 兩個訊號都要聽，理由同 Blessing.vue 的 syncPartnersHeld：
+  // ResizeObserver 是預設的 **content-box** 模式，而本塊的 padding-bottom 吃視窗高
+  // （見 SCSS 的 min(vh(0.2), 200px)）—— 純粹的視窗變高只改 padding、不改內容高，
+  // RO 因此完全不會發火，夾點就停在舊的塊高上（覆蓋過場的定住會歪掉那個差值）。
+  // 不改用 { box: 'border-box' }：那個選項要 Safari 15.4+，而本專案受眾的舊裝置比例高
+  // （同 architecture/viewport-height.md 不用 dvh 的理由），退化時又是靜默的。
+  // 網址列收合造成的 resize 不會有副作用：--vh 刻意凍結 → padding 不變 → 寫回同一個值。
+  window.addEventListener('resize', syncPinHeight, { passive: true });
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncPinHeight);
   pinRO?.disconnect();
   pinRO = null;
 });
@@ -287,6 +296,28 @@ onBeforeUnmount(() => {
   // 會把 .agenda__group 的 z-index: 2 關進來，讓「核心從議程群組背後穿過」失效。
   // 只有 cover 期間才掛 sticky（--held，由 coverHoldArmed 決定），那時核心早已走完設計線。
   position: relative;
+  // forum 尾段與 blessing 色塊之間的留白：視窗高的 20%，上限 200px（三個斷點同式）。
+  // 隨視窗高走是因為它是「最後一屏底部的呼吸空間」——矮視窗給固定值會吃掉太多內容；
+  // 200px 的上限則是不讓高螢幕把接縫推得太遠（1080 起就卡在 200）。
+  // 用 vh() 而非字面 20vh：視窗高在本專案是單一來源（--vh），見 architecture/viewport-height.md。
+  //
+  // 加在**本塊內部**是唯一正確的放法：接縫（.sec2__seam，本塊的下一個零高度兄弟）是
+  // 三件事共用的同一個位置 —— 設計線末節點的錨點、色塊上緣（.sec2__cover-hold 100vh
+  // 被 .section3 的負 margin 抵銷後恰好落在此）、以及路徑 ScrollTrigger 的 end
+  // （吃 tailEndY）。padding 加在這裡，三者一起下移，耦合不斷；把這段留白塞在接縫
+  // **之後**（spacer 前後）則只推色塊、不推末節點，飛機會在接縫上方鑽進一片空白。
+  //
+  // ⚠️ 本值隨視窗高變 → --sec2-pin-h 必須跟著重量，而 syncPinHeight 的 ResizeObserver
+  //    是預設的 content-box 模式、**padding 的變化不會觸發它**（本塊的內容高只隨寬度變）。
+  //    所以 script 那邊另外掛了 resize —— 少了它，>25% 的高度變動（分割畫面、轉螢幕）
+  //    會讓夾點停在舊的塊高上，症狀是覆蓋過場期間 forum 最後一屏沒有精準定住。
+  //
+  // 代價（2026-08-20 以 100px 實測，三斷點交棒精準度與定住誤差皆不變）：設計線末段被拉長
+  // 同樣的距離，而 join 的控制點是弦相對的 → 末端切線隨弦轉（100px 時 pc 98.6→91.2、
+  // pad 120.4→127.6、mob 78.1→72.7，約 5–7°；本值放大則角度差跟著放大），飛機下潛距離
+  // 差幾 px。那個角度本來就隨版面浮動（?highlights 一開就會動），故**不**去補償
+  // R4/S4/T5 的 join.relOut —— 針對單一視窗尺寸硬調反而讓原本自適應的東西變脆。
+  padding-bottom: min(#{vh(0.2)}, 200px);
   background: #fff;
   opacity: 0;
   transition: opacity 0.4s ease;
