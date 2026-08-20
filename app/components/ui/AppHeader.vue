@@ -585,13 +585,30 @@ const layers = computed<HeaderLayer[]>(() => {
     transparent var(--hd-band-l, 0px) var(--hd-band-r, 0px),
     #000 var(--hd-band-r, 0px) 100%
   );
-  -webkit-mask:
-    var(--hd-band-mask) 0 0 / 100% var(--header-height) no-repeat,
-    linear-gradient(#000, #000) 0 var(--header-height) / 100% 400px no-repeat;
-  mask:
-    var(--hd-band-mask) 0 0 / 100% var(--header-height) no-repeat,
-    linear-gradient(#000, #000) 0 var(--header-height) / 100% 400px no-repeat;
-  mask-clip: no-clip;
+  // ⚠️ 遮罩掛在**真正會畫東西的那兩個元素**上，不掛在 layer 上。
+  //    掛 layer 看起來對，但 .app-header__bar-wrap 為了滑入動畫帶著 transform ⇒ 被提升成
+  //    合成層 ⇒ 在 Chrome 會**逃出祖先的遮罩**：窗內 header 那一列殘留一條比周圍淺的橫帶
+  //    （底色沒被清乾淨）。01 → 02 是深色場，那條淺帶看不太出來；03 → 04 疊在滿版橘上
+  //    一眼就見（A/B 對照：temp/seam-base-only.png ↔ temp/seam-fixA.png）。
+  //    試過在 layer 上加 isolation: isolate 擋不住（temp/seam-isolate.png），
+  //    掛在元素自己身上才沒有這條逃逸路徑。
+  // 單層遮罩、垂直重複、no-clip：
+  //   ・repeat（不是 no-repeat）＋ no-clip ⇒ 那道直立缺口一路延伸到盒外，
+  //     share 的展開列（畫在主列底緣以下）因此**不會被裁掉**。
+  //   ・單層 ⇒ 沒有「兩層遮罩的邊界」。曾經改用「洞 + 主列以下補一層黑」的兩層寫法，
+  //     邊界那一列會在窗內透出一條 1px 亮線（DPR 1／2 都看得到，
+  //     見 temp/final-fuse-dpr2.png 的紀錄）；單層就沒有這個接縫。
+  //   ・gradient 是水平的，垂直重複只是把同一組直立條紋再鋪一次 ⇒ 缺口位置不變。
+  // ⚠️ 代價：展開列若橫向落在窗內，會跟著被挖掉。那是一致的：窗內本來就不該畫 base，
+  //    要畫也是 band 那層畫（它的展開列是收合的）。實務上窗置中、share 在最右，
+  //    只有窗接近滿版時才重疊，而那時整條 header 本來就被窗蓋滿。
+  // ⚠️ mask-clip 必須寫在 mask／-webkit-mask **之後**：shorthand 會把它重設回 border-box。
+  .app-header__progress,
+  .app-header__bar-wrap {
+    -webkit-mask: var(--hd-band-mask) 0 0 / 100% 100% repeat;
+    mask: var(--hd-band-mask) 0 0 / 100% 100% repeat;
+    mask-clip: no-clip;
+  }
 }
 
 /* 顯示/隱藏：捲過 hero 後才滑入。

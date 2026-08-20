@@ -665,6 +665,7 @@ function applyScrollLock() {
           :phrases="str.symbol.phrases"
           :hint="str.symbol.hint"
           :hint-mob="str.symbol.hintMob"
+          :scroll-hint="str.symbol.scrollHint"
           :hole-radius="25"
           :hole-spread="50"
           :return-ease="1.5"

@@ -58,6 +58,10 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   const route = useRoute();
   const { vhPx } = useViewportHeight();
   const { setMediaMotionArmed } = useOrangeCoreProgress();
+  // header 的反白窗：橘塊收窄時，窗內那一段 header 維持橘底白字、窗外跟著露白。
+  // 與 01 → 02 共用同一支（見 ~/composables/useHeaderBand）—— 那邊傳 'dark'、這邊傳
+  // 'orange'，header 端不必認得是誰在驅動。兩段轉場在捲動軸上不重疊，故不會互搶。
+  const { syncHeaderBand } = useHeaderBand();
   // scrub 行程（px）＝ HOLD_BUFFER（sticky 定住距離＝buffer 高度）＋ 融合拍的跑道。
   //
   // HOLD_BUFFER 只涵蓋拍 1 之後：拍 0（融合拍）跑在 sticky engage **之前**那段跑道上，
@@ -430,23 +434,57 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       // 屬性值整段 scrub 只翻一次，卻是逐幀寫入 —— 加個相同值就不寫的守衛。
       // 便宜，但它正好是 AppHeader 每幀讀 dataset 那個迴圈的寫入端
       onUpdate: (self) => {
-        const next = mediaHeaderLightAt(
+        const lightPhase = mediaHeaderLightAt(
           self.progress,
           NARROW_DUR + BEAT1_DUR,
           tl?.duration() ?? 0,
-        )
-          ? 'light'
-          : 'orange';
+        );
+
+        // ── header 跟著橘塊收窄：窗內橘、窗外白 ────────────────────────
+        // 橘塊還在（尚未收成 28px 細條）時，把它的左右緣交給 header 當反白窗；
+        // 之後（lightPhase）收掉，整條 header 就是白的。
+        //
+        // ⚠️ 量 morph 而不是 veil，且**整段都量 morph**：拍 0 的構造保證兩者同寬
+        //    （見上方那段 ⚠️「veil 與 morph 的寬度基準由 CSS 保證同一個值」），
+        //    而 veil 在 NARROW_DUR 就交棒消失了，morph 則一路活到拍 1 結束 ——
+        //    用同一個元素就不必在交棒點做分支，也不可能在那一幀讀到已隱藏的那個。
+        // ⚠️ top 固定傳 0，不用 morph 自己的 rect.top：morph 只塗得到接縫**以下**
+        //    （morph 上緣 ≡ .media 上緣 ≡ 接縫），接縫以上那塊橘是 veil 畫的。
+        //    畫面上這塊橘在整個拍 0／拍 1 都是**滿高**的，只是由兩個元素接力畫 ——
+        //    照 morph 的 top 傳，會在接縫還沒抵達視窗頂那段被 header 的閘門擋掉
+        //    （那個閘門要的是「窗有沒有蓋滿 header 那一列」，見 useHeaderBand）。
+        // ⚠️ 每幀一次 getBoundingClientRect ＝ 一次強制 reflow。這裡接受它：morph 的
+        //    transform 由 GSAP 逐幀寫、後面的拍還會加上 x/xPercent，用 scaleX 反推
+        //    版位會在改拍數時靜靜失準，而這一段只有約一個視窗高的跑道。
+        let bandLeft = 0;
+        if (lightPhase) {
+          syncHeaderBand(null);
+        } else {
+          const r = morph.getBoundingClientRect();
+          bandLeft = r.left;
+          syncHeaderBand({ theme: 'orange', left: r.left, right: r.right, top: 0 });
+        }
+
+        // 底層（窗外）的主題。橘塊還滿版時整條 header 都被窗蓋住，底層畫什麼都看不到，
+        // 但**不能**先翻白 —— 反白層是 v-if 掛上去的（下一個 tick 才有 DOM），
+        // 先翻會露出一幀白 header 疊在滿版橘上。故等真的開始收窄（左緣離開視窗左緣）
+        // 才翻 light；那一刻窗外本來就已經是白的了（見拍 0 的底色硬切）。
+        const next = lightPhase || bandLeft > 1 ? 'light' : 'orange';
         if (section.dataset.headerTheme !== next) section.dataset.headerTheme = next;
       },
       // 兩端的兜底：越過整段 motion 之後底紋必定已淡入、退回起點之前必定還沒。
       // timeline 的 onStart/onReverseComplete 在 refresh 的 revert 之後可能不會
       // 補發，這兩個回呼保證閘門不會停在跟畫面相反的狀態
+      // 兩端都要收掉反白窗：越過整段之後畫面上早就沒有橘塊了，退回起點之前則是
+      // blessing 那整片橘（那時 header 本來就整條橘，不需要開窗）。
+      // 不收的話 header 會留著一條對不上任何東西的橘。
       onLeaveBack: () => {
+        syncHeaderBand(null);
         section.dataset.headerTheme = 'orange';
         targets.onBgReveal?.(false);
       },
       onLeave: () => {
+        syncHeaderBand(null);
         section.dataset.headerTheme = 'light';
         targets.onBgReveal?.(true);
       },
@@ -476,5 +514,8 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     tl?.kill();
     tl = null;
     setMediaMotionArmed(false);
+    // ⚠️ bandTheme 是 useState，**跨 client-side 導航存活**（同 useAnchorClaim 的老問題）：
+    //    在這一拍中途點 logo 進子頁的話，本層卸載但反白層會永遠留在那裡。
+    syncHeaderBand(null);
   });
 }

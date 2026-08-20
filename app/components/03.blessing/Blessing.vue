@@ -244,11 +244,18 @@ onBeforeUnmount(() => {
        「第一顆笑臉逐格走完」的那一刻。深度由本段自己宣告（header 不認得任何 section，
        同 data-header-theme／data-anchor-target 的分工），算式與理由見 BLESSING_ANCHOR_VH
        與 ~/utils/anchor-landing。 -->
+  <!-- data-header-theme 跟著底色走：融合拍一開始底色就硬切成白（--outro-white，見下方
+       .section3 的 background），此時畫面上僅存的橘是那塊會收窄的 veil／morph。
+       那塊橘由 header 的反白窗負責（useMediaIntroMotion 把它的左右緣交給 useHeaderBand），
+       段落這邊就該老實宣告「我的底色是白的」—— 否則窗**外**那段會維持橘主題，
+       疊成「白底上一條 70% 橘」的淡橘列，與收窄後應該露白的設計不符。
+       ⚠️ 綁定不影響 SSR：outroWhite 初值 0 → 輸出仍是 orange，屬性本身在 SSR 就存在，
+          符合 AppHeader onMounted 收集 [data-header-theme] 的前提。 -->
   <section
     id="blessing"
     ref="sectionRef"
     class="section3"
-    data-header-theme="orange"
+    :data-header-theme="outroWhite ? 'light' : 'orange'"
     :data-anchor-offset-vh="BLESSING_ANCHOR_VH"
     :style="{ '--cover-orange': coverOrange, '--outro-white': outroWhite }"
   >

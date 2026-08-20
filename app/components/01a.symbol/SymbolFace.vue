@@ -245,6 +245,11 @@ const props = defineProps({
    *  與 hint 的差別是**版位與文案**：手機的說明不排在圖示右邊，而是單行置中排在人像下方；
    *  文案也不同（手機沒有游標，稿上是「點擊人臉…」）。圓環圖示本身兩個斷點共用。 */
   hintMob: { type: String, default: '' },
+  /** 下滑提示的說明文字（空字串＝不渲染這顆按鈕）。設計稿 Figma 2065:139741。
+   *  圖示本體、漂移動態與「點了往下捲一屏」都在 <UBtnScrollHint>，本元件只給版位。
+   *  ⚠️ 目前**持續顯示**（只要有文案就在）—— 顯示時機（例如比照 hint 綁 faceFormed）
+   *     尚未定案，先這樣看效果。要接時機的話改這裡的 v-if，元件本身不必動。 */
+  scrollHint: { type: String, default: '' },
   /** 提示是否「整個生命週期只出現一次」。
    *  false（預設）＝ 每次**重新完整集合**都再出現一次；游標碰到人像仍立即收起，
    *    但那次收起只對這一輪集合有效（見 faceFormed 的 watch）。
@@ -1827,6 +1832,15 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
     >
       {{ hintMob }}
     </p>
+
+    <!-- 下滑提示：水平置中、距舞台底緣 44px（Figma 2065:139741）。
+         與上面兩組提示無關 —— 那兩組是「這裡可以互動」的邀請，這顆是「還有下文」的指引。
+         顯示時機尚未定案，目前只要有文案就持續顯示（見 scrollHint prop）。 -->
+    <UBtnScrollHint
+      v-if="scrollHint"
+      class="scroll-hint"
+      :label="scrollHint"
+    />
   </div>
 </template>
 
@@ -1960,6 +1974,33 @@ $hint-icon-size: 88px;
 
 .hint-mob--on {
   opacity: 1;
+}
+
+// 下滑提示的版位（圖示本體、漂移動態與捲動行為都在 <UBtnScrollHint>）。
+// 設計稿 Figma 2065:139741（1280×720 的「智慧論壇07」）：22×12 的圖示水平置中
+// —— 量到的墨水 bbox 是 x 629..650，中心 640 ＝ 畫面中心；距框底 44px。
+// （metadata 回報 x=651 是旋轉過的 instance 的未變換 bbox，不是實際落點。）
+// 稿上只有 pc 那一格有這個提示（mob 的 2065:120222 沒有），故三個斷點共用同一組數字。
+//
+// ⚠️ 不補 --chrome-inset（與 hero 的 .sec1__hero-scroll 不同）：正式站本層住在
+//    HeroSymbolTransition 的 fixed inset:0 之內、.stage 被覆寫成 height:100%
+//    ＝ dynamic viewport，底緣就是「看得到的」底緣。hero 那邊要補是因為它的容器高是
+//    vh() ＝ large viewport（凍結、不隨網址列收合）。demo 頁是 in-flow 的 vh(1)，
+//    手機上這 44px 可能落在工具列底下 —— 那是除錯頁，不為它加旋鈕。
+//
+// ⚠️ pointer-events: auto 是必要條件，不是保險：外層 .hero-symbol-transition 是
+//    pointer-events: none（只有 :deep(canvas) 被打開，見該檔），不覆寫回來這顆按鈕
+//    的命中會穿過去掉到下層，點不到。
+// z-index 2 ＝ 與 .egg / .hint 同層：三者不重疊，都只需要疊在 canvas 之上
+//    （canvas 由 three.js appendChild 進來、未定位，故任何 positioned 子項都在它之上，
+//     這個 2 是把意圖寫明、不倚賴那條規則）。
+.scroll-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  z-index: 2;
+  transform: translateX(-50%);
+  pointer-events: auto;
 }
 
 </style>
