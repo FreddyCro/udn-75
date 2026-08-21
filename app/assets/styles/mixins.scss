@@ -14,6 +14,7 @@ $breakpoints: (
   'mobile': 414px,  // MOBILE_BREAKPOINTS
   'tablet': 768px,  // TABLET_BREAKPOINTS
   'pc': 1280px,     // PC_BREAKPOINTS
+  'ultra': 1920px,  // ULTRA_BREAKPOINTS
 );
 
 @function bp($name) {
