@@ -1,0 +1,1 @@
+import{S as r}from"./DE0QAAoh.js";import{o as t,g as e,O as i}from"./CqUTNQ8g.js";import"./D_lzlcKC.js";import"./DuAOmGkh.js";import"./DlAUqK2U.js";import"./OuyJMI9P.js";import"./6-W2TXLO.js";import"./BNLnOisP.js";import"./3iWwNtbB.js";import"./_Bsa_D-c.js";const k=t({__name:"service",setup(p){return(m,c)=>{const o=r;return i(),e(o)}}});export{k as default};

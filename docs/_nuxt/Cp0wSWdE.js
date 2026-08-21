@@ -1,0 +1,1 @@
+import{N as t}from"./pfUP2SY_.js";import{o as r,g as e,O as p}from"./CqUTNQ8g.js";import"./DlAUqK2U.js";import"./Bc96OGQx.js";import"./D_lzlcKC.js";import"./BHUh48Ae.js";import"./OuyJMI9P.js";import"./6-W2TXLO.js";import"./BNLnOisP.js";import"./3iWwNtbB.js";import"./_Bsa_D-c.js";const x=r({__name:"news",setup(m){return(i,n)=>{const o=t;return p(),e(o)}}});export{x as default};

@@ -1,0 +1,1 @@
+const c="data-subpage-anchor";function n(a){return a.trim().replace(/[?#].*$/,"").replace(/^\/+|\/+$/g,"")}function s(a,t){const e=t[0]??"",r=n(a.replace(/^#/,""));return r&&t.includes(r)?r:e}export{c as S,n as a,s};
