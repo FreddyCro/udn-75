@@ -25,7 +25,8 @@ import {
 // ── 退場：兩階段，A 由本元件負責 ─────────────────────────────────────
 // 完整設計見 architecture/2026-08-21-hero-two-phase-exit-design.md。
 //   A（本元件）  0 → vh(HERO_DISSOLVE_VH)：影片 sticky 黏在畫面上播退場，走完**硬切**消失
-//   B（Hero.vue）→ 再 vh(HERO_REVEAL_VH)：引言停在原地淡入，orange core 同時從畫面中心出現
+//   B（Hero.vue）影片消失那一刻起，**時間驅動**：引言在原地淡入，orange core 同時
+//                從畫面中心淡入。B 不吃額外捲動距離（見 HERO_INTRO_REVEAL）。
 //
 // ⚠️ 已放棄設計師的「不要因為捲太快而看不到 outro」（使用者裁決）：100vh ＝ 900px，
 //    一般捲速 400–800 px/s 走完是 1.1–2.25 秒而退場是 2.5 秒 ⇒ 大部分人看到 45–90%。

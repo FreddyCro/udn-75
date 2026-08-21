@@ -16,6 +16,7 @@ import {
 import {
   HERO_CORE_DROP_IN,
   HERO_CORE_HANDOFF,
+  HERO_INTRO_REVEAL,
   HERO_OUTRO_CORE_ANCHOR,
 } from '@/utils/hero-video-config';
 import { HERO_RETURN_HASH } from '@/utils/home-intent';
@@ -114,7 +115,15 @@ const symbolWorldScale = computed(() =>
 // 刻意不掛在 pathProgress 的門檻上 —— 那條軌的進度換算成「文字還剩幾行沒被穿過」會隨
 // 視窗高與文字行數浮動，門檻寫死就會像先前那樣在方塊還在字裡時就開始淡。
 const introFade = ref(0);
-const introOpacity = computed(() => String(1 - introFade.value));
+
+// 引言的「原地淡入」進度（0 → 1）：B 階段，由影片硬切消失的那一刻起跑
+// （見下方 runIntroReveal 與 architecture/2026-08-21-hero-two-phase-exit-design.md）。
+// 與淡出相乘而不是二選一：兩者管的是不同時期（進場 / 讓位給轉場），
+// 而使用者可以在淡入還沒走完時就繼續往下捲，兩段會短暫重疊。
+const introReveal = ref(0);
+const introOpacity = computed(() =>
+  String((1 - introFade.value) * introReveal.value),
+);
 
 // 引言的 runway：50vh（core 從文字底緣走到視窗中央所需）＋ 淡出窗口，兩者都由
 // INTRO_FADE_VH 推出 → 淡出必然剛好在 pin 接手的同一刻結束（見 orange-core-config）。
@@ -234,6 +243,7 @@ watch(shouldLockScroll, applyScrollLock);
 watch(heroState, (s, prev) => {
   if (s !== 'gone') {
     resetCoreEntrance(); // 倒帶回 loop：收掉動畫、dot 歸位
+    resetIntroReveal(); // 影片又蓋回來了 → 引言收回不可見，下一趟重新淡入
     // 轉場進度一併歸零。header 在轉場期間刻意保持可點（見 AppHeader 的 z-index 註解），
     // 使用者真的會在轉場進行到一半時按 logo 回 loop —— 不歸零的話 HeroSymbolTransition
     // 會留在 active，在剛倒帶回來的影片上蓋一層近乎滿版的黑色 clip。
@@ -241,7 +251,9 @@ watch(heroState, (s, prev) => {
     setTransitionProgress(0);
     return;
   }
+  // core 與引言**同時**淡入（使用者裁決）：兩者都掛在這一刻，不排先後。
   runCoreEntrance(prev === 'outro');
+  runIntroReveal();
 });
 
 // 帶 hash 進站的處理（見上方 bypassForInitialHash 的 ⚠）：排在兩個 watch 之後，
@@ -269,6 +281,35 @@ let transitionST: ScrollTrigger | null = null;
 let introFadeST: ScrollTrigger | null = null;
 // core 的進場動畫（見 runCoreEntrance）：留著才能在倒帶回 loop 時中途收掉。
 let entranceTween: gsap.core.Tween | null = null;
+// 引言原地淡入的 tween（見 runIntroReveal）：同樣要能中途收掉。
+let introRevealTween: gsap.core.Tween | null = null;
+
+// ── B 階段：引言原地淡入 ──────────────────────────────────────────────
+// 時間驅動（不吃捲動距離，見 HERO_INTRO_REVEAL 的註解）。「原地」由 A 階段的幾何
+// 保證：影片硬切消失的那一刻，引言上緣已經停在 $intro-at 上，淡入就發生在那個位置。
+//
+// tween 一個中介物件再寫回 ref，而不是直接 gsap.to(ref)：GSAP 對 Vue ref 的
+// `.value` 賦值雖然會觸發反應性，但那是依賴實作細節；寫成兩步意圖明確、也好除錯。
+const revealProxy = { v: 0 };
+
+function runIntroReveal() {
+  introRevealTween?.kill();
+  revealProxy.v = 0;
+  introReveal.value = 0;
+  introRevealTween = gsap.to(revealProxy, {
+    v: 1,
+    duration: HERO_INTRO_REVEAL.duration,
+    ease: HERO_INTRO_REVEAL.ease,
+    onUpdate: () => (introReveal.value = revealProxy.v),
+  });
+}
+
+function resetIntroReveal() {
+  introRevealTween?.kill();
+  introRevealTween = null;
+  revealProxy.v = 0;
+  introReveal.value = 0;
+}
 
 onMounted(() => {
   // hero 影片體驗一律從頂端開始：停用瀏覽器捲動位置還原，
@@ -292,6 +333,11 @@ onMounted(() => {
   // shouldLockHeroScroll）。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
   // 先解鎖、本元件下一 tick 才重新上鎖，中間會出現「瞬間可捲動」的破口。
   applyScrollLock();
+
+  // 掛載時就已經是 gone（帶其他 hash 進站、影片載入失敗、hydration 期間 bypass 被跳過
+  // 而由別處補的路徑）：watch(heroState) 接不到那次改變，引言會停在 opacity 0 看不見。
+  // 這些使用者沒看過影片，沒有「接上」可言 → 直接給 1，不做淡入。
+  if (isGone.value && !introRevealTween) introReveal.value = 1;
 
   if (!introRef.value || !innerRef.value) return;
   gsap.registerPlugin(ScrollTrigger);
@@ -422,6 +468,8 @@ onBeforeUnmount(() => {
   introFadeST = null;
   entranceTween?.kill();
   entranceTween = null;
+  introRevealTween?.kill();
+  introRevealTween = null;
 });
 
 // ── core 的進場（gone 的那一刻）────────────────────────────────────────
