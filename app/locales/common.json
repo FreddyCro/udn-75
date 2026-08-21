@@ -42,7 +42,7 @@
       "unit": "新聞部 X 數據發展部",
       "author": "熊迺群",
       "url": "/news",
-      "titleImg": "/img/udn75_anchor_title_news.svg",
+      "titleImg": "/img/news/udn75_news_hero_title.svg",
       "numImg": "/img/udn75_anchor_num_01.svg"
     },
     {
@@ -51,7 +51,7 @@
       "unit": "視覺設計中心",
       "author": "董谷音",
       "url": "/visual",
-      "titleImg": "/img/udn75_anchor_title_visual.svg",
+      "titleImg": "/img/visual/udn75_visual_hero_title.svg",
       "numImg": "/img/udn75_anchor_num_02.svg"
     },
     {
@@ -60,7 +60,7 @@
       "unit": "新聞營運中心",
       "author": "蔡佩蓉",
       "url": "/service",
-      "titleImg": "/img/udn75_anchor_title_service.svg",
+      "titleImg": "/img/service/udn75_service_hero_title.svg",
       "numImg": "/img/udn75_anchor_num_03.svg"
     },
     {
@@ -69,7 +69,7 @@
       "unit": "數據中心",
       "author": "李承宇",
       "url": "/data",
-      "titleImg": "/img/udn75_anchor_title_data.svg",
+      "titleImg": "/img/data/udn75_data_hero_title.svg",
       "numImg": "/img/udn75_anchor_num_04.svg"
     },
     {
@@ -78,7 +78,7 @@
       "unit": "教育事業部",
       "author": "潘素滿",
       "url": "/education",
-      "titleImg": "/img/udn75_anchor_title_education.svg",
+      "titleImg": "/img/education/udn75_education_hero_title.svg",
       "numImg": "/img/udn75_anchor_num_05.svg"
     },
     {
@@ -87,7 +87,7 @@
       "unit": "健康事業部",
       "author": "吳貞瑩",
       "url": "/health",
-      "titleImg": "/img/udn75_anchor_title_health.svg",
+      "titleImg": "/img/health/udn75_health_hero_title.svg",
       "numImg": "/img/udn75_anchor_num_06.svg"
     }
   ]

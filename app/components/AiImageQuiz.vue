@@ -49,7 +49,6 @@ function pick(i: number) {
         v-for="(o, i) in options"
         :key="i"
         class="ai-quiz__option"
-        :class="{ 'ai-quiz__option--masked': answered && !o.isAi }"
         :style="{ flex: `${i === 0 ? 394 : 235} 0 0%` }"
       >
         <UPic
@@ -160,21 +159,6 @@ function pick(i: number) {
 .ai-quiz__option {
   position: relative;
   margin: 0;
-
-  // 遮罩層：作答後蓋在非 AI 的照片上
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-  }
-}
-
-.ai-quiz__option--masked::after {
-  opacity: 1;
 }
 
 .ai-quiz__option :deep(.ai-quiz__img) {
