@@ -44,15 +44,34 @@ defineProps<{
   border: 0.6px solid var(--color-gray);
   transition:
     color 0.2s ease,
-    border-color 0.2s ease;
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
 
-  &:hover {
-    color: var(--color-orange);
+  &:hover,
+  &:focus-visible {
+    color: #fff;
+    background: var(--color-orange);
     border-color: var(--color-orange);
+
+    // 放大只給 pc 以上（pad／mob 是觸控，hover 不成立）。
+    // 比例取自設計稿 hover 態：280×68 → 290×75，非等比。
+    @include rwd-min('pc') {
+      transform: scale(calc(290 / 280), calc(75 / 68));
+    }
   }
 
   @include rwd-min('tablet') {
     padding: 19px 56px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:hover,
+    &:focus-visible {
+      transform: none;
+    }
   }
 }
 </style>
