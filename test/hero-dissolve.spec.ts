@@ -1,40 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   DISSOLVE_ENTER,
-  DISSOLVE_FADE_FROM,
   DISSOLVE_LEAVE,
   OUTRO_HOLD_SCALE,
-  dissolveAlpha,
   dissolveState,
   outroHoldScale,
 } from '../app/utils/hero-dissolve';
-
-describe('dissolveAlpha', () => {
-  it('端點必須精確是 1 與 0', () => {
-    // 端點不精確的話：0 那端影片永遠留一層殘影蓋在引言上；
-    // 1 那端開場第一幀會看到影片半透明。
-    expect(dissolveAlpha(0)).toBe(1);
-    expect(dissolveAlpha(1)).toBe(0);
-  });
-
-  it('FADE_FROM 之前全程維持全實 —— 疊影只准出現在尾段', () => {
-    // 原本是全程線性（1 − x），整段行程都有半透明影片疊在引言上，那是設計要拿掉的。
-    expect(dissolveAlpha(0.25)).toBe(1);
-    expect(dissolveAlpha(0.5)).toBe(1);
-    expect(dissolveAlpha(DISSOLVE_FADE_FROM)).toBe(1);
-  });
-
-  it('FADE_FROM 之後線性收到 0', () => {
-    const mid = DISSOLVE_FADE_FROM + (1 - DISSOLVE_FADE_FROM) / 2;
-    expect(dissolveAlpha(mid)).toBeCloseTo(0.5, 5);
-  });
-
-  it('區間外要夾住，不吐出界的值', () => {
-    // ScrollTrigger 在 refresh 前後偶爾會給出略超界的 progress。
-    expect(dissolveAlpha(-0.3)).toBe(1);
-    expect(dissolveAlpha(1.4)).toBe(0);
-  });
-});
 
 describe('outroHoldScale', () => {
   it('端點：不捲時不縮放、捲完時吃滿', () => {

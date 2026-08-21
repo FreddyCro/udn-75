@@ -13,26 +13,11 @@ export const DISSOLVE_ENTER = 0.02;
 /** 出遲滯：p 落回這裡之下才算「倒帶回 loop」。刻意低於 ENTER，中間是遲滯帶。 */
 export const DISSOLVE_LEAVE = 0.005;
 
-/** 開始淡出的門檻：進度低於這裡舞台維持全實。
- *
- *  0.85 ＝ 最後 15% 的行程才淡。原本是全程線性（`1 − p`），問題是整段退場距離裡都有
- *  一層半透明影片疊在引言上 —— 那個疊影是設計上明確要拿掉的東西。收在尾段之後，
- *  疊影只出現在最後約 190px（1280px 行程），其餘全實。 */
-export const DISSOLVE_FADE_FROM = 0.85;
-
-/** 退場進度 x → stage 的 alpha（1 ＝ 影片全實、0 ＝ 已收掉）。
- *
- *  ⚠️ 餵進來的 x **不是**捲動進度，而是「捲動與影片兩者取小」（見 HeroVideo 的
- *     applyDissolve）。只綁捲動的話，捲很快的人會在退場還在演的時候就把引言露出來，
- *     違反設計師的「outro 走完才接 intro」；只綁影片的話則失去捲動連動。
- *
- *  ⚠️ 兩個端點必須**精確**是 1 與 0：0 那端不精確，影片會留一層殘影蓋在引言上；
- *     1 那端不精確，開場第一幀就會看到影片半透明。故明確夾邊，不靠內插湊。 */
-export function dissolveAlpha(x: number): number {
-  if (x <= DISSOLVE_FADE_FROM) return 1;
-  if (x >= 1) return 0;
-  return (1 - x) / (1 - DISSOLVE_FADE_FROM);
-}
+// 2026-08-21：`dissolveAlpha` 已刪除。影片這一層改成**硬切**（p ≥ 1 就消失，
+// 使用者裁決），柔和度由 B 階段引言的原地淡入承擔，不再由影片的不透明度承擔。
+// 歷史上試過三種曲線都被否決：全程線性 `1 − p`（整段行程都有半透明疊影）、
+// 尾段線性（仍與 core 交棒的重疊糾纏）、以及與影片進度取小的版本
+// （見 architecture/2026-08-21-hero-two-phase-exit-design.md）。
 
 /** 退場期間影片的「被按住」縮放幅度（最大加成比例）。 */
 export const OUTRO_HOLD_SCALE = 0.06;

@@ -7,7 +7,6 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section1.json';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
 import {
-  HERO_DISSOLVE_EXTRA_PX,
   HERO_DISSOLVE_VH,
   HERO_SKIP_APPEAR_AT,
   HERO_VIDEO_POSTER,
@@ -20,15 +19,17 @@ import {
 import {
   DISSOLVE_ENTER,
   DISSOLVE_LEAVE,
-  dissolveAlpha,
   dissolveState,
   outroHoldScale,
 } from '@/utils/hero-dissolve';
-// ── PoC：退場改由「sticky ＋ 揭露雙條件」驅動（2026-08-20 起）─────────
-// 取代原本的「stage opacity ＝ 1 − p」溶解。設計師的三條需求是：outro 走完才接 intro、
-// 不要 body lock、不要因為捲太快而看不到 outro。
+// ── 退場：兩階段，A 由本元件負責 ─────────────────────────────────────
+// 完整設計見 architecture/2026-08-21-hero-two-phase-exit-design.md。
+//   A（本元件）  0 → vh(HERO_DISSOLVE_VH)：影片 sticky 黏在畫面上播退場，走完**硬切**消失
+//   B（Hero.vue）→ 再 vh(HERO_REVEAL_VH)：引言停在原地淡入，orange core 同時從畫面中心出現
 //
-// 三條全部由**揭露的雙條件**滿足（見 applyDissolve）：影片播完 ＋ 捲動走完。
+// ⚠️ 已放棄設計師的「不要因為捲太快而看不到 outro」（使用者裁決）：100vh ＝ 900px，
+//    一般捲速 400–800 px/s 走完是 1.1–2.25 秒而退場是 2.5 秒 ⇒ 大部分人看到 45–90%。
+//
 // 影片全程以 1× 播放，不 seek、不變速、不暫停 —— 兩條被實測否決的路留在紀錄裡：
 //   逐幀 seek     三支剪輯關鍵幀平均間距 4.2s，退場段內 pc/pad 各 1 個、mob 0 個，
 //                 每次 seek 要重解 57–143 幀（實測 38–157ms）＝ 畫面只能更新 6–26 次／秒
@@ -186,14 +187,6 @@ function alignToSegment(v: HTMLVideoElement) {
   }
 }
 
-// 退場影片自己的進度（0 ＝ 剛進退場段、1 ＝ 已播到最後一格）。
-// 讀 <video> 而非從捲動推算：「影片播完了沒」的唯一真相在影片身上，而揭露引言的條件
-// 有一半就是它（見 applyDissolve 的兩個條件）。
-function outroProgress(v: HTMLVideoElement) {
-  const seg = segments.value.outro;
-  return (v.currentTime - seg.start) / (seg.end - seg.start);
-}
-
 // 階段推進的單一真相＝影片時間軸：依 config 的段落秒數判斷何時換狀態 / 循環。
 function onTimeUpdate() {
   const v = videoEl.value;
@@ -307,10 +300,8 @@ function buildDissolveST() {
     //    反推起點 1080、終點 2160，整段退場落在錯的捲動區間、而 sticky 早在 1298 脫黏。
     //    退場的起點在語意上就是 page top（scrollY 0），寫成數值最直接、也繞開量測。
     // vhPx 而非 window.innerHeight：後者在行動裝置上會隨網址列收合而變（見 useViewportHeight）。
-    // ⚠️ EXTRA 這個固定 px 必須與 SCSS 的 $dissolve-extra 一起加進佔位高度，否則
-    //    揭露那一刻引言就不會落在 $intro-at（見 hero-video-config 的推導）。
     start: 0,
-    end: () => vhPx(HERO_DISSOLVE_VH) + HERO_DISSOLVE_EXTRA_PX,
+    end: () => vhPx(HERO_DISSOLVE_VH),
     // scrub 已移除：它只對「掛在 ST 上的 animation」有意義，本 ST 沒有動畫、只讀 progress。
     invalidateOnRefresh: true,
     onUpdate: (self) => applyDissolve(self.progress),
@@ -370,38 +361,24 @@ function applyDissolve(p: number) {
   // 清掉後下方 alpha 才算得出 1（同一次呼叫內影片就淡回來，不必等下一個捲動事件）。
   if (returnedToTop && scrubArmed.value) openingSkipped.value = false;
 
-  // ── 揭露引言：兩個條件都要成立 ──────────────────────────────────────
-  // ① 影片播完 —— 設計師要的「outro 走完才接 intro」。
-  // ② 捲動走完（p ≥ 1）—— 少了這條，慢慢捲的人會在 scrollY 600 就看到影片消失，
-  //    而引言上緣還在螢幕下方一千多 px 處，等於揭露到一片空白。
-  // 「影片播完但還沒捲完」不是新狀態：它就是現在 SKIP 的畫面（退場停在最後一格 ＋
-  // 下滑提示在場），已經核准過。
-  //
-  // ⚠️ outroSpent 要短路掉條件 ①：這一趟已經交棒過的話，影片早就被 seek 回 loop 段
-  //    （見 dissolveState 的 outroSpent 規則），outroProgress 會是負的、永遠等不到 1，
-  //    再往下捲就永遠揭露不了引言。已經看過退場的人不必再等它一次。
-  const videoDone = outroSpent.value || !v || outroProgress(v) >= 1;
-  const revealed = openingSkipped.value || (p >= 1 && videoDone);
-
-  // ── 淡出進度＝「捲動與影片兩者取小」──────────────────────────────────
-  // 只綁捲動：捲很快的人會在退場還在演的時候就把引言露出來（違反「outro 走完才接」）。
-  // 只綁影片：失去捲動連動，畫面又變成跟捲動無關。
-  // 取小則兩者都成立 —— 慢慢捲的人由捲動主導（尾段隨手指淡），捲很快的人由影片主導
-  // （停在終點等它演完，那段時間淡出仍在進行、不會突然一刀切）。
-  const pVideo = v && !outroSpent.value ? outroProgress(v) : p;
-  const alpha = openingSkipped.value
-    ? 0
-    : dissolveAlpha(Math.min(p, Math.max(0, pVideo)));
+  // ── 揭露引言：捲完 A 階段就收掉，**硬切** ────────────────────────────
+  // 2026-08-21 起不再等影片播完（使用者裁決，見設計文件第〇節）：滑完 vh(1) 影片就
+  // 消失，接著 B 階段讓引言原地淡入。
+  // ⚠️ 這放棄了設計師的第三條需求（「不要因為捲太快而看不到 outro」）——
+  //    100vh ＝ 900px，一般捲速 400–800 px/s 走完是 1.1–2.25 秒，而退場是 2.5 秒
+  //    ⇒ 大部分人看到 45–90%。這是已記錄的取捨，不是遺漏。
+  // ⚠️ 影片這一層是**硬切**（也是使用者裁決）：不與引言的淡入重疊。柔和度由 B 階段
+  //    的淡入承擔，不由這裡。
+  const revealed = openingSkipped.value || p >= 1;
 
   // opacity 這幾行必須不論 scrubArmed／openingSkipped 都跑：SKIP／載入失敗當下 scrub
   // 可能還沒 arm（或已被跳過鎖死），stage 若少了這行會維持初始的完全不透明，
   // 影片永遠蓋在畫面上不走。
   if (stage) {
-    stage.style.opacity = String(alpha);
+    stage.style.opacity = revealed ? '0' : '1';
     // 滿版渲染的層 opacity: 0 只是「畫成透明」，瀏覽器仍每幀合成它 ——
     // 額外設 visibility: hidden 才真的停止合成（見設計文件第一節的表）。
-    // alpha 是明確夾邊過的（見 dissolveAlpha），故 === 0 精確比較。
-    stage.style.visibility = alpha === 0 ? 'hidden' : 'visible';
+    stage.style.visibility = revealed ? 'hidden' : 'visible';
   }
   // 捲動連動的緩慢縮放：退場期間畫面上唯一會隨捲動變化的東西（理由見 outroHoldScale）。
   // 寫在 <video> 上而非 stage：stage 的 opacity 正由上面逐幀寫，兩個屬性分層互不干擾。
@@ -415,12 +392,8 @@ function applyDissolve(p: number) {
   // 使用者真的開始捲了 → SKIP 那面栓退場，其後一切照常規則走。
   // ⚠️ 不清的話，捲到一半再回頂端會卡在 outro 回不去 loop（栓會擋掉「回 loop」那一條）。
   if (p >= DISSOLVE_ENTER) outroForced.value = false;
-  // 影片還沒播完就把 p 壓在 1 之下：dissolveState 是以 p ≥ 1 判 gone，而 gone 現在必須
-  // 等影片播完（否則 orange core 會在退場還在演的時候就接手）。壓 p 而不改 dissolveState
-  // —— 那支純函式與它的測試維持原樣，退場規則的真值表不因這個 PoC 而動。
-  const pEff = revealed ? p : Math.min(p, 1 - 1e-6);
   const next = dissolveState(
-    pEff,
+    p,
     heroState.value,
     outroSpent.value,
     outroForced.value,
@@ -530,7 +503,7 @@ onBeforeUnmount(() => {
   <!-- id 供 AppHeader 以 IntersectionObserver 監看 hero（捲離後才顯示 header）；
        本元件自己也監看同一個元素 —— 捲出視窗就直接收尾（見上方 heroIO） -->
   <div ref="heroEl" class="sec1__hero" id="app-hero">
-    <!-- 影片舞台：.sec1__hero（sticky）的佔位比一個視窗高（$dissolve + $intro-at，
+    <!-- 影片舞台：.sec1__hero（sticky）的佔位比一個視窗高（$exit + $intro-at，
          見下方 style），本舞台只以 inset: 0 0 auto 0 疊在佔位「頂端」那一個視窗高
          （height: vh(1)），並不會溢出佔位之外 —— 佔位本身撐出的高度差就是引言頂端
          被蓋住的那一截，靠 sticky 把舞台一路釘在螢幕上緣直到溶解結束。
@@ -618,16 +591,13 @@ onBeforeUnmount(() => {
 // ── hero 佔位的兩個旋鈕 ───────────────────────────────────────────────
 // $intro-at：退場結束時，引言上緣落在螢幕的哪裡（0.85 ＝ 露出約三行，
 //            這是設計核准過的那一格構圖）。
-// $dissolve：退場吃掉多少捲動距離（× 視窗高）。**必須與 hero-video-config 的
-//            HERO_DISSOLVE_VH 相同**（那邊算 ScrollTrigger 的 end，這邊算佔位高度）。
-// $dissolve-extra：退場再額外吃掉的**固定** px。**必須與 HERO_DISSOLVE_EXTRA_PX 相同。**
-// 佔位高 = 三者相加，是推導值、不是第四個旋鈕：
-//   引言上緣螢幕位置 = 佔位高 − scrollY
-//   ⇒ scrollY = vh($dissolve) + $dissolve-extra 時剛好等於 vh($intro-at)
-//   ⇒ 額外的 px 必須**同時**加在佔位高與 ST 的 end 上，只加一邊構圖就跑掉。
+// $exit：A 階段（影片退場）吃掉多少捲動距離（× 視窗高）。**必須與 hero-video-config
+//        的 HERO_DISSOLVE_VH 相同**（那邊算 ScrollTrigger 的 end，這邊算佔位高度）。
+// 佔位高 = 兩者相加，是推導值、不是第三個旋鈕：
+//   引言上緣螢幕位置 = 佔位高 − scrollY ⇒ scrollY = vh($exit) 時剛好等於 vh($intro-at)。
+// （B 階段的 $reveal 在 Hero.scss —— 那段由引言自己 sticky 停住，與本佔位無關。）
 $intro-at: 0.85;
-$dissolve: 1.2;
-$dissolve-extra: 200px;
+$exit: 1;
 
 .sec1__hero {
   // ⚠️ 必須是 sticky，**不可以改用 ScrollTrigger 的 pin**（2026-08-21 實測否決）。
@@ -647,19 +617,16 @@ $dissolve-extra: 200px;
   //    sticky 會**安靜失效**（html 的 overflow-x: clip 不建立捲動容器，base.scss 已依賴此性質）。
   // ⚠️ 黏著範圍被容器底緣卡住，而**釋放點恰好等於引言的總高**（body ＋ runway）——
   //    代數上：釋放點 = innerBottom − 佔位高 = 引言總高，故佔位高一起長大時釋放點不變。
-  //    約束是「退場的捲動距離 < 引言總高」，超過就會在退場還沒走完時脫黏，影片邊播邊
-  //    被往上捲走，而且**沒有任何錯誤訊息**。
-  //    實測（1440×900）：引言總高 1298。加了 $dissolve-extra 200px 之後退場結束在
-  //    1080 + 200 = 1280 ⇒ 餘裕只剩 18px。**這條已經很緊，再調大務必先實測**，
-  //    小螢幕更緊（$dissolve-extra 是固定 px，占的比例更大）。
+  //    約束是「A 階段的捲動距離 < 引言總高」，超過就會在退場還沒走完時脫黏，影片邊播
+  //    邊被往上捲走，而且**沒有任何錯誤訊息**。
+  //    實測餘裕（$exit ＝ 1）：375×667 +379、1440×900 +398、1920×1080 +164 —— 都過。
+  //    （前一版 vh(1.2) + 200px 在 1920×1080 上是 −16px，正是被這條擋掉才改回 vh(1)。）
   position: sticky;
   top: 0;
   width: 100%;
   // 扣 --chrome-inset 的理由：main 鎖住期間手機網址列不會收合，解鎖那一刻的可視高度是
   // small viewport。不扣的話手機露出的引言會少掉工具列那一段（見 hero-body-lock-rules #5）。
-  height: calc(
-    #{vh($dissolve + $intro-at)} + #{$dissolve-extra} - var(--chrome-inset)
-  );
+  height: calc(#{vh($exit + $intro-at)} - var(--chrome-inset));
   // 黏住之後本元素會永久佔著螢幕上緣一大塊。它自己沒有背景也沒有互動內容
   // （白底在 .sec1、skip 在 .is-visible 時自己覆寫回 auto），一律放行指標。
   pointer-events: none;
@@ -673,7 +640,8 @@ $dissolve-extra: 200px;
   height: vh(1);
   // ⚠️ 顯隱由 script 逐幀寫 style.opacity / style.visibility（見 applyDissolve），
   //    這裡**不可以**加 transition —— 逐幀寫入會與 transition 打架（每一幀都在重啟一段
-  //    內插，結果是延遲又不平順）。淡出的形狀由 dissolveAlpha 的曲線決定，不由 CSS 決定。
+  //    內插，結果是延遲又不平順）。而現在影片是**硬切**（p ≥ 1 就消失），本來就不需要內插
+  //    —— 柔和度由 B 階段引言的原地淡入承擔（見 Hero.vue）。
   // cover 溢出的裁切從 .sec1__hero 移到這裡。
   overflow: hidden;
   // 4 ＞ .sec1__scene 的 3（見 Hero.scss 的層序說明）：引言頂端就是被這一層蓋住的。

@@ -142,24 +142,21 @@ export const HERO_CORE_DROP_IN = {
 // ── 退場溶解吃掉的捲動距離（× 視窗高）────────────────────────────────
 // 拿掉捲動鎖之後，**唯一還給退場影片時間的就是這段距離**：使用者捲得多快，
 // 退場就被截斷得多厲害（已裁決的「捲動優先」，見設計文件第三節的對照表）。
-// 1.2 與同專案的 TRANSITION_VH 同量級，是這份程式碼裡已被接受的節奏。
+// 2026-08-21 改為 1（＝ 使用者要的「滑完 100vh 就收掉」），前一版是 1.2 ＋ 固定 200px。
 //
-// ⚠️ 這個值必須與 HeroVideo.vue 的 SCSS 變數 $dissolve 相同 —— 前者算 ScrollTrigger
+// ⚠️ 這個值必須與 HeroVideo.vue 的 SCSS 變數 $exit 相同 —— 前者算 ScrollTrigger
 //    的 end，後者算佔位高度。兩邊不一致，溶解結束的位置就不會落在 $intro-at 上。
 //    SCSS 變數無法從 JS 讀取，這是本專案已知且接受的雙寫（同 CORE.dotSize 與
 //    OrangeCore.vue 的關係）。改一邊就要改另一邊。
-export const HERO_DISSOLVE_VH = 1.2;
+export const HERO_DISSOLVE_VH = 1;
 
 /**
- * 退場再額外吃掉的固定捲動距離（px，不隨視窗高縮放）。
+ * B 階段（引言原地淡入）吃掉的捲動距離（× 視窗高）。
  *
- * 與佔位高度**同時**加同一個量，揭露那一刻的構圖才不變：
- *   引言上緣螢幕位置 = 佔位高 − scrollY
- *   佔位高 = vh($dissolve + $intro-at) + EXTRA、退場結束於 scrollY = vh($dissolve) + EXTRA
- *   ⇒ 兩者相減仍是 vh($intro-at) —— 設計核准過的那一格不動。
+ * 兩階段的分工（見 architecture/2026-08-21-hero-two-phase-exit-design.md）：
+ *   A  0 → vh(HERO_DISSOLVE_VH)                影片黏在畫面上播退場，走完**硬切**消失
+ *   B  → vh(HERO_DISSOLVE_VH + HERO_REVEAL_VH) 引言停在原地淡入，core 同時從畫面中心出現
  *
- * ⚠️ 同樣要與 HeroVideo.vue 的 SCSS 變數 `$dissolve-extra` 相同（理由同上方雙寫）。
- * ⚠️ 是 px 而非 vh：需求是「固定 200px」。故它在小螢幕上占的比例更大，
- *    下面那條脫黏約束在小螢幕上更緊，改大時務必實測（見 .sec1__hero 的註解）。
+ * ⚠️ 要與 Hero.scss 的 `$reveal` 相同（SCSS 變數無法從 JS 讀取，本專案已知的雙寫）。
  */
-export const HERO_DISSOLVE_EXTRA_PX = 200;
+export const HERO_REVEAL_VH = 0.3;
