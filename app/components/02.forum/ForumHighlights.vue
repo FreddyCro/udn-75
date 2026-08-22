@@ -32,7 +32,7 @@ const { heading, items } = str.highlights;
         <div class="highlights__detail">
           <p class="highlights__title">{{ item.title }}</p>
           <p class="highlights__excerpt">{{ item.excerpt }}</p>
-          <a class="highlights__cta" :href="item.href">
+          <a :id="item.id" class="highlights__cta" :href="item.href">
             {{ item.cta }}
             <img
               class="highlights__arrow"

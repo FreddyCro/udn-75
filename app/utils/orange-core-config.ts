@@ -587,10 +587,35 @@ export function symbolBgLightAt(p: number): number {
  *  淺色底上、改用深色內容，而底下其實還是全黑。這次改版把那個時間差從 56vh 拉到 66vh，
  *  綁 mode 只會錯得更多。
  *
- *  ⚠️ 代價：翻面現在發生在一段只有 CORE_WARM_VH（20vh）的窗口內，header 換色的
- *     那一下比改版前急。要更緩只能加大 CORE_WARM_VH。 */
+ *  ⚠️ 2026-08-22 起 header **不再看這一支**（改吃 headerTintAt 逐幀插值，見下）——
+ *     它現在只剩 `.sec-symbol` 的段落底色在用。留著硬翻的理由見那支的註解。 */
 export function convergeLightAt(p: number): boolean {
   return symbolBgLightAt(p) >= 0.5;
+}
+
+/** header 配色的**逐幀**漸變量：null ＝ 不在窗口內，交還給 data-header-theme 的離散三檔。
+ *
+ *  2026-08-22 加的。在此之前 header 吃 convergeLightAt —— 在這段只有 CORE_WARM_VH（20vh）
+ *  的窗口正中央**硬翻一次**，而且只有底色吃到 CSS 的 0.3s 補間、文字與 icon 是瞬間跳。
+ *  使用者回報的「進入 forum 直接切換主題」就是那一下。改成逐幀之後 header 的三顆色票
+ *  在同一段捲動距離內連續插值，`.sec-symbol` 的底色與拍點**一字不動**。
+ *
+ *  值直接回 symbolBgLightAt，不是另外調一條長得很像的曲線 —— header 要跟的就是
+ *  **整片底色自己**，兩者同源才不會在調 CORE_WARM_VH 之後分家。
+ *
+ *  ⚠️ 窗口外必須回 null 而不是 0 / 1，這是 tint 與離散三檔的分工線：
+ *     ① 往前不放手 → symbolProgress 是 useState、**跨導航存活**且過了交棒點恆為 1，
+ *        tint 會一路黏在後面的段落上，把 blessing 那段的橘主題也混成淺色。
+ *     ② 往後不放手 → 同理會蓋掉 hero 的 light。
+ *     放手不會在交界看到跳色：symbolBgLightAt 的端點**精確**是 0 與 1（該函式的硬需求，
+ *     交棒不能黑閃），故窗口兩端的插值結果與接手的那一檔完全同色。
+ *     判準寫成「已被夾成 0 或 1」而不是比對 CORE_WARM_START / coreIn，是為了讓窗口
+ *     永遠等於底色自己的窗口 —— 少一個要手動同步的門檻。
+ *
+ *  純函式、不依賴 DOM —— 交界由 test/symbol-sequence.spec.ts 守著。 */
+export function headerTintAt(p: number): number | null {
+  const t = symbolBgLightAt(p);
+  return t > 0 && t < 1 ? t : null;
 }
 
 // ── 進場方塊的邊長（px）──────────────────────────────────────────────
@@ -736,7 +761,19 @@ export const BLESSING_ANCHOR_VH = BLESSING_VH * (1 - BLESSING_HOLD);
 // 2026-08-18：本值同時成為 **media 拍 0 的跑道長度**（ScrollTrigger 提早這麼多），
 //   也就是整段融合拍的唯一長度旋鈕 —— 清單淡出、veil 收窄、morph 收窄全部吃這一段。
 //   見 narrowDurationFor 與融合設計文件。
-export const BLESSING_OUT_VH = 0.6;
+//
+// 2026-08-21：0.6 → 0.5，整段融合拍變快約 17%。
+//   ⚠️ **只調本值，OUT_FADE 不要跟著動。** 兩條曲線都活在「拍內進度」的座標系裡
+//      （清單淡出吃 outroST 的 normalized progress，veil／morph 收窄吃 timeline 的
+//      normalized ease），不是絕對 px —— 所以縮短跑道**只改速度，不改任何一組相對
+//      關係**：交棒點（narrowDurationFor 由本值推導）、「清單必須比 veil 收到底更早
+//      淡乾淨」（上一則）、header 翻 light 的門檻（mediaHeaderLightAt 由 timeline 地標
+//      推導）全部等比跟著縮。動 OUT_FADE 才會把那些關係一次弄壞。
+//   代價是拿上一則那條下限換的：0.55 × 50vh ＝ 27.5vh，閱讀捲速下約 1.1s（原 1.3s）。
+//      要再更短就繼續調本值，不要碰 OUT_FADE。
+//   ⚠️ **不要**改用「讓 veil 直接消失」來省掉這一段。2026-08-21 實測過，會露餡兩處
+//      （接縫變成一條可見橫線、header 反白窗變白字疊白底），記錄見融合設計文件末節。
+export const BLESSING_OUT_VH = 0.5;
 export const BLESSING_OUT_FADE = 0.55;
 
 // ── 03 → 04 融合拍：veil 與 morph 的交棒 ──────────────────────────────

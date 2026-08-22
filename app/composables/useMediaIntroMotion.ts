@@ -453,6 +453,9 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
         //    畫面上這塊橘在整個拍 0／拍 1 都是**滿高**的，只是由兩個元素接力畫 ——
         //    照 morph 的 top 傳，會在接縫還沒抵達視窗頂那段被 header 的閘門擋掉
         //    （那個閘門要的是「窗有沒有蓋滿 header 那一列」，見 useHeaderBand）。
+        //    ⚠️ 這條**反向依賴 veil 真的存在**：2026-08-21 實測讓 veil 直接消失，接縫
+        //       以上就沒有橘了，而這裡照樣開橘窗、窗內用白字 → 「論壇」「永續祝福」
+        //       兩個 nav 項目變成白字疊白底、整個消失。要動 veil 就得同時改這裡。
         // ⚠️ 每幀一次 getBoundingClientRect ＝ 一次強制 reflow。這裡接受它：morph 的
         //    transform 由 GSAP 逐幀寫、後面的拍還會加上 x/xPercent，用 scaleX 反推
         //    版位會在改拍數時靜靜失準，而這一段只有約一個視窗高的跑道。

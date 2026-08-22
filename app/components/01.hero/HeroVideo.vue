@@ -19,9 +19,24 @@ import {
 import {
   DISSOLVE_ENTER,
   DISSOLVE_LEAVE,
-  dissolveAlpha,
   dissolveState,
+  outroHoldScale,
 } from '@/utils/hero-dissolve';
+// ── 退場：兩階段，A 由本元件負責 ─────────────────────────────────────
+// 完整設計見 architecture/2026-08-21-hero-two-phase-exit-design.md。
+//   A（本元件）  0 → vh(HERO_DISSOLVE_VH)：影片 sticky 黏在畫面上播退場，走完**硬切**消失
+//   B（Hero.vue）影片消失那一刻起，**時間驅動**：引言在原地淡入，orange core 同時
+//                從畫面中心淡入。B 不吃額外捲動距離（見 HERO_INTRO_REVEAL）。
+//
+// ⚠️ 已放棄設計師的「不要因為捲太快而看不到 outro」（使用者裁決）：100vh ＝ 900px，
+//    一般捲速 400–800 px/s 走完是 1.1–2.25 秒而退場是 2.5 秒 ⇒ 大部分人看到 45–90%。
+//
+// 影片全程以 1× 播放，不 seek、不變速、不暫停 —— 兩條被實測否決的路留在紀錄裡：
+//   逐幀 seek     三支剪輯關鍵幀平均間距 4.2s，退場段內 pc/pad 各 1 個、mob 0 個，
+//                 每次 seek 要重解 57–143 幀（實測 38–157ms）＝ 畫面只能更新 6–26 次／秒
+//   倍速追趕      連續值在固定刷新率螢幕上必然 cadence judder；改離散 {1,2} 後每次
+//                 改變 playbackRate 都讓媒體管線重新同步（約 200ms 擾動）反而更糟
+//                 （詳見 tickOutro 的註解）
 
 const {
   state: heroState,
@@ -241,13 +256,20 @@ let heroIO: IntersectionObserver | null = null;
 // loop → outro 則必定 seek（33 → 36 中間刻意留白，見 hero-video-config 的段落表）。
 watch(heroState, (s) => {
   const v = videoEl.value;
+  // 離開退場就一定要收掉追趕迴圈（含 v 為 null 的情形），否則 rAF 會一直空轉。
+  stopOutroTick();
   if (!v) return;
   if (s === 'gone') {
     v.pause();
     return;
   }
+  // 倍速歸位：main／loop 一律 1×，且回捲離開退場時要把上一輪殘留的倍速清掉 ——
+  // 不清的話 loop 段會以 2× 循環播放。
+  v.playbackRate = 1;
   alignToSegment(v);
   void play();
+  // 這個 rAF 只在退場期間有工作（見 tickOutro）。
+  if (s === 'outro') outroRaf = requestAnimationFrame(tickOutro);
 });
 
 // 按下 start 後才開始播 main（見 useHeroVideo 的 heroStarted）
@@ -261,32 +283,73 @@ watch(soundOn, (on) => {
   if (v) v.muted = !on;
 });
 
-// ── 退場溶解：唯一的驅動源 ──────────────────────────────────────────
-// 不 pin，只讀進度：pin 會插入 pin-spacer 改變文件高度，與本 section 既有的
-// transitionST 互相餵幾何（理由詳見設計文件第二節）。
+// ── 退場：sticky 保持影片在畫面上，這條 ST 只讀進度 ──────────────────
+// 不 pin（理由寫在 .sec1__hero 的 SCSS 註解：兩種 pinType 在這個 DOM 結構下都會抖）。
 let dissolveST: ScrollTrigger | null = null;
 // 上一次 applyDissolve 收到的 p：用來辨識「回捲跨過 DISSOLVE_LEAVE」那一刻（見下方）。
 let lastDissolveP = 0;
+// 退場期間的 rAF（見 tickOutro）。
+let outroRaf = 0;
 
 function buildDissolveST() {
   if (!heroEl.value) return;
   dissolveST = ScrollTrigger.create({
-    trigger: heroEl.value,
-    start: 'top top',
+    // ⚠️ 用**數值** start／end，不要 trigger ＋ 'top top'（2026-08-21 修正）：
+    //    以 .sec1__hero 當 trigger 時，ScrollTrigger 量到的起點是 scrollY 1080 而不是 0
+    //    —— 那是個 position: sticky 元素，量測會拿到它「黏住之後」的位置。實測基準線
+    //    （sticky ＋ 'top top'）：y=1080 時 stage 的 opacity 還是 1、y=1620 才 0.5，
+    //    反推起點 1080、終點 2160，整段退場落在錯的捲動區間、而 sticky 早在 1298 脫黏。
+    //    退場的起點在語意上就是 page top（scrollY 0），寫成數值最直接、也繞開量測。
     // vhPx 而非 window.innerHeight：後者在行動裝置上會隨網址列收合而變（見 useViewportHeight）。
-    end: () => `+=${vhPx(HERO_DISSOLVE_VH)}`,
-    scrub: true,
+    start: 0,
+    end: () => vhPx(HERO_DISSOLVE_VH),
+    // scrub 已移除：它只對「掛在 ST 上的 animation」有意義，本 ST 沒有動畫、只讀 progress。
     invalidateOnRefresh: true,
     onUpdate: (self) => applyDissolve(self.progress),
-    // 快速捲過整段時 onUpdate 不保證收到端點值 —— 明確補上，否則會留殘影或卡在半溶。
+    // 快速捲過整段時 onUpdate 不保證收到端點值 —— 明確補上，否則影片會賴在畫面上不走。
     onLeave: () => applyDissolve(1),
     onLeaveBack: () => applyDissolve(0),
     onRefresh: (self) => applyDissolve(self.progress),
   });
 }
 
+// 退場期間每幀跑一次，唯一的工作是補叫 applyDissolve。
+//
+// 為什麼需要它：揭露引言的條件有一半是「影片播完」，而那**不由捲動事件驅動** ——
+// 使用者可能早就停下手了。少了這一條，影片播完也不會有人去揭露引言。
+// applyDissolve 是幂等的（同一個 p 重複呼叫只會寫回相同的 class、setState 只在改變時發），
+// 故直接每幀呼叫，不必多養一面「已播完」的旗子。
+//
+// ── 為什麼這裡不再調 playbackRate ────────────────────────────────────
+// 曾經有一版讓影片以倍速「追趕」捲動（2026-08-21 刪除，見 git 紀錄的
+// hero-outro-rate.ts）。刪掉的理由是量測結果：
+//   ① 連續變化的倍速在固定刷新率螢幕上必然抖 —— 影片 30fps、螢幕 60Hz，只有 1× 與 2×
+//      能整除，中間值會讓影格在 1 與 2 次刷新之間不規則交替（cadence judder）。
+//   ② 改成離散 {1, 2} 之後**更糟**：每次**改變** playbackRate 都讓媒體管線重新同步
+//      （約 200ms 的節奏擾動），而切換頻繁時比連續值還難看。加了 600ms 最小駐留把
+//      切換壓到 0–1 次仍留有殘影。
+//   （附帶結論：每幀寫入**相同**值是無害的，代價全在改變那一刻。）
+//
+// 而「追趕」換到的好處其實很小：揭露條件本來就會等影片播完，倍速只影響「捲很快的人
+// 在最後等多久」（1.25s vs 2.5s）。用一個看得見的擾動換那個，不划算。
+//
+// 恆定 1× ⇒ 零次節奏改變，而設計師的三條需求一條都沒掉：退場照樣完整播完
+// （揭露的雙條件保證）、不鎖捲動、不會因為捲太快而看不到退場。
+function tickOutro() {
+  outroRaf = 0;
+  if (!videoEl.value || heroState.value !== 'outro') return;
+  applyDissolve(dissolveST?.progress ?? 0);
+  outroRaf = requestAnimationFrame(tickOutro);
+}
+
+function stopOutroTick() {
+  if (outroRaf) cancelAnimationFrame(outroRaf);
+  outroRaf = 0;
+}
+
 function applyDissolve(p: number) {
   const stage = stageEl.value;
+  const v = videoEl.value;
 
   // ── 回到頂端 ＝ 整趟重新武裝（連「開場已被跳過」也解除）──────────────
   // 判的是**跨越**而非 p < LEAVE 本身：SKIP／載入失敗／帶 hash 進站都發生在 p ＝ 0，
@@ -299,17 +362,29 @@ function applyDissolve(p: number) {
   // 清掉後下方 alpha 才算得出 1（同一次呼叫內影片就淡回來，不必等下一個捲動事件）。
   if (returnedToTop && scrubArmed.value) openingSkipped.value = false;
 
-  // opacity 這行必須不論 scrubArmed／openingSkipped 都跑：SKIP／載入失敗當下 scrub
+  // ── 揭露引言：捲完 A 階段就收掉，**硬切** ────────────────────────────
+  // 2026-08-21 起不再等影片播完（使用者裁決，見設計文件第〇節）：滑完 vh(1) 影片就
+  // 消失，接著 B 階段讓引言原地淡入。
+  // ⚠️ 這放棄了設計師的第三條需求（「不要因為捲太快而看不到 outro」）——
+  //    100vh ＝ 900px，一般捲速 400–800 px/s 走完是 1.1–2.25 秒，而退場是 2.5 秒
+  //    ⇒ 大部分人看到 45–90%。這是已記錄的取捨，不是遺漏。
+  // ⚠️ 影片這一層是**硬切**（也是使用者裁決）：不與引言的淡入重疊。柔和度由 B 階段
+  //    的淡入承擔，不由這裡。
+  const revealed = openingSkipped.value || p >= 1;
+
+  // opacity 這幾行必須不論 scrubArmed／openingSkipped 都跑：SKIP／載入失敗當下 scrub
   // 可能還沒 arm（或已被跳過鎖死），stage 若少了這行會維持初始的完全不透明，
   // 影片永遠蓋在畫面上不走。
-  const alpha = openingSkipped.value ? 0 : dissolveAlpha(p);
   if (stage) {
-    stage.style.opacity = String(alpha);
-    // 完全溶解（p ≥ 1，或 openingSkipped 強制視為已溶解）時額外設 visibility: hidden：
-    // 這層是滿版渲染，opacity: 0 只是「畫成透明」，瀏覽器仍在每幀合成一層看不見的滿版
-    // 影片；隱藏後才真的停止合成（見設計文件第一節的表）。alpha 是明確夾邊過的 0/1
-    // （見 dissolveAlpha 的註解），故用 === 0 精確比較、不必擔心浮點誤差。
-    stage.style.visibility = alpha === 0 ? 'hidden' : 'visible';
+    stage.style.opacity = revealed ? '0' : '1';
+    // 滿版渲染的層 opacity: 0 只是「畫成透明」，瀏覽器仍每幀合成它 ——
+    // 額外設 visibility: hidden 才真的停止合成（見設計文件第一節的表）。
+    stage.style.visibility = revealed ? 'hidden' : 'visible';
+  }
+  // 捲動連動的緩慢縮放：退場期間畫面上唯一會隨捲動變化的東西（理由見 outroHoldScale）。
+  // 寫在 <video> 上而非 stage：stage 的 opacity 正由上面逐幀寫，兩個屬性分層互不干擾。
+  if (videoEl.value) {
+    videoEl.value.style.transform = `scale(${outroHoldScale(p).toFixed(4)})`;
   }
   if (!scrubArmed.value || openingSkipped.value) return;
   // 捲回頂端 ＝ 重新武裝：下一趟下滑要再放一次完整的退場段。
@@ -331,8 +406,8 @@ function applyDissolve(p: number) {
 // 回呼驅動，而 SKIP／載入失敗／帶 hash 進站都可能發生在 scrollY 0（根本沒有捲動事件），
 // 少了這一條，影片會賴在畫面上直到使用者捲動才被 scrub 淡掉（2026-08-16 實測發現）。
 // 讀 dissolveST?.progress 而非假設 0：returnToLoop() 也會把這面旗子清回 false，
-// 而那次翻轉可能發生在非 0 的捲動位置，此時要復原成當下捲動量對應的 alpha，
-// 不能硬設回 1（那會在使用者已經捲了一段時讓影片瞬間跳回全實）。
+// 而那次翻轉可能發生在非 0 的捲動位置。若翻轉發生在 p ≥ 1（使用者已經捲過整段 pin、
+// 引言早就接上了），假設 0 會把舞台重新蓋回引言上。
 watch(openingSkipped, () => applyDissolve(dissolveST?.progress ?? 0));
 
 // scrubArmed 翻面（true）時要重新推導一次狀態 —— 它只是「開不開閘」，本身不改變 heroState。
@@ -417,6 +492,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize);
   if (readyTimer) clearTimeout(readyTimer);
+  stopOutroTick();
   heroIO?.disconnect();
   heroIO = null;
   dissolveST?.kill();
@@ -428,7 +504,7 @@ onBeforeUnmount(() => {
   <!-- id 供 AppHeader 以 IntersectionObserver 監看 hero（捲離後才顯示 header）；
        本元件自己也監看同一個元素 —— 捲出視窗就直接收尾（見上方 heroIO） -->
   <div ref="heroEl" class="sec1__hero" id="app-hero">
-    <!-- 影片舞台：.sec1__hero（sticky）的佔位比一個視窗高（$dissolve + $intro-at，
+    <!-- 影片舞台：.sec1__hero（sticky）的佔位比一個視窗高（$exit + $intro-at，
          見下方 style），本舞台只以 inset: 0 0 auto 0 疊在佔位「頂端」那一個視窗高
          （height: vh(1)），並不會溢出佔位之外 —— 佔位本身撐出的高度差就是引言頂端
          被蓋住的那一截，靠 sticky 把舞台一路釘在螢幕上緣直到溶解結束。
@@ -514,53 +590,59 @@ onBeforeUnmount(() => {
 
 <style lang="scss" scoped>
 // ── hero 佔位的兩個旋鈕 ───────────────────────────────────────────────
-// $intro-at：溶解結束時，引言上緣落在螢幕的哪裡（0.85 ＝ 露出約三行，
+// $intro-at：退場結束時，引言上緣落在螢幕的哪裡（0.85 ＝ 露出約三行，
 //            這是設計核准過的那一格構圖）。
-// $dissolve：溶解吃掉多少捲動距離。**必須與 hero-video-config 的 HERO_DISSOLVE_VH
-//            相同**（那邊算 ScrollTrigger 的 end，這邊算佔位高度）。
+// $exit：A 階段（影片退場）吃掉多少捲動距離（× 視窗高）。**必須與 hero-video-config
+//        的 HERO_DISSOLVE_VH 相同**（那邊算 ScrollTrigger 的 end，這邊算佔位高度）。
 // 佔位高 = 兩者相加，是推導值、不是第三個旋鈕：
-//   引言上緣螢幕位置 = 佔位高 − scrollY ⇒ scrollY = $dissolve 時剛好等於 $intro-at。
+//   引言上緣螢幕位置 = 佔位高 − scrollY ⇒ scrollY = vh($exit) 時剛好等於 vh($intro-at)。
+// （B 階段的 $reveal 在 Hero.scss —— 那段由引言自己 sticky 停住，與本佔位無關。）
 $intro-at: 0.85;
-$dissolve: 1.2;
+$exit: 1;
 
 .sec1__hero {
-  // sticky 而非 pin：pin 會插入 pin-spacer、改變文件高度，與 transitionST／
-  // OrangeCorePath／後面三個章節的量測互相餵食，失敗方式是**安靜的幾何漂移**。
-  // sticky 完全不動文件高度。也不用 fixed —— .sec1__inner 從載入起就帶著 pin 機制
-  // 寫入的 transform，fixed 子孫會改以它為基準（HeroLoader / HeroStart /
-  // HeroSymbolTransition 掛在 inner 外面就是這個原因）；sticky 對捲動容器定位，不受影響。
+  // ⚠️ 必須是 sticky，**不可以改用 ScrollTrigger 的 pin**（2026-08-21 實測否決）。
+  //    pin 只有兩種實作方式，兩條路在這個 DOM 結構下都不通：
+  //      pinType: 'fixed'     → position: fixed 的容器塊會變成帶 transform 的
+  //                             .sec1__inner，「固定」不再是對視窗固定，影片跟著捲走。
+  //      pinType: 'transform' → 位置由主執行緒的 JS 逐事件寫入，而頁面內容是由合成器
+  //                             捲動的 ⇒ 影片層**永遠慢一幀**，慢的量等於當幀的捲動距離。
+  //                             實測（每幀捲 10px）舞台的 top 恆為 −10；真實滾輪的每幀
+  //                             增量是暴衝的（0, 0, 120, 0…），於是影片層每幀上下彈跳
+  //                             ＝ 使用者回報的「嚴重不自然抖動」。
+  //    sticky 由瀏覽器與捲動同步合成，沒有這一幀的落後，也不動文件高度。
   //
   // ⚠️ sticky 必須下在**本元素**、不能下在內層的 stage：stage 只能在本元素的框內黏，
-  //    會在「佔位高 − 1vh」就脫離，撐不過溶解。本元素的容器是很高的 .sec1__inner，
-  //    黏住的範圍才夠（2026-08-16 實測：1845px 高的 sticky 在 scrollY 0～3000 全部黏在 0）。
-  // ⚠️ 這是本方案唯一的脆弱點：日後若有人在 .sec1 到 <html> 之間任何一層加上
-  //    overflow: hidden/auto/scroll，sticky 會**安靜失效**。已實測目前全鏈都是 visible
-  //    （html 的 overflow-x: clip 不建立捲動容器，base.scss 已依賴此性質）。
-  // ⚠️ sticky 的黏著範圍還被**容器底緣**卡住一次：黏到 .sec1__inner 量完就會釋放，
-  //    不會無限黏下去。實測（1440×900）釋放點在 scrollY 1298，溶解在 1080 已經走完，
-  //    餘裕 218px。代數上釋放點恰好等於**引言的總高**（body ＋ runway，見上方
-  //    Hero.scss 的 --intro-runway）——溶解若比引言撐開的高度還長，會在還沒溶解完
-  //    就先脫黏，影片邊淡邊被往上捲走。900 高換算引言 body 至少要 > 270px（實測約
-  //    488px，尚有餘裕）。**日後調大 $dissolve 務必重算這條**：超過的話沒有任何
-  //    錯誤訊息，只會肉眼看到影片脫黏滑走。
+  //    會在「佔位高 − 1vh」就脫離，撐不過退場。本元素的容器是很高的 .sec1__inner。
+  // ⚠️ 脆弱點：日後若有人在 .sec1 到 <html> 之間任何一層加上 overflow: hidden/auto/scroll，
+  //    sticky 會**安靜失效**（html 的 overflow-x: clip 不建立捲動容器，base.scss 已依賴此性質）。
+  // ⚠️ 黏著範圍被容器底緣卡住，而**釋放點恰好等於引言的總高**（body ＋ runway）——
+  //    代數上：釋放點 = innerBottom − 佔位高 = 引言總高，故佔位高一起長大時釋放點不變。
+  //    約束是「A 階段的捲動距離 < 引言總高」，超過就會在退場還沒走完時脫黏，影片邊播
+  //    邊被往上捲走，而且**沒有任何錯誤訊息**。
+  //    實測餘裕（$exit ＝ 1）：375×667 +379、1440×900 +398、1920×1080 +164 —— 都過。
+  //    （前一版 vh(1.2) + 200px 在 1920×1080 上是 −16px，正是被這條擋掉才改回 vh(1)。）
   position: sticky;
   top: 0;
   width: 100%;
-  // 扣 --chrome-inset 的理由：鎖住期間手機網址列不會收合，解鎖那一刻的可視高度是
+  // 扣 --chrome-inset 的理由：main 鎖住期間手機網址列不會收合，解鎖那一刻的可視高度是
   // small viewport。不扣的話手機露出的引言會少掉工具列那一段（見 hero-body-lock-rules #5）。
-  height: calc(#{vh($dissolve + $intro-at)} - var(--chrome-inset));
+  height: calc(#{vh($exit + $intro-at)} - var(--chrome-inset));
   // 黏住之後本元素會永久佔著螢幕上緣一大塊。它自己沒有背景也沒有互動內容
   // （白底在 .sec1、skip 在 .is-visible 時自己覆寫回 auto），一律放行指標。
   pointer-events: none;
 }
 
-// 影片舞台：只渲染一個視窗高（vh(1)），錨在 .sec1__hero（sticky）的頂端
-// （inset: 0 0 auto 0），不溢出那個比視窗高的佔位 —— 舞台被「黏」在螢幕上緣，
-// 佔位剩下的高度才是引言被蓋住、之後隨溶解露出的那一段。
+// 影片舞台：只渲染一個視窗高（vh(1)），錨在 .sec1__hero 的頂端（inset: 0 0 auto 0）。
+// 舞台被 pin 釘在螢幕上緣，.sec1__hero 剩下的高度就是引言的起點（見上方高度推導）。
 .sec1__hero-stage {
   position: absolute;
   inset: 0 0 auto 0;
   height: vh(1);
+  // ⚠️ 顯隱由 script 逐幀寫 style.opacity / style.visibility（見 applyDissolve），
+  //    這裡**不可以**加 transition —— 逐幀寫入會與 transition 打架（每一幀都在重啟一段
+  //    內插，結果是延遲又不平順）。而現在影片是**硬切**（p ≥ 1 就消失），本來就不需要內插
+  //    —— 柔和度由 B 階段引言的原地淡入承擔（見 Hero.vue）。
   // cover 溢出的裁切從 .sec1__hero 移到這裡。
   overflow: hidden;
   // 4 ＞ .sec1__scene 的 3（見 Hero.scss 的層序說明）：引言頂端就是被這一層蓋住的。
@@ -701,6 +783,12 @@ $dissolve: 1.2;
   .sec1__hero-video,
   .sec1__hero-skip {
     transition: none; // skip 改為直接出現 / 消失（時間點不變）
+  }
+
+  // 捲動連動的縮放屬於「動態」：關掉動態偏好時不做。script 仍會寫 transform，
+  // 這條用 !important 蓋掉 inline style —— 逐幀寫入的 inline 值沒有別的辦法擋。
+  .sec1__hero-video-el {
+    transform: none !important;
   }
 }
 </style>

@@ -142,10 +142,26 @@ export const HERO_CORE_DROP_IN = {
 // ── 退場溶解吃掉的捲動距離（× 視窗高）────────────────────────────────
 // 拿掉捲動鎖之後，**唯一還給退場影片時間的就是這段距離**：使用者捲得多快，
 // 退場就被截斷得多厲害（已裁決的「捲動優先」，見設計文件第三節的對照表）。
-// 1.2 與同專案的 TRANSITION_VH 同量級，是這份程式碼裡已被接受的節奏。
+// 2026-08-21 改為 1（＝ 使用者要的「滑完 100vh 就收掉」），前一版是 1.2 ＋ 固定 200px。
 //
-// ⚠️ 這個值必須與 HeroVideo.vue 的 SCSS 變數 $dissolve 相同 —— 前者算 ScrollTrigger
+// ⚠️ 這個值必須與 HeroVideo.vue 的 SCSS 變數 $exit 相同 —— 前者算 ScrollTrigger
 //    的 end，後者算佔位高度。兩邊不一致，溶解結束的位置就不會落在 $intro-at 上。
 //    SCSS 變數無法從 JS 讀取，這是本專案已知且接受的雙寫（同 CORE.dotSize 與
 //    OrangeCore.vue 的關係）。改一邊就要改另一邊。
-export const HERO_DISSOLVE_VH = 1.2;
+export const HERO_DISSOLVE_VH = 1;
+
+// B 階段：引言的原地淡入（＋ orange core 同時從畫面中心出現）。
+//
+// 兩階段的分工（見 architecture/2026-08-21-hero-two-phase-exit-design.md）：
+//   A  0 → vh(HERO_DISSOLVE_VH)   影片黏在畫面上播退場，走完**硬切**消失
+//   B  影片消失的那一刻起，時間驅動   引言在原地淡入，core 同時淡入
+//
+// ⚠️ **時間驅動而非捲動驅動**（2026-08-21 使用者裁決「270 拿掉」）：B 階段不吃任何額外
+//    捲動距離，故引言不必 sticky 停留，`.sec1__intro` 的版面完全不動 —— 也因此
+//    transitionST / OrangeCorePath 的 endEl / 後面三章的落點都不受影響。
+//    「原地」由 A 階段的幾何保證：影片消失那一刻引言已經停在 $intro-at 上。
+//    代價是使用者若在淡入期間繼續捲，引言會邊淡邊移動（0.5s 內的位移，可接受）。
+export const HERO_INTRO_REVEAL = {
+  duration: 0.5,
+  ease: 'power2.out',
+} as const;

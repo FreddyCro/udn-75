@@ -23,6 +23,7 @@ const { play } = useSfx();
     <p class="agenda-report__body">{{ body }}</p>
 
     <UBtn
+      :id="cta.id"
       variant="gray"
       class="agenda-report__cta"
       :href="cta.href"

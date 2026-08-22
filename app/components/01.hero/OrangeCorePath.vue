@@ -26,6 +26,9 @@ import {
   refreshScrollTriggers,
   refreshOnFontsReady,
 } from '@/utils/scroll-trigger';
+// hero 退場吃掉的捲動距離：core 現身的那一刻＝退場結束，故起點與它綁在一起
+// （見下方 build 的 `sy` 與 ST 的 `start`）。
+import { HERO_DISSOLVE_VH } from '@/utils/hero-video-config';
 
 const props = defineProps<{
   /** .sec1：core / path 的座標範圍，也是 ScrollTrigger 的 trigger */
@@ -65,8 +68,20 @@ function build() {
   const endRect = end.getBoundingClientRect();
   const x = secRect.width / 2; // 垂直線：一路沿 section 水平中心（引言文字亦置中）
 
-  // 起點：第一屏正中央（＝影片退場後 core 淡入的位置）。
-  const sy = vhPx(0.5);
+  // 起點：**core 該現身的那一刻**的畫面正中央。
+  //
+  // ⚠️ 2026-08-21 修正。原本是 `vhPx(0.5)`，語意是「進度 0 ⇔ core 在畫面正中央」——
+  //    但 ST 的起點在 scrollY 0，而 core 是在 hero 退場結束（scrollY = vh(HERO_DISSOLVE_VH)）
+  //    才現身的。於是現身那一刻進度早已前進一大段，core 落在畫面外。
+  //    實測（1440×900，含改動前的 0.9.0 基準線）：core 的螢幕中心在 scrollY 1080–2400
+  //    之間一直是 1400 上下，只有 scrollY 0 時是 450 —— 這就是「退場交棒銜接失效」的成因。
+  //    把 ST 起點與路徑起點**一起**平移到退場結束，進度 0 才真的等於「畫面正中央」：
+  //      螢幕位置 = sy − scrollY = (vh(exit) + 50vh) − vh(exit) = 50vh ✓
+  //    路徑長度與捲動範圍同時各縮短 vh(exit)，故「1:1 鎖在畫面中央」的性質不變。
+  //
+  // ⚠️ 不在本次範圍：路徑**中段**因 MOVE_EASE 而偏離 50vh 是既有且刻意的（雲霄飛車感）。
+  //    需求是「從畫面中心**出現**」，不是「全程鎖在中心」，故只修進度 0 的落點。
+  const sy = vhPx(HERO_DISSOLVE_VH) + vhPx(0.5);
   // 終點：endEl 底緣往上半個視窗高 → 該底緣貼齊視窗底時，core 正好在視窗正中央。
   const ey = endRect.bottom - secRect.top - vhPx(0.5);
 
@@ -115,8 +130,12 @@ function init() {
   build();
 
   st = ScrollTrigger.create({
-    trigger: props.sectionEl,
-    start: 'top top',
+    // ⚠️ **數值** start ＝ hero 退場結束（core 現身的那一刻），與上方 `sy` 成對。
+    //    兩者必須一起改，否則進度 0 就不再等於「畫面正中央」（見 build 的推導）。
+    //    用數值而非 `trigger` ＋ `'top top'` 還順帶避開一個坑：.sec1__hero 是
+    //    position: sticky，拿它量測會得到「黏住之後」的位置（HeroVideo 的
+    //    buildDissolveST 踩過，實測起點被量成 vh(1.2) 而非 0）。
+    start: () => vhPx(HERO_DISSOLVE_VH),
     // 終點與 Hero 的 transition pin 共用同一時機（同一個 endEl 的 'bottom bottom'）：
     // core 抵達視窗中央的同一刻 pin 接手 hold 住畫面，pin 期間 path 不再前進 → core 穩定停在中央。
     endTrigger: props.endEl,

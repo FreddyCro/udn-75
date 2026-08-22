@@ -90,8 +90,10 @@ export type ForumEvent = {
   quoteEn?: ForumLine[];
   /** 段落內文 */
   body?: string;
-  /** CTA 按鈕文字（僅論壇二有） */
+  /** CTA 按鈕文字（論壇二／四） */
   cta?: string;
+  /** CTA 的 DOM id（GTM 點擊事件用），與 cta 成對出現 */
+  ctaId?: string;
   year: string;
   /** 「09/09」 —— 中間的「/」平常照畫 */
   date: string;

@@ -15,6 +15,7 @@ import {
   convergeAmountAt,
   convergeLightAt,
   coreWarmAt,
+  headerTintAt,
   symbolBgLightAt,
   symbolIntroClear,
   symbolIntroGate,
@@ -254,6 +255,61 @@ describe('coreWarmAt / symbolBgLightAt（白 core → 橘 ＋ 底色翻白的窗
     expect(convergeLightAt(end)).toBe(true);
     expect(convergeLightAt(at(0.4))).toBe(false);
     expect(convergeLightAt(at(0.6))).toBe(true);
+  });
+
+  // headerTintAt 是 header 配色在這個窗口內的**逐幀**驅動量（取代 convergeLightAt 那一下
+  // 硬翻，見該函式的註解）。這一組守的是它與離散三檔之間的**交界**：窗口外必須放手，
+  // 窗口的兩端必須與放手後接到的那一檔同色，否則掛上／脫手那一幀會看到跳色。
+  describe('headerTintAt（header 配色的逐幀漸變量）', () => {
+    // 放手的判準是「symbolBgLightAt 已被夾成 0 或 1」，不是另外手寫的門檻 ——
+    // 兩端各自恆等於離散主題，tint 在那裡沒有事情可做。
+    it('窗口外一律回 null（交還給 data-header-theme 的離散三檔）', () => {
+      for (const p of [-10, 0, SYMBOL_STOPS[1]!.until, start / 2, start, end, 1, 10]) {
+        expect(headerTintAt(p)).toBeNull();
+      }
+    });
+
+    it('窗口內恆為非 null，且嚴格落在 0 與 1 之間', () => {
+      for (let i = 1; i < 20; i++) {
+        const t = headerTintAt(at(i / 20));
+        expect(t).not.toBeNull();
+        expect(t!).toBeGreaterThan(0);
+        expect(t!).toBeLessThan(1);
+      }
+    });
+
+    // **無接縫的守則。** 放手的那一刻，插值算出來的顏色必須與離散主題**完全相同**：
+    // 窗口起點還是 dark（底色全黑）、終點已是 light（底色全白）。這靠的是
+    // symbolBgLightAt 的端點精確為 0 / 1，故兩者其實是同一條曲線的兩種讀法。
+    it('兩端與離散主題對得上（掛上／脫手那一幀不跳色）', () => {
+      expect(symbolBgLightAt(start)).toBe(0); //     起點插值 ＝ 0 ＝ dark 端
+      expect(convergeLightAt(start)).toBe(false); // 放手後接到的正是 dark
+      expect(symbolBgLightAt(end)).toBe(1); //       終點插值 ＝ 1 ＝ light 端
+      expect(convergeLightAt(end)).toBe(true); //    放手後接到的正是 light
+    });
+
+    // 與底色同一條曲線 —— 不是「另一條長得很像的曲線」。header 要是自己有一份曲線，
+    // 調 CORE_WARM_VH 之後兩者就會分家，header 與畫面各走各的。
+    it('值就是 symbolBgLightAt（與整片底色同一條曲線）', () => {
+      for (let i = 1; i < 20; i++) {
+        const p = at(i / 20);
+        expect(headerTintAt(p)).toBe(symbolBgLightAt(p));
+      }
+    });
+
+    it('純函式：同一個位置恆得同值（往回捲自動沿原路退回）', () => {
+      const fwd: (number | null)[] = [];
+      for (let i = 0; i <= 20; i++) fwd.push(headerTintAt(at(i / 20)));
+      const back: (number | null)[] = [];
+      for (let i = 20; i >= 0; i--) back.unshift(headerTintAt(at(i / 20)));
+      expect(back).toEqual(fwd);
+    });
+
+    it('超出範圍的輸入不會回傳 NaN（一律夾成 null）', () => {
+      for (const p of [-10, 10, Number.MAX_SAFE_INTEGER]) {
+        expect(headerTintAt(p)).toBeNull();
+      }
+    });
   });
 });
 

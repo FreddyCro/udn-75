@@ -337,30 +337,59 @@ const effectiveTheme = computed<HeaderTheme>(() =>
 //    它裡面的 <AppHeaderNav> / <AppHeaderShare> 只是畫出來給人看的，互動一律走 base。
 const { bandTheme } = useHeaderBand();
 
+// ── 配色的逐幀漸變（tint）─────────────────────────────────────────────
+// 某些段落的底色是**連續**在變的（符號段收攏之後那 20vh 由黑轉白），離散三檔在那裡只能
+// 硬翻一次。tint 是疊在三檔（與 band）之上的覆寫：驅動端逐幀交出一個 0..1（見
+// ~/composables/useHeaderTint），窗口外放手、配色原封不動地回到 data-header-theme。
+// header 一樣不認得任何段落 —— 只認得「現在有沒有在漸變」。
+//
+// ⚠️ 那一段畫面上看到的 header 是 **band 那層**（窗滿寬 → base 被遮罩整條挖掉），
+//    所以漸變的重點在 band：它跑到 1 時與接手的 base(light) 完全同色，coreIn 那一幀的
+//    交棒才看不出來。兩層各自的起點與推導見 SCSS 的 .app-header__layer--tint。
+//
+// ⚠️ 選單開著時一律放棄漸變：面板是白底，header 必須是 light（見 effectiveTheme）。
+//    少了這個條件，在窗口中途開選單會得到「白面板 ＋ 半黑 header」。
+const { headerTinted } = useHeaderTint();
+const tinted = computed(() => headerTinted.value && !menuOpen.value);
+
 interface HeaderLayer {
   key: 'base' | 'band';
   theme: HeaderTheme;
+  /** 這一層要不要吃 tint 的覆寫。**兩層都會** —— 各自的起點不同（base 從半透明黑底、
+   *  band 從全透明出發），終點都是 light，故 SCSS 分兩個分支，見 .--tint 的註解。
+   *  漸變期間畫面上看到的其實是 band 那層（base 被 .has-band 的遮罩整條挖掉）。 */
+  tint?: boolean;
 }
 
 const layers = computed<HeaderLayer[]>(() => {
-  const base: HeaderLayer = { key: 'base', theme: effectiveTheme.value };
+  const base: HeaderLayer = {
+    key: 'base',
+    theme: effectiveTheme.value,
+    tint: tinted.value,
+  };
   return bandTheme.value
-    ? [base, { key: 'band', theme: bandTheme.value }]
+    ? [base, { key: 'band', theme: bandTheme.value, tint: tinted.value }]
     : [base];
 });
 </script>
 
 <template>
-  <!-- data-header-band：useHeaderBand 逐幀寫 --hd-band-l/r 的目標。用 data- 而非 class
+  <!-- data-header-vars：所有**逐幀**寫入的 CSS 變數都掛在這裡 —— 反白窗的 --hd-band-l/r
+       （useHeaderBand）與配色漸變的 --hd-tint（useHeaderTint）。用 data- 而非 class
        同本專案既有慣例（data-header-theme／data-morph-veil／data-metaball-scope）——
        class 是樣式的名字，改名重構不該把轉場打斷。為什麼不寫在 documentElement 上：
-       那兩個變數是會繼承的自訂屬性，寫在根節點等於每一幀讓整棵樹的 computed style
-       失效，而真正的消費者只有本元件底下那兩層（見 SCSS 的 --hd-band-mask）。 -->
+       那些變數是會繼承的自訂屬性，寫在根節點等於每一幀讓整棵樹的 computed style
+       失效，而真正的消費者只有本元件底下那兩層（見 ~/utils/header-css-var）。 -->
   <header
     class="app-header"
-    data-header-band
+    data-header-vars
     :class="[
-      { 'is-visible': isVisible, 'is-menu-open': menuOpen, 'has-band': !!bandTheme },
+      {
+        'is-visible': isVisible,
+        'is-menu-open': menuOpen,
+        'has-band': !!bandTheme,
+        'has-tint': tinted,
+      },
     ]"
   >
     <!--
@@ -377,6 +406,7 @@ const layers = computed<HeaderLayer[]>(() => {
       :class="[
         `app-header__layer--${layer.key}`,
         `app-header__layer--${layer.theme}`,
+        { 'app-header__layer--tint': layer.tint },
       ]"
       :aria-hidden="layer.key === 'band' || undefined"
       :inert="layer.key === 'band' || undefined"
@@ -482,9 +512,24 @@ const layers = computed<HeaderLayer[]>(() => {
   --hd-icon-w: 35px;
   --hd-icon-h: 28px;
 
+  // 換色補間的時長，**整個 header 子樹共用一個來源**（會繼承，子元件直接吃）。
+  // 存在的理由是 tint（見 .has-tint）：離散三檔之間換色是「一次跳」，補一段 0.3s 才
+  // 不生硬；但 tint 期間色值本身是**逐幀**在變的，再疊補間就變成 header 慢半拍追著
+  // 色場跑（閱讀捲速下約是整段窗口的三成距離，看得很清楚），而「精確跟著真正的底色
+  // 走」正是那個漸變存在的理由。
+  // ⚠️ 新增任何吃 --hd-fg / --hd-bg 的補間，時長一律寫 var(--hd-color-dur)，別寫死
+  //    0.3s —— 寫死的那一個會在 tint 期間獨自落後，變成「其他都跟上了、就它在飄」。
+  //    目前的消費者：.app-header__bar-wrap（底色）與 AppHeaderNav 的 .__link（文字色）。
+  --hd-color-dur: 0.3s;
+
   @include rwd-min('pc') {
     --hd-icon-w: 27.5px;
     --hd-icon-h: 22px;
+  }
+
+  // 逐幀漸變期間關掉所有換色補間（理由見上）。
+  &.has-tint {
+    --hd-color-dur: 0s;
   }
 
   // 選單開啟期間，header 整層抬到子頁疊層之上（見 subpage.scss 的疊層總表）。
@@ -626,7 +671,7 @@ const layers = computed<HeaderLayer[]>(() => {
   backdrop-filter: blur(2px);
   transition:
     transform 0.3s ease,
-    background-color 0.3s ease;
+    background-color var(--hd-color-dur) ease;
   transform: translateY(-100%);
 }
 
@@ -643,6 +688,7 @@ const layers = computed<HeaderLayer[]>(() => {
     transition: none;
   }
 }
+
 
 .app-header__progress {
   position: relative;
@@ -699,13 +745,26 @@ const layers = computed<HeaderLayer[]>(() => {
   mask-size: contain;
 }
 
-// 寬度用 min(63vw, 260px) 流動縮放：320 時貼近 320 稿的 204px、414 起卡在 260px 的 mob 稿值，
-// 避免窄螢幕下與右側 icon 群組疊在一起（見 task-5-report.md 的 fix 記錄）。
+// 寬度流動縮放，三個上限取最小的一個：
+//   ① 63vw —— 主曲線（稿上的縮放感）。
+//   ② 100vw - 134px —— 右側 icon 群組的**實際佔位**：.app-header__bar 的左右 padding
+//      20 + 20、.app-header__icons 的 35 + 12(gap) + 35 = 82，再留 12 的間隙。
+//   ③ 260px —— mob 稿的定值上限（414 起卡在這）。
+//
+// ②是 2026-08-22 補的（320 跑版）：原本只有 ①③，而①只管「別太寬」、沒把右側佔位算進去
+// ⇒ 320 時 logo 寬 201.6、右緣落在 221.6，壓在 icon 群組左緣 218 上，音量 icon 直接畫在
+// 「未來」兩字上（實測數字，不是估的）。②在 320 給出 186px。
+// ⚠️ ①②在 362.2px 交叉（0.37w = 134）⇒ **≥375 完全走①、與改動前逐像素相同**，
+//    這正是選「再取一個上限」而不是加 max-width 斷點的理由：沒有硬跳、也不動到 375 以上。
+// ⚠️ 代價：320 稿標的 204px 放不下（要放下得同時縮 icon 或 padding，那會動到 375 以上）。
+// ⚠️ 134 綁著三處數字：.app-header__bar 的 padding、.app-header__icons 的兩顆 icon 與 gap、
+//    以及刻意留的 12px 間隙。任一處改動要回來同步這條。
+//
 // 高度不能各自寫死，兩顆都用同一份寬度除以 228÷37（pc 稿的原生比例）反推，
 // 才不會 img／mask 兩顆尺寸走鐘。
 .app-header__logo-img,
 .app-header__logo-mask {
-  --hd-logo-w: min(63vw, 260px);
+  --hd-logo-w: min(63vw, 100vw - 134px, 260px);
   width: var(--hd-logo-w);
   height: calc(var(--hd-logo-w) / 6.1622);
 
@@ -722,6 +781,88 @@ const layers = computed<HeaderLayer[]>(() => {
 
   .app-header__logo-mask {
     display: block;
+  }
+}
+
+/* 配色的逐幀漸變（見 script 的 tint 與 ~/composables/useHeaderTint）。
+   --hd-tint 由驅動端逐幀寫在 header 上：0 ＝ 該層原本的深色端、1 ＝ light。
+
+   ⚠️ **兩層都要吃**，而且兩層的起點不同 —— 這是 2026-08-22 實測才看清楚的事：
+      符號段全程 band 窗是**滿寬**開著的（--hd-band-l/r ＝ 0 → 視窗寬），於是
+      `.has-band` 的遮罩把 base 那一條**整條挖掉**，畫面上看到的 header 一直是
+      band 層（透明底 ＋ 白字）。也就是說：
+        ・base 的三檔在這段期間是看不見的（連 data-header-theme 在 0.5 的硬翻也看不見）；
+        ・使用者說的「進入 forum 直接切換主題」是 **coreIn 那一幀 band 層被移除**
+          （透明底白字 → 半透明白底灰字，一次跳完）；
+        ・順帶還有一個既有問題：band 鎖死 dark（白字），底色翻白之後白字壓在白底上
+          幾乎看不見。
+      所以 band 的漸變終點刻意就是 --light 的那組值：跑到 1 時它與接手的 base(light)
+      **完全同色**，coreIn 的交棒因此變成看不出來。base 也一起漸變，是為了萬一窗不是
+      滿寬（base 會露出來）時兩層仍然同調。
+
+   ⚠️ 必須宣告在 --dark / --orange / --band **三個地方**之後：上面的色票區塊、band 的
+      覆寫、以及緊接在前面那組 logo 的 display 對調。這也是本區塊為什麼**整包放在
+      這裡**、不按功能拆到各自的鄰居旁邊（拆了就會有一半贏不了）。bg 用兩個 class
+      的選擇器（0,2,0）而不是靠順序，才蓋得掉 --band 的 transparent。
+
+   ⚠️ 端點的色值與 --dark / --light / --band 是同一組數字，抄成兩份是刻意的取捨：
+      做成 from / to 變數要把每一端的三顆色票都變成變數、CSS 膨脹好幾倍。改上面的
+      色票要回來同步這裡。
+
+   插值走 in srgb 而不是 oklab：兩端都是灰階（白／黑），srgb 的線性灰階最接近 canvas
+   那邊同一刻在做的黑→白 lerp；而 header 本來就是半透明疊在色場上，兩者同調比「感知
+   上更均勻」重要。 */
+.app-header__layer--tint {
+  --hd-fg: color-mix(
+    in srgb,
+    var(--color-gray) calc(var(--hd-tint, 0) * 100%),
+    #fff
+  );
+  // --hd-accent 兩端同色（都是 orange），沒有東西要插值 —— 不宣告即照舊繼承
+
+  // 常駐層：從 --dark 的半透明黑底出發。
+  &.app-header__layer--base {
+    --hd-bg: color-mix(
+      in srgb,
+      rgb(255 255 255 / 0.7) calc(var(--hd-tint, 0) * 100%),
+      rgb(0 0 0 / 0.5)
+    );
+  }
+
+  // 窗內那層：從**透明**出發（原本刻意透出色場本身，見 --band 的註解）。
+  // 淡入白底是這個漸變的重點之一：跑到 1 時它就是 --light 的底色，接手的 base(light)
+  // 因此不會在 coreIn 那一幀憑空長出一條白 bar。
+  // ⚠️ backdrop-filter 沒有跟著回來（band 那層是 none、base 是 blur(2px)）：交棒那一刻
+  //    底下已是一片平坦的白，2px 模糊看不出差別，不值得多一道 GPU pass。
+  &.app-header__layer--band {
+    --hd-bg: color-mix(
+      in srgb,
+      rgb(255 255 255 / 0.7) calc(var(--hd-tint, 0) * 100%),
+      transparent
+    );
+  }
+
+  // logo 沒辦法插值：淺色是彩色 <img>、深色是 mask 壓成純白的 <span>，原本靠
+  // display 對調。漸變期間改成兩顆疊著用 opacity 對衝，吃的是同一個 --hd-tint。
+  // ⚠️ 中段會看到兩顆各半透明的 dissolve（白版疊在彩色版上）。已知、可接受：
+  //    那一刻整片畫面正在做黑→白，logo 單獨硬切反而才顯眼。
+  .app-header__logo {
+    position: relative; // 疊放的定位基準；只在漸變期間需要
+  }
+
+  .app-header__logo-img {
+    display: block;
+    opacity: var(--hd-tint, 0);
+  }
+
+  // 用 top/left 而不是 inset: 0 —— 尺寸已由上面共用的 width/height 決定，
+  // 再給 right/bottom 會過約束（右緣被忽略），白白留一個看不出來的陷阱。
+  .app-header__logo-mask {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    opacity: calc(1 - var(--hd-tint, 0));
   }
 }
 

@@ -121,6 +121,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
            故 @click 會落在真正的 <a> 上（同 Agenda／AgendaReport 的寫法）。 -->
       <UBtn
         v-if="event.cta"
+        :id="event.ctaId"
         variant="primary"
         class="forum-event__cta"
         href="#"

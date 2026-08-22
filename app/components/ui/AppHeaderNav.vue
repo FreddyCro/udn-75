@@ -91,7 +91,9 @@ function onHomeSelect(target: string, e: MouseEvent) {
   padding: 11.5px 0;
   color: var(--hd-fg);
   text-decoration: none;
-  transition: color 0.3s ease;
+  // 時長吃 header 繼承下來的 --hd-color-dur（預設 0.3s），不寫死：逐幀漸變期間
+  // AppHeader 會把它歸零，否則這一列文字會獨自慢半拍落後於底色，理由見該變數的註解。
+  transition: color var(--hd-color-dur, 0.3s) ease;
 
   &::after {
     content: '';
@@ -115,7 +117,7 @@ function onHomeSelect(target: string, e: MouseEvent) {
 }
 
 // 錨點文字（稿字形素材）。素材當形狀、顏色吃 currentColor ＝ 連結的 --hd-fg，
-// 故主題換色與 0.3s 的 color transition 一併生效，反白層也自動正確。
+// 故主題換色與那段 color transition（--hd-color-dur）一併生效，反白層也自動正確。
 // 寬高逐顆掛在 inline style（三顆稿寬不同：35／72／90.46），見 useArtMask。
 .app-header-nav__art {
   display: block;
