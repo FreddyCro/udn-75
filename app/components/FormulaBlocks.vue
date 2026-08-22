@@ -538,6 +538,11 @@ onBeforeUnmount(() => {
   display: block;
   width: 257px;
   height: auto;
+  // 保留版位：沒有這行的話高度由載入後的 SVG 決定，載入前是 0 高。撐開的那一刻
+  // 它下面所有 ScrollTrigger pin 的實際位置就被推走，而 pin 的起訖是量完就固定的
+  // 絕對座標（脈絡見 utils/scroll-trigger 的 refreshOnContentResize）。
+  // 數字＝素材 viewBox，對帳見 test/subpage-image-space-reservation.spec.ts。
+  aspect-ratio: 257.001 / 44.623;
 
   @include rwd-min('tablet') {
     width: 275px;

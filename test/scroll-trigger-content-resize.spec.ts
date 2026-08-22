@@ -60,16 +60,36 @@ describe('settleDelay（內容高度變動的節流算式）', () => {
   });
 });
 
-describe('連續閱讀頁把內容高度變動接起來', () => {
+// 掛在 plugin 而不是某一頁：pin 的起點會被上游長高推走這件事**不是子頁專屬的**。
+// 首頁（Hero／Forum／Blessing／FormulaBlocks）與七個獨立子頁（AwardTimeline／
+// PhotoPanels）都有同樣結構的 pin，症狀只是沒有「下一篇 hero 疊上來」那麼刺眼而已。
+describe('內容高度變動的重算掛在全站', () => {
+  const plugin = join('app', 'plugins', 'content-resize-refresh.client.ts');
+
+  it('有 content-resize-refresh plugin 且呼叫了 refreshOnContentResize', () => {
+    const src = readFileSync(plugin, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    expect(src).toMatch(/defineNuxtPlugin/);
+    expect(src).toMatch(/refreshOnContentResize\s*\(/);
+  });
+
+  // 掛兩次不會出事（模組層旗子擋著），但兩個入口＝兩個要維護的地方。
+  it('頁面不再各自掛一份', () => {
+    const page = readFileSync(join('app', 'pages', 'subpage.vue'), 'utf8')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    expect(page).not.toMatch(/refreshOnContentResize\s*\(/);
+  });
+});
+
+describe('連續閱讀頁的離場清理', () => {
   // 剝掉註解：下面幾條在找「有沒有寫這段程式碼」，註解裡引用到的字面不算數。
   const src = readFileSync(join('app', 'pages', 'subpage.vue'), 'utf8')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/[^\n]*/g, '');
-
-  it('掛了 refreshOnContentResize', () => {
-    expect(src).toMatch(/refreshOnContentResize\s*\(/);
-  });
 
   // 自己 await document.fonts.ready 沒有離場守衛：字體載入途中換頁的話，
   // 後半段會對著**下一個路由**跑重算與落點校正。單一入口自帶只註冊一次的旗子。
@@ -84,7 +104,6 @@ describe('連續閱讀頁把內容高度變動接起來', () => {
   it('離場時清掉落點校正的計時器', () => {
     const unmount = src.slice(src.indexOf('onBeforeUnmount'));
     expect(unmount).toMatch(/clearLandingTimers\s*\(/);
-    expect(unmount).toMatch(/stopContentResize\?\.\(/);
   });
 
   // 清得掉的前提是每一個計時器都有登記。裸 setTimeout 會繞過 landingTimers，

@@ -18,7 +18,6 @@ import common from '~/locales/common.json';
 import { TABLET_BREAKPOINTS } from '~/utils/constants';
 import { pickActiveAnchor } from '~/utils/anchor-spy';
 import {
-  refreshOnContentResize,
   refreshOnFontsReady,
   refreshScrollTriggers,
 } from '~/utils/scroll-trigger';
@@ -272,8 +271,6 @@ function startSpy() {
 
 const router = useRouter();
 
-/** refreshOnContentResize() 的解除掛鉤（離場時呼叫） */
-let stopContentResize: (() => void) | null = null;
 
 onMounted(async () => {
   await nextTick();
@@ -312,11 +309,9 @@ onMounted(async () => {
   //    startSpy() 已經把 onRefresh 掛在 ScrollTrigger 的 refresh 事件上，這一刀會順著過去。
   refreshOnFontsReady();
 
-  // 內容高度一變就重算。**這是連續閱讀頁「下一篇 hero 疊到上一篇內文」的解**：
-  // pin 的起訖是量完就固定的絕對座標，冷啟動時陸續載入的內文圖（48 張有 44 張沒有保留
-  // 尺寸）與 SubpageWorks 的列展開（+136px）都會把下面每一篇的舞台往下推，而 pin 不知道。
-  // 完整脈絡與實測數字見 utils/scroll-trigger 的 refreshOnContentResize。
-  stopContentResize = refreshOnContentResize();
+  // ⚠️ 「內容高度變了就重算」不在這裡掛 —— 那是全站的事，見
+  //    plugins/content-resize-refresh.client.ts。本頁最刺眼的症狀（下一篇 hero 疊到
+  //    上一篇內文）只是它最明顯的一個案例。
 });
 
 onBeforeUnmount(() => {
@@ -324,8 +319,6 @@ onBeforeUnmount(() => {
   observer = null;
   sectionEls.clear();
   clearLandingTimers();
-  stopContentResize?.();
-  stopContentResize = null;
   ScrollTrigger.removeEventListener('refresh', onRefresh);
   USER_EVENTS.forEach((e) => window.removeEventListener(e, markUserMoved));
   if (import.meta.client) history.scrollRestoration = 'auto';
