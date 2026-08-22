@@ -449,6 +449,11 @@ tailEndY = 產生器回傳的 endY               ← 沒設它就是 0
 若還淡出 0.4s，中央會留一顆停著的殘影。只在「已交棒且該消失」時關掉 transition，
 所以 `coreIn` 的淡入（與 SymbolFace 的 crossfade）仍是 0.4s。
 
+⚠️ **2026-08-22 起這一段的敘述已變**：那 50vh 的「懸停期」併進了 symbol 軌
+（`SymbolScene` 的 `end: 'bottom center'`），`coreOut` 也不再管滿版白底 ——
+見 [2026-08-22-forum-heading-in-handoff-viewport-design.md](2026-08-22-forum-heading-in-handoff-viewport-design.md)。
+以下保留原文，講的幾何（路徑起點必須落在視窗正中央）仍然成立。
+
 ⚠️ `coreOut`（符號段捲完）與交棒點之間有 **50vh** 的「懸停期」，橘點在那段期間停在視窗
 中央不動（背景從 `.sec-symbol` 的黑換成 `.sec2` 的白，接縫升上來咬住它）。
 **50vh 是幾何下限，不能再縮** —— 交棒點被「路徑起點必須落在視窗正中央」的零跳點幾何鎖死，

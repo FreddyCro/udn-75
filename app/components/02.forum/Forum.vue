@@ -8,13 +8,11 @@ import type { ForumEvent } from '~/types/forum';
 
 // SymbolFace 序列（disperse→face→converge→enter）已搬到獨立的 <SymbolScene>（01a.symbol）：
 // symbolProgress 寫入與 mode 指派都由該元件擁有，本區只「讀」它解出的結果：
-//   forumCoreActive     — symbolProgress ∈ [coreIn, coreOut) → ForumCore 的滿版底色現身（接棒）。
-//   forumCoreDotVisible — 橘點的顯隱：coreIn 起撐到論壇段路徑接手為止（比底色晚很多）。
+//   forumCoreDotVisible — 橘點的顯隱：coreIn 起撐到論壇段路徑接手為止。
 //   forumPathRiding     — 路徑已接手 → 橘點的消失改為瞬間（見 ForumCore 的 SCSS）。
-//   agendaRevealed      — 越過 coreOut → 議程揭露。
+//   agendaRevealed      — 越過 agendaIn → 論壇主標與議程揭露（在轉場層底下淡入）。
 // 門檻見 ~/utils/orange-core-config 的 SYMBOL_STOPS / FORUM_HANDOFF。
 const {
-  forumCoreActive,
   forumCoreDotVisible,
   forumPathRiding,
   agendaRevealed,
@@ -177,21 +175,17 @@ onBeforeUnmount(() => {
       aria-hidden="true"
     />
 
-    <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊）。fixed 滿版、由 SymbolScene 寫入的
-         symbolProgress 隔空驅動，故放在議程整組之外。底色在 coreOut 淡出，橘點則撐到論壇段
-         路徑接手（見 ForumCore 與 useOrangeCoreProgress 的 forumCoreDotVisible）。
+    <!-- forum 接棒的橘核心（收斂點 → 硬切 → 橘方塊）。fixed 置中、由 SymbolScene 寫入的
+         symbolProgress 隔空驅動，故放在議程整組之外。coreIn 起現身、撐到論壇段路徑接手
+         （見 ForumCore 與 useOrangeCoreProgress 的 forumCoreDotVisible）。
          （進度除錯已整合成跨章節的 <DevCoreProgress>，掛在 pages/index.vue，?pathdebug 開啟 ——
            就是本檔下方 pathDebug 用的同一個參數。） -->
-    <ForumCore
-      :active="forumCoreActive"
-      :dot-visible="forumCoreDotVisible"
-      :instant-hide="forumPathRiding"
-    />
+    <ForumCore :dot-visible="forumCoreDotVisible" :instant-hide="forumPathRiding" />
   </section>
 </template>
 
 <style lang="scss" scoped>
-// 交棒期間由 ForumCore（fixed 滿版底色，現為白）遮住，故本區白底不影響 crossfade。
+// 交棒期間由轉場層（fixed 滿版、不透明）遮住，故本區白底不影響交棒。
 // 白底：新版議程段為淺色稿；水平 padding 收掉，讓 <AgendaReport> 的灰底能滿版。
 // 段落頂端的 140 留白掛在 .sec2__path 而非這裡：核心的設計線要從「黑白接縫」進場，
 // 而它的座標原點是 .sec2__path 的 padding box —— 留白掛在 .sec2 會讓原點下沉 140，
@@ -206,7 +200,9 @@ onBeforeUnmount(() => {
 
 // 路徑段：pc 稿 1280 基準，線與內容共用同一像素座標系（線不縮放，故尾端永遠咬住錨點）；
 // 超寬視窗只是左右留白，不會讓線與內容產生相對位移。高度已改由三場內容自然撐開。
-// 露出時機同議程（coreOut 後），避免 crossfade 期間從縫隙露餡。
+// 露出時機同議程（agendaIn 後，在轉場層底下淡完）。
+// ⚠️ padding-top 那 140px 同時是「交棒時看得到多少主標」的一部分：接縫落在螢幕
+//    SEAM_AT_HANDOFF_VH（60vh），主標從它下方 140px 起 —— 動這個值要回頭驗那一屏。
 .sec2__path {
   position: relative;
   max-width: 1280px;
@@ -282,9 +278,8 @@ onBeforeUnmount(() => {
   }
 }
 
-// 議程＋recap 整組：coreOut 前一律藏著，避免 SymbolFace↔橘核心 crossfade 期間
-// （淡出的 SymbolFace 那層與淡入的橘核心底色皆未達全滿）從縫隙短暫露餡；
-// --revealed（agendaRevealed）時隨橘核心淡出而淡入，剛好接上。捲回自動反向。
+// 議程＋recap 整組：agendaIn 前一律藏著，那 0.4s 的淡入在轉場層還蓋著的時候跑完
+// （見 useOrangeCoreProgress 的 agendaRevealed）。捲回自動反向。
 //
 // 白底是本層自身的遮蔽（原本靠 .sec2 的白底，那是祖先遮不到），crossfade 期間也靠它
 // 避免從縫隙露餡。AgendaReport 的灰底是子層，不受影響。

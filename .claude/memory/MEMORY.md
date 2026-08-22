@@ -11,6 +11,7 @@
 - [Hero body lock rules](hero-body-lock-rules.md) — hero 開場捲動鎖逐拍規則（2026-08-22 起：正片 ＋ 還沒播完的退場段都鎖，退場播完才解鎖；配兩根防死結保險絲）；.is-scroll-locked 必須同時掛 html 與 body 否則完全無效
 - [Hero core screen-locked](hero-core-screen-locked.md) — hero orange core 螢幕上完全不動（恆 50vh），是文字捲上去穿過它；程式註解本身會誤導
 - [Hero outro core handoff](hero-outro-core-handoff.md) — 影片裡的 core → DOM core 交棒：anchor 在 config、cover 換算與旋轉補償在 hero-core-handoff.ts；含層序陷阱（sticky 建立堆疊脈絡 ⇒ core／引言其實畫在影片之上，遮擋靠 opacity）
+- [Symbol rail vs section height](symbol-rail-vs-section-height.md) — 符號段尺長≠段高（尺多 50vh）；交棒時接縫的位置只由 handoff 那一拍決定，調總長是無效的
 - [Forum RWD](forum-rwd.md) — 動 02.forum 版面前先讀 architecture/forum-node-path.md；desktop-first 例外的理由、特異度陷阱
 - [Forum art shared canvas](forum-art-shared-canvas.md) — 地點／時間多行素材是整組共用畫布：從一份群組匯出切檔、用第一個 M 的 y 分行、fill 寫死 #686868
 - [Subpage hero 100vh](subpage-hero-100vh.md) — 子頁首屏滿版 100svh＋進場 fade-up（不做 sticky）；hero 須保留 position: relative

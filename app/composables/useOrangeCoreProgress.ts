@@ -206,21 +206,14 @@ function buildOrangeCoreProgress() {
   //   理由見 useHeaderTint 的檔頭。
   const symbolHeaderTint = computed(() => headerTintAt(symbolProgress.value));
 
-  // forum 接棒視窗：symbolProgress ∈ [coreIn, coreOut) → 橘核心（ForumCore）現身。
-  //   進入（≥coreIn）→ SymbolFace 收斂點交棒給橘核心（硬切，兩顆已同色同尺寸，見 FORUM_HANDOFF）；
-  //   離開（≥coreOut）→ 滿版底色淡出、露出議程。捲回會自動反向。
-  // 越過整段 pin（onLeave → symbolProgress=1）時 ≥coreOut，故 forum 之後橘核心不會殘留蓋住畫面。
-  const forumCoreActive = computed(
-    () =>
-      symbolProgress.value >= FORUM_HANDOFF.coreIn &&
-      symbolProgress.value < FORUM_HANDOFF.coreOut,
-  );
-
-  // forum 議程揭露：越過 agendaIn 才顯示議程。之前一律藏著，確保 SymbolFace↔橘核心
-  // crossfade 期間（兩層滿版底色皆未達全滿）下方議程不會短暫露餡。
-  // agendaIn 刻意早於 coreOut，讓這 0.4s 的淡入發生在畫面外（此時符號段底緣還在視窗底
-  // 下方 32vh）；若跟著 coreOut（＝符號段捲完那一刻）才淡入，會在畫面底緣看得到。
-  // 捲回會自動反向。
+  // forum 內容揭露：越過 agendaIn 才顯示 `.sec2__path`（論壇主標／論壇一~三）與議程整組。
+  // 之前一律藏著，確保那 0.4s 的淡入不會被人看到淡的過程。捲回會自動反向。
+  //
+  // ⚠ 2026-08-22 起「看不到」的理由換了：改版前是**畫面外**（符號段底緣還在視窗底下方
+  //   32vh），而現在接縫在交棒之前就升進畫面了（見 SYMBOL_HOVER_VH），那條理由已不成立。
+  //   現在靠的是**轉場層**（fixed 滿版、不透明，交棒點才開始淡出）—— agendaIn 早於 coreIn
+  //   恰好 AGENDA_IN_LEAD_VH ＝ 20vh，夠那 0.4s 在它底下跑完，判準見該常數。
+  //   於是交棒那一刻轉場層一掀開，論壇主標就是**已經淡入完成**的狀態直接在畫面上。
   const agendaRevealed = computed(
     () => symbolProgress.value >= FORUM_HANDOFF.agendaIn,
   );
@@ -262,11 +255,11 @@ function buildOrangeCoreProgress() {
     slashDrawAt(forumPathProgress.value, forumSlashWindow.value),
   );
 
-  // 橘核心那顆方塊的顯隱（與 ForumCore 的滿版底色分開）。
-  // 底色只在 [coreIn, coreOut) 現身，但橘點必須從 coreIn 一路撐到論壇段路徑接手為止 ——
-  // coreOut 到交棒點之間還有約 82vh，若跟著底色淡出，畫面上會有一段沒有核心、
-  // 然後又在設計線頂端冒出一顆（就是這次要修掉的斷點）。
-  // forumPathActive 為 false（該斷點無線稿）時退化成原本的 [coreIn, coreOut)。
+  // 橘核心那顆方塊的顯隱：coreIn 起，撐到論壇段路徑接手為止。
+  // ⚠ 2026-08-22 起這是 <ForumCore> 唯一的條件 —— 那層滿版白底已移除（理由見
+  //   orange-core-config 的 FORUM_HANDOFF），故不再有「與底色分開的另一個窗口」。
+  // forumPathActive 為 false（該斷點無線稿）時退化成 [coreIn, coreOut)：coreOut ＝ 1.0
+  // ＝ 接縫抵達視窗中央，與有線稿時路徑接手的那一刻同時，兩條路徑因此同時收。
   const forumCoreDotVisible = computed(() => {
     if (symbolProgress.value < FORUM_HANDOFF.coreIn) return false;
     return forumPathActive.value
@@ -393,7 +386,6 @@ function buildOrangeCoreProgress() {
     symbolBgLight,
     symbolConvergeLight,
     symbolHeaderTint,
-    forumCoreActive,
     forumCoreDotVisible,
     agendaRevealed,
     forumPathProgress,

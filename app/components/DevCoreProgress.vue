@@ -29,7 +29,6 @@ const {
   symbolProgress,
   symbolMode,
   symbolLayerDone,
-  forumCoreActive,
   forumCoreDotVisible,
   forumPathActive,
   forumPathRiding,
@@ -156,7 +155,9 @@ const turnRows = computed(() =>
 
 const flags = computed(() => [
   { label: 'layerDone', ok: symbolLayerDone.value },
-  { label: 'coreActive', ok: forumCoreActive.value },
+  // 原本這裡有一格 coreActive（＝ ForumCore 的滿版白底在不在）。那層已於 2026-08-22
+  // 移除（見 orange-core-config 的 FORUM_HANDOFF），旗標跟著撤掉 —— 橘點自己的
+  // 顯隱本來就有下方那組「三個輸入攤平」在講，不需要再一格布林。
   { label: 'agendaReveal', ok: agendaRevealed.value },
   { label: 'pathActive', ok: forumPathActive.value },
   { label: 'riding', ok: forumPathRiding.value },

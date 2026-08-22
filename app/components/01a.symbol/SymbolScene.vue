@@ -22,43 +22,56 @@ const {
   symbolHeaderTint,
 } = useOrangeCoreProgress();
 
-// 段落高度 ＝ SYMBOL_VH × 視窗高（見 ~/utils/orange-core-config）＝ 序列的捲動長度。
-// 用 vhLength 而非字面 `320vh`：視窗高在本專案有單一來源（--vh），見 ~/utils/viewport-height。
+// 段落高度 ＝ SYMBOL_VH × 視窗高（見 ~/utils/orange-core-config）。
+// ⚠️ 它**不等於捲動尺的長度** —— 尺比段落長 50vh（見下方 end 與 SYMBOL_HOVER_VH）。
+// 用 vhLength 而非字面 `284vh`：視窗高在本專案有單一來源（--vh），見 ~/utils/viewport-height。
 const sceneHeight = vhLength(SYMBOL_VH);
 
-// 捲動尺：本段頂端進入視窗底（＝ hero 轉場 pin 剛釋放的那一刻）起算，到本段捲完為止。
-//   ・start 'top bottom' 只看「sec1 底緣抵達視窗底」→ 與本段高度無關，故不論 SYMBOL_VH 調多少，
+// 捲動尺：本段頂端進入視窗底（＝ hero 轉場 pin 剛釋放的那一刻）起算，到**本段底緣抵達
+// 視窗中央**為止 —— 尺因此比段落長半個視窗，那 50vh 就是舊的「懸停期」（見 SYMBOL_HOVER_VH）。
+//   ・start 'top bottom' 只看「sec1 底緣抵達視窗底」→ 與本段高度無關，故不論段高調多少，
 //     都精準接在 hero 轉場 pin 釋放的同一刻（兩軌首尾相接、不重疊）。
-//   ・end 'bottom bottom' → 捲動距離＝本段高度＝ SYMBOL_VH × 100vh。
+//   ・end 'bottom center' → 捲動距離 ＝ 段高 ＋ 半個視窗 ＝ SYMBOL_RAIL_VH × 100vh。
+//     ⚠️ 這個 end 與 <ForumCorePath> 的 start: 'top center' 指的是**同一個幾何位置**
+//        （`.sec2__path` 頂端 ＝ 本段底緣，中間沒有 margin），故兩軌首尾相接、路徑核心
+//        接手時零跳點。動任一邊的對齊詞都要回頭改另一邊。
+//     ⚠️ 'center' 取的是 ScrollTrigger 量到的**真實** innerHeight，而段高吃的是凍結的 --vh。
+//        ForumCorePath 的 'center' 同樣是真實視窗 → 兩者永遠一致，這才是要緊的事；
+//        行動裝置網址列收合只會一起平移這一刻，不會把它們拆開。
 //   ・往回捲自動倒退（converge→…→disperse）：靠 onUpdate 直接讀 self.progress，
 //     不是 scrub —— 本 trigger 沒有掛動畫，沒有東西需要被 scrub 平滑補間。
 //
 // ── symbolProgress 時序表 ────────────────────────────────────────────────
 // ⚠️ 這是換算結果、不是資料來源：**唯一來源是 SYMBOL_BEAT_VH**（四拍各吃多少 vh），
 //    progress 門檻與本表都是它的換算結果。改動那個常數後要回來手動同步這張表。
-//    下表為 SYMBOL_VH = 3.64（總長 364vh），括號內 px 是視窗高 1080 的換算。
+//    下表為 SYMBOL_RAIL_VH = 3.34（尺長 334vh、段高 284vh），括號內 px 是視窗高 1080 的換算。
 //
 //   step  mode / 事件                              progress      累計距離（起→迄）        該段距離
-//   ①     disperse 分散（前段疊開場三行文案）        0 → 30.77%    0    → 112vh   (0→1210px)     112vh
+//   ①     disperse 分散（前段疊開場三行文案）        0 → 33.53%    0    → 112vh   (0→1210px)     112vh
 //         └ 文案 8vh 起播 → 自走 6.4s 時間軸（2.0s 三行到位／停留 3.0s／1.4s 依序退場）
 //           104vh 保底清場（越過就強制淡出）。門檻在 SYMBOL_INTRO、節奏在 INTRO_TIMELINE
-//   ②     face 集合（人像）＝最長的一拍              30.77 → 68.13%  112 → 248vh (1210→2678px)  136vh
-//   ③     converge 收攏成一顆**白** core（底色仍黑） 68.13 → 83.52%  248 → 304vh (2678→3283px)   56vh
-//   ③b    白 core → 橘 ＋ 整片底色黑→白             83.52 → 89.01%  304 → 324vh (3283→3499px)   20vh
+//   ②     face 集合（人像）＝最長的一拍              33.53 → 74.25%  112 → 248vh (1210→2678px)  136vh
+//   ③     converge 收攏成一顆**白** core（底色仍黑） 74.25 → 91.02%  248 → 304vh (2678→3283px)   56vh
+//         └ 途中 284vh 處接縫（`.sec2` 頂端）**越過視窗底緣**開始升進畫面。看不見 ——
+//           轉場層是不透明滿版，論壇內容整段躲在它底下升上來，見 ④
+//   ③b    白 core → 橘 ＋ 整片底色黑→白             91.02 → 97.01%  304 → 324vh (3283→3499px)   20vh
 //         └ 顏色先收齊（窗口的 55% 處）、底色殿後到 1，見 CORE_WARM_COLOR_SPAN
-//   ④     coreIn 交棒：本層淡出＋ForumCore 硬切上場  89.01%        324vh          (3499px)        —
-//   ⑤     enter 橘核心停在白畫面（原地停住）          89.01 → 91.21%  324 → 332vh (3499→3586px)    8vh
-//   ⑥     agendaIn 議程 reveal（仍在畫面外）         91.21%        332vh          (3586px)        —
-//   ⑦     coreOut 滿版白底淡出、段落捲完（onLeave→鎖 1） 100%       364vh          (3931px)        32vh
+//   ⑥     agendaIn 論壇內容 reveal（0.4s，在轉場層底下跑完） 91.02%  304vh      (3283px)        —
+//         └ 與 ③b 的起點同一個 progress 是**巧合**（AGENDA_IN_LEAD_VH 與 CORE_WARM_VH
+//           恰好都是 0.2），兩者各自定錨、沒有耦合
+//   ④     coreIn 交棒：本層淡出（0.35s）＋ForumCore 硬切上場  97.01%  324vh    (3499px)        —
+//         └ **論壇主標就在這一刻現身**：接縫已升到螢幕 60vh（SEAM_AT_HANDOFF_VH），
+//           主標在它下方 140px 起。轉場層一淡出就看得到，不必再往下捲
+//   ⑤     handoff 橘點停在中央（接縫 60vh → 50vh）    97.01 → 100%   324 → 334vh (3499→3607px)   10vh
+//   ⑦     尺捲完（onLeave→鎖 1）＝ 接縫抵達視窗中央 → 論壇段路徑接手  100%  334vh  (3607px)      —
 //
-// ⑤＋⑦ ＝ handoff 那一拍的 40vh。⑦ 的 32vh 是 AGENDA_OFFSCREEN_VH 的硬下限（議程淡入必須
-// 發生在畫面外），故 handoff 再縮就只能吃掉 ⑤ 的 8vh 停留 —— 見 FORUM_HANDOFF 的註解。
+// ⑤ 就是 handoff 那一拍的 10vh。它的下限是「轉場層那 0.35s 的淡出要跑得完」，
+// 上限是「交棒時論壇主標要完整可見」——兩邊都在 SYMBOL_BEAT_VH.handoff 的註解裡。
 //
-// ⑦ 之後還有一段「懸停期」不在本尺內：黑白接縫要再升 50vh 才抵達視窗中央，橘點在那段期間
-// 停在中央不動，然後由論壇段路徑接手（見 ForumCorePath 的 start: 'top center'）。
-// 那 50vh 是零跳點幾何的下限，見 FORUM_HANDOFF 的註解。
+// ⚠️ 2026-08-22 之前 ④ 之後還有 40vh 黑畫面停留 ＋ 50vh 無軌懸停期（共 90vh）才看得到
+//    第一行論壇文字。改動的推導見 SYMBOL_HOVER_VH：光調段落長度是**不可能**修掉這件事的。
 //
-// 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本段合計 484vh。
+// 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本尺合計 454vh。
 //
 // ⚠️ ① 與 ② 的交界（mode 切換）只是「觸發」SymbolFace 那 2.2s 的 gsap 補間
 //    （disperseDuration），本表只管門檻位置、不管補間跑多久。
@@ -82,7 +95,7 @@ onMounted(() => {
   symbolST = ScrollTrigger.create({
     trigger: sceneRef.value,
     start: 'top bottom',
-    end: 'bottom bottom',
+    end: 'bottom center', // ＝ ForumCorePath 的 start，見上方 ⚠️
     // 刻意沒有 invalidateOnRefresh：它是「refresh 時對綁定的動畫呼叫 invalidate()」，
     // 而本 trigger 沒有掛動畫 → 純粹的 no-op。start/end 是字串，refresh 本來就會重算。
     onUpdate: (self) => setSymbolProgress(self.progress),
@@ -115,8 +128,8 @@ onBeforeUnmount(() => {
 // ⚠ 上界是 1（＝本段捲完）而不是「一路亮到底」：
 //   ① symbolProgress 在 onLeave 之後恆為 1、且跨導航存活 —— 不放手的話後面兩個錨點
 //      永遠亮不起來（claim 蓋過幾何 spy）。
-//   ② 放手之後不會有空窗：那一刻 `.sec-symbol` 早已橫跨整條中央帶（頂端在 −2.64vh、
-//      底緣正在視窗底），幾何 spy 靠它宣告的 data-anchor-target 接著亮同一個錨點。
+//   ② 放手之後不會有空窗：那一刻 `.sec-symbol` 早已橫跨整條中央帶（頂端在 −234vh、
+//      底緣正在視窗中央），幾何 spy 靠它宣告的 data-anchor-target 接著亮同一個錨點。
 const { setAnchorClaim } = useAnchorClaim();
 const symbolOnScreen = computed(
   () => symbolProgress.value >= SYMBOL_INTRO.in && symbolProgress.value < 1,

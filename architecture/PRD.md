@@ -83,7 +83,7 @@ app/components/
 | [useHeroVideo.ts](../app/composables/useHeroVideo.ts)                   | 狀態機        | hero 影片三階段 `main / outro / gone`（2026-08-22 起 `loop` 已移除），衍生 `shouldLockScroll` / `isGone`；與載入層的握手 `videoReady` / `loaderDone` / `heroStarted`；`currentTime`（dev 讀數）；「回到最開始」的 `restartOpening()`（2026-08-22 起是從 0s 重播，原為倒回 loop 段）。狀態本身不含計時器，推進由 HeroVideo 依影片時間軸驅動 |
 | [hero-video-config.ts](../app/utils/hero-video-config.ts)               | 設定台        | `HERO_VIDEO_SRC` / `HERO_VIDEO_POSTER`（mob／pad／pc 三段，**RWD 預留**，目前三者共用 pc 版）、`HERO_VIDEO_SEGMENTS`（`main` 0–33／`outro` 36–38.5，33–36 刻意不播）、`HERO_VIDEO_SEGMENTS_BY_DEVICE`、`HERO_VIDEO_READY_TIMEOUT`、`HERO_OUTRO_LOCK_GRACE_MS`（退場鎖保險絲）、`HERO_INTRO_READ_AT` ＋ `HERO_INTRO_AUTO_SCROLL`（退場播完自動捲到引言） |
 | [useOrangeCoreProgress.ts](../app/composables/useOrangeCoreProgress.ts) | 狀態機        | 五條 progress 軌（見下表）＋ 由它們解出的 `symbolTarget` / `symbolMode` / `symbolLayerDone` / `forumCoreActive` / `agendaRevealed` / `blessingFrame`，以及 `reduceMotion` / `stairsDone`。**不含**「章節.part」定址（那在 `useCoreSequence`） |
-| [orange-core-config.ts](../app/utils/orange-core-config.ts)             | 設定台        | 門檻與距離：`MOVE_EASE`、`INTRO_FADE_VH`、`TRANSITION_VH`、`SYMBOL_TRANSITION`、`SYMBOL_BEAT_VH`（符號段四拍的 vh ＝ 唯一旋鈕，`SYMBOL_VH` / `SYMBOL_STOPS` / `FORUM_HANDOFF` / `SYMBOL_INTRO` 皆由它經 `symbolProgressAt()` 推導）、`AGENDA_OFFSCREEN_VH`、`BLESSING_VH`、`BLESSING_HOLD`；序列定址表：`SEQUENCE` / `TRACK_VH`；幾何與外觀：`CORE`（論壇段設計線的節點資料在 `~/utils/forum-node-path`）。刻意**不含**子元件自身外觀參數（HeroLoader 的方塊／SymbolFace 的粒子物理），那些留在各元件 |
+| [orange-core-config.ts](../app/utils/orange-core-config.ts)             | 設定台        | 門檻與距離：`MOVE_EASE`、`INTRO_FADE_VH`、`TRANSITION_VH`、`SYMBOL_TRANSITION`、`SYMBOL_BEAT_VH`（符號段四拍的 vh ＝ 唯一旋鈕，`SYMBOL_RAIL_VH`（尺長）/ `SYMBOL_VH`（段高）/ `SYMBOL_STOPS` / `FORUM_HANDOFF` / `SYMBOL_INTRO` / `SEAM_AT_HANDOFF_VH` 皆由它經 `symbolProgressAt()` 推導）、`SYMBOL_HOVER_VH`、`AGENDA_IN_LEAD_VH`、`BLESSING_VH`、`BLESSING_HOLD`；序列定址表：`SEQUENCE` / `TRACK_VH`；幾何與外觀：`CORE`（論壇段設計線的節點資料在 `~/utils/forum-node-path`）。刻意**不含**子元件自身外觀參數（HeroLoader 的方塊／SymbolFace 的粒子物理），那些留在各元件 |
 | [blessing-face-frames.ts](../app/utils/blessing-face-frames.ts)         | 設定台        | 永續祝福逐格像素臉的格資料（`FACE_FRAME_COUNT` 17 格）                                                                                                                                                                   |
 
 ### progress 軌一覽
@@ -94,7 +94,7 @@ app/components/
 | --------------------- | ------------------------ | ----------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------- |
 | `pathProgress`        | `OrangeCorePath`（scrub）| `trigger: .sec1`、`start: 'top top'`、`endTrigger: .sec1__intro`、`end: 'bottom bottom'` | 由版面決定                  | core 沿線位置（`SEQUENCE` 的 `hero.core`）                      |
 | `transitionProgress`  | `Hero.vue` 的 transition pin | `trigger: .sec1__intro`、`start: 'bottom bottom'`、`end: +=TRANSITION_VH×vh` | **120vh**（`TRANSITION_VH` 1.2） | `SYMBOL_TRANSITION` → 兩段軸向放大（見 Section 1 詳規）        |
-| `symbolProgress`      | `SymbolScene`            | `trigger: .sec-symbol`、`start: 'top bottom'`、`end: 'bottom bottom'` | **344vh**（`SYMBOL_VH` 3.44 ＝ `SYMBOL_BEAT_VH` 四拍總和） | `SYMBOL_STOPS` → `symbolMode` / `symbolLayerDone`；`FORUM_HANDOFF` → `forumCoreActive` / `agendaRevealed` |
+| `symbolProgress`      | `SymbolScene`            | `trigger: .sec-symbol`、`start: 'top bottom'`、`end: 'bottom center'` | **334vh**（`SYMBOL_RAIL_VH` 3.34 ＝ `SYMBOL_BEAT_VH` 四拍總和；段落自己只有 `SYMBOL_VH` 2.84 ＝ 284vh，尺多出的 50vh 是舊的懸停期，見 `SYMBOL_HOVER_VH`） | `SYMBOL_STOPS` → `symbolMode` / `symbolLayerDone`；`FORUM_HANDOFF` → `forumCoreDotVisible` / `agendaRevealed` |
 | `blessingProgress`    | `Blessing.vue`           | `trigger: .section3__face-track`、`start: 'top top'`、`end: 'bottom bottom'` | **120vh**（`BLESSING_VH` 1.2） | `blessingFrame`（17 格逐格臉，尾端 `BLESSING_HOLD` 停在最後一格） |
 
 > 引言淡出**不在**這四條軌上：它由 `Hero.vue` 自己的一條 scrub ScrollTrigger 驅動（`trigger: .sec1__intro-body`、`start: 'bottom center'`、`end: +=INTRO_FADE_VH×vh`），起點是量出來的幾何（文字底緣升到視窗中央 ＝ core 剛穿出最後一行），不是 path 進度門檻。詳見 Section 1 的 ⑤。
@@ -217,23 +217,28 @@ app/components/
 
 對應 Figma「智慧論壇05–08」四拍。**本元件不畫任何東西** —— `<SymbolFace>` 住在 Hero 轉場層的 slot 裡（理由見 Section 1 轉場詳規）。因此它退化為一把「捲動尺」：一段 `SYMBOL_VH × 100vh` 高的空 section（黑底，萬一轉場層還沒蓋滿時不露白），把捲動換算成 `symbolProgress`、指派 `symbolMode` 與 `symbolLayerDone`。**不需要 pin**（視覺已是 fixed）→ 少一層 transform / containing block 的雷。
 
-`symbolProgress` 時序（`SYMBOL_VH` 3.44 ＝ **344vh**；px 為視窗高 1080 的換算）：
+⚠️ **尺比段落長 50vh**（2026-08-22 起）：`end` 收在 `'bottom center'`，故 `p = 1` 的意義是「段落底緣抵達視窗**中央**」，不是「段落捲完」。多出來的半個視窗就是舊的「懸停期」（`SYMBOL_HOVER_VH`），現在在軌上。完整推導見 [2026-08-22-forum-heading-in-handoff-viewport-design.md](2026-08-22-forum-heading-in-handoff-viewport-design.md)。
+
+`symbolProgress` 時序（尺長 `SYMBOL_RAIL_VH` 3.34 ＝ **334vh**、段高 2.84 ＝ 284vh；px 為視窗高 1080 的換算）：
 
 | step | mode / 事件                                     | 進度              | 累計距離（起→迄）              | 該段距離 |
 | ---- | ----------------------------------------------- | ----------------- | ------------------------------ | -------- |
-| ①    | `disperse` 分散（前段疊開場三行文案）           | 0 → 32.56%        | 0 → 112vh (0→1210px)           | 112vh    |
-| ②    | `face` 集合（人像）＝最長的一拍                 | 32.56% → 72.09%   | 112 → 248vh (1210→2678px)      | 136vh    |
-| ③    | `converge` 匯聚成點                             | 72.09% → 88.37%   | 248 → 304vh (2678→3283px)      | 56vh     |
-| ④    | `coreIn` 交棒：本層淡出 ＋ ForumCore 硬切上場    | 88.37%            | 304vh (3283px)                 | —        |
-| ⑤    | `enter` 橘核心停在黑畫面（原地停住）             | 88.37% → 90.70%   | 304 → 312vh (3283→3370px)      | 8vh      |
-| ⑥    | `agendaIn` 議程 reveal（仍在畫面外）             | 90.70%            | 312vh (3370px)                 | —        |
-| ⑦    | `coreOut` 黑底淡出、段落捲完（`onLeave` → 鎖 1） | 100%              | 344vh (3715px)                 | 32vh     |
+| ①    | `disperse` 分散（前段疊開場三行文案）           | 0 → 33.53%        | 0 → 112vh (0→1210px)           | 112vh    |
+| ②    | `face` 集合（人像）＝最長的一拍                 | 33.53% → 74.25%   | 112 → 248vh (1210→2678px)      | 136vh    |
+| ③    | `converge` 收攏成一顆**白** core（底色仍黑）     | 74.25% → 91.02%   | 248 → 304vh (2678→3283px)      | 56vh     |
+| ③b   | 白 core → 橘 ＋ 整片底色黑→白（`CORE_WARM_VH`）  | 91.02% → 97.01%   | 304 → 324vh (3283→3499px)      | 20vh     |
+| ⑥    | `agendaIn` 論壇主標／議程 reveal（在轉場層底下） | 91.02%            | 304vh (3283px)                 | —        |
+| ④    | `coreIn` 交棒：轉場層淡出 ＋ ForumCore 硬切上場  | 97.01%            | 324vh (3499px)                 | —        |
+| ⑤    | `handoff` 橘點停在中央（接縫 60vh → 50vh）      | 97.01% → 100%     | 324 → 334vh (3499→3607px)      | 10vh     |
+| ⑦    | 尺捲完 ＝ 接縫抵達視窗中央 → 論壇段路徑接手       | 100%              | 334vh (3607px)                 | —        |
 
 > ⚠️ 這張表是 **`SYMBOL_BEAT_VH`（四拍各吃多少 vh）** 的換算結果 —— 2026-08-13 起 progress 門檻本身也是從它推導的，不再手寫小數。動那個常數要同步更新這張表（`SymbolScene.vue` 檔內也有一份同樣的表）。
 >
-> ⑦ 的 32vh 是 `AGENDA_OFFSCREEN_VH` 的硬下限（議程那 0.4s 淡入必須發生在畫面外），由 `test/symbol-sequence.spec.ts` 守著。
+> ③ 途中的 **284vh** 是接縫（`.sec2` 頂端）越過視窗底緣的位置 —— 論壇內容從那裡開始升進畫面，但整段躲在不透明的轉場層底下，到 ④ 才現身。**④ 那一刻接縫已在螢幕 60vh（`SEAM_AT_HANDOFF_VH`）、論壇主標在它下方 140px**：這就是「聚合成 orange core 的同一屏就看得到論壇文字」。
 >
-> 軌 A（hero 轉場 120vh）與軌 B（本段 344vh）**恰好首尾相接**：`start: 'top bottom'` 是在「sec1 底緣抵達視窗底」那一刻觸發，與本段高度無關，故不論 `SYMBOL_VH` 調多少都精準對上 pin 釋放的同一刻。合計 **464vh**。
+> ⑤ 的 10vh 有上下限：上限是「交棒時主標要完整可見」、下限是「轉場層那 0.35s 的淡出要跑得完」，都由 `test/symbol-sequence.spec.ts` 守著。
+>
+> 軌 A（hero 轉場 120vh）與軌 B（本尺 334vh）**恰好首尾相接**：`start: 'top bottom'` 是在「sec1 底緣抵達視窗底」那一刻觸發，與本段高度無關，故不論段高調多少都精準對上 pin 釋放的同一刻。合計 **454vh**。而本尺的 `end` 與 `ForumCorePath` 的 `start: 'top center'` 是同一個幾何位置，故往後也首尾相接、路徑接手零跳點。
 
 | 元件 / 區塊                                                            | 功能                    | 說明                                                                                                                                                                                                                                                                                                                                                                                             |
 | ---------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

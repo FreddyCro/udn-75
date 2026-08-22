@@ -17,7 +17,7 @@ CSS `100vh` **不變**（等同 `lvh`，固定為「網址列隱藏」的高度�
 | --- | --- | --- |
 | `div.sec1__intro-body` | 294 | `INTRO_FADE_VH 0.4 × 736` |
 | `div.sec1__intro`（pin）| 884 | `TRANSITION_VH 1.2 × 736` |
-| `section.sec-symbol` | 2532 | `SYMBOL_VH 3.44 × 736` |
+| `section.sec-symbol` | 2090 | `SYMBOL_VH 2.84 × 736` |
 | `div.section3__face-track` | 884 | `BLESSING_VH 1.2 × 736` |
 
 把 `innerHeight` 由 736 改成 676（−60px，典型網址列高度）：Hero pin 的 span **884 → 812**、

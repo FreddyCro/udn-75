@@ -8,7 +8,7 @@
      粒子場上、與它同生共死，就必須進同一個 slot。
      「目錄歸屬 ≠ 渲染位置」是本段的既定架構，SymbolScene.vue 檔頭有同樣的說明。
 
-  ⚠️ 本層 absolute inset: 0 且**整個符號段（SYMBOL_VH ＝ 344vh）都在場** —— 從 hero 轉場就已經在視窗內了，
+  ⚠️ 本層 absolute inset: 0 且**整個符號段（SYMBOL_VH ＝ 284vh）都在場** —— 從 hero 轉場就已經在視窗內了，
      所以「滑到位置」判不得用 IntersectionObserver 看自己，只能用 symbolProgress 的門檻。
 
   三行**依序向上淡入 + 逐字亂碼落定 → 全亮停留 → 依序繼續往上淡出**，全部吃**時間軸**：

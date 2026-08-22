@@ -16,6 +16,9 @@
 >
 > ⚠️ **但第四節的數字已於 2026-08-13 被取代**（`converge` 88 → 56vh、`handoff` 64 → 40vh、
 > `SYMBOL_VH` 4.0 → **3.44**），且門檻改由 `SYMBOL_BEAT_VH` 推導、不再手寫小數。
+> **2026-08-22 又改了一次**：`handoff` 40 → 10vh、捲動尺的 `end` 改成 `'bottom center'`
+> （尺長 3.34、段高 2.84），且**尺長與段高從此是兩個值**。
+> 見 [2026-08-22-forum-heading-in-handoff-viewport-design.md](2026-08-22-forum-heading-in-handoff-viewport-design.md)。
 > 第四節保留為 2026-08-09 那次決策的紀錄；**現況一律看
 > `app/utils/orange-core-config.ts` 的 `SYMBOL_BEAT_VH` 與 `architecture/PRD.md` Section 1a**。
 > 第四節的三條**理由**（face 不該被波及、converge 縮放無風險、`agendaIn` 用絕對距離定錨）
@@ -41,6 +44,7 @@ pad 768 `2065:124197`（`2065:124199`）／mob 414 `2065:120218`（`2065:120221`
 3. `handoff`（白點 → 橘核心交棒）吃掉的捲動距離過多，應讓給 converge。
 
 不在範圍：`hover`（懸停期 50vh）維持不動；交棒 crossfade 的 0.4s CSS transition 維持不動。
+（⚠️ 2026-08-22 起 `hover` 那個 part 已不存在 —— 那 50vh 併進捲動尺內了，見上方的改版註記。）
 
 ---
 
@@ -137,7 +141,13 @@ mob 的 22/44 只有本元件用得到，為它開一組 token 不划算。
 
 ---
 
-## 五、hover 的換色接口（仍未實作）
+## 五、hover 的換色接口（**已作廢**）
+
+> ⚠️ 本節整節已於 2026-08-22 作廢，保留為決策紀錄。兩件事各自發生了：
+> ① 它要留的「符號段黑底 → 論壇段白底」換色，已由 2026-08-17 的 `CORE_WARM_VH` 窗口實作
+>    （`symbolBgLightAt`），不需要另一條 `hoverProgress`。
+> ② `hover` 這個 `drive: 'none'` 的 part 本身已從 `SEQUENCE` 移除 —— 那 50vh 併進了
+>    symbol 軌（`end: 'bottom center'`）。下面提到的 `.forum-core__bg` 也已整層移除。
 
 未來要在 hover 階段做「符號段黑底 → 論壇段白底」的換色（取代現在的硬接縫）。
 做不到的原因很具體：**hover 是 `SEQUENCE` 裡 `drive: 'none'` 的無軌區間**，沒有 progress 可綁。
