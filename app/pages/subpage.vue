@@ -26,7 +26,12 @@ import DataArticle from '~/components/05.subpage/articles/DataArticle.vue';
 import EducationArticle from '~/components/05.subpage/articles/EducationArticle.vue';
 import HealthArticle from '~/components/05.subpage/articles/HealthArticle.vue';
 
-definePageMeta({ layout: 'subpage' });
+// 六份舞台各有 ScrollTrigger pin，轉場不能帶 transform（會鎖住縮放後的尺寸、切頁時彈一下）：
+// 理由與實測數字見 assets/styles/base.scss 的 .page-fade-* 註解。
+definePageMeta({
+  layout: 'subpage',
+  pageTransition: { name: 'page-fade', mode: 'out-in' },
+});
 
 /** slug → 內容元件。文件順序不由這裡決定（見下方 SLUGS），這張表只管對應。 */
 const ARTICLES = {

@@ -1,9 +1,11 @@
 <script lang="ts" setup>
 /**
- * SubpageAnchorBar — <1280 的子頁錨點列（固定在視窗下緣，捲過 hero 才滑入）；
- * pc 改用右側 rail（SubpageAnchor）。
- * 由 layouts/subpage.vue 渲染一次；顯隱旗子由 Subpage.vue 的舞台 ScrollTrigger 寫進
- * useSubpageAnchor，本元件只負責呈現與兩種點擊語意（route／scroll，見下方 mode）。
+ * SubpageAnchorBar — <1280 的子頁錨點列（固定在視窗下緣）；pc 改用右側 rail（SubpageAnchor）。
+ * 由 layouts/subpage.vue 渲染一次。
+ * 顯隱：**全程顯示**（layout 直接傳 visible），與 rail 一致 —— 一進入子頁就在。
+ * ⚠️ 原本是「舞台演完才滑入」（由 Subpage.vue 的舞台 ScrollTrigger 寫旗子），那面旗子已移除；
+ *    --visible 的滑入 transition 留著，是為了未來若要再接條件時不必重寫 CSS。
+ * 本元件只負責呈現與兩種點擊語意（route／scroll，見下方 mode）。
  */
 import str from '~/locales/common.json';
 import { anchorSlug } from '~/utils/subpage-stream';
