@@ -102,6 +102,12 @@ function detectBp(): 'pc' | 'pad' | 'mob' {
 // 論壇四之後逐格變形成紙飛機的格數（0..8）；0 = 維持橘方塊。
 const planeFrame = ref(0);
 
+// 橘方塊變身成紙飛機的那一刻響一聲（使用者裁決：只響變身這一下，
+// 不是紙飛機那一段的每個撞擊點 —— 撞擊點另有 FORUM_TURN_SFX 那條線）。
+// planeFrame 0 → 1 ＝ 弧長跨過 swapLen（見下方 morphFrame）。
+const { cueOn } = useSfxCue();
+cueOn(() => planeFrame.value > 0, 'sfx01');
+
 // 路徑核心的外觀與 ForumCore 的橘點共用同一份設定：交棒點兩顆重合，尺寸或顏色不同會看到縮一下。
 const coreStyle = computed(() => {
   const orange = `rgb(${CORE.orange.join(', ')})`;

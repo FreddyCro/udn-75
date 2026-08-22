@@ -65,6 +65,20 @@ const rootEl = ref<HTMLElement | null>(null);
 // 界外的兩個值不等於任何一組的索引，故模板直接比 `activeSlot === i` 就等於「沒有作用中的組」。
 const activeSlot = ref(-1);
 
+// 箭頭每移動一組就響一聲（設計標註「每個箭頭的音效」）。
+//
+// 不用 useSfxCue 的 cueOn：那支判的是布林上升緣，而這裡要的是「值變了就響」。
+// 也刻意**不節流** —— activeSlot 以 STEP_MS 一次走一格去追目標，快速捲動時
+// 會連發，但那個逐格追趕本來就是刻意設計成看得見的（見 STEP_MS 的說明）。
+//
+// 界外不出聲：-1 ＝ 議程之上、groups.length ＝ 議程之下，那兩個值沒有對應的箭頭
+// （見 ~/utils/agenda-active）。少了這道閘門，進出議程段的頭尾會各多響一聲。
+watch(activeSlot, (next, prev) => {
+  if (next === prev) return;
+  if (next < 0 || next >= groups.length) return;
+  play('sfx01');
+});
+
 // 各組的累積邊界（相對議程頂端）與議程頂端抵達視窗中央時的 scrollY。
 // ⚠ 刻意不逐幀量測：這些值只隨版面（字體／斷點）變化，不隨捲動變化。
 let bounds: number[] = [];
