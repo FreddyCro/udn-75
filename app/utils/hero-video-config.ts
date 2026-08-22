@@ -3,10 +3,10 @@
 // 純資料模組（無 Vue runtime），Nuxt auto-import；由 useHeroVideo / HeroVideo
 // 共用同一份。這裡集中兩件事：
 //   1. 影片來源（mob / pad / pc 三段，RWD 預留）
-//   2. 四階段（main / loop / outro / gone）在影片時間軸上的秒數
+//   2. 三階段（main / outro / gone）在影片時間軸上的秒數
 // 要換片或調時間點只改這裡，元件不必動。
 //
-// 三個裝置各有一支剪輯，main / loop / outro 都在同一支裡，長度實測皆為 40.73s
+// 三個裝置各有一支剪輯，main / outro 都在同一支裡，長度實測皆為 40.73s
 // → 段落秒數三個裝置共用（下方 HERO_VIDEO_SEGMENTS_BY_DEVICE 不必覆寫）。
 // 畫面尺寸不同：pc 1920×1080（橫）、pad 1024×1364（直）、mob 720×1280（直）。
 // 實際會播到的只有 0–33 與 36–38.5 兩段（中間 3 秒與 38.5s 之後都不播，見下方段落表）。
@@ -15,8 +15,11 @@ import type { HeroCoreAnchor } from './hero-core-handoff';
 
 export type HeroVideoDevice = 'mob' | 'pad' | 'pc';
 
-/** 有影片的階段（對應 HeroState 前三個；gone 已無影片，不占時間軸） */
-export type HeroVideoPhase = 'main' | 'loop' | 'outro';
+/** 有影片的階段（對應 HeroState 前兩個；gone 已無影片，不占時間軸）
+ *
+ *  2026-08-22：`loop` 已移除。原本 30–33 是「等使用者下滑」的循環段，而新流程是
+ *  **正片順播到退場**（見下方段落表），沒有等待階段可言。 */
+export type HeroVideoPhase = 'main' | 'outro';
 
 /** 單一階段在影片時間軸上的區間（秒）：[start, end) */
 export interface HeroVideoSegment {
@@ -57,30 +60,37 @@ export const HERO_VIDEO_POSTER: Record<HeroVideoDevice, string> = {
  */
 export const HERO_VIDEO_END = Number.POSITIVE_INFINITY;
 
-// ── 四階段秒數：要調時間點，改這裡 ──────────────────────────────────
-//   main  main.start → main.end   主要內容，播一次 → 自動進 loop
-//   loop  loop.start → loop.end   等待使用者下滑；到 end 自動跳回 start 循環
-//   outro outro.start → outro.end 退場段；到 end（或影片播完）→ gone（影片淡出、露出白底）
+// ── 段落秒數：要調時間點，改這裡 ────────────────────────────────────
+//   main  main.start → main.end   正片，播一次 → **自動接退場**（順播）
+//   outro outro.start → outro.end 退場段；到 end（或影片播完）→ 解鎖，等捲動溶解
 //
-// 段落預設「相接」（前段 end ＝ 後段 start）：自動推進時 currentTime 已落在新段內，
-// 不會多做一次 seek（跳動）。影片全長實測 40.02s。
+// 2026-08-22（使用者裁決）：原本 main 只到 30、30–33 是「等使用者下滑」的 loop 循環段。
+// 新流程沒有等待階段 —— 正片一路播到 33（loop 段當正片尾巴播一次，不再循環），
+// 接著 seek 到 36 播退場，**整段都還鎖著**，退場播完才解鎖（見 ~/utils/hero-scroll-lock）。
+// 於是設計師「不要因為捲太快而看不到 outro」這條需求第一次真正成立。
 //
-// ⚠️ loop → outro 是**刻意的例外**：loop.end 33 → outro.start 36，中間那 3 秒不播，
-//    觸發退場時由 HeroVideo 的 watch(heroState) seek 過去。這是剪輯要求（退場要從 36s
-//    那一幀開始），不是漏填 —— 別「順手」把它改成相接。其餘段落改動時仍請維持相接。
+// ⚠️ main → outro 之間那 3 秒（33 → 36）**刻意不播**：這是剪輯要求（退場要從 36s 那一幀
+//    開始），不是漏填 —— 別「順手」把它改成相接。seek 由 HeroVideo 的 watch(heroState) 做。
 //
-// 秒數：正片 0–30、loop 30–33（循環）、退場 36–38.5 → gone（影片其餘部分不播）。
+// 秒數：正片 0–33（含原 loop 段）、退場 36–38.5 → gone（影片其餘部分不播）。影片全長 40.02s。
 export const HERO_VIDEO_SEGMENTS: HeroVideoSegments = {
-  main: { start: 0, end: 30 },
-  loop: { start: 30, end: 33 },
+  main: { start: 0, end: 33 },
   outro: { start: 36, end: 38.5 },
 };
+
+/** 退場鎖的保險絲寬限（ms）：鎖著的退場段若卡住不動，逾時就放行解鎖。
+ *
+ *  2026-08-16 曾把這類保險絲（`HERO_OUTRO_STALL_GRACE_MS` / `HERO_OUTRO_MAX_MS`）整組刪掉，
+ *  理由是「outro 不鎖之後，影片卡住只是影片卡住，不會連帶鎖死頁面」。2026-08-22 退場
+ *  重新上鎖，那個理由失效，故重新加一根 —— 但只有一根、只看牆上時間，不做進度偵測。
+ *  逾時 ＝ 退場段長度 ＋ 本值。SKIP 的人不受影響（他們直接放棄那段保護，見 useHeroVideo）。 */
+export const HERO_OUTRO_LOCK_GRACE_MS = 2500;
 
 // pad / mob 剪輯段落不同時在此覆寫（未列的裝置沿用上方共用值）—— RWD 預留。
 export const HERO_VIDEO_SEGMENTS_BY_DEVICE: Partial<
   Record<HeroVideoDevice, HeroVideoSegments>
 > = {
-  // pad: { main: { start: 0, end: 20 }, loop: { ... }, outro: { ... } },
+  // pad: { main: { start: 0, end: 20 }, outro: { ... } },
 };
 
 /** 取某裝置的段落設定：有覆寫用覆寫，否則沿用共用值。 */
@@ -89,14 +99,25 @@ export function heroVideoSegments(device: HeroVideoDevice): HeroVideoSegments {
 }
 
 /**
- * skip 按鈕淡入的時間點（影片時間軸秒數，設計稿 #BN skip：正片播放 3 秒後原地淡入）。
- * 淡出不另設秒數 —— 一離開正片（main → loop）就淡出，故跟著 main.end 走。
+ * skip 按鈕淡入的時間點（影片時間軸秒數）。
+ * 淡出不另設秒數 —— 一離開正片（main → outro）就淡出，故跟著 main.end 走。
+ *
+ * 設計稿 #BN skip 標的是 3 秒；2026-08-22 使用者裁決改為 **2 秒**（開場的強制觀看時間
+ * 隨順播延長到 35.5 秒，逃生口該更早出現）。
  */
-export const HERO_SKIP_APPEAR_AT = 3;
+export const HERO_SKIP_APPEAR_AT = 2;
 
 // 等待影片「可播放」的上限（ms）：逾時就放行 HeroLoader，
 // 避免慢速網路／大檔案把載入層永遠卡在 99%。
 export const HERO_VIDEO_READY_TIMEOUT = 8000;
+
+/** 「鎖在正片卻沒有影片可看」的保險絲逾時（ms，見 HeroVideo 的 armStallFuse）。
+ *
+ *  ⚠️ **必須明顯大於 `HERO_VIDEO_READY_TIMEOUT`**：那支逾時的語意只是「載入層別再等了」，
+ *  影片在那之後才開始播是慢速網路的**正常**結果。兩者取同值（且註冊得比它晚）的話，
+ *  `markReady()` 會先跑、把這根絲清掉 ⇒ 它永遠不會觸發 —— 2026-08-22 code review 抓到的
+ *  就是這個。這裡刻意留一大段餘裕：真的到 15 秒還不能播，解鎖遠比繼續鎖著好。 */
+export const HERO_MAIN_STALL_FUSE_MS = 15000;
 
 // ── 退場交棒：影片裡那顆 orange core 的落點 ────────────────────────────
 // gone 那一刻 DOM 的 OrangeCore 要「長在影片裡那顆 core 的位置上」再滑回自己的落點，
@@ -130,8 +151,8 @@ export const HERO_CORE_HANDOFF = {
   ease: 'power2.out',
 } as const;
 
-// 影片已經捲出視窗才進 gone（倒帶回 loop 之後不重新上鎖，再往下滑就會這樣 ——
-// 見 .claude/memory/hero-body-lock-rules.md 的例外條款）：畫面上沒有可對齊的目標，
+// 影片已經捲出視窗才進 gone（退場播完解鎖後、影片還在畫面上時捲很遠就會這樣 ——
+// 見 .claude/memory/hero-body-lock-rules.md）：畫面上沒有可對齊的目標，
 // 改讓 core 從畫面上緣滑到自己的落點。
 // 走的距離約半個視窗高（交棒只有幾十 px），故比 HERO_CORE_HANDOFF 慢。
 export const HERO_CORE_DROP_IN = {
@@ -140,15 +161,42 @@ export const HERO_CORE_DROP_IN = {
 } as const;
 
 // ── 退場溶解吃掉的捲動距離（× 視窗高）────────────────────────────────
-// 拿掉捲動鎖之後，**唯一還給退場影片時間的就是這段距離**：使用者捲得多快，
-// 退場就被截斷得多厲害（已裁決的「捲動優先」，見設計文件第三節的對照表）。
-// 2026-08-21 改為 1（＝ 使用者要的「滑完 100vh 就收掉」），前一版是 1.2 ＋ 固定 200px。
+// 沿革：1.2 ＋ 固定 200px → 1（2026-08-21）→ 1.6（2026-08-22 上午，理由是「給退場影片
+// 播放時間」）→ **1.2**（2026-08-22 下午，實機看過覺得久）。
 //
-// ⚠️ 這個值必須與 HeroVideo.vue 的 SCSS 變數 $exit 相同 —— 前者算 ScrollTrigger
-//    的 end，後者算佔位高度。兩邊不一致，溶解結束的位置就不會落在 $intro-at 上。
-//    SCSS 變數無法從 JS 讀取，這是本專案已知且接受的雙寫（同 CORE.dotSize 與
-//    OrangeCore.vue 的關係）。改一邊就要改另一邊。
-export const HERO_DISSOLVE_VH = 1;
+// ⚠️ 這段距離**與影片播放進度無關**：順播改動之後退場段是在還鎖著的時候播完的
+//    （見上方段落表與 ~/utils/hero-scroll-lock），解鎖那一刻由 Hero 的自動捲動用固定
+//    1.1s 滑完它。所以這個值現在只管三件事：① 文件長度（到引言可讀位置 ＝ vh($exit + 0.25)）、
+//    ② 桌機的空捲動（$exit > 約 1.30 @1080 才會踩到 $sticky-floor 的保底）、
+//    ③ 手動捲動的手感與 scale 1 → 1.06 相對滾輪的變化速率。
+// ⚠️ 這個值必須與 SCSS 的 $exit 相同（定義在 01.hero/_hero-geometry.scss）—— 這邊算
+//    ScrollTrigger 的 end，那邊算佔位高度與 .sec1__inner 的黏著保底。兩邊不一致，
+//    溶解結束的位置就不會落在 $intro-at 上。SCSS 變數無法從 JS 讀取，這是本專案已知
+//    且接受的雙寫（同 CORE.dotSize 與 OrangeCore.vue 的關係）。改一邊就要改另一邊。
+// ⚠️ 再往上加之前先確認黏著範圍：桌機引言只撐出 488px ＋ runway，不夠的部分是靠
+//    $sticky-floor 補的，而補出來的高度會變成轉場滿版後的額外捲動距離。
+export const HERO_DISSOLVE_VH = 1.2;
+
+// ── 退場播完 → 自動捲到引言的「可讀位置」──────────────────────────────
+// 2026-08-22 使用者要求：退場段播完（解鎖那一刻）不要讓使用者自己滑那段退場行程，
+// 直接把畫面帶到引言讀得到的地方。
+//
+// 落點寫成「引言上緣要落在畫面的幾成高」，而不是寫死一個 scrollY —— 引言上緣的文件位置
+// 由 Hero 量測（＝ hero 佔位高），故這個值換視窗、換斷點、改 $exit 都不必跟著調。
+//   0.85（＝ SCSS 的 $intro-at）是**硬切那一格**的構圖：只露兩三行，是設計核准的畫面，
+//        但當成停下來閱讀的位置太擠。
+//   0.60 是使用者截圖比對出來的閱讀位置：三段引言都在畫面內。
+//
+// ⚠️ 這個值**必須 ≤ $intro-at（0.85）**：落點 = 引言上緣文件位置 − vh(本值)，若大於
+//    $intro-at，落點就會落在退場終點 vh(HERO_DISSOLVE_VH) 之前 ⇒ 溶解走不完、影片留在
+//    畫面上。Hero 的 scrollToIntroReading() 另有一道 clamp 兜著，但別靠它。
+export const HERO_INTRO_READ_AT = 0.6;
+
+/** 自動捲動的時長與曲線。autoKill 交給 ScrollToPlugin —— 使用者一動就中止（見 Hero.vue）。 */
+export const HERO_INTRO_AUTO_SCROLL = {
+  duration: 1.1,
+  ease: 'power2.inOut',
+} as const;
 
 // B 階段：引言的原地淡入（＋ orange core 同時從畫面中心出現）。
 //

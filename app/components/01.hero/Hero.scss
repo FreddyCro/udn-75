@@ -1,3 +1,5 @@
+@use './hero-geometry' as *;
+
 .sec1 {
   position: relative;
   // 影片淡出後露出的白底。掛在 section 而非 .sec1__hero —— 後者是 sticky 佔位
@@ -9,6 +11,22 @@
   // 視覺內容整組容器：core / path 都在此，並作為它們 absolute 定位的原點。
   &__inner {
     position: relative;
+    // 退場黏著保底（2026-08-22，$exit 1 → 1.6）。
+    //
+    // .sec1__hero 是 sticky，本元素是它的容器 ⇒ 黏著範圍 = 本元素高 − 佔位高。
+    // 平常那個差額就是「引言總高」，而桌機引言只有 488px ＋ runway 0.9vh，撐不到
+    // 1.6vh 的退場行程（實測缺口 1920×1080 −268、1440×900 −142、768×1024 −156），
+    // 影片會在退場最後一段被往上捲走，**且不會有任何錯誤訊息**。
+    //
+    // 這裡補的是**下限**而非固定高度（推導見 _hero-geometry.scss 的 $sticky-floor）：
+    //   - 窄螢幕文字換行多、引言自己就比下限高 → 完全不作用（mob 實測未觸發）。
+    //   - 桌機只補上真正缺的那幾百 px。
+    // 多出來的高度長在引言「之後」，故引言落點、淡出窗口、core 路徑終點與 transition
+    // pin 起點（都以 .sec1__intro 的底緣為基準）全部不受影響；代價是轉場滿版之後多出
+    // 同等距離的捲動（桌機約 320px，畫面被轉場層蓋著）。
+    // ⚠️ 扣 --chrome-inset 與佔位高同一個理由（見 HeroVideo.vue 的 .sec1__hero）——
+    //    兩邊要用同一把尺，否則差額不等於這裡想保證的黏著範圍。
+    min-height: calc(#{vh($sticky-floor)} - var(--chrome-inset));
   }
 
   // ===== 內容場景 =====
@@ -18,6 +36,10 @@
     // core（OrangeCore z-index 2）要「從文字後方」穿過去 —— 內容整層疊在它之上，
     // 於是只有字的筆畫會遮住方塊、字距空隙仍看得到橘色。
     // 3 仍遠低於轉場層（HeroSymbolTransition z-index 10），故轉場照舊蓋住這一層。
+    // ⚠️ 這個 3 也**贏過影片舞台**（2026-08-22 實測）：`.sec1__hero` 是 sticky ⇒ 建立堆疊
+    //    脈絡，其內層舞台的 z-index 4 對外無效，而它自己是 auto（＝0）。退場期間之所以
+    //    看不到引言壓在影片上，靠的是引言自己的 opacity 0，不是層序（詳見 HeroVideo.vue
+    //    的 .sec1__hero-stage 註解）。
     z-index: 3;
     max-width: 1280px;
     margin: 0 auto;
