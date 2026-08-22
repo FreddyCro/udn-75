@@ -745,13 +745,26 @@ const layers = computed<HeaderLayer[]>(() => {
   mask-size: contain;
 }
 
-// 寬度用 min(63vw, 260px) 流動縮放：320 時貼近 320 稿的 204px、414 起卡在 260px 的 mob 稿值，
-// 避免窄螢幕下與右側 icon 群組疊在一起（見 task-5-report.md 的 fix 記錄）。
+// 寬度流動縮放，三個上限取最小的一個：
+//   ① 63vw —— 主曲線（稿上的縮放感）。
+//   ② 100vw - 134px —— 右側 icon 群組的**實際佔位**：.app-header__bar 的左右 padding
+//      20 + 20、.app-header__icons 的 35 + 12(gap) + 35 = 82，再留 12 的間隙。
+//   ③ 260px —— mob 稿的定值上限（414 起卡在這）。
+//
+// ②是 2026-08-22 補的（320 跑版）：原本只有 ①③，而①只管「別太寬」、沒把右側佔位算進去
+// ⇒ 320 時 logo 寬 201.6、右緣落在 221.6，壓在 icon 群組左緣 218 上，音量 icon 直接畫在
+// 「未來」兩字上（實測數字，不是估的）。②在 320 給出 186px。
+// ⚠️ ①②在 362.2px 交叉（0.37w = 134）⇒ **≥375 完全走①、與改動前逐像素相同**，
+//    這正是選「再取一個上限」而不是加 max-width 斷點的理由：沒有硬跳、也不動到 375 以上。
+// ⚠️ 代價：320 稿標的 204px 放不下（要放下得同時縮 icon 或 padding，那會動到 375 以上）。
+// ⚠️ 134 綁著三處數字：.app-header__bar 的 padding、.app-header__icons 的兩顆 icon 與 gap、
+//    以及刻意留的 12px 間隙。任一處改動要回來同步這條。
+//
 // 高度不能各自寫死，兩顆都用同一份寬度除以 228÷37（pc 稿的原生比例）反推，
 // 才不會 img／mask 兩顆尺寸走鐘。
 .app-header__logo-img,
 .app-header__logo-mask {
-  --hd-logo-w: min(63vw, 260px);
+  --hd-logo-w: min(63vw, 100vw - 134px, 260px);
   width: var(--hd-logo-w);
   height: calc(var(--hd-logo-w) / 6.1622);
 
