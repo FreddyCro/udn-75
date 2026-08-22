@@ -13,6 +13,8 @@ const props = withDefaults(
 // LINE 的手機／PC 網址不同，且只有瀏覽器才判得出來 —— 掛載後才換值（見 utils/share）。
 const lineHref = useLineShareUrl();
 
+const { play } = useSfx();
+
 // glyph：該圖示在 36 見方外框內的原生高度佔比（設計稿 fb 25.31 / LINE 27.87 / X 22.75）。
 // 三個 glyph 的長寬比不同，撐滿外框會讓 X 比框寬 3.8px —— 外框只是版位，glyph 不填滿。
 const links = computed(() => [
@@ -69,6 +71,8 @@ onBeforeUnmount(() => {
       :data-ga="link.ga"
       target="_blank"
       rel="noreferrer noopener"
+      @mouseenter="play('sfx01')"
+      @click="play('sfx01')"
     >
       <AppHeaderIcon :name="link.key" />
     </a>
@@ -80,7 +84,8 @@ onBeforeUnmount(() => {
       type="button"
       aria-label="分享"
       :aria-expanded="open"
-      @click="open = !open"
+      @mouseenter="play('sfx01')"
+      @click="open = !open; play('sfx01')"
     >
       <AppHeaderIcon name="share" />
     </button>

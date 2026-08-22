@@ -15,6 +15,7 @@ const emit = defineEmits<{ close: []; select: [target: string] }>();
 
 const route = useRoute();
 const panelRef = ref<HTMLElement | null>(null);
+const { play } = useSfx();
 
 // 錨點文字在稿上是 outline 過的 vector（Figma 2065:122211 的三個群組）。
 // 面板恆為白底、文字色不隨 active 變（稿上只有底線在變），用 <img> 也畫得出來 ——
@@ -30,12 +31,14 @@ function onHomeSelect(target: string, e: MouseEvent) {
   e.preventDefault();
   emit('close');
   emit('select', target);
+  play('sfx01');
 }
 
 // 子頁：導航交給 NuxtLink，本函式只負責把面板收起來。
 function onAwaySelect(e: MouseEvent) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   emit('close');
+  play('sfx01');
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -131,7 +134,7 @@ onBeforeUnmount(() => {
     :class="{ 'app-header-menu--open': open }"
     :aria-hidden="!open"
   >
-    <div class="app-header-menu__scrim" @click="emit('close')" />
+    <div class="app-header-menu__scrim" @click="emit('close'); play('sfx01')" />
 
     <div ref="panelRef" class="app-header-menu__panel">
       <nav class="app-header-menu__nav">
@@ -145,6 +148,7 @@ onBeforeUnmount(() => {
             }"
             :href="`#${anchor.target}`"
             :tabindex="open ? 0 : -1"
+            @mouseenter="play('sfx01')"
             @click="onHomeSelect(anchor.target, $event)"
           >
             <span class="app-header-menu__art" :style="artStyle(anchor.art.menu)" />
@@ -163,6 +167,7 @@ onBeforeUnmount(() => {
             }"
             :to="`/#${anchor.target}`"
             :tabindex="open ? 0 : -1"
+            @mouseenter="play('sfx01')"
             @click="onAwaySelect"
           >
             <span class="app-header-menu__art" :style="artStyle(anchor.art.menu)" />

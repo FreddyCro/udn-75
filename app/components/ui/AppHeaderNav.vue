@@ -15,6 +15,10 @@ defineProps<{
 
 const emit = defineEmits<{ select: [target: string] }>();
 
+// 連結的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
+// 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
+const { play } = useSfx();
+
 const route = useRoute();
 const isHome = computed(() => route.path === '/');
 
@@ -29,6 +33,7 @@ function onHomeSelect(target: string, e: MouseEvent) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
   emit('select', target);
+  play('sfx01');
 }
 </script>
 
@@ -45,6 +50,7 @@ function onHomeSelect(target: string, e: MouseEvent) {
         class="app-header-nav__link"
         :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
         :href="`#${anchor.target}`"
+        @mouseenter="play('sfx01')"
         @click="onHomeSelect(anchor.target, $event)"
       >
         <span class="app-header-nav__art" :style="artStyle(anchor.art.pc)" />
@@ -61,6 +67,8 @@ function onHomeSelect(target: string, e: MouseEvent) {
         class="app-header-nav__link"
         :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
         :to="`/#${anchor.target}`"
+        @mouseenter="play('sfx01')"
+        @click="play('sfx01')"
       >
         <span class="app-header-nav__art" :style="artStyle(anchor.art.pc)" />
         <span class="visually-hidden">{{ anchor.title }}</span>

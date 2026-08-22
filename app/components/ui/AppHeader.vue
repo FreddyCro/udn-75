@@ -30,6 +30,7 @@ const props = defineProps({
 });
 
 const route = useRoute();
+const { play } = useSfx();
 
 // 錨點列首頁與子頁共用；只在 ≥1280 顯示（由 AppHeaderNav 自己的 CSS 決定，不必在此判斷）。
 // 子頁量不到 #forum / #blessing / #media 這些段落 → activeTarget 恆為 ''，
@@ -307,6 +308,8 @@ function onLogoClick(e: MouseEvent) {
   // 攔下來會讓使用者按了沒反應。中鍵在現代瀏覽器發的是 auxclick，本來就不會進來。
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 
+  play('sfx01');
+
   // 選單開著時 logo 仍可點：.app-header__bar-wrap 的 z-index 2 疊在面板（z-index 1）之上。
   // 就地倒帶不換頁 → 面板不會自己消失，.is-menu-locked 也還鎖著 html/body，
   // 使用者會看到「按了 logo，選單沒關、頁面鎖死」。
@@ -442,6 +445,7 @@ const layers = computed<HeaderLayer[]>(() => {
             class="app-header__logo"
             :href="logoHref"
             :aria-label="labels.logoLabel"
+            @mouseenter="play('sfx01')"
             @click="onLogoClick"
           >
             <img
@@ -458,6 +462,7 @@ const layers = computed<HeaderLayer[]>(() => {
             class="app-header__logo"
             :to="homeIntent.to"
             :aria-label="labels.logoLabel"
+            @mouseenter="play('sfx01')"
             @click="onLogoClick"
           >
             <img
@@ -489,7 +494,8 @@ const layers = computed<HeaderLayer[]>(() => {
                   menuOpen ? labels.menuCloseLabel : labels.menuOpenLabel
                 "
                 :aria-expanded="menuOpen"
-                @click="menuOpen = !menuOpen"
+                @mouseenter="play('sfx01')"
+                @click="menuOpen = !menuOpen; play('sfx01')"
               >
                 <AppHeaderIcon :name="menuOpen ? 'close' : 'menu'" />
               </button>
