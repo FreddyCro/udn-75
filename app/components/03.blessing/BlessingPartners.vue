@@ -18,6 +18,10 @@ import str from '@/locales/section3.json';
 const assetUrl = useAssetUrl();
 
 const { partner } = str;
+
+// 每列企業祝福詞的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀
+// runtimeConfig，見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，開關關著時靜默。
+const { play } = useSfx();
 </script>
 
 <template>
@@ -43,6 +47,8 @@ const { partner } = str;
             :href="item.url || undefined"
             :target="item.url ? '_blank' : undefined"
             :rel="item.url ? 'noopener' : undefined"
+            @mouseenter="play('sfx01')"
+            @click="play('sfx01')"
           >
             <!-- 外框尺寸固定為設計稿的 logo 框，圖以 contain 內縮，換不同比例的 logo 也不變形 -->
             <img
