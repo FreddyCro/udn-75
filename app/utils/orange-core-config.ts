@@ -736,7 +736,19 @@ export const BLESSING_ANCHOR_VH = BLESSING_VH * (1 - BLESSING_HOLD);
 // 2026-08-18：本值同時成為 **media 拍 0 的跑道長度**（ScrollTrigger 提早這麼多），
 //   也就是整段融合拍的唯一長度旋鈕 —— 清單淡出、veil 收窄、morph 收窄全部吃這一段。
 //   見 narrowDurationFor 與融合設計文件。
-export const BLESSING_OUT_VH = 0.6;
+//
+// 2026-08-21：0.6 → 0.5，整段融合拍變快約 17%。
+//   ⚠️ **只調本值，OUT_FADE 不要跟著動。** 兩條曲線都活在「拍內進度」的座標系裡
+//      （清單淡出吃 outroST 的 normalized progress，veil／morph 收窄吃 timeline 的
+//      normalized ease），不是絕對 px —— 所以縮短跑道**只改速度，不改任何一組相對
+//      關係**：交棒點（narrowDurationFor 由本值推導）、「清單必須比 veil 收到底更早
+//      淡乾淨」（上一則）、header 翻 light 的門檻（mediaHeaderLightAt 由 timeline 地標
+//      推導）全部等比跟著縮。動 OUT_FADE 才會把那些關係一次弄壞。
+//   代價是拿上一則那條下限換的：0.55 × 50vh ＝ 27.5vh，閱讀捲速下約 1.1s（原 1.3s）。
+//      要再更短就繼續調本值，不要碰 OUT_FADE。
+//   ⚠️ **不要**改用「讓 veil 直接消失」來省掉這一段。2026-08-21 實測過，會露餡兩處
+//      （接縫變成一條可見橫線、header 反白窗變白字疊白底），記錄見融合設計文件末節。
+export const BLESSING_OUT_VH = 0.5;
 export const BLESSING_OUT_FADE = 0.55;
 
 // ── 03 → 04 融合拍：veil 與 morph 的交棒 ──────────────────────────────

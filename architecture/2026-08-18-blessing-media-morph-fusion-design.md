@@ -307,3 +307,39 @@ self.progress >= (NARROW_DUR + 1) / d ? 'light' : 'orange'
 - header 的 T 形是否讀得通（第六節的 ⚠️）
 - 往回捲對稱：整段可逆，沒有殘留的橘幕
 - reduce-motion 與 `/#media`：blessing 仍是橘底，接縫處硬切到白
+
+## 十一、實測記錄：veil 直接消失（2026-08-21，已否決）
+
+**問題**：融合拍那段 scrub 讀起來像空窗期，能不能乾脆讓 veil 直接消失、只留 morph 收窄？
+
+**做法**：pc 1440×900，在瀏覽器注入 `[data-morph-veil]{visibility:hidden!important}`
+覆寫（等效於把拍 0 的 `fromTo(veil, …)` 換成 `set(veil, {autoAlpha: 0}, 0)`，但不必動
+原始碼——直接改檔會讓 dev server 的 HMR 打壞 Nuxt auto-import 的模組圖，症狀是
+`MEDIA_BLOCK_VW is not defined`，識別字其實還在用）。
+
+**結果：露餡兩處。**
+
+| 拍內進度 | 基線 | veil 直接消失 |
+| --- | --- | --- |
+| p=0 | 滿版橘 | 上方 540px 變白，y=540 一條硬橫線，下面才是滿寬橘 |
+| p=0.5 | 全高橘柱 244→1180，無橫線 | 橘變成**有上緣的浮動矩形**（244–1180 × 從 y=270 起） |
+| p=1（交棒） | — | 與基線一致（veil 本來就該在這裡消失） |
+
+1. **接縫變成看得見的橫線。** 第九節第 3 條的另一半：`outroWhiteAt` 在
+   `outProgress > 0` 就把 `.section3` 底色硬切成白（實測 p=0 時 `--outro-white: 1`、
+   `backgroundColor: srgb 1 1 1`），那個硬切之所以看不到，唯一理由就是 veil 此刻滿版
+   遮住。veil 一走，硬切直接曝光成一塊白。而 morph 上緣 ≡ 接縫，它只塗得到接縫以下，
+   補不上去。p=0.5 更明顯：原本讀成「整片橘背景在收窄」，沒有 veil 就變成「白底上一個
+   橘方塊」，敘事整個換掉。
+2. **header 反白窗變白字疊白底。** `useMediaIntroMotion` 的 `onUpdate` 固定傳 `top: 0`
+   給 `syncHeaderBand`，前提正是「接縫以上那塊橘是 veil 畫的」。veil 沒了之後它照樣在
+   白底上開橘窗、窗外用白字 →「論壇」「永續祝福」兩個 nav 項目整個消失。這條耦合原本
+   沒有記在任何地方，已補進該處的 ⚠️。
+
+**結論**：要讓 veil 直接消失，得同時拆掉三件相依的事——底色不能翻白（停用
+`outroWhiteAt`）、header band 的 `top` 改吃 morph 自己的 `rect.top`、收窄本身重新定義成
+「一個方塊縮小」而不是「背景收窄」。等於放棄整個融合拍的設計，故否決。
+
+**改採**：破圖範圍其實很窄——只在 `BLESSING_OUT_VH` 那段跑道內，交棒點之後完全一致。
+所以要省的是「感覺太長」而不是 veil 這層元素，直接縮短跑道即可：`BLESSING_OUT_VH`
+0.6 → 0.5（2026-08-21）。理由與「為什麼 `OUT_FADE` 不可以跟著動」見該常數的註解。
