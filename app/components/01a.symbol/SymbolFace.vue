@@ -299,6 +299,11 @@ const eggRef = ref<HTMLDivElement | null>(null);
 // 兩種驅動方式（見下方 isMob 那段）：桌機是游標所在宮格逐幀推導，手機是 tap／計時器寫入。
 const activeEgg = ref(EGG_CLOSED);
 
+// 彩蛋換句的音效。⚠️ **不要**掛在 watch(activeEgg) 上 —— 那個 watcher 對自動換句
+// 與使用者換句一視同仁，而自動換句是每 3 秒一輪（EGG_AUTO_MS），音檔卻有 2.3s，
+// 掛上去等於不間斷的嗡嗡聲。故只掛在兩個使用者驅動點：手機 tap 與桌機 hover 換宮格。
+const { play: playSfx } = useSfx();
+
 // 彩蛋切換時的「亂碼跑動」出現動畫：activeEgg 換格時，文字由隨機字元逐步落定成句子，
 // 讓「切換到另一則彩蛋」更明顯。displayText 取代直接顯示 phrases[activeEgg]。
 const displayText = ref('');
@@ -756,6 +761,7 @@ onMounted(() => {
     const uv = faceUv(hit.x, hit.y, halfW, halfH);
     const next = tapEggIndex(activeEgg.value, cfg.phrases.length, !!uv);
     activeEgg.value = next;
+    if (next >= 0) playSfx('aiFaceText'); // next < 0 ＝ 點在臉外＝關閉，不出聲
     // ⚠️ 分支看的是「真的開了嗎」而不是「點在臉上嗎」：沒有文案時（phrases 為空）
     //    點人臉並不會開，那就不該留下一支永遠換不出東西的計時器。
     if (next >= 0) {
@@ -1665,7 +1671,10 @@ onMounted(() => {
           const i = row * cfg.gridCols + col;
           if (i < cfg.phrases.length && cfg.phrases[i]) idx = i;
         }
-        if (idx !== activeEgg.value) activeEgg.value = idx; // 僅換格才觸發 re-render
+        if (idx !== activeEgg.value) {
+          activeEgg.value = idx; // 僅換格才觸發 re-render
+          if (idx >= 0) playSfx('aiFaceText'); // idx < 0 ＝ 滑出人臉＝收起，不出聲
+        }
         if (idx >= 0) {
           // 文字中心對齊真空中心（游標位置）
           placeEgg(eggEl, smoothMouse);

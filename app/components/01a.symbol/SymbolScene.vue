@@ -18,9 +18,15 @@ const {
   symbolTarget,
   setSymbolProgress,
   symbolLayerDone,
+  symbolConvergeAmount, // ← 新增（F4 的驅動源，見 useOrangeCoreProgress:181）
   symbolConvergeLight,
   symbolHeaderTint,
 } = useOrangeCoreProgress();
+
+// 粒子收攏（converge）起手的音效。掛在本元件而非 SymbolFace：後者也被 demo 頁使用，
+// 掛在那裡會讓 demo 的三顆切換按鈕也出聲。本元件是正式站的捲動驅動端。
+const { cueOn } = useSfxCue();
+cueOn(() => symbolConvergeAmount.value > 0, 'aiFaceBg');
 
 // 段落高度 ＝ SYMBOL_VH × 視窗高（見 ~/utils/orange-core-config）。
 // ⚠️ 它**不等於捲動尺的長度** —— 尺比段落長 50vh（見下方 end 與 SYMBOL_HOVER_VH）。

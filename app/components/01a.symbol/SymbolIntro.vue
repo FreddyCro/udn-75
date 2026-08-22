@@ -28,6 +28,10 @@ import str from '~/locales/section1.json';
 
 const { symbolProgress, reduceMotion } = useOrangeCoreProgress();
 
+// 三行引言開始 reveal 的音效。state 是普通 let（不是 ref），故不走 useSfxCue 的
+// watch，改在 gate() 內自己判邊緣 —— 判的是「elapsed 由 null 翻成有值」那一次。
+const { play } = useSfx();
+
 const rootRef = ref<HTMLElement | null>(null);
 const lines = str.symbol.intro;
 const TOTAL = symbolIntroTotal(lines.length);
@@ -102,7 +106,12 @@ const run = () => {
 const gate = (p: number) => {
   const next = symbolIntroGate(state, p, lines.length);
   if (next === state) return;
+  // 整段只在起跑那一次出聲：elapsed 由 null（還沒開始）翻成有值（開始跑）。
+  // 三行是逐行 reveal，但音只響一次 —— 音檔本身 2.3s，已經蓋過整段。
+  // 減少動態時不出聲：那個模式下文字是直接落定的，沒有「跑」這回事。
+  const started = state.elapsed === null && next.elapsed !== null;
   state = next;
+  if (started && !reduceMotion.value) play('aiFaceText');
   paint();
   run();
 };
