@@ -6,14 +6,18 @@
   單一 scrub ScrollTrigger 驅動整條 path（getPointAtLength 取樣 → 定位 core），
   一條連續 path、一個 tween → 接縫零頓挫。
 
-  幾何全由量測推導、無寫死座標：x = section 水平中心（引言文字也置中，故一路穿過文字），
-  終點 y = endEl 底緣 − 半個視窗高（endEl 底緣貼齊視窗底時，該點正好是視窗正中央）。
-  ⚠️ endEl 尾端必須留 ≥ 50vh 的 runway（見 Hero.scss 的 .sec1__intro padding-bottom，
-     實際值為 50vh ＋ 引言淡出窗口 INTRO_FADE_VH），否則終點會落在文字之內、
-     core 還沒穿出文字就停住。
+  幾何無寫死座標：x = section 水平中心（引言文字也置中，故一路穿過文字），
+  起點 y = vh($exit) + 50vh（＝ core 現身那一刻的畫面正中央），
+  終點 y = 起點 ＋ **本尺的捲動距離** ⇒ 路徑長 ≡ 捲動距離，core 因此恆在螢幕正中央
+  （1:1 是構造上的不變式，不是兩個算式碰巧相等，見 build 的 ⚠️ 2026-08-23）。
+  ⚠️ 「終點在哪」的唯一來源是 ST 的 endTrigger（endEl 的 bottom bottom）；本檔**不再量**
+     endEl，因為它住在被 hero 轉場 pin 的 .sec1__inner 裡，帶著 pin 位移的量測會讓 core
+     掉出視窗。GSAP 那一份量測的免疫由 `pinnedContainer` 負責。
+  ⚠️ endEl 尾端仍必須留 ≥ 50vh 的 runway（見 Hero.scss 的 .sec1__intro padding-bottom，
+     實際值為 50vh ＋ 引言淡出窗口 INTRO_FADE_VH）—— 否則 core 抵達視窗中央（pin 接手）
+     的那一刻還沒穿出文字。
   ⚠️ 起訖與 endEl 都刻意避開 .sec1 的 bottom：Hero 的 transition pin 會在 .sec1 內插入
      pin-spacer 把 section 撐高，用 .sec1 的 bottom 當基準會變成循環依賴（量到的高度含 spacer）。
-     endEl 位於被 pin 的 .sec1__inner 之內，其幾何不受 spacer 影響。
 
   🚧 舊稿的可見灰線（設計中心線：stub 垂直段 + C/L 曲線，錨定 date 大標左上角、尾端落在日期
      的「/」）已隨 date 段移除。新稿 hero 段沒有可見設計線（影片結尾那條階梯線在影片裡）。
@@ -40,6 +44,12 @@ const props = defineProps<{
   orangeCoreEl: HTMLElement | null;
   /** 路徑終點的參照元素（引言整段）：其底緣貼齊視窗底時，core 抵達視窗正中央 */
   endEl: HTMLElement | null;
+  /**
+   * 被 hero 轉場 pin 住的容器（`.sec1__inner`）—— `endEl` 住在它裡面。
+   * 交給 ScrollTrigger 的 `pinnedContainer`，它才會在量 `endEl` 之前先把那個 pin 拆掉。
+   * 少了它的症狀見下方 ST 的 ⚠️（core 掉出視窗）。
+   */
+  pinnedEl: HTMLElement | null;
 }>();
 
 // core 沿線移動進度（0..1）→ 寫入全域共享 path 軌（stage 1–3 來源），供顯示與效果讀取。
@@ -65,13 +75,10 @@ let motionAngle = 0;
 // 依當前版面量測，重建驅動線的 d（imperative，避免 Vue patch 造成幾何延遲）。
 function build() {
   const sec = props.sectionEl;
-  const end = props.endEl;
   const motion = motionEl.value;
-  if (!sec || !end || !motion) return;
+  if (!sec || !motion || !st) return;
 
-  const secRect = sec.getBoundingClientRect();
-  const endRect = end.getBoundingClientRect();
-  const x = secRect.width / 2; // 垂直線：一路沿 section 水平中心（引言文字亦置中）
+  const x = sec.getBoundingClientRect().width / 2; // 垂直線：沿 section 水平中心（引言文字亦置中）
 
   // 起點：**core 該現身的那一刻**的畫面正中央。
   //
@@ -87,8 +94,22 @@ function build() {
   // ⚠️ 不在本次範圍：路徑**中段**因 MOVE_EASE 而偏離 50vh 是既有且刻意的（雲霄飛車感）。
   //    需求是「從畫面中心**出現**」，不是「全程鎖在中心」，故只修進度 0 的落點。
   const sy = vhPx(HERO_DISSOLVE_VH) + vhPx(0.5);
-  // 終點：endEl 底緣往上半個視窗高 → 該底緣貼齊視窗底時，core 正好在視窗正中央。
-  const ey = endRect.bottom - secRect.top - vhPx(0.5);
+  // 終點 ＝ 起點 ＋ **這條尺自己的捲動距離** ⇒ 路徑長 ≡ 捲動距離，1:1 是構造上的不變式。
+  //
+  // ⚠️ 2026-08-23 改，原本是「endEl 底緣 − section 頂 − 50vh」（自己量 endEl 的 rect）。
+  //    那讓 1:1 變成「兩個算式碰巧相等」，而 endEl 住在被 hero 轉場 pin 的 .sec1__inner 裡，
+  //    帶著 pin 位移的量測會直接破壞等式：實測 pin 之後 ey +1041.6（一整段 pin 距離）⇒
+  //    core 以 1.91× 往下墜、scrollY≈1560 掉出視窗，連轉場開窗（錨在 core 的螢幕矩形）
+  //    一起消失。成因、量法與另外兩處同型錯位見
+  //    .claude/memory/gsap-refresh-measures-pinned-dom.md。
+  //    ⇒ 本檔不再量任何 pin 內的元素；「終點在哪」只剩 ST 的 endTrigger 一個來源
+  //      （那一份的免疫由下方 pinnedContainer 負責）。
+  //    順帶修掉行動裝置的殘留漂移：`bottom bottom` 吃真實視窗高、sy 吃凍結的 --vh，
+  //    兩把尺差一個 --chrome-inset（實測 57px）原本會沿路漂掉。
+  //
+  // ⚠️ 代價：`.sec1__intro` 的 runway 不再能改變「core 在螢幕上移動多少」（只改變文字捲多快
+  //    與淡出可用的距離）。要讓 core 真的位移得動 MOVE_EASE 或另立一段尺。
+  const ey = sy + (st.end - st.start);
 
   motion.setAttribute(
     'd',
@@ -108,7 +129,7 @@ function build() {
   motionAngle =
     (Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180) / Math.PI;
 
-  place(st ? st.progress : 0);
+  place(st.progress);
 }
 
 // 依 raw 捲動進度把 core 定位到驅動線上的點，並轉到該處的路徑切線方向（雲霄飛車感）。
@@ -138,13 +159,23 @@ function place(rawP: number) {
 }
 
 function init() {
-  if (ready || !props.sectionEl || !props.orangeCoreEl || !props.endEl) return;
+  if (
+    ready ||
+    !props.sectionEl ||
+    !props.orangeCoreEl ||
+    !props.endEl ||
+    // pinnedEl 也是必要條件：少了它 ST 就沒有 pin 位移的免疫（見下方 pinnedContainer），
+    // 而那是靜默失效。它與 endEl 是同一份 template 裡的元素 ref，兩者同時就緒。
+    !props.pinnedEl
+  )
+    return;
   ready = true;
 
   gsap.registerPlugin(ScrollTrigger);
   gsap.set(props.orangeCoreEl, { xPercent: -50, yPercent: -50 }); // 讓 (x,y) 對齊 core 中心
-  build();
 
+  // ⚠️ 建尺**先於** build()：`ey` 由這條尺的捲動距離反推（見 build），沒有尺就沒有幾何。
+  //    create() 內部會 refresh 一次，其 onRefresh 就是第一次 build，故不必額外呼叫。
   st = ScrollTrigger.create({
     // ⚠️ **數值** start ＝ hero 退場結束（core 現身的那一刻），與上方 `sy` 成對。
     //    兩者必須一起改，否則進度 0 就不再等於「畫面正中央」（見 build 的推導）。
@@ -156,9 +187,19 @@ function init() {
     // core 抵達視窗中央的同一刻 pin 接手 hold 住畫面，pin 期間 path 不再前進 → core 穩定停在中央。
     endTrigger: props.endEl,
     end: 'bottom bottom',
+    // ⚠️ endEl 住在被 hero 轉場 pin 的 `.sec1__inner` 裡 —— 不宣告 pinnedContainer 的話，
+    //    GSAP 量 endEl 時可能量到帶著 pin 位移的位置（refresh 期間 pin 會被別的尺重新套上，
+    //    誰先誰後只由 _triggers 的排序決定）。宣告之後 GSAP 會在量測前先把那個 pin 拆掉。
+    //    這裡的 start 是**數值**，故 pinnedContainer 不會給它加任何 pin 位移補償
+    //    （ScrollTrigger.js L1412 的 `isNaN(parsedStart)`），start/end 的語意不變。
+    pinnedContainer: props.pinnedEl ?? undefined,
     scrub: true,
     invalidateOnRefresh: true,
     onUpdate: (self) => place(self.progress),
+    // 幾何重建掛在**這裡**，不是全域的 refreshInit：後者早於 pin 的 revert、也早於本尺
+    // 自己重算 start/end，量到的與讀到的都是上一輪的值。onRefresh 是 start/end 定案後才發，
+    // 且不論「單獨 refresh」或「全站 refresh」兩條路徑都會發一次（ScrollTrigger.js L565／L1608）。
+    onRefresh: build,
   });
 
   // ── 退場區間（scrollY 0 → path 起點）的補刀尺 ────────────────────────
@@ -182,7 +223,6 @@ function init() {
     },
   });
 
-  ScrollTrigger.addEventListener('refreshInit', build);
   // 手動 refresh 一律走 refreshScrollTriggers()（先 sort 再 refresh）—— 見 utils/scroll-trigger。
   // 這裡尤其需要 sort：本元件的 trigger 在 .sec1 頂端，而 Hero 的 transition pin 就在它下方
   // 同一個 section 裡，兩者的建立順序取決於誰先 onMounted。
@@ -199,7 +239,12 @@ onMounted(() => {
   // props 來自父層 template ref，可能於下一 tick 才就緒。
   if (!ready) {
     const stop = watch(
-      () => [props.sectionEl, props.orangeCoreEl, props.endEl],
+      () => [
+        props.sectionEl,
+        props.orangeCoreEl,
+        props.endEl,
+        props.pinnedEl,
+      ],
       () => {
         init();
         if (ready) stop();
@@ -209,7 +254,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  ScrollTrigger.removeEventListener('refreshInit', build);
+  // build 隨 st 一起收（它現在是 st 的 onRefresh，不再是全域 refreshInit listener）。
   // kill(false)：換頁時舊頁還在畫面上淡出，revert 會把畫面打回起始態而被看見
   // （見 utils/scroll-trigger 的 killScrollTriggers）
   killScrollTriggers(st, parkST);

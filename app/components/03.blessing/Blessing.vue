@@ -550,6 +550,24 @@ onBeforeUnmount(() => {
 // 淡入壓在 progress 1（見 script 的 partnersIn）：在那之前它雖然已經在版面上、
 // 也已經捲進視窗，但還沒貼到臉的下緣 —— 藏著才不會看到它滑上來的過程。
 .section3__partners {
+  // ⚠️ **不可以是 static。** 上面那個負 margin 讓本塊的頂端疊進 .section3__face-track
+  //    的最後 (100vh − h)/2 px，而 face-track 是 position: relative、裡面的
+  //    .section3__face-screen 是 position: sticky —— 兩者都是 positioned 且 DOM 在前。
+  //    static 之下本塊依繪製順序落在它們**之下**，面板頂端那一條就變成
+  //    「看得到、摸不到」：hit test 命中的是臉屏那塊空白（它沒有背景，所以看不出來），
+  //    內卷軸完全捲不動。fixed 的 .section3__veil 同理會蓋掉整份清單（見 template）。
+  //
+  //    2026-08-23 實測（834×1120 ＝ iPad Pro 11" 二代直立在 Safari 的可視高）：
+  //    死區 107px，elementFromPoint 命中 .section3__face-screen；改成 positioned 後
+  //    4/4 命中面板。條件是 906 < --vh < 1127（下界 ＝ 死區為正、上界 ＝ .is-held 的
+  //    門檻），所以 11"／10.5" 直立中獎、12.9" 二代直立會 is-held 沒事、橫置死區為 0
+  //    —— 現場的症狀因此一律是「有時候」。規則由
+  //    test/blessing-partners-hit-test.spec.ts 守著。
+  //
+  //    relative 而非別的：無偏移的 relative 與 static 的算繪結果完全相同（負 margin、
+  //    sticky 幾何、--face-block-h 的算式全部不變），只是把本塊抬進 positioned 那一層。
+  //    z-index 一律不給 —— 疊層全靠 DOM 順序（同 template 裡橘幕那三條 ⚠️）。
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 40px;
@@ -627,6 +645,15 @@ onBeforeUnmount(() => {
 //
 // min-height 是給「視窗比內容還矮」的橫置手機用的：置中 ＋ overflow: hidden 會上下都切掉，
 // 至少讓臉屏長到容得下內容。
+// 臉屏整層不吃指標事件，內容（.section3__face-inner）再收回來 —— 這是上面
+// .section3__partners 那條「不可以是 static」的第二道防線：本層是一整個視窗高、
+// 內容置中，上下各留 (100vh − --face-block-h)/2 的**透明空白**，而那塊空白正好就是
+// 夥伴清單頂端疊上來的位置。空白不接事件之後，就算哪天疊層又被改壞，
+// 面板頂端也不會再變成「看得到、摸不到」。
+//
+// 為什麼要把 inner 收回 auto 而不是整層放生：本層裝的不只有裝飾用的臉，還有
+// .section3__intro 的 <h2> 與引言 —— 整層 none 會讓那兩段文字不能選取。
+// 放行 inner 不會把死區放回來：重疊區恆等於「inner 之外的空白」，兩者互斥。
 .section3__face-screen {
   position: sticky;
   top: 0;
@@ -636,10 +663,14 @@ onBeforeUnmount(() => {
   height: vh();
   min-height: var(--face-block-h, 280px);
   overflow: hidden;
+  pointer-events: none;
 }
 
 // pc：臉在左、文字在右；pad / mob：文字在上、臉在下
 .section3__face-inner {
+  // 把臉屏那層 pointer-events: none 收回來（理由見臉屏的註解）——
+  // 標題與引言要能選取，臉本身是 aria-hidden 的裝飾，順帶放行不影響任何事。
+  pointer-events: auto;
   display: flex;
   align-items: flex-start;
   justify-content: center;

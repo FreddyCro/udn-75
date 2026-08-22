@@ -398,6 +398,16 @@ onMounted(() => {
       trigger: introBodyRef.value,
       start: 'bottom center',
       end: () => `+=${vhPx(INTRO_FADE_VH)}`, // 同上，且必須與 introRunway 同一把尺
+      // ⚠️ trigger 住在被本元件的 pin 釘住的 .sec1__inner 裡 —— 不宣告 pinnedContainer 的話，
+      //    GSAP 量它時可能量到帶著 pin 位移的位置。實測 1527×868：捲到 pin 之後（或 pin 進行中）
+      //    做一次 refresh，本尺的區間從 1833/2181 變成 2874/3222（＋一整段 pin 距離），
+      //    pin 進行中甚至是 −348/0 ⇒ 引言淡出的時機整段跑掉。宣告之後 GSAP 會在量測前
+      //    先把那個 pin 拆掉（ScrollTrigger.js L1370）。
+      //    ⚠️ 為什麼不是「順序對就沒事」：refresh 期間 pin 會被 transitionST 自己重新套上，
+      //       誰先量只由 _triggers 的排序決定（ScrollTrigger.sort() 的 _sortY 又正好是
+      //       **帶著 pin 位移**量的）—— 那不是可以倚賴的東西。
+      //    同一個坑的另一半在 OrangeCorePath（那邊 core 會掉出視窗）。
+      pinnedContainer: innerRef.value,
       scrub: true,
       invalidateOnRefresh: true,
       onUpdate: (self) => (introFade.value = self.progress),
@@ -732,6 +742,7 @@ function applyScrollLock() {
         :section-el="sec1Ref"
         :orange-core-el="orangeCoreEl"
         :end-el="introRef"
+        :pinned-el="innerRef"
       />
 
       <div class="sec1__scene">
