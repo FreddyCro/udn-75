@@ -14,3 +14,4 @@
 - [Forum art shared canvas](forum-art-shared-canvas.md) — 地點／時間多行素材是整組共用畫布：從一份群組匯出切檔、用第一個 M 的 y 分行、fill 寫死 #686868
 - [Subpage hero 100vh](subpage-hero-100vh.md) — 子頁首屏滿版 100svh＋進場 fade-up（不做 sticky）；hero 須保留 position: relative
 - [Agenda core crossing](agenda-core-crossing.md) — 議程作用中判定為何不能每 tick 取樣（快捲跳號）、目標／當前分離＋一次走一步、箭頭幾何由單位 u 推導、群組留白刻意留 12
+- [Forum slash core alignment](forum-slash-core-alignment.md) — 論壇二 09/15 那一撇是核心畫出來的：撇的位置（CSS）與驅動線必須同一個真值；pad/mob 節點錨在撇上綁死、pc 只有守衛，動 pc 的 d 或 --coreslash-x/y 一定要回頭驗

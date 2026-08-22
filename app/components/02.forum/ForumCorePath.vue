@@ -20,6 +20,7 @@ import type { ForumPathMeasure, ForumPathNode } from '~/utils/forum-node-path';
 import type { ArcKnot } from '~/utils/forum-path-geometry';
 import {
   nearestArcLength,
+  slashAlignment,
   slashCoreScaleAt,
   type SlashArcWindow,
   type SlashWindow,
@@ -247,9 +248,42 @@ function computeSlashWindow(
     `${d}|${pointKey(enter.x, enter.y)}|${pointKey(exit.x, exit.y)}`,
     () => {
       const sample = (len: number) => motion.getPointAtLength(len);
-      const a = nearestArcLength(enter, sample, pathLen) / pathLen;
-      const z = nearestArcLength(exit, sample, pathLen) / pathLen;
+      const aLen = nearestArcLength(enter, sample, pathLen);
+      const zLen = nearestArcLength(exit, sample, pathLen);
+
+      // 對齊守衛：撇的兩端必須**落在**驅動線上，否則核心會在別的地方「畫」它。
+      // pad／mob 由節點錨在撇本身保證（forum-node-path 的 SLASH_SEL）；pc 的 d 是手貼的，
+      // 只有這道守衛。不通過就不畫（少一個裝飾 ≫ 畫在錯的地方），dev 吼一聲。
+      const dist = (p: { x: number; y: number }, len: number) => {
+        const q = sample(len);
+        return Math.hypot(q.x - p.x, q.y - p.y);
+      };
+      const align = slashAlignment(
+        dist(enter, aLen),
+        dist(exit, zLen),
+        Math.hypot(exit.x - enter.x, exit.y - enter.y),
+        FORUM_SLASH_CORE.alignTol,
+      );
+      if (!align.ok) {
+        // dev only：production 走 fail-soft（少一撇），不對使用者的 console 吼。
+        // ⚠ 跨斷點拉拉視窗時會**短暫**吼一次：bp 的更新比版面重排晚一拍，那一瞬間確實
+        //   是「用上一個斷點的線 ＋ 這個斷點的版面」，守衛拒畫是對的。停下來之後會再
+        //   build 一次、恢復正常。持續吼才是真的沒對齊。
+        if (import.meta.dev) {
+          console.warn(
+            `[forum-slash] 那一撇與驅動線沒對齊，不畫：偏差 ${align.worst.toFixed(1)}px ` +
+              `> 容差 ${align.limit.toFixed(1)}px（bp=${b}）。` +
+              '撇的位置在 ForumEvent.vue 的 --coreslash-x/y、線在 forum-node-path ' +
+              '（pad／mob 的 P7a/P7b、Q7a/Q7b 就錨在撇上）—— 兩邊必須指同一條線。' +
+              '拉視窗跨斷點時的單次警告可忽略。',
+          );
+        }
+        return null;
+      }
+
       // 排序而非假設 enter 在前：萬一日後線的走向反過來，這裡不該靜默畫成負向。
+      const a = aLen / pathLen;
+      const z = zLen / pathLen;
       return a <= z ? [a, z] : [z, a];
     },
   );

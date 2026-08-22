@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   nearestArcLength,
+  slashAlignment,
   slashCoreScaleAt,
   slashDrawAt,
 } from '../app/utils/forum-slash';
@@ -181,5 +182,49 @@ describe('資料層', () => {
     if (filled.length < 3) return; // 至少有一個走推導 → 沒有這個問題
     const uniq = new Set(filled.map((w) => w!.join(',')));
     expect(uniq.size).toBeGreaterThan(1);
+  });
+});
+
+// ── 對齊守衛 ─────────────────────────────────────────────────────────
+// 撇的位置由 CSS 決定、核心的位置由驅動線決定。pad／mob 由節點錨在撇本身綁死
+//（forum-node-path 的 SLASH_SEL），pc 的 d 是手貼的 —— 這支是 pc 的唯一防線。
+describe('slashAlignment', () => {
+  const tol = FORUM_SLASH_CORE.alignTol;
+
+  it('兩端都貼在線上 → 通過', () => {
+    expect(slashAlignment(0.5, 1.2, 203, tol).ok).toBe(true);
+  });
+
+  it('容差取「絕對下限」與「對角線 × 比例」的較大者', () => {
+    // 對角線 203（pc）→ 203 × 0.12 ＝ 24.4 > 12
+    expect(slashAlignment(0, 0, 203, tol).limit).toBeCloseTo(203 * tol.ratio, 5);
+    // 對角線 50 → 6 < 12，吃下限
+    expect(slashAlignment(0, 0, 50, tol).limit).toBe(tol.px);
+  });
+
+  it('看最差的那一端，不是平均', () => {
+    const r = slashAlignment(0, 200, 109, tol);
+    expect(r.worst).toBe(200);
+    expect(r.ok).toBe(false);
+  });
+
+  // 2026-08-22 的實際 bug：mob 的線在撇的 y 帶走 x 235–370、撇在 x 158–207，
+  // 兩端各差 167.9 / 126.0px —— 核心在離撇一百多 px 的地方「畫」出那一撇。
+  it('2026-08-22 mob 的實測偏差會被擋下來', () => {
+    expect(slashAlignment(167.9, 126.0, 108.7, tol).ok).toBe(false);
+  });
+
+  it('修好前的 pc／pad 實測值仍在容差內（守衛不可誤殺）', () => {
+    expect(slashAlignment(3.4, 12.1, 203.1, tol).ok).toBe(true); // pc
+    expect(slashAlignment(7.0, 5.4, 155.8, tol).ok).toBe(true); // pad
+  });
+
+  it('撇塌成 0（對角線 ≤ 0）只看絕對下限，不除以零', () => {
+    expect(slashAlignment(5, 5, 0, tol)).toMatchObject({ ok: true, limit: tol.px });
+  });
+
+  it('距離不是有限數 → 一律不通過（不靜默畫在錯的地方）', () => {
+    expect(slashAlignment(Number.NaN, 0, 203, tol).ok).toBe(false);
+    expect(slashAlignment(Number.POSITIVE_INFINITY, 0, 203, tol).ok).toBe(false);
   });
 });

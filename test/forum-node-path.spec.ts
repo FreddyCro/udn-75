@@ -32,8 +32,12 @@ const rectKey = (a: ForumPathTarget) => {
   return a.nth != null ? `${base}#${a.nth}` : base;
 };
 
+// 大部分錨點只消費縱向，故 fixture 通常只填 top/height；掛在 element 上的 x
+//（ForumPathXAnchor，目前是議程箭頭欄與 09/15 那一撇）才需要 left/width。
+type FixtureRects = Record<string, Partial<Rect>>;
+
 const measureFrom =
-  (rects: Record<string, { top: number; height: number }>): ForumPathMeasure =>
+  (rects: FixtureRects): ForumPathMeasure =>
   (a) => {
     const r = rects[rectKey(a)];
     return r ? rect(r) : null;
@@ -50,7 +54,23 @@ function endpoints(d: string): [number, number][] {
 // ── 黃金樣本：拿設計稿的 element 位置驅動產生器，結果就該落在稿的頂點上 ────
 // 換算流程見 architecture/forum-node-path.md。
 
-const MOB_RECTS: Record<string, { top: number; height: number }> = {
+// ── 09/15 那一撇的 fixture ───────────────────────────────────────────
+// 這一組是**實作的 CSS 值**（ForumEvent.vue 的 --coreslash-x/y/w/h，都經過目視微調），
+// 不是稿的原值 —— 撇畫在哪，核心就得經過哪，兩者本來就同一個真值（見 forum-node-path
+// 的 SLASH_SEL）。所以這裡驗的是「P7a/P7b（Q7a/Q7b）確實落在撇的右上角與左下角」，
+// 抓的是 edge 打錯（left/right 顛倒、top/bottom 顛倒）這類錯誤。
+// mob：--coreslash 132/68，48.6×97.3；容器 padding 26 → left 158、top 日期組上緣 +68。
+const MOB_SLASH = { left: 158, width: 48.6, top: 3105.47 + 68, height: 97.3 };
+// pad：--coreslash 190/96，69.3×139.6；padding 80 → left 270、top 日期組上緣 +96。
+// 日期組上緣 ＝ __meta 上緣 +46（實測 pad：meta 3485.67 / date 3531.67）。
+const PAD_SLASH = {
+  left: 270,
+  width: 69.29,
+  top: 3226.37 + 46 + 96,
+  height: 139.59,
+};
+
+const MOB_RECTS: FixtureRects = {
   '.sec2__path': { top: 0, height: 7149 },
   '論壇一/.forum-event__tag': { top: 375.4, height: 34 },
   // ⚠️ 2026-08-17 之前這裡是 `.forum-event__head: { top: 375.4, height: 393.2 }`（下緣 768.6）
@@ -66,6 +86,7 @@ const MOB_RECTS: Record<string, { top: number; height: number }> = {
   // 稿 2566:84799 → 論壇二 y=3014.47 內的 Frame 12742 y=805、180 高。
   // 改版前是 label { 3764.47, 34 } ＋ speaker#0 { 3814.47, 180 } ＋ speaker#1 { 4010.47, 180 }。
   '論壇二/.forum-event__speakers': { top: 3819.47, height: 180 }, // 下緣 3999.47
+  '論壇二/.forum-event__date-coreslash': MOB_SLASH,
   // 論壇二矮了 191（1418 → 1227），論壇三整段跟著上移同樣的量。
   '論壇三/.forum-event__meta': { top: 4679.47, height: 199 },
 };
@@ -74,14 +95,22 @@ const MOB_RECTS: Record<string, { top: number; height: number }> = {
 //   191，而 mob 線稿沒有重畫（設計 2026-08-17 確認）。線的職責是貼實際版面，故整條線在
 //   講者組之後跟著上移；斷言「剛好上移 191」比對著過期的稿座標更有意義
 //   （dy／t 打錯仍然會被抓到）。見 architecture/forum-node-path.md 第七節第 8 條。
+// ⚠ P7a／P7b 是**刻意偏離稿**的兩點（稿的 mob 線不經過那一撇，見 forum-node-path 的
+//   P7a note），故它們對的是撇本身的兩個角（MOB_SLASH），不是稿的線頂點。
 const MOB_VERTICES: [number, number][] = [
   [207.0, 43], [207.0, 376.5], [291.5, 368.5], [343.0, 763], [59.0, 1069],
-  [410.0, 1175], [0.5, 1938], [411.0, 3143.5], [107.0, 3786], [295.32, 3868.92],
+  [410.0, 1175], [0.5, 1938],
+  // P7 刻意偏離稿 3143.5 → 2793.47（dy +38 → −312，讓 P7→撇→P8 共線；理由見
+  // forum-node-path 的 P7）。斷言寫**意圖值**而非稿值，dy 打錯照樣抓得到。
+  [411.0, 3105.47 - 312],
+  [MOB_SLASH.left + MOB_SLASH.width, MOB_SLASH.top], // P7a 撇的右上角
+  [MOB_SLASH.left, MOB_SLASH.top + MOB_SLASH.height], // P7b 撇的左下角
+  [107.0, 3786], [295.32, 3868.92],
   [323.5, 4011], [323.5, 4676.5], [108.0, 4770.5], [198.5, 4827.5],
 ];
 
 // pad：768 稿的 論壇一二三 frame 內座標（node id 見 architecture/forum-node-path.md 的相關檔案表）
-const PAD_RECTS: Record<string, { top: number; height: number }> = {
+const PAD_RECTS: FixtureRects = {
   '.sec2__path': { top: 0, height: 6145 },
   '論壇一/.forum-event__tag': { top: 348, height: 34 }, // 標眉 348–382
   // 同 MOB_RECTS 的說明：原本是 `.forum-event__head: { top: 348, height: 380.65 }`（下緣 728.65）。
@@ -93,13 +122,19 @@ const PAD_RECTS: Record<string, { top: number; height: number }> = {
   // 講者組改單人（稿 2652:53305 → 論壇二 y=2527.37 內的「講者」3399:29051 y=1086.63、233 高）。
   // 改版前是 { 3593.02, 390 }。論壇二段落總高沒變（1541），故論壇三以下不受影響。
   '論壇二/.forum-event__speakers': { top: 3614.0, height: 233 }, // 下緣 3847.0
+  '論壇二/.forum-event__date-coreslash': PAD_SLASH,
   '論壇三/.forum-event__tag': { top: 4095.02, height: 34 },
   '論壇三/.forum-event__meta': { top: 4525.02, height: 228 }, // 下緣 4753.02
 };
 
+// ⚠ Q7a／Q7b 對的是撇本身的兩個角（PAD_SLASH），不是稿的線頂點 —— pad 的稿線本來就
+//   順著撇穿過去（實測差 5–7px），這兩點只是把它釘成精準重合。
 const PAD_VERTICES: [number, number][] = [
   [386.9, 191.0], [386.9, 398.5], [571.4, 339.0], [665.9, 792.5], [232.4, 1066.5],
-  [549.9, 1308.5], [619.9, 3219.5], [380.9, 3312.0], [246.0, 3595.0], [109.0, 3627.0],
+  [549.9, 1308.5], [619.9, 3219.5], [380.9, 3312.0],
+  [PAD_SLASH.left + PAD_SLASH.width, PAD_SLASH.top], // Q7a 撇的右上角
+  [PAD_SLASH.left, PAD_SLASH.top + PAD_SLASH.height], // Q7b 撇的左下角
+  [246.0, 3595.0], [109.0, 3627.0],
   [5.5, 3877.5], [123.0, 4087.0], [629.9, 4519.5], [201.4, 4778.0],
 ];
 
@@ -179,10 +214,35 @@ describe('完整路徑（前半段 ＋ 後半段）', () => {
     expect(FORUM_FRONT_NODES.pad.at(-1)!.join).toBeUndefined();
   });
 
-  it.each(['pc', 'pad', 'mob'] as const)('%s 只有精彩活動那一點是 optional', (bp) => {
-    const opt = FORUM_PATH_NODES[bp]!.filter((n) => n.optional);
-    expect(opt).toHaveLength(1);
-    expect(opt[0]!.anchor.sel).toBe('.highlights__item');
+  // optional 的點只有兩類：整塊可能不存在的區域（?highlights 關掉時的精彩活動），
+  // 以及 09/15 那一撇（場次資料沒標 'core' 時沒有那個元素）。多出第三類要先想清楚 ——
+  // 必要錨點量不到是**整條線放棄**，那是刻意的 fail-loud（見 buildNodePathD）。
+  it.each(['pc', 'pad', 'mob'] as const)('%s 的 optional 節點只有已知的那幾個', (bp) => {
+    const sels = FORUM_PATH_NODES[bp]!.filter((n) => n.optional).map(
+      (n) => n.anchor.sel,
+    );
+    const slash = bp === 'pc' ? [] : ['.forum-event__date-coreslash'];
+    expect(sels.sort()).toEqual(['.highlights__item', ...slash, ...slash].sort());
+  });
+
+  // 撇的兩端必須**相鄰**且以直線相連 —— 那一段就是撇本身，而撇是直線。
+  // 中間插進別的節點，或把 join 改成曲線，核心就會沿著一條不是撇的線畫出那一撇。
+  it.each(['pad', 'mob'] as const)('%s 的撇是一條直線（兩端相鄰、join 為 line）', (bp) => {
+    const nodes = FORUM_PATH_NODES[bp]!;
+    const i = nodes.findIndex(
+      (n) =>
+        n.anchor.sel === '.forum-event__date-coreslash' &&
+        n.anchor.edge === 'top',
+    );
+    expect(i, '找不到撇的進入端').toBeGreaterThan(-1);
+    const enter = nodes[i]!;
+    const exit = nodes[i + 1]!;
+    expect(enter.join).toBe('line');
+    expect(exit?.anchor.sel).toBe('.forum-event__date-coreslash');
+    expect(exit?.anchor.edge).toBe('bottom');
+    // 進入端是右上角、離開端是左下角（核心在這一帶往左下走）
+    expect((enter.x as { edge: string }).edge).toBe('right');
+    expect((exit!.x as { edge: string }).edge).toBe('left');
   });
 
   it.each(['pc', 'pad', 'mob'] as const)('%s 的最後一點掛在接縫（不受開關影響）', (bp) => {
@@ -389,14 +449,22 @@ describe('amplitude（全域橫向擺幅旋鈕）', () => {
     expect(xs(1)[6]).toBe(2); // P6 釘左緣
   });
 
-  it('0.5 把所有點往中心收一半', () => {
+  // 掛在 element 上的 x（ForumPathXAnchor，這裡是 09/15 那一撇的兩點）**刻意不吃**
+  // amplitude —— 掛住就是掛住（見上面「不吃 amplitude」那條）。故這兩條只驗其餘的點。
+  const scalable = MOB_NODES.map((n, i) => [n, i] as const)
+    .filter(([n]) => typeof n.x !== 'object')
+    .map(([, i]) => i);
+
+  it('0.5 把（不掛 element 的）點往中心收一半', () => {
     const a = xs(1);
     const b = xs(0.5);
-    a.forEach((x, i) => expect(b[i]!).toBeCloseTo(207 + (x - 207) * 0.5, 1));
+    scalable.forEach((i) =>
+      expect(b[i]!, MOB_NODES[i]!.id).toBeCloseTo(207 + (a[i]! - 207) * 0.5, 1),
+    );
   });
 
-  it('0 把整條線壓成一條垂直中線', () => {
-    expect(new Set(xs(0))).toEqual(new Set([207]));
+  it('0 把（不掛 element 的）點壓成一條垂直中線', () => {
+    expect(new Set(scalable.map((i) => xs(0)[i]))).toEqual(new Set([207]));
   });
 });
 

@@ -128,8 +128,10 @@ export const FORUM_PATH_EVENTS: readonly ForumPathEvent[] = [
   },
   {
     key: 'probeSlashSpot',
-    label: '探針：09/15 那一撇（mob 不觸發）',
-    at: { pc: 'W13', pad: 'Q7', mob: null },
+    label: '探針：09/15 那一撇的進入端',
+    // pad／mob 掛撇的右上角本身（那兩點就錨在撇上，見 forum-node-path 的 SLASH_SEL）；
+    // 2026-08-22 之前 pad 掛 Q7（撇上方 56px）、mob 是 null（那時 mob 的線不經過撇）。
+    at: { pc: 'W13', pad: 'Q7a', mob: 'P7a' },
   },
   {
     key: 'probeAgendaTop',

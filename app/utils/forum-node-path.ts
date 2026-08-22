@@ -126,6 +126,49 @@ const AGENDA_ARROW_X: ForumPathXAnchor = {
   fallback: 0.262, // ＝ 稿寬 768 下的箭頭位置，也是改動前寫死的值
 };
 
+/**
+ * 論壇二 09/15 那一撇 —— 撇的兩端**就是**路徑上的兩個節點。
+ *
+ * 那一撇是核心「畫」出來的（見 ForumEvent 的 .forum-event__date-coreslash 與
+ * ~/utils/forum-slash），所以「核心經過哪裡」與「撇畫在哪裡」必須是同一個真值。
+ * 撇的版位住在 ForumEvent.vue 的 --coreslash-x/y（逐斷點、且有目視微調），日期文案一改
+ * （月份變兩位數、行數變了、字級調了）它就跟著動 —— 節點掛它自己，兩邊才永遠同步。
+ *
+ * ⚠ **不要**在這裡抄一份稿座標或改掛 `__date` + dy。那會有兩份真值，漂掉時畫面上是
+ *   「撇畫在 A、核心在 B」，而兩邊都不報錯 —— 2026-08-22 修的 mob bug 就是這樣來的
+ *   （撇在 x 158–207，線卻走 x 235–370，差 126–168px）。
+ *
+ * ⚠ 兩點之間的 join 必須是 `'line'`：那一段**就是**撇本身，撇是直線。
+ *
+ * optional 是必要的：`slash` 不是 'core' 的場次沒有這個元素，量不到就跳過這兩點 ——
+ * 少一撇只是少一個裝飾，讓整條線放棄會讓橘核心在論壇段整段消失。
+ */
+const SLASH_SEL = '.forum-event__date-coreslash';
+/** 撇的進入端（右上角）。fallback 是稿寬下的比例，只在撇不存在時用得到。 */
+const slashEnterX = (fallback: number): ForumPathXAnchor => ({
+  event: '論壇二',
+  sel: SLASH_SEL,
+  edge: 'right',
+  fallback,
+});
+/** 撇的離開端（左下角） */
+const slashExitX = (fallback: number): ForumPathXAnchor => ({
+  event: '論壇二',
+  sel: SLASH_SEL,
+  edge: 'left',
+  fallback,
+});
+const SLASH_ENTER_Y: ForumPathAnchor = {
+  event: '論壇二',
+  sel: SLASH_SEL,
+  edge: 'top',
+};
+const SLASH_EXIT_Y: ForumPathAnchor = {
+  event: '論壇二',
+  sel: SLASH_SEL,
+  edge: 'bottom',
+};
+
 // ── pad（768 稿，Figma Vector 276 / temp/pad.svg）─────────────────────
 // 換算：artboard 座標 ＝ asset 座標 ＋ (3.356, 189.0)
 //   （來自 temp/vector276.svg 的 <rect width="768" height="6145"
@@ -192,6 +235,24 @@ const PAD_NODES: ForumPathNode[] = [
     id: 'Q7', // 稿 (380.9, 3312)；論壇二日期組內 +86
     x: 0.496,
     anchor: { event: '論壇二', sel: '.forum-event__meta', edge: 'top', dy: 86 },
+    join: 'line',
+  },
+  // ── 09/15 那一撇（見 SLASH_SEL 那一段）──────────────────────────────
+  // pad 的稿本來就把 Q7→Q8 那條直線畫成「順著撇的角度穿過去」（實測線 120.9°、
+  // 撇 116.4°，只差 4.5°），這兩點只是把它從「差 5–7px」釘成「精準重合」。
+  // 三段折角各 ~10°、每段只有 40–70px，看起來仍是一條直線。
+  {
+    id: 'Q7a', // 撇的右上角；稿寬 768 下 x ≈ 339.3
+    x: slashEnterX(0.4418),
+    anchor: SLASH_ENTER_Y,
+    optional: true,
+    join: 'line', // ⚠ 這一段就是撇本身，必須是直線
+  },
+  {
+    id: 'Q7b', // 撇的左下角；稿寬 768 下 x ≈ 270
+    x: slashExitX(0.3516),
+    anchor: SLASH_EXIT_Y,
+    optional: true,
     join: 'line',
   },
   // ⚠ Q8～Q10 的 dy 在 2026-08-17 重校過：論壇二的講者組從「兩張並排卡片 ＋ 上方標籤列」
@@ -318,7 +379,38 @@ const MOB_NODES: ForumPathNode[] = [
   {
     id: 'P7', // 稿 (411.0, 3143.5)；論壇二日期組上緣 3105.5
     x: 'right',
-    anchor: { sel: '[data-forum-anchor="論壇二"]', edge: 'top', dy: 38 },
+    // ⚠ **刻意偏離稿 dy +38 → −312**（撞右牆的位置往上移 350）。理由是下面那一撇：
+    //    dy +38 時 P7→P7a 的 chord 幾乎是水平的（171°），而撇是 116.5° —— 線得先橫著
+    //    掃 190px 再急轉 55° 才進得去撇，而且那個轉角會讓 P7 的折角從 66° 變成 94°、
+    //    越過 90° 門檻多冒一顆轉折音（見 forum-path-turns）。
+    //    往上移到「撇的延長線上」之後 P7→P7a→P7b 幾乎共線（chord 116.6° vs 撇 116.5°），
+    //    撇就是一條長直線的一部分 —— 這正是 pc／pad 稿的語彙（實測 pc 在撇的前後各有
+    //    120／150px 的直線）。折角回到 P7 42°／P7a 0°／P7b 5°，轉折音也回到 5 顆。
+    //    −312 ＝ 190.1（撇到右牆的水平距離）× tan(撇的角度) 反推，故三段共線。
+    anchor: { sel: '[data-forum-anchor="論壇二"]', edge: 'top', dy: -312 },
+    note: '刻意偏離稿 dy +38 → −312：讓 P7→撇→P8 共線（見 P7a）',
+    join: 'line',
+  },
+  // ── 09/15 那一撇（見 SLASH_SEL 那一段）──────────────────────────────
+  // ⚠ **刻意偏離 mob 線稿**：稿上這一段是 P7→P8 的一條長直線，撇則是獨立的靜態圖稿
+  //   （Figma 2574:87050），兩者在稿上就差 150–200px —— 稿沒有把 mob 的撇當成核心畫的。
+  //   實作三個斷點共用 `slash: 'core'`（section2.json 的場次資料，沒有逐斷點），
+  //   所以 mob 也會畫，只能讓線去咬撇。要改回「mob 不畫撇」就是把資料改成逐斷點，
+  //   那是另一件事（見 architecture/forum-node-path.md 第三節）。
+  {
+    id: 'P7a', // 撇的右上角；稿寬 414 下 x ≈ 206.6
+    x: slashEnterX(0.499),
+    anchor: SLASH_ENTER_Y,
+    optional: true,
+    note: '刻意偏離稿：稿的 mob 線不經過那一撇，這兩點把線拉去咬撇',
+    join: 'line', // ⚠ 這一段就是撇本身，必須是直線
+  },
+  {
+    id: 'P7b', // 撇的左下角；稿寬 414 下 x ≈ 158
+    x: slashExitX(0.3816),
+    anchor: SLASH_EXIT_Y,
+    optional: true,
+    // 往 P8 只差 5°（實測撇 116.5°、P7b→P8 121.7°）→ 直線接下去，看起來是同一筆
     join: 'line',
   },
   // ⚠ P8～P10 在 2026-08-17 重接過。論壇二的講者組從「標籤列 ＋ 兩張直排卡片」

@@ -105,6 +105,16 @@ export const FORUM_SLASH_AT: Record<'pc' | 'pad' | 'mob', [number, number] | nul
 //   改字級時只會有一邊跟上（而畫面上只是「筆尖粗了一點」，不會有人立刻發現）。
 export const FORUM_SLASH_CORE = {
   shrinkLen: 80,
+
+  /**
+   * 撇的兩端與驅動線的最大容許距離 —— 超過就**不畫**那一撇，並在 dev 吼一聲
+   *（算式與實測值見 ~/utils/forum-slash 的 slashAlignment）。
+   *
+   * 這是「撇畫在 A、核心在 B」的唯一防線。pad／mob 的線已經把節點錨在撇本身
+   *（forum-node-path 的 SLASH_SEL），程式保證重合；**pc 的 d 是手貼的**，只有這道守衛。
+   * 動 pc 的 FORUM_PATH，或動任何斷點的 --coreslash-x/y，都先看 console 有沒有這則警告。
+   */
+  alignTol: { px: 12, ratio: 0.12 },
 };
 
 // ── 論壇段核心的移動速度曲線 ──────────────────────────────────────────
