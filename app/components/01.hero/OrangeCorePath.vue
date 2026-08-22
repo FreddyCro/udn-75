@@ -27,6 +27,8 @@ import {
   refreshScrollTriggers,
   refreshOnFontsReady,
 } from '@/utils/scroll-trigger';
+// 進度 clamp 在 0 那一段（回捲到退場區間）改成螢幕鎖定，見 place()。
+import { coreHandoffBackY } from '@/utils/hero-core-handoff';
 // hero 退場吃掉的捲動距離：core 現身的那一刻＝退場結束，故起點與它綁在一起
 // （見下方 build 的 `sy` 與 ST 的 `start`）。
 import { HERO_DISSOLVE_VH } from '@/utils/hero-video-config';
@@ -52,6 +54,8 @@ const easeMove = gsap.parseEase(MOVE_EASE) ?? ((v: number) => v);
 
 const motionEl = ref<SVGPathElement | null>(null);
 let st: ScrollTrigger | null = null;
+// 退場區間（scrollY 0 → path 起點）的補刀尺，只在由下往上回捲時有事做，見 init()。
+let parkST: ScrollTrigger | null = null;
 let ready = false;
 // 驅動線總長：僅在 build() 幾何重建時量測一次，scrub 每幀直接複用（避免 getTotalLength 熱路徑）。
 let motionLen = 0;
@@ -115,10 +119,21 @@ function build() {
 function place(rawP: number) {
   const core = props.orangeCoreEl;
   const motion = motionEl.value;
-  if (!core || !motion || !motionLen) return;
+  const sec = props.sectionEl;
+  if (!core || !motion || !motionLen || !sec) return;
   const p = easeMove(rawP); // 套用移動速度曲線
   const pt = motion.getPointAtLength(p * motionLen);
-  gsap.set(core, { x: pt.x, y: pt.y, rotation: motionAngle });
+  // 進度 clamp 在 0（＝捲動位置在 ST 起點之前，也就是由下往上回捲進退場區間）時，
+  // 路徑點凍在**文件座標** `sy` ⇒ core 會 1:1 隨文件往下漂、停在引言裡再滑出視窗下緣。
+  // 那一段要維持「螢幕正中央」＝ 影片那顆 core 的位置（推導與實測見 coreHandoffBackY）。
+  // 傳 rawP 而非 p：判定要看 ScrollTrigger 的原始 clamp，不受 MOVE_EASE 影響。
+  const y = coreHandoffBackY(
+    rawP,
+    pt.y,
+    -sec.getBoundingClientRect().top, // 捲動位置換算到 section 座標系（同 build 的基準）
+    vhPx(0.5),
+  );
+  gsap.set(core, { x: pt.x, y, rotation: motionAngle });
   setPathProgress(p);
 }
 
@@ -145,6 +160,28 @@ function init() {
     invalidateOnRefresh: true,
     onUpdate: (self) => place(self.progress),
   });
+
+  // ── 退場區間（scrollY 0 → path 起點）的補刀尺 ────────────────────────
+  // 上面那條在這一段的進度恆為 0，而 ScrollTrigger 的 onUpdate **只在 clamp 後的進度
+  // 改變時才發**（ScrollTrigger.js 的 `clipped !== prevProgress`）—— 由下往上回捲跨過
+  // path 起點之後就再也收不到一個 tick，core 於是凍在文件座標上隨頁面往下漂：
+  // 實測 1522×868，scrollY 1000 → 螢幕 463、scrollY 0 → 1463（早就掉出視窗下緣），
+  // 也就是「core 停在引言、不回到影片那顆 core 的位置」。
+  //
+  // 兩條尺不會打架，也不倚賴 _triggers 的更新順序：本條只在主尺**還沒動起來**
+  // （progress 恰為 0）時寫入，而那一刻兩邊算出同一個值 ——
+  // `coreHandoffBackY(0, sy, vh($exit), vh(0.5)) === sy`，有測試釘住。
+  // 用 `st.progress === 0` 而非 `self.progress < 1`：後者在接縫（scrollY 恰為 path 起點）
+  // 那一格會變成兩條尺都不寫（實測 core 留在上一格的位置、螢幕 −608）。
+  parkST = ScrollTrigger.create({
+    start: 0,
+    end: () => vhPx(HERO_DISSOLVE_VH),
+    invalidateOnRefresh: true,
+    onUpdate: () => {
+      if (st && st.progress === 0) place(0);
+    },
+  });
+
   ScrollTrigger.addEventListener('refreshInit', build);
   // 手動 refresh 一律走 refreshScrollTriggers()（先 sort 再 refresh）—— 見 utils/scroll-trigger。
   // 這裡尤其需要 sort：本元件的 trigger 在 .sec1 頂端，而 Hero 的 transition pin 就在它下方
@@ -175,8 +212,9 @@ onBeforeUnmount(() => {
   ScrollTrigger.removeEventListener('refreshInit', build);
   // kill(false)：換頁時舊頁還在畫面上淡出，revert 會把畫面打回起始態而被看見
   // （見 utils/scroll-trigger 的 killScrollTriggers）
-  killScrollTriggers(st);
+  killScrollTriggers(st, parkST);
   st = null;
+  parkST = null;
 });
 </script>
 

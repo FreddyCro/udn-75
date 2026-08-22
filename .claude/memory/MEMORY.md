@@ -9,7 +9,7 @@
 - [RWD breakpoint mapping](rwd-breakpoint-mapping.md) — 斷點權威來源是 mixins.scss；這裡只留 1024 誤傳的更正、JS matchMedia 值、稿的細切原則
 - [Page route naming](page-route-naming.md) — 六子頁路由↔單位對應與閱讀順序（下一篇鏈）；JSON 改名史
 - [Hero body lock rules](hero-body-lock-rules.md) — hero 開場捲動鎖逐拍規則（2026-08-22 起：正片 ＋ 還沒播完的退場段都鎖，退場播完才解鎖；配兩根防死結保險絲）；.is-scroll-locked 必須同時掛 html 與 body 否則完全無效
-- [Hero core screen-locked](hero-core-screen-locked.md) — hero orange core 螢幕上完全不動（恆 50vh），是文字捲上去穿過它；程式註解本身會誤導
+- [Hero core screen-locked](hero-core-screen-locked.md) — hero orange core 螢幕上完全不動（恆 50vh），是文字捲上去穿過它；程式註解本身會誤導。含「進度 clamp 在端點就收不到 onUpdate」這個 scrub 通用坑
 - [Hero outro core handoff](hero-outro-core-handoff.md) — 影片裡的 core → DOM core 交棒：anchor 在 config、cover 換算與旋轉補償在 hero-core-handoff.ts；含層序陷阱（sticky 建立堆疊脈絡 ⇒ core／引言其實畫在影片之上，遮擋靠 opacity）
 - [Symbol rail vs section height](symbol-rail-vs-section-height.md) — 符號段尺長≠段高（尺多 50vh）；交棒時接縫的位置只由 handoff 那一拍決定，調總長是無效的
 - [Forum RWD](forum-rwd.md) — 動 02.forum 版面前先讀 architecture/forum-node-path.md；desktop-first 例外的理由、特異度陷阱
