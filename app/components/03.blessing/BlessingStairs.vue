@@ -47,6 +47,10 @@ const inView = ref(false);
 // 目前格號（0-based）。SSR 與首次 render 都是第 0 格＝只有直列第一塊。
 const frame = ref(0);
 
+// 對話框線（階梯線）逐格進場的音效。⚠️ 本檔已有一個叫 play 的函式（下方的逐格
+// 動畫啟動器），故解構時要 alias，不能直接叫 play。
+const { play: playSfx } = useSfx();
+
 // 第 n 格各部位的可見量（見檔頭的序列說明）
 const visibleColumn = computed(() => Math.min(COLUMN_STEPS, frame.value + 1));
 const visibleDiagonal = computed(() => Math.min(DIAGONAL_STEPS, frame.value));
@@ -89,6 +93,10 @@ const finish = () => {
 const play = () => {
   if (playing || done.value || !props.armed || !inView.value) return;
   playing = true;
+  // 音效跟著這支函式走，故自然吃到它的所有守衛：減少動態時走 finish()、
+  // 不經過這裡，就不會出聲；重播規則（只在使用者捲到階梯線上方才 reset）也一併沿用，
+  // 故來回捲會重播一次。
+  playSfx('benedictionLine');
   const startT = performance.now();
   const tick = (now: number) => {
     // ⚠️ Math.max(0)不可省：rAF 回呼收到的是**該幀的起始時刻**，若 play() 是在同一幀的

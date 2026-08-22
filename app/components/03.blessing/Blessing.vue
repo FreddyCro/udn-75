@@ -43,6 +43,16 @@ const {
   outroWhite,
 } = useOrangeCoreProgress();
 
+// 逐格笑臉開始畫的音效。
+//
+// 觸發點取 frame 0 → 1 而非 progress > 0：第 0 格是一塊白方塊、還不是臉
+// （見 ~/utils/blessing-face-frames），從那裡出聲會早半格。
+//
+// 減少動態時自然不會響：那個模式下 blessingFrame 從掛載起就固定在最後一格
+// （見 useOrangeCoreProgress），沒有上升緣。
+const { cueOn } = useSfxCue();
+cueOn(() => blessingFrame.value >= 1, 'benedictionSmile');
+
 // 夥伴清單整塊的現身時機。
 //
 // 捲動尺跑完（progress 1）的那一刻，sticky 臉屏剛好釋放，而 .section3__partners 的頂端
