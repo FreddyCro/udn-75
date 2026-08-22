@@ -152,7 +152,11 @@ function setupMobile() {
     let bestD = Infinity;
     items.forEach((el, i) => {
       const r = el.getBoundingClientRect();
-      const d = Math.abs(r.top + r.height / 2 - cy);
+      const center = r.top + r.height / 2;
+      // 列中心不在視窗內就不觸發：連續閱讀頁（/subpage）落地 #service 時，
+      // 上方 visual 的末列雖在視窗外，離觸發線仍可在 0.5vh 內 → 誤浮縮圖蓋到 service
+      if (center <= 0 || center >= window.innerHeight) return;
+      const d = Math.abs(center - cy);
       if (d < bestD) {
         bestD = d;
         best = i;
