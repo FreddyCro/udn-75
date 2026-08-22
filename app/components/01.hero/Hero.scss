@@ -1,7 +1,7 @@
 .sec1 {
   position: relative;
   // 影片淡出後露出的白底。掛在 section 而非 .sec1__hero —— 後者是 sticky 佔位
-  // （高度 = $dissolve + $intro-at，見 HeroVideo.vue），影片舞台 .sec1__hero-stage 只疊在
+  // （高度 = $exit + $intro-at，見 HeroVideo.vue），影片舞台 .sec1__hero-stage 只疊在
   // 佔位頂端那一個視窗高、並不會溢出佔位之外；溶解後露出的是佔位「以下」引言那一段，
   // 白底若只掛在 .sec1__hero 就蓋不到那裡，故往上提一層掛在整個 section。
   background: #fff;
@@ -33,7 +33,7 @@
   // ---- intro 引言 ----
   &__intro {
     // 上方不再留 core 的「舞台」空間：引言頂端的落點改由 .sec1__hero 的佔位高度
-    // （$intro-at ＋ $dissolve，見 HeroVideo.vue）一處決定 —— 兩邊各留一份就會在調整時脫鉤。
+    // （$intro-at ＋ $exit，見 HeroVideo.vue）一處決定 —— 兩邊各留一份就會在調整時脫鉤。
     // 下方 runway＝50vh（core 從內容底緣走到視窗正中央所需，OrangeCorePath 的終點
     // ＝ sectionHeight − 50vh）＋ 引言淡出窗口。值由 Hero.vue 依 INTRO_FADE_VH 算出後
     // 以 --intro-runway 餵進來（單一來源，見 orange-core-config）；fallback 對應 0.4。

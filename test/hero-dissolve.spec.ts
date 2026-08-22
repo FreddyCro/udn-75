@@ -2,27 +2,31 @@ import { describe, expect, it } from 'vitest';
 import {
   DISSOLVE_ENTER,
   DISSOLVE_LEAVE,
-  dissolveAlpha,
+  OUTRO_HOLD_SCALE,
   dissolveState,
+  outroHoldScale,
 } from '../app/utils/hero-dissolve';
 
-describe('dissolveAlpha', () => {
-  it('端點必須精確是 1 與 0', () => {
-    // 端點不精確的話：0 那端影片永遠留一層殘影蓋在引言上；
-    // 1 那端開場第一幀會看到影片半透明。
-    expect(dissolveAlpha(0)).toBe(1);
-    expect(dissolveAlpha(1)).toBe(0);
+describe('outroHoldScale', () => {
+  it('端點：不捲時不縮放、捲完時吃滿', () => {
+    expect(outroHoldScale(0)).toBe(1);
+    expect(outroHoldScale(1)).toBeCloseTo(1 + OUTRO_HOLD_SCALE, 10);
   });
 
-  it('區間內線性', () => {
-    expect(dissolveAlpha(0.25)).toBeCloseTo(0.75, 5);
-    expect(dissolveAlpha(0.5)).toBeCloseTo(0.5, 5);
+  it('區間內單調遞增 —— 這就是「捲動有反應」的全部來源', () => {
+    // 退場那段行程裡畫面上除了影片沒有東西可以動（引言還在視窗外），
+    // 沒有這條連動，捲與不捲畫面一模一樣。
+    let prev = outroHoldScale(0);
+    for (let p = 0.05; p <= 1; p += 0.05) {
+      const now = outroHoldScale(p);
+      expect(now).toBeGreaterThan(prev);
+      prev = now;
+    }
   });
 
-  it('區間外要夾住，不吐出界的值', () => {
-    // ScrollTrigger 在 refresh 前後偶爾會給出略超界的 progress。
-    expect(dissolveAlpha(-0.3)).toBe(1);
-    expect(dissolveAlpha(1.4)).toBe(0);
+  it('區間外要夾住', () => {
+    expect(outroHoldScale(-0.5)).toBe(1);
+    expect(outroHoldScale(2)).toBeCloseTo(1 + OUTRO_HOLD_SCALE, 10);
   });
 });
 
