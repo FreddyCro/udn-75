@@ -29,13 +29,28 @@ const lineRRef = ref<HTMLElement | null>(null);
 const titleRef = ref<InstanceType<typeof MediaTitle> | null>(null);
 const listRef = ref<InstanceType<typeof MediaList> | null>(null);
 
-// pad / mob 底紋活動範圍：內文與清單之間的留白帶由 .media__roam 佔位，
-// 量成「相對 section 的正規化矩形」傳給 HeartMetaball——團塊（含半徑）
-// 只在帶內漂移，不會壓到上下文字；pc 追蹤游標、用不到此值
+// pad / mob 底紋活動範圍：整個第一屏（hold 頂緣 → 清單上緣、滿版寬），量成
+// 「相對 hold 的正規化矩形」傳給 HeartMetaball。團塊（含羽化外緣）只在帶內漂移，
+// 不會侵入清單，但**會蓋過標題與內文** —— 這是刻意的：
+// 舊版只量 .media__roam（內文與清單之間那條 30vh 留白）以避開文字，代價是帶高
+// 永遠是最窄的軸 → clusterScale 由它決定 → 垂直振幅恆為 0，團塊還被縮到 43%。
+// 換成滿屏後窄軸變成寬度（mob 半寬 187 < 叢集名目半徑 286），雙軸都留得下振幅。
+// pc 追蹤游標、用不到此值。
+// .media__roam 保留為「清單上緣」的量測把手（它是 .media__head 的最後一個子元素，
+// 下緣即清單頂），同時仍負責把清單推離內文。
 const roamRef = ref<HTMLElement | null>(null);
 const bgRoamArea = ref<
   { x: number; y: number; width: number; height: number } | undefined
 >();
+// 遊走速度倍率：只在量到 roamArea（＝pad / mob）時提到 1.5，pc 維持元件預設 1。
+// 不能改 HeartMetaball 的 idleRoamSpeed 預設值 —— 那顆 prop 兩條分支共用，動它
+// 會連帶把 pc 的閒置遊走一起加速。
+// pad / mob 只有速度可調：振幅由 .media__roam 的幾何算死（idleRoamRange 在
+// roamArea 分支根本沒被讀），且垂直振幅恆為 0 —— 帶高 30vh 永遠是最窄的軸，
+// clusterScale 會把內縮量剛好吃滿半高。
+// 附帶把尾巴救回來：蓋章閘門是「移動滿 SPAWN_DIST 28px 才蓋一章」，原本 mob
+// 峰值 6.5px/s 慢到同時存活不到一章（tailAmount 等於沒作用），提速後約 1.2 章。
+const bgRoamSpeed = ref(1);
 onMounted(() => {
   if (!window.matchMedia('(max-width: 1279.98px)').matches) return;
   // 量測基準＝hold（＝底紋 .media__bg 的覆蓋範圍）；section 還含 track 的
@@ -46,11 +61,14 @@ onMounted(() => {
   const s = sec.getBoundingClientRect();
   const r = roam.getBoundingClientRect();
   bgRoamArea.value = {
-    x: (r.left - s.left) / s.width,
-    y: (r.top - s.top) / s.height,
-    width: r.width / s.width,
-    height: r.height / s.height,
+    // 滿版寬、自 hold 頂緣起算：hold 是 sticky top: 0，其頂緣＝第一屏頂緣
+    x: 0,
+    y: 0,
+    width: 1,
+    // r.bottom＝.media__head 下緣＝清單上緣（清單沒有 margin-top，緊接在後）
+    height: (r.bottom - s.top) / s.height,
   };
+  bgRoamSpeed.value = 1.5;
 });
 
 // 底紋 render loop 的閘門：預設 true（降級路徑不建 timeline，底紋一開始就可見），
@@ -97,7 +115,11 @@ useMediaIntroMotion({
         <!-- 章半徑/壽命一律吃元件預設：舊的 idle-blob-min/max 與 life 是為前一版
                （legacy/HeartMetaballBlock，cellSize 14px）調的，換成 patch 版後
                會讓尾巴大上一倍。尾巴大小改在 HeartMetaball 的 tailBlobMin/Max 調。 -->
-        <HeartMetaball :roam-area="bgRoamArea" :paused="!bgRevealed" />
+        <HeartMetaball
+          :roam-area="bgRoamArea"
+          :idle-roam-speed="bgRoamSpeed"
+          :paused="!bgRevealed"
+        />
       </div>
 
       <div class="media__inner">
@@ -244,7 +266,7 @@ useMediaIntroMotion({
   }
 }
 
-// 底紋活動帶
+// 內文與清單之間的留白：也是底紋活動範圍的下界（量的是它的下緣，見 bgRoamArea）
 .media__roam {
   height: 30vh;
 

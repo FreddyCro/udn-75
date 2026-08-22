@@ -153,7 +153,8 @@ const props = withDefaults(
     idleRoamRange?: number;
     /** 閒置遊走活動範圍（相對畫布的正規化矩形 0~1）：未提供＝整畫布置中、幅度
      *  idleRoamRange；提供時 patch 叢集「含羽化外緣」被限制在矩形內（幅度內縮
-     *  叢集半徑；帶塞不下時整體等比縮小），不會壓到範圍外的內容 */
+     *  **可見**半徑 1.1×headR，不是叢集名目半徑；帶塞不下時整體等比縮小），
+     *  不會壓到範圍外的內容 —— 但矩形**內**的內容會被壓到，由呼叫端決定範圍 */
     roamArea?: { x: number; y: number; width: number; height: number };
     /** 閒置遊走速度倍率 */
     idleRoamSpeed?: number;
@@ -580,16 +581,25 @@ onMounted(() => {
         const halfW = (width * area.width) / 2;
         const halfH = (height * area.height) / 2;
         clusterScale = Math.min(1, halfW / CLUSTER_PX, halfH / CLUSTER_PX);
-        // 章半徑現在綁 headR，會跟著 clusterScale 一起縮，故兩者同基準比較。
-        // 尾巴可及 ≈ headR × (STAMP_SPREAD + 0.84 × tailBlobMax)，恆小於
-        // CLUSTER_PX × clusterScale（0.68 × 1.01 ≈ 0.69），實際不再是限制因素，
-        // 但保留 max() 以防之後把 tailBlobMax 調到很大。
+        // 內縮量＝團塊**看得見**的半徑，不是叢集名目半徑（＝patch 聯集的外接
+        // 矩形 CLUSTER_PX）。兩者差 1/0.748 ≈ 1.34 倍：遮罩是場的等值線
+        // d = headR/√(th+0.16)，th ∈ [0.6,1.6]（見下方逐格迴圈）→ 外緣落在
+        // 0.75~1.15 × headR，而 headR 本身只有 0.68 × CLUSTER_PX。
+        //
+        // ⚠️ 用名目半徑會讓振幅在窄軸上恆為 0，不是「調小了」而是「數學上歸零」：
+        //    clusterScale 由窄軸決定 ⇒ clusterScale = halfH/CLUSTER_PX
+        //    ⇒ ext = CLUSTER_PX × clusterScale ≡ halfH ⇒ ampY ≡ 0。
+        //    改用可見半徑後 ext = 0.748 × halfH，窄軸也留得下 25% 的振幅。
         const headRNominal = CLUSTER_PX * 0.68 * props.coreScale * clusterScale;
+        // 尾巴可及 ≈ headR × (STAMP_SPREAD + 0.84 × tailBlobMax) ≈ 0.72 × headR，
+        // 小於本體的 1.1 × headR，實際不是限制因素；保留 max() 以防 tailBlobMax
+        // 之後被調很大。
         const tailR =
           TAIL > 0
             ? headRNominal * (STAMP_SPREAD + 0.84 * props.tailBlobMax)
             : 0;
-        const ext = Math.max(CLUSTER_PX * clusterScale, tailR);
+        // 1.1＝移動中的可見外緣（靜止約 0.89，最外圈毛邊 1.15）
+        const ext = Math.max(headRNominal * 1.1, tailR);
         cx0 = width * (area.x + area.width / 2);
         cy0 = height * (area.y + area.height / 2);
         ampX = Math.max(0, halfW - ext);
