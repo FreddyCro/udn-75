@@ -1,0 +1,29 @@
+// hero 第一屏的捲動幾何：兩個旋鈕 ＋ 一條由它們推導的下限。
+//
+// 抽成 partial 的理由：這組值同時被 HeroVideo.vue（算佔位高）與 Hero.scss
+// （算 .sec1__inner 的 min-height 保險）用到，各留一份就會在調整時脫鉤。
+// 完整設計見 architecture/2026-08-21-hero-two-phase-exit-design.md。
+
+// $intro-at：退場結束時，引言上緣落在螢幕的哪裡（0.85 ＝ 露出約三行，
+//            這是設計核准過的那一格構圖）。
+$intro-at: 0.85;
+
+// $exit：A 階段（影片退場）吃掉多少捲動距離（× 視窗高）。**必須與 hero-video-config
+//        的 HERO_DISSOLVE_VH 相同** —— 那邊算 ScrollTrigger 的 end，這邊算佔位高度與
+//        下方的黏著保險。SCSS 變數無法從 JS 讀取，這是本專案已知且接受的雙寫
+//        （同 CORE.dotSize 與 OrangeCore.vue 的關係）。改一邊就要改另一邊。
+//
+// 沿革：1.2 ＋ 固定 200px → 1（2026-08-21，「滑完 100vh 就收掉」）→ 1.6（2026-08-22，
+// 使用者要延長退場行程，L2 等級）。1.6 已經超過桌機引言自己撐出的黏著範圍，
+// 故同時加上下方的 $sticky-floor（詳見 Hero.scss 的 .sec1__inner）。
+$exit: 1.6;
+
+// 黏著保險的下限：`.sec1__hero` 是 sticky，黏著範圍 ＝ 容器（.sec1__inner）高
+// − 佔位高 ＝ 引言總高。要撐過整段退場就必須「引言總高 ≥ 退場距離」：
+//
+//   容器高 ≥ 佔位高 ＋ 退場距離 = vh($exit + $intro-at) + vh($exit)
+//                              = vh(2 × $exit + $intro-at)
+//
+// 加 0.05 視窗高的餘裕吸收捨入與字體載入後的行高變動（引言本體高度會隨字體換算變）。
+// ⚠️ 這是**下限**，不是固定高度：引言本身比它高（窄螢幕換行多）時完全不作用。
+$sticky-floor: 2 * $exit + $intro-at + 0.05;
