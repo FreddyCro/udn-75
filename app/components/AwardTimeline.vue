@@ -7,7 +7,10 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  killScrollTriggers,
+  refreshScrollTriggers,
+} from '@/utils/scroll-trigger';
 
 export interface TimelineAward {
   /** 獎項機構 */
@@ -138,14 +141,15 @@ function build() {
   measure(); // onRefresh 之外先量一次，確保首屏就有門檻可比
 }
 
+/**
+ * 只有卸載路徑會呼叫（無跨斷點重建）→ 一律不 revert、不 clearProps：舊頁還要在畫面上
+ * 淡出 220ms，拔掉 pin-spacer 會讓下方版面跳一段而被看見（見 utils/scroll-trigger 的
+ * killScrollTriggers）。DOM 下一刻就丟掉，收拾 inline 樣式沒有實際效益。
+ */
 function teardown() {
-  tl?.scrollTrigger?.kill();
+  killScrollTriggers(tl?.scrollTrigger);
   tl?.kill();
   tl = null;
-  gsap.set(
-    [trackRef.value, lineRef.value, trailRef.value, arrowRef.value].filter(Boolean),
-    { clearProps: 'all' },
-  );
 }
 
 function onResize() {

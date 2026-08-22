@@ -6,7 +6,10 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  killScrollTriggers,
+  refreshScrollTriggers,
+} from '@/utils/scroll-trigger';
 import {
   HIDE_Y,
   blockState,
@@ -424,7 +427,12 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  triggers.forEach((st) => st.kill());
+  // ⚠️ 非 killScrollTriggers（＝ kill(false)）不可：裸 kill() 會 revert，而 revert 會把
+  //    舞台的 pin-spacer 從 DOM 拔掉。此刻舊頁還要在畫面上淡出 220ms（out-in 的 leave
+  //    一開始就呼叫 beforeUnmount），而 `--pinned` 與 `--under-stage` 是 Vue 旗子驅動的、
+  //    不會跟著消失 —— 佔位沒了、`margin-top: vh(-0.65)` 的上拉還在，內文就整段跳到
+  //    0.35 屏處疊在 hero 上（實測 1446×1155：contentTop 3933 → 468，16 幀全程可見）。
+  killScrollTriggers(...triggers);
   triggers = [];
   tweens.forEach((t) => t.kill());
   tweens = [];

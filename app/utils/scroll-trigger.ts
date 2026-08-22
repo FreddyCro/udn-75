@@ -54,8 +54,8 @@ export function refreshScrollTriggers() {
  *
  * ⚠️ **只用在卸載路徑**。「就地重建」（跨斷點重建 pin、HMR 重播）反而**需要** revert：
  *    那裡要的是乾淨的幾何再重新量測，收掉 inline 樣式是刻意的。目前刻意保留裸 kill()
- *    的有兩處，都在重建路徑上：`useMediaIntroMotion.buildMotion()` 開頭、
- *    `FormulaBlocks` 的 `teardown()`（後者以參數區分兩種呼叫端）。
+ *    的有三處，都在重建路徑上：`useMediaIntroMotion.buildMotion()` 開頭、
+ *    `FormulaBlocks` 與 `PhotoPanels` 的 `teardown()`（後兩者以 `quiet` 參數區分兩種呼叫端）。
  */
 export function killScrollTriggers(
   ...triggers: (ScrollTrigger | null | undefined)[]

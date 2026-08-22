@@ -103,6 +103,7 @@ const DESIGN_SLIDES: ShowcaseSlide[] = [
 <script setup lang="ts">
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { killScrollTriggers } from '@/utils/scroll-trigger';
 
 const props = defineProps({
   /** 卡片清單（設計稿尺寸＋素材）；張數不足會自動循環填滿 count */
@@ -264,7 +265,7 @@ onMounted(() => {
 
   onBeforeUnmount(() => {
     ScrollTrigger.removeEventListener('refreshInit', onRefresh);
-    tl.scrollTrigger?.kill();
+    killScrollTriggers(tl.scrollTrigger); // 卸載路徑不 revert，見 utils/scroll-trigger
     tl.kill();
   });
 });
