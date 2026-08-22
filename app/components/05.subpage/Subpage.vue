@@ -239,6 +239,13 @@ onMounted(async () => {
   //
   // start 取 'top bottom'（舞台頂端碰到視窗底）而非更晚的線：晚於此的話 hero 會先以完整
   // 樣貌露臉、再倒回透明重播一次，那是明顯的破格。
+  //
+  // ⚠️ 這面旗子是 applyStage 的守衛：pin 的 onRefresh 會**強制**把三塊同步到當下進度
+  //    （force: true），而 hero 在進度 0 的狀態就是「顯示」—— 沒有守衛的話，任何一次
+  //    refresh 都等於把還沒輪到的 hero 直接設成 autoAlpha 1、y 0。連續閱讀頁載入時
+  //    refreshScrollTriggers() 至少跑六次（六篇各一次，見下方 onMounted 末尾），
+  //    第 2～6 篇的 hero 於是在讀者捲到之前就被點亮，once 的進場動畫成了空砲。
+  let heroRevealed = !(heroTargets.length && stageRef.value);
   if (heroTargets.length && stageRef.value) {
     gsap.set(heroTargets, { autoAlpha: 0, y: REVEAL.y });
     triggers.push(
@@ -246,7 +253,8 @@ onMounted(async () => {
         trigger: stageRef.value,
         start: 'top bottom',
         once: true,
-        onEnter: () =>
+        onEnter: () => {
+          heroRevealed = true;
           tweens.push(
             gsap.to(heroTargets, {
               autoAlpha: 1,
@@ -255,7 +263,8 @@ onMounted(async () => {
               ease: REVEAL.ease,
               overwrite: 'auto',
             }),
-          ),
+          );
+        },
       }),
     );
   }
@@ -300,10 +309,16 @@ onMounted(async () => {
   ) {
     const wantHero = p < lines.heroOut;
     if (force || wantHero !== heroShown) {
-      heroShown = wantHero;
-      if (!wantHero) heroFade.hide(HIDE_Y.after, instant);
-      else if (replayHero) heroFade.reveal();
-      else heroFade.show(instant);
+      if (!wantHero) {
+        heroShown = false;
+        heroFade.hide(HIDE_Y.after, instant);
+      } else if (heroRevealed) {
+        heroShown = true;
+        if (replayHero) heroFade.reveal();
+        else heroFade.show(instant);
+      }
+      // else：進場還沒播過 —— 維持藏著（heroShown 留 false），顯示交給 once 那條線。
+      // 這裡搶著顯示等於把進場動畫吃掉，理由見 heroRevealed 的宣告處。
     }
 
     // 沒有第三拍時 introOut 落在 1 之後，永遠進不了 after，行為與加入媒體前相同
@@ -612,8 +627,7 @@ onBeforeUnmount(() => {
 // 由 ScrollTrigger pin 住、滾動進度觸發兩者交接（見 script 的 onUpdate）。
 .subpage__stage--pinned {
   position: relative;
-  height: 100vh;
-  height: 100svh;
+  height: vh(1);
   overflow: hidden;
 
   .subpage__hero,
@@ -621,16 +635,8 @@ onBeforeUnmount(() => {
   .subpage__media {
     position: absolute;
     inset: 0;
-    min-height: 0; // 高度由 inset 決定（= 舞台一屏），不再各自撐 100svh
+    min-height: 0; // 高度由 inset 決定（= 舞台一屏），不再各自撐 vh(1)
     height: auto;
-  }
-
-  // 舞台高是 100svh，iOS 工具列收合後視口變高、滿屏媒體底部會露出一條縫 ——
-  // 只把媒體層改吃 dvh、放掉 bottom，伸出舞台的部分靠 --media 拍放開 overflow（見下方）。
-  .subpage__media {
-    bottom: auto;
-    height: 100vh;
-    height: 100dvh;
   }
 }
 
@@ -646,9 +652,10 @@ onBeforeUnmount(() => {
 //    直到照片真的蓋上來。不會有「header 先消失一拍」的破綻。
 .subpage__stage--pinned.subpage__stage--media {
   z-index: 1100; // 與 SubpageIntroMedia 的 .intro-media 同值，兩處要一起改
-  // 讓 100dvh 的媒體層伸出 100svh 的舞台。只在媒體拍放開：
-  // 其餘拍維持 hidden，hero 進出場的位移才不會超出舞台。
-  overflow: visible;
+  // ⚠️ 這裡曾有一條 `overflow: visible`：舞台吃 svh、媒體層吃 dvh，工具列收合後媒體得能
+  //    伸出舞台才不露縫。改吃 --vh（＝ large viewport，收合網址列不變）之後舞台本來就
+  //    比可視範圍高，那個補丁連同它放開的 overflow 一起拿掉 —— 全程維持 hidden，
+  //    hero 進出場的位移才不會超出舞台。
 }
 
 // 舞台佔位（GSAP 插入的 .pin-spacer）不吃指標事件。
@@ -674,14 +681,12 @@ onBeforeUnmount(() => {
 }
 
 .subpage__media {
-  height: 100vh;
-  height: 100svh;
+  height: vh(1);
 }
 
 .subpage__hero {
   position: relative;
-  min-height: 100vh;
-  min-height: 100svh;
+  min-height: vh(1);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -704,14 +709,14 @@ onBeforeUnmount(() => {
 // 舞台雖然空了，那一屏仍在文件流裡要整屏捲掉，內文才輪得到 —— 沒有上拉時實測
 // （1440×900）照片消失在 2700、內文到頂要 3664，中間 964px ≒ 一屏全白。
 //
-// **為什麼是 65svh 而不是滿滿一屏**：拉滿（100svh）的話溶解結束時內文上緣已經在 64，
-// 等於「文章早就就定位、照片只是從它身上淡掉」，溶解全程都看得到字。留 35svh 的話
+// **為什麼是 0.65 屏而不是滿滿一屏**：拉滿（vh(-1)）的話溶解結束時內文上緣已經在 64，
+// 等於「文章早就就定位、照片只是從它身上淡掉」，溶解全程都看得到字。留 0.35 屏的話
 // 文章是**從下面進場**的 —— 實測 1440×900：
 //   溶解開始 2475 → 上緣 604（只露下面約三分之一）
 //   溶解結束 2700 → 上緣 379
 //   到頂     3079 → 上緣 0（溶解完再 379px，有進場感但不會空一屏）
 // 這個數字純粹是視覺取捨、可以單獨調（不影響 scrub 的正確性）：
-// 調大越接近「就定位」，調小越接近「空一屏」；上限 100svh、拿掉就是空一屏的原樣。
+// 調大越接近「就定位」，調小越接近「空一屏」；上限 vh(-1)、拿掉就是空一屏的原樣。
 //
 // ⚠️ 綁 `stagePinned && introMedia`，兩個條件都不能少：
 //    ① 沒有 pin（no-JS／reduced-motion）時三塊各佔一屏走文件流，上拉會吃掉媒體那屏。
@@ -721,8 +726,7 @@ onBeforeUnmount(() => {
 //    內文 z-index: auto 在它下面 → 照片淡掉就露出內文。其餘拍舞台雖然只有 auto，
 //    但那時內文上緣還在視窗外（實測引言退場的 1215 時仍在 1774），不會偷跑。
 .subpage__content--under-stage {
-  margin-top: -65vh;
-  margin-top: -65svh; // 與 .subpage__stage--pinned 的高度同單位，行動裝置才對得齊
+  margin-top: vh(-0.65); // 與 .subpage__stage--pinned 的高度同一把尺（--vh）
 }
 
 // ≥1280 的寬度走 clamp，理由見上方「pc→ultra 的 clamp」註解。
@@ -781,6 +785,13 @@ onBeforeUnmount(() => {
   @include rwd-min('pc') {
     width: clamp(796.08px, calc(796.08 / 1280 * 100vw), 1194.12px);
   }
+  // 1920 稿的上距是 48（不是 tablet 那檔的 32）—— 少這 16px，文字組總高就短一截，
+  // 而 .subpage__hero-inner 的 gap 是標稿定值、沒有 space-between 可以吸收，
+  // KV 圖會整個往上挪 16px、底下空出約 15px（實測 1920×1080：內容 695 對舞台 710）。
+  // 算式對帳見上方 .subpage__title-img 的稿基準註解。
+  @include rwd-min('ultra') {
+    margin-top: 48px;
+  }
 }
 
 // 字帶比例同主標，理由與稿基準見 .subpage__title-img
@@ -825,8 +836,7 @@ onBeforeUnmount(() => {
 .subpage__intro {
   display: flex;
   align-items: center;
-  min-height: 100vh;
-  min-height: 100svh;
+  min-height: vh(1);
   // 56px／96px 是內容超過一屏時（窄機／放大字級）的最小留白：自然撐高，不裁切
   //（pin 模式改由 overflow 裁）
   padding: calc(56px + var(--header-height)) 0 56px;
@@ -836,10 +846,7 @@ onBeforeUnmount(() => {
   }
   @include rwd-min('pc') {
     align-items: flex-end;
-    padding-bottom: calc(80 / 720 * 100vh);
-    padding-bottom: calc(
-      80 / 720 * 100svh
-    ); // 與舞台一屏（100svh）同單位，底距才貼齊屏底
+    padding-bottom: calc(80 / 720 * #{vh(1)}); // 與舞台一屏同一把尺，底距才貼齊屏底
   }
 }
 

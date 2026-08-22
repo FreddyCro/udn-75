@@ -21,7 +21,12 @@ const SCAN_EXT = ['.vue', '.ts', '.scss', '.css'];
 const OUT_OF_SCOPE = [
   'app/components/legacy/', //     已停用
   // 04.media 已收編、不再排除（原「唯一的例外」撤銷，見 architecture/viewport-height.md 例外 1）
-  'app/components/05.subpage/', // 已用 100svh 雙寫，本來就穩
+  // 05.subpage 也收編了。原本的理由是「已用 100svh 雙寫，本來就穩」—— 那句是錯的：
+  // svh ＝ small viewport（網址列展開時的可視高），而舞台 pin 的 `+=300%` 是 GSAP 拿
+  // **`<div style="height:100vh">` 探針**量出來的（ScrollTrigger.js 的 _div100vh／_100vh，
+  // 註解寫明「不要靠 window.innerHeight」）—— 那是 large viewport，正是 --vh 的量法。
+  // 兩者在行動裝置上差一整條網址列（實測 60–115px）：版面吃 svh、捲動幾何吃 vh，
+  // 舞台底下就露一條縫，-65svh 的上拉也與拍長對不齊。
   'app/pages/demo.vue', //         開發用示範頁
   'app/components/ShowcaseGallery.vue',
   'app/components/AwardTimeline.vue',
@@ -50,6 +55,10 @@ const INNER_HEIGHT_ALLOWED: Record<string, string> = {
   'app/components/ui/AppHeader.vue': '捲動進度條分母＝真實最大可捲距離',
   'app/components/DevCoreProgress.vue': 'dashboard 要顯示真相',
   'app/components/02.forum/Agenda.vue': '播放頭的「視窗中央」；且只在 measure() 跑',
+  'app/components/05.subpage/SubpageWorks.vue':
+    '懸浮縮圖貼上方或下方、以及「捲到畫面中央的列」—— 問的都是使用者此刻看得到什麼',
+  'app/components/05.subpage/Subpage.vue':
+    '「這次是跳捲還是連續捲動」的門檻，比的是使用者感知的一屏，不是版面尺長',
 };
 
 const stripComments = (src: string) =>

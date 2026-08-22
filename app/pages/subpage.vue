@@ -17,7 +17,11 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import common from '~/locales/common.json';
 import { TABLET_BREAKPOINTS } from '~/utils/constants';
 import { pickActiveAnchor } from '~/utils/anchor-spy';
-import { refreshScrollTriggers } from '~/utils/scroll-trigger';
+import {
+  refreshOnContentResize,
+  refreshOnFontsReady,
+  refreshScrollTriggers,
+} from '~/utils/scroll-trigger';
 import { anchorSlug, streamTargetSlug } from '~/utils/subpage-stream';
 import NewsArticle from '~/components/05.subpage/articles/NewsArticle.vue';
 import VisualArticle from '~/components/05.subpage/articles/VisualArticle.vue';
@@ -129,6 +133,27 @@ const LANDING_TICK_MS = 16;
 const LANDING_DECIDE_MS = 1000;
 
 /**
+ * 落點相關的計時器一律走這裡登記，離場時 clearLandingTimers() 一起清。
+ *
+ * ⚠️ 非清不可：holdLanding 與 awaitLandingDecision 都是 setTimeout 自我遞迴的迴圈，
+ *    結束條件是「使用者動了」或 8 秒／1 秒的上限 —— **換頁不在結束條件裡**。沒清的話
+ *    離場後它們照跑，對著下一個路由的文件量 offsetTop、呼叫 window.scrollTo。
+ *    現在只是因為 slugTop 在新文件裡回 null 才沒出事，那是巧合不是設計。
+ */
+const landingTimers = new Set<ReturnType<typeof setTimeout>>();
+function later(fn: () => void, ms: number) {
+  const id = setTimeout(() => {
+    landingTimers.delete(id);
+    fn();
+  }, ms);
+  landingTimers.add(id);
+}
+function clearLandingTimers() {
+  landingTimers.forEach(clearTimeout);
+  landingTimers.clear();
+}
+
+/**
  * 對齊落點，然後在短窗口內**每幀確認一次**，被別人推開就再拉回來。
  *
  * ⚠️ 為什麼不是「對齊一次」就好：初次載入會動到捲軸的不只一個角色 ——
@@ -160,7 +185,7 @@ function holdLanding(slug: string) {
     }
     // 用 setTimeout 而非 rAF：分頁不可見時 rAF 完全不觸發，這個迴圈就停在半路
     // （同 onMounted 裡發車的理由）。只有偏差超過 EPSILON 才寫捲軸，所以逐幀確認不花成本。
-    setTimeout(tick, LANDING_TICK_MS);
+    later(tick, LANDING_TICK_MS);
   };
   tick();
 }
@@ -198,7 +223,7 @@ function kick() {
 function awaitLandingDecision(deadline: number) {
   const slug = resolveLanding();
   if (!slug && !userMoved && performance.now() < deadline) {
-    setTimeout(() => awaitLandingDecision(deadline), LANDING_TICK_MS);
+    later(() => awaitLandingDecision(deadline), LANDING_TICK_MS);
     return;
   }
 
@@ -247,6 +272,9 @@ function startSpy() {
 
 const router = useRouter();
 
+/** refreshOnContentResize() 的解除掛鉤（離場時呼叫） */
+let stopContentResize: (() => void) | null = null;
+
 onMounted(async () => {
   await nextTick();
 
@@ -269,29 +297,35 @@ onMounted(async () => {
   //    這樣落在第一篇。所以 rAF 與 setTimeout 兩路都發車，誰先到誰算，kick 自帶只跑一次的閘。
   //    仍保留 rAF 那一路：可見時它比 setTimeout 更早、且保證在一次繪製之後（版面已定）。
   requestAnimationFrame(() => requestAnimationFrame(kick));
-  setTimeout(kick, LANDING_KICK_FALLBACK_MS);
+  later(kick, LANDING_KICK_FALLBACK_MS);
 
   // 網頁字體載入完成後的重排。
   //
   // ⚠️ 這是實測抓到、而且上面兩道網都攔不到的一項：字體 swap 之後六節的中文內文全部重排，
   //    實測 390×844 的 /subpage 文件高從 47497 長到 48835（+1338），health 的落點跟著
   //    位移約 250px。它發生在 holdLanding 的窗口之後，而**字體 swap 不會觸發
-  //    ScrollTrigger 的 refresh**，所以 onRefresh 也攔不到 —— 只能自己接 fonts.ready。
+  //    ScrollTrigger 的 refresh**，所以 onRefresh 也攔不到。
   //
-  // ⚠️ 順帶把 pin 全體重算：重排之後各 pin 的絕對起點同樣是舊的。這一點對獨立子頁也成立
-  //    （那裡沒有落點問題，所以看不出來，但 pin 起點確實偏了），已回報給人類決定要不要
-  //    在全站層級補這一刀。
-  if (document.fonts) {
-    await document.fonts.ready;
-    refreshScrollTriggers();
-    if (!userMoved && landingSlug) jumpToSlug(landingSlug);
-  }
+  // ⚠️ 走 refreshOnFontsReady() 而不是自己 `await document.fonts.ready`：後者沒有離場
+  //    守衛（字體載入途中換頁的話，await 之後的重算與落點校正會落在下一個路由），而且
+  //    每次進站都重掛一次。單一入口自帶模組層的只註冊一次旗子。落點校正也不必自己補打 ——
+  //    startSpy() 已經把 onRefresh 掛在 ScrollTrigger 的 refresh 事件上，這一刀會順著過去。
+  refreshOnFontsReady();
+
+  // 內容高度一變就重算。**這是連續閱讀頁「下一篇 hero 疊到上一篇內文」的解**：
+  // pin 的起訖是量完就固定的絕對座標，冷啟動時陸續載入的內文圖（48 張有 44 張沒有保留
+  // 尺寸）與 SubpageWorks 的列展開（+136px）都會把下面每一篇的舞台往下推，而 pin 不知道。
+  // 完整脈絡與實測數字見 utils/scroll-trigger 的 refreshOnContentResize。
+  stopContentResize = refreshOnContentResize();
 });
 
 onBeforeUnmount(() => {
   observer?.disconnect();
   observer = null;
   sectionEls.clear();
+  clearLandingTimers();
+  stopContentResize?.();
+  stopContentResize = null;
   ScrollTrigger.removeEventListener('refresh', onRefresh);
   USER_EVENTS.forEach((e) => window.removeEventListener(e, markUserMoved));
   if (import.meta.client) history.scrollRestoration = 'auto';
