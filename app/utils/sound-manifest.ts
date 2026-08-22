@@ -11,7 +11,16 @@
 // 清單與 public/sounds/ 的實際檔案由 test/sound-manifest.spec.ts 雙向對照 ——
 // 檔名打錯、或丟了檔卻忘了登記，都會被測試擋下來。
 export const SOUND_MANIFEST = {
+  /** 通用短音（0.4s）：按鈕 hover／click、路徑撞擊點、議程箭頭。 */
   sfx01: 'udn75_sfx01_01.mp3',
+  /** 2.8s：符號段粒子收攏（converge）。 */
+  aiFaceBg: 'udn75_sfx_ai_face_bg.mp3',
+  /** 2.3s：符號段的文字亂碼跳動與方塊遮罩轉場。 */
+  aiFaceText: 'udn75_sfx_ai_face_text.mp3',
+  /** 2.3s：永續祝福的階梯線逐格進場。 */
+  benedictionLine: 'udn75_sfx_benediction_line.mp3',
+  /** 3.3s：永續祝福的逐格笑臉開始畫。 */
+  benedictionSmile: 'udn75_sfx_benediction_smile.mp3',
 } as const;
 
 export type SoundKey = keyof typeof SOUND_MANIFEST;
