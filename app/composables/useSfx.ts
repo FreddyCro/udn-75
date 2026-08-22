@@ -14,6 +14,7 @@ import {
   soundPath,
   type SoundKey,
 } from '~/utils/sound-manifest';
+import { sfxStopList } from '~/utils/sfx-cue';
 
 // ── audio pool ────────────────────────────────────────────────────────
 // 一支音效一個 Audio 物件，存在 module scope 而非 useState：
@@ -46,12 +47,18 @@ export function useSfx() {
    *
    * 重複觸發：前一次還沒播完就再呼叫 → currentTime 歸零重頭播（不疊音）。
    * 連點按鈕、滑過一排 icon 都是這個行為。
+   *
+   * 長音互斥：2–3 秒的動畫音彼此不疊（規則見 ~/utils/sfx-cue 的 LONG_SFX_KEYS）。
+   * 短音 sfx01 不受影響 —— 按鈕聲要能疊在動畫音之上。
    */
   const play = (key: SoundKey) => {
     if (!soundOn.value || !isSoundKey(key)) return;
 
     const audio = ensure(key, assetUrl);
     if (!audio) return;
+
+    // 先停再播：停的是「其他長音」，不含自己（見 sfxStopList）。
+    sfxStopList(key).forEach(stop);
 
     audio.currentTime = 0;
     // 瀏覽器擋自動播放時會 reject（NotAllowedError）—— 那是預期內的情況，
