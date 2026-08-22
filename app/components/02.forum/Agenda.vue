@@ -21,11 +21,14 @@ import type { UBtnVariant } from '~/types/ui';
 const { groups } = str.agenda;
 
 // CTA 資料。download 欄位只掛在「要當附件存下來」的那顆（目前是下載完整議程），
-// 有它才把 href 前綴 APP_ASSETS_PATH —— 另一顆是 "#" 錨點，前綴上去會變成跨站絕對網址。
+// 有它才把 href 前綴 APP_ASSETS_PATH —— 另一顆（立即報名）是 udn.com 的絕對網址，
+// 前綴上去會變成 https 疊 https 的壞網址。
 // ⚠️ 暫時性：真的議程 PDF 還沒有，先指向 public/meta.jpg 代打，
 //    檔案到位後只要改 JSON 的 href／download，本檔不用動。
 // ⚠️ download 只在同源時有效；APP_ASSETS_PATH 若指到別的 origin，瀏覽器會改成直接開圖。
 type AgendaAction = {
+  /** DOM id（GTM 點擊事件用） */
+  id: string;
   label: string;
   href: string;
   variant: string;
@@ -206,6 +209,7 @@ onBeforeUnmount(() => {
       <UBtn
         v-for="(action, i) in actions"
         :key="i"
+        :id="action.id"
         class="agenda__action"
         :variant="action.variant as UBtnVariant"
         :href="action.href"

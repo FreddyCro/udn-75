@@ -255,6 +255,7 @@ onBeforeUnmount(() => {
     id="blessing"
     ref="sectionRef"
     class="section3"
+    :class="{ 'is-outro': outroWhite }"
     :data-header-theme="outroWhite ? 'light' : 'orange'"
     :data-anchor-offset-vh="BLESSING_ANCHOR_VH"
     :style="{ '--cover-orange': coverOrange, '--outro-white': outroWhite }"
@@ -394,6 +395,21 @@ onBeforeUnmount(() => {
   // 只在接觸點跨越一次，所以 transition 不會有「每一幀追補間」的發黏問題。
   // 0.4s ease 對齊本檔其他淡入淡出（.section3__partners / .section3__partners-panel）。
   transition: background-color 0.4s ease;
+
+  // 退場翻白必須是**真的**硬切 —— 這一條就是 outroWhiteAt 那句「硬切、不補間」在
+  // CSS 這端的另一半。上面那個 0.4s 是給藍 → 橘（--cover-orange）用的，但兩個變化
+  // 走同一個 background，補間會把 --outro-white 的硬切一起拉成 0.4s。
+  //
+  // 為什麼不能拉：硬切之所以看不到，前提是「切換那一刻 veil 剛好滿版、完全遮住底色」。
+  // 補間讓那個「一刻」變成 0.4s，而拍 0 的 FUSE_EASE 頭段很快（power2.out）——
+  // 2026-08-22 實測（1440×900）：底色跑完 0 → 400ms 的補間時，veil 早已收到 81% 寬，
+  // 兩側因此漏出一條還沒轉白的淡橘，接縫上下變成兩種白。
+  //
+  // ⚠️ 往回捲（is-outro 移除）時補間會被復原，白 → 橘那一下仍會補間 0.4s；那一刻
+  //    veil 正回到滿版、把它整個蓋住，所以看不到 —— 與硬切同一個前提，方向相反。
+  &.is-outro {
+    transition: none;
+  }
 
   @media (prefers-reduced-motion: reduce) {
     transition: none;
