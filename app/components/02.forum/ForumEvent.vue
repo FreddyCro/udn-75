@@ -125,6 +125,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
         variant="primary"
         class="forum-event__cta"
         href="#"
+        @mouseenter="play('sfx01')"
         @click="play('sfx01')"
       >
         {{ event.cta }}

@@ -214,6 +214,7 @@ onBeforeUnmount(() => {
         :variant="action.variant as UBtnVariant"
         :href="action.href"
         :download="action.download"
+        @mouseenter="play('sfx01')"
         @click="play('sfx01')"
       >
         {{ action.label }}

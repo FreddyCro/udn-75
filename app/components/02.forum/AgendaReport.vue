@@ -27,6 +27,7 @@ const { play } = useSfx();
       variant="gray"
       class="agenda-report__cta"
       :href="cta.href"
+      @mouseenter="play('sfx01')"
       @click="play('sfx01')"
     >
       <!-- 文案含「mob 才斷行」的 <br/>（見 locales 的 cta.label 與下方 :deep(br)），
