@@ -424,8 +424,6 @@ onBeforeUnmount(() => {
 
 <template>
   <article class="subpage">
-    <!-- hero＋引言舞台：pin 模式下兩塊疊同一屏，滾動進度觸發交接；
-         降級（no-JS／reduced-motion）維持文件流各佔一屏 -->
     <div
       ref="stageRef"
       class="subpage__stage"
@@ -436,36 +434,40 @@ onBeforeUnmount(() => {
       }"
     >
       <header ref="heroRef" class="subpage__hero">
-        <UPic
-          :src="content.hero.bg"
-          classname="subpage__hero-bg"
-          :use-prefix="false"
-          :use2x="false"
-          :webp="false"
-          loading="eager"
-          alt=""
-        />
         <div
           ref="heroInnerRef"
-          class="subpage__col subpage__col--hero subpage__hero-inner"
+          class="subpage__col--hero subpage__hero-inner"
         >
-          <h1 class="subpage__title">
-            <span
-              class="subpage__title-img"
-              role="img"
-              :aria-label="content.hero.title"
-              v-html="titleSvg"
-            />
-          </h1>
-          <p class="subpage__subtitle">
-            <span
-              class="subpage__subtitle-img"
-              role="img"
-              :aria-label="content.hero.subtitle"
-              v-html="subtitleSvg"
-            />
-          </p>
-          <!-- <p class="subpage__unit">{{ content.hero.unit }}／{{ content.hero.author }}</p> -->
+          <!-- 文字組與 KV 圖拆成兩個 flex 子項：hero-inner 定高（各稿 vw 等比）
+               + space-between，兩者間距由「容器高 − 子項高」自然長出 —— 全部都是
+               vw 等比，故間距會精準落在稿的 48/48/80/80/120 並跟著視窗縮放 -->
+          <div class="subpage__hero-text">
+            <h1 class="subpage__title">
+              <span
+                class="subpage__title-img"
+                role="img"
+                :aria-label="content.hero.title"
+                v-html="titleSvg"
+              />
+            </h1>
+            <p class="subpage__subtitle">
+              <span
+                class="subpage__subtitle-img"
+                role="img"
+                :aria-label="content.hero.subtitle"
+                v-html="subtitleSvg"
+              />
+            </p>
+          </div>
+          <UPic
+            :src="content.hero.bg"
+            classname="subpage__hero-bg"
+            :use-prefix="false"
+            :use2x="false"
+            :webp="false"
+            loading="eager"
+            alt=""
+          />
         </div>
       </header>
 
@@ -475,8 +477,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- 舞台第三拍：引言之後的滿屏媒體（照片輪播或影片）。
-           內容由各頁 locales 的 content.introMedia 提供，沒填就整塊不存在、舞台回到兩拍 -->
       <div v-if="introMedia" ref="mediaRef" class="subpage__media">
         <SubpageIntroMedia
           fill
@@ -487,8 +487,6 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- 舞台之後的內容：不透明背景。z-index 維持 auto（不建立堆疊脈絡）。
-         --under-stage：上拉一屏墊到舞台後面，媒體淡出就直接見內文（見 SCSS） -->
     <div
       class="subpage__content"
       :class="{ 'subpage__content--under-stage': stagePinned && !!introMedia }"
@@ -523,30 +521,79 @@ onBeforeUnmount(() => {
 }
 
 .subpage__col--hero {
-  padding: 0 26px;
+  padding: 0 23px;
 
-  @include rwd-min('tablet') {
-    padding: 0 20px;
-    max-width: min(79vw, 1104px);
+  @include rwd-min('mobile') {
+    padding: 0 37px;
   }
-
-  // pc 稿：1280 − 108×2 = 1064 即**內容寬本身**，所以這裡不留 padding ——
-  // 沿用 tablet 的 `padding: 0 20px` 會把欄再吃掉 40，文案左緣就對不到稿上的 108。
-  // 1064 ＞ 六頁最寬的副標藝術字（education 796），SVG 不會被 max-width 壓縮。
+  @include rwd-min('tablet') {
+    padding: 0 89px;
+  }
   @include rwd-min('pc') {
-    max-width: 1064px;
-    padding: 0;
+    padding-right: 0;
+    padding-left: calc(108 / 1280 * 100vw);
+    max-width: 796px;
+  }
+  @include rwd-min('ultra') {
+    padding-left: calc(162 / 1920 * 100vw);
+    max-width: 1194px;
+  }
+}
+.subpage__hero-inner {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: calc(234.05 / 320 * 100vw);
+
+  @include rwd-min('mobile') {
+    height: calc(285 / 414 * 100vw);
+  }
+  @include rwd-min('tablet') {
+    height: calc(490.71 / 768 * 100vw);
+  }
+  @include rwd-min('pc') {
+    height: calc(473.66 / 1280 * 100vw);
+  }
+  @include rwd-min('ultra') {
+    height: calc(710.49 / 1920 * 100vw);
   }
 }
 
-// 寬欄（hero／引言）：pad 起照 pc 稿比例流體縮放，≥1280 錨定回定寬。
-// min() 取兩者較小 → 1280 以下走 84.375vw（= 1080/1280，與視窗等比），
-.subpage__col--wide {
-  padding: 0 26px;
+:deep(.subpage__hero-bg) {
+  padding: 0 12px;
 
+  @include rwd-min('mobile') {
+    padding: 0 10px;
+  }
   @include rwd-min('tablet') {
-    padding: 0 20px;
-    max-width: min(85vw, var(--subpage-wide-w));
+    padding: 0 15px;
+  }
+  @include rwd-min('pc') {
+    width: calc(480 / 1280 * 100vw);
+    padding: 0;
+  }
+  @include rwd-min('ultra') {
+    width: calc(720 / 1920 * 100vw);
+  }
+}
+
+// 引言欄：照 subpage__col--hero 的作法對稿全等比 —— mob 兩檔走固定邊距
+//（320 稿 20、414 稿 26），pad 起改 vw 等比欄寬（654/768），pc 與 ultra
+// 稿恰為同一比例（1040/1280 = 1560/1920 = 81.25vw），一條規則吃兩檔，
+// ≥1920 錨定回 1560 定寬（與 hero 的 ultra 錨定同思路）。
+.subpage__col--wide {
+  @include rwd-min('mobile') {
+    padding: 0 26px;
+  }
+  @include rwd-min('tablet') {
+    padding: 0;
+    max-width: calc(654 / 768 * 100vw);
+  }
+  @include rwd-min('pc') {
+    max-width: calc(1040 / 1280 * 100vw); // = 1560/1920，pc 與 ultra 同比例
+  }
+  @include rwd-min('ultra') {
+    max-width: 1560px;
   }
 }
 
@@ -605,33 +652,26 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-// 引言之後的滿屏媒體。降級（no-JS／reduced-motion）時照文件流自佔一屏；
-// pin 模式改為疊在同層（見上方 --pinned）。媒體以 fill 模式撐滿，圖說才貼在視窗底。
 .subpage__media {
   height: 100vh;
   height: 100svh;
 }
 
-// 設計稿 canvas＝裝置視窗且 header 疊在 frame 內 → 首屏滿版 100vh（非 100vh − header）；
-// 文案距視窗頂為固定距離（padding-top），非垂直置中。
 .subpage__hero {
-  position: relative; // hero-bg 的定位基準（%距底要量 hero 高，不是視窗高）
+  position: relative;
   min-height: 100vh;
-  min-height: 100svh; // 行動裝置以最小視窗計，避免網址列收合時版面跳動
-  padding-top: 148px;
+  min-height: 100svh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 
-  @include rwd-min('tablet') {
-    padding-top: 180px;
-  }
   @include rwd-min('pc') {
-    padding-top: 163px;
+    align-items: flex-start;
   }
 }
 
-// 舞台之後的內容底。z-index 須維持 auto，否則會建立 stacking context，
-// 把裡面 position: fixed 的 rail／錨點列關進來 —— 它們的 900 就再也跨不出去、
-// 會被外面隨便一個滿版區塊蓋掉（見 SubpageAnchor）。
 .subpage__content {
   position: relative;
   background: #fff;
@@ -664,87 +704,64 @@ onBeforeUnmount(() => {
   margin-top: -65svh; // 與 .subpage__stage--pinned 的高度同單位，行動裝置才對得齊
 }
 
-// 首屏裝飾圖：素材 856×400 為 @2x，自然顯示 428×200。
-// 距底用 % 而非固定值 —— 對稿距底是滿版 frame 的比例，視窗變高才跟著走。
-:deep(.subpage__hero-bg) {
-  position: absolute;
-  bottom: 23%;
-  left: 50%;
-  z-index: -1;
-  width: min(261px, 64vw);
-  height: auto;
-  transform: translateX(-50%);
-  pointer-events: none;
-
-  @include rwd-min('tablet') {
-    bottom: calc(265 / 1024 * 100%);
-    width: 428px;
-  }
-  // pc 稿改為「跟在副標下方、左緣切齊文案」，不再貼視窗右下。
-  //
-  // 定位：與文案的**相對位置固定**，所以用 top 定值而非 bottom ——
-  //   411 = 163(hero padding-top) + 72(主標) + 32(副標 margin-top) + 64(副標) + 80(稿上的間距)
-  // 主／副標高度是 CSS 寫死的，六頁一致，所以這個定值對六頁都準。
-  //
-  // 尺寸：稿的 480×224 是**上限**，視窗高度不足時依剩餘高度等比縮小（見 clamp）。
-  // width 交給 auto 由高度帶出來 —— 六頁素材比例都是 ~2.14（856×400），224 高算出 479.4，
-  // 與稿的 480 差 0.6px。寫死 480 反而會在比例微異的 education／health 上壓扁。
-  // ⚠️ clamp 的下限 0 是防呆：直接寫 `calc(100svh - 494px)` 的話，矮視窗算出負值會讓整條
-  //    height 宣告失效、退回 auto（＝素材原尺寸 856px）而爆版 —— 而且是靜默的。
-  @include rwd-min('pc') {
-    top: 411px;
-    right: auto;
-    bottom: auto;
-    left: calc(50% - 532px); // 1064 欄的左緣（pc 起 50% ≥ 640，算出來不會為負）
-    width: auto;
-    // 494 = 411(距頂) + 83(稿的底部留白)；720 高時得 226 → 取上限 224，正好對稿
-    height: clamp(0px, calc(100vh - 494px), 224px);
-    height: clamp(0px, calc(100svh - 494px), 224px); // 與 hero 的 100svh 同單位
-    transform: none;
-  }
-}
-
 .subpage__title {
   margin: 0;
+  width: calc(150.29 / 320 * 100vw);
+
+  @include rwd-min('mobile') {
+    width: calc(197 / 414 * 100vw);
+  }
+  @include rwd-min('tablet') {
+    width: calc(331 / 768 * 100vw);
+  }
+  @include rwd-min('pc') {
+    width: calc(350 / 1280 * 100vw);
+  }
+  @include rwd-min('ultra') {
+    width: calc(525 / 1920 * 100vw);
+  }
 }
 
 // SVG 藝術字（inline）：wrapper 定高、svg 撐滿；字形縮放與靠左交給
 // SVG 自己的 preserveAspectRatio="xMinYMid"（見 script 的 inlineHeroArt）
 .subpage__title-img {
   display: block;
-  height: 40px;
 
   :deep(svg) {
     display: block;
     width: 100%;
     height: 100%;
   }
+}
 
+.subpage__subtitle {
+  margin-top: 16px;
+  width: calc(272.42 / 320 * 100vw);
+
+  @include rwd-min('mobile') {
+    margin-top: 20px;
+    width: calc(340 / 414 * 100vw);
+  }
   @include rwd-min('tablet') {
-    height: 68px;
+    margin-top: 32px;
+    width: calc(590.53 / 768 * 100vw);
   }
   @include rwd-min('pc') {
-    height: 72px;
+    width: calc(796.08 / 1280 * 100vw);
+  }
+  @include rwd-min('ultra') {
+    margin-top: 48px;
+    width: calc(1194.12 / 1920 * 100vw);
   }
 }
 
 .subpage__subtitle-img {
   display: block;
-  height: 29px;
-  margin-top: 16px;
 
   :deep(svg) {
     display: block;
     width: 100%;
     height: 100%;
-  }
-
-  @include rwd-min('tablet') {
-    height: 48px;
-    margin-top: 32px;
-  }
-  @include rwd-min('pc') {
-    height: 64px;
   }
 }
 
@@ -768,8 +785,11 @@ onBeforeUnmount(() => {
   }
 }
 
-// 引言滿版一屏（pin 模式時 = 舞台那一屏）：mob/pad 對稿上下留白相等 → 垂直置中；
-// pc 對稿不置中，改以「靠下 + 底距 80」表達，視窗高度一離開 720 也不會失準。
+// 引言滿版一屏（pin 模式時 = 舞台那一屏）：mob/pad 垂直置中 —— 但置中的是
+// 「扣掉 fixed header 之後」的剩餘區域（上 padding 多加一個 --header-height，
+// flex 置中的內容區就從 header 下緣起算），不是整個視窗；
+// pc 對稿不置中，改「靠下 + vh 等比底距」（80/720 = 120/1080，pc 與 ultra 同比例），
+// 底距跟著視窗高度縮放，視窗高度離開 720/1080 也不失準。
 // 本層沒有背景（透明），故右側 rail（SubpageAnchor，全程顯示）從它底下透出來，
 // 不需要在這裡排 z-index —— 會蓋住 rail 的只有滿屏引言媒體那一拍。
 .subpage__intro {
@@ -777,14 +797,17 @@ onBeforeUnmount(() => {
   align-items: center;
   min-height: 100vh;
   min-height: 100svh;
-  padding: 56px 0; // 內容超過一屏時（窄機／放大字級）自然撐高，不裁切（pin 模式改由 overflow 裁）
+  // 56px／96px 是內容超過一屏時（窄機／放大字級）的最小留白：自然撐高，不裁切
+  //（pin 模式改由 overflow 裁）
+  padding: calc(56px + var(--header-height)) 0 56px;
 
   @include rwd-min('tablet') {
-    padding: 96px 0;
+    padding: calc(96px + var(--header-height)) 0 96px;
   }
   @include rwd-min('pc') {
     align-items: flex-end;
-    padding-bottom: 80px;
+    padding-bottom: calc(80 / 720 * 100vh);
+    padding-bottom: calc(80 / 720 * 100svh); // 與舞台一屏（100svh）同單位，底距才貼齊屏底
   }
 }
 
@@ -799,6 +822,16 @@ onBeforeUnmount(() => {
   @include rwd-min('tablet') {
     font-size: var(--text-intro);
     line-height: var(--text-intro--line-height);
+  }
+  // pc→ultra 稿是精確的 ×1.5 等比（欄寬 1040→1560、字級 32/60→48/90），
+  // 欄寬既走 vw 等比，字級也得跟著走，行數／行長才對得上稿；≥1920 隨欄寬一起錨定。
+  @include rwd-min('pc') {
+    font-size: calc(32 / 1280 * 100vw);
+    line-height: calc(60 / 1280 * 100vw);
+  }
+  @include rwd-min('ultra') {
+    font-size: 48px;
+    line-height: 90px;
   }
 }
 

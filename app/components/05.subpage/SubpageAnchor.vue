@@ -5,6 +5,8 @@
  * 上色，換色不需多份素材。hover 與 active 同為「不透明＋放大＋尾端橫線」，不變色。
  * 顯隱：**全程顯示**（layouts/subpage.vue 直接傳 visible）。舞台的 hero／引言兩拍是透明層，
  * 蓋不到 rail；只有滿屏引言媒體那一拍該蓋住它，那由疊層做掉（見下方 z-index）。
+ * 唯一例外是頁尾收尾區（得獎作品清單／返回導覽）：那些是白底內容、疊不過 rail（900），
+ * rail 會壓在清單文字上 —— 故收尾區捲上來時 rail 自行淡出（見 covered）。
  * ⚠️ 與 SubpageAnchorBar 不同步 —— 那條橫在視窗下緣、是實心底，仍維持「舞台演完才滑入」。
  * rail 疊在**一般內文**之上（--subpage-anchor-z，預設 900），但滿版嵌入元件
  * （.sp-full，950）刻意蓋得過它 —— 滿版就要滿版。疊層總表見 subpage.scss 的 .sp-full。
@@ -39,12 +41,53 @@ function onClick(e: MouseEvent, url: string) {
 }
 // 藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
 const assetUrl = useAssetUrl();
+
+// 收尾區判定：得獎作品清單（.subpage-works）或返回導覽（.subpage-nav__inner）的頂端
+// 越過 rail 下緣 → rail 淡出讓位；之後（footer）保持隱藏，回捲上來才復現。
+// 用「頂端越過下緣」而非重疊判定：收尾區之下沒有 rail 該出現的內容，
+// 若用重疊判定，footer 夠高時收尾區會整段捲過 rail、讓 rail 又亮回來。
+// 元素每次檢查都重查（querySelectorAll）而非掛載時綁定：rail 由 layout 渲染、跨子頁導航
+// 不重掛，收尾區卻在各頁子樹內會整批換掉 —— 重查就不必跟著換頁重新接線。
+const railRef = ref<HTMLElement | null>(null);
+const covered = ref(false);
+let coverRaf = 0;
+
+function checkCovered() {
+  coverRaf = 0;
+  const rail = railRef.value?.getBoundingClientRect();
+  if (!rail) return;
+  const zones = document.querySelectorAll('.subpage-works, .subpage-nav__inner');
+  covered.value = [...zones].some(
+    (z) => z.getBoundingClientRect().top < rail.bottom,
+  );
+}
+
+// rAF 節流：scroll 每 frame 可能進來多次，量測一次就夠
+function onViewportChange() {
+  if (!coverRaf) coverRaf = requestAnimationFrame(checkCovered);
+}
+
+onMounted(() => {
+  window.addEventListener('scroll', onViewportChange, { passive: true });
+  window.addEventListener('resize', onViewportChange, { passive: true });
+  checkCovered();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onViewportChange);
+  window.removeEventListener('resize', onViewportChange);
+  if (coverRaf) cancelAnimationFrame(coverRaf);
+});
 </script>
 
 <template>
   <nav
+    ref="railRef"
     class="subpage-anchor"
-    :class="{ 'subpage-anchor--visible': visible }"
+    :class="{
+      'subpage-anchor--visible': visible,
+      'subpage-anchor--covered': covered,
+    }"
     aria-label="子頁導覽"
   >
     <ul class="subpage-anchor__list">
@@ -96,6 +139,17 @@ const assetUrl = useAssetUrl();
     opacity: 1;
     visibility: visible;
     transition: opacity 0.3s ease;
+  }
+
+  // 收尾區（得獎作品清單／返回導覽）捲到 rail 下緣時讓位（見 script 的 covered）。
+  // 寫在 --visible 之後（同特異度）才蓋得過它；visibility 延遲切換與預設隱藏同一套
+  // —— 淡出播完才真正移出焦點順序。
+  &--covered {
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.3s ease,
+      visibility 0s linear 0.3s;
   }
 
   @media (prefers-reduced-motion: reduce) {

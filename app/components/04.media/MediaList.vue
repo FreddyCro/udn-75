@@ -126,9 +126,11 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
   display: block;
   transform-origin: left center;
   transition: transform 0.25s ease;
-
-  .media__row:hover & {
-    transform: scale(1.36); // ≈ 22 → 30px（對稿 hover 態字級）
+  
+  @include rwd-min('pc') {
+    .media__row:hover & {
+      transform: scale(1.36); // ≈ 22 → 30px（對稿 hover 態字級）
+    }
   }
 }
 
@@ -175,26 +177,51 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
 }
 
 // 箭頭圓鈕：mob 48、pad 40（Figma buttons/Arrow right-circle）；pc 稿沒有。
-// 素材是單色 #686868（＝--color-gray）＋外層 opacity .8，改用 mask 上色後外觀
-// 與原本的 <img> 相同（mask 吃 alpha，那層 .8 依然保留），但顏色交給 CSS，
-// hover 才轉得成橘色
+// 灰色線框態／橘底 hover 態各佔一層 pseudo-element 交叉淡入淡出：
+// hover 素材是雙色（橘底＋白箭頭），mask 上色做不出來，只能整張當 background 圖；
+// 灰色態素材單色，維持 mask 上色。mask 不能掛在 .media__arrow 本體，
+// 否則 ::after 的橘圓會被裁成箭頭形
 .media__arrow {
+  position: relative;
   display: block;
   width: 48px;
   height: 48px;
   justify-self: end;
   margin-left: auto;
-  background: var(--color-gray);
-  mask: url('/img/udn75_arrow_circle.svg') no-repeat center / contain;
-  -webkit-mask: url('/img/udn75_arrow_circle.svg') no-repeat center / contain;
-  transition:
-    background-color 0.25s ease,
-    transform 0.25s ease;
+  transition: transform 0.25s ease;
 
-  // hover：轉橘＋微放大（scale 走合成器，不佔版面、列高與分隔線不動）
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  &::before {
+    background: var(--color-gray);
+    mask: url('/img/udn75_arrow_circle.svg') no-repeat center / contain;
+    -webkit-mask: url('/img/udn75_arrow_circle.svg') no-repeat center / contain;
+  }
+
+  &::after {
+    background: url('/img/udn75_arrow_circle_hover.svg') no-repeat center /
+      contain;
+    opacity: 0;
+  }
+
+  // hover：換橘底白箭頭素材＋放大（素材 40 → 58，×1.45；scale 走合成器，
+  // 不佔版面、列高與分隔線不動）
   .media__row:hover & {
-    background: var(--color-orange);
-    transform: scale(1.12);
+    transform: scale(1.45);
+
+    &::before {
+      opacity: 0;
+    }
+
+    &::after {
+      opacity: 1;
+    }
   }
 
   @include rwd-min('mobile') {
