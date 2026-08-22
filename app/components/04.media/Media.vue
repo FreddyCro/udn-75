@@ -171,7 +171,7 @@ useMediaIntroMotion({
 // 水平裁切改由 .media__hold 承接
 .media {
   position: relative;
-  min-height: 100vh;
+  min-height: vh();
   background: #fff;
 }
 
@@ -209,11 +209,12 @@ useMediaIntroMotion({
 
   // pad 以上：首屏＝一屏高的 flex 欄，清單以 margin-top: auto 貼齊視窗底
   //（取代固定留白，任何視窗高都成立；內容超高時 min-height 讓版面自然變長）
+  // vh()＝凍結的 large viewport（同全站）：之前的 100dvh 會在網址列收合時
+  // 中途改變高度，sticky 幾何與 bgRoamArea 的一次性量測都跟著失準。
   @include rwd-min('tablet') {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
-    min-height: 100dvh;
+    min-height: vh();
     padding: 80px 28px 0;
   }
 
@@ -268,7 +269,7 @@ useMediaIntroMotion({
 
 // 內文與清單之間的留白：也是底紋活動範圍的下界（量的是它的下緣，見 bgRoamArea）
 .media__roam {
-  height: 30vh;
+  height: vh(0.3);
 
   @include rwd-min('tablet') {
     min-height: 40px; // 視窗過矮時與清單的最小間距
@@ -282,14 +283,17 @@ useMediaIntroMotion({
 
 // motion 舞台：置中於 section「第一屏」（section 在 mob / pad 高於一屏，
 // 若以整個 section 置中，色塊與組字會落在摺疊線下），純裝飾
+//
+// ⚠️ 高度必須用**凍結的** vh()、不可用 dvh：buildMotion() 只在 onMounted 量一次組字位置，
+//    dvh 在 iOS 網址列收合時把舞台拉高，橘色直條就疊到「媒體」上（iPhone 15 實測約 43px）。
+//    JS 側滿版拍的 scaleY 同步吃 vhPx(1)，見 useMediaIntroMotion。
 .media__stage {
   position: absolute;
   top: 0;
   right: 0;
   left: 0;
   z-index: 2;
-  height: 100vh;
-  height: 100dvh; // 對齊 JS 量測的 window.innerHeight（行動裝置網址列收合時）
+  height: vh();
   pointer-events: none;
 }
 

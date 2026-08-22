@@ -373,7 +373,9 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       morph,
       {
         scaleX: window.innerWidth / MORPH_W,
-        scaleY: window.innerHeight / MORPH_H,
+        // vhPx(1) 而非 innerHeight：舞台高是 vh()（見 .media__stage 的 ⚠️），
+        // 滿版拍要用同一把尺，否則網址列收合後畫面下緣會露白
+        scaleY: vhPx(1) / MORPH_H,
         autoAlpha: 1,
       },
       {

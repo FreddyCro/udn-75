@@ -947,7 +947,9 @@ onMounted(() => {
 .metaballs {
   position: relative;
   width: 100%;
-  height: 100vh;
+  /* 一個視窗高（media 用法會被 .media__bg 覆寫）。本檔非 scss、vh() 不可用，
+     手寫 --vh 展開式（見 architecture/viewport-height.md 例外） */
+  height: calc(var(--vh, 1vh) * 100);
   overflow: hidden;
   pointer-events: none;
 }

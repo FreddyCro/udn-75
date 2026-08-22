@@ -20,8 +20,7 @@ const SCAN_EXT = ['.vue', '.ts', '.scss', '.css'];
 // 加新段落時**不要**順手加進來，除非那一段真的與捲動敘事無關。
 const OUT_OF_SCOPE = [
   'app/components/legacy/', //     已停用
-  'app/components/04.media/', //   刻意排除（見 architecture/viewport-height.md「唯一的例外」）
-  'app/composables/useMediaIntroMotion.ts',
+  // 04.media 已收編、不再排除（原「唯一的例外」撤銷，見 architecture/viewport-height.md 例外 1）
   'app/components/05.subpage/', // 已用 100svh 雙寫，本來就穩
   'app/pages/demo.vue', //         開發用示範頁
   'app/components/ShowcaseGallery.vue',
@@ -94,7 +93,8 @@ describe('視窗高只有一個來源', () => {
     const report = scan((line, rel) => {
       // `var(--vh, 1vh)` 的 fallback 是這套機制的一部分，先剝掉再找。
       const rest = line.replace(/var\(\s*--vh\s*,\s*1vh\s*\)/g, '');
-      if (!/\d+(\.\d+)?vh\b/.test(rest)) return null;
+      // [dsl]?vh：dvh / svh / lvh 一併抓（04.media 那次錯位的病灶就是 100dvh）
+      if (!/\d+(\.\d+)?[dsl]?vh\b/.test(rest)) return null;
       if (VH_LINE_EXCEPTIONS.some((e) => e.file === rel && line.includes(e.snippet)))
         return null;
       return 'CSS 用 vh()（mixins.scss）、JS 拼字串用 vhLength()';
