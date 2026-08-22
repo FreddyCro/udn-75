@@ -56,7 +56,17 @@ const assetUrl = useAssetUrl();
           :key="i"
           class="flex flex-col items-center gap-4 sm:flex-row sm:gap-6"
         >
-          <img class="w-46.5 shrink-0" :src="assetUrl(a.img)" :alt="a.alt" loading="lazy" />
+          <!-- width/height ＝ 素材畫布（186×120，與 w-46.5 的 186px 同值）：lazy 圖
+               載入前若不保留版位，撐開那一刻會把下面所有 pin 的實際位置推走。
+               對帳見 test/subpage-image-space-reservation.spec.ts -->
+          <img
+            class="w-46.5 shrink-0"
+            :src="assetUrl(a.img)"
+            :alt="a.alt"
+            width="186"
+            height="120"
+            loading="lazy"
+          />
           <p class="m-0 text-[15px] leading-6 font-light text-gray">{{ a.body }}</p>
         </div>
       </div>

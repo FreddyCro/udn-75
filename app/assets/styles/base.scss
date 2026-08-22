@@ -140,10 +140,23 @@ html.is-boot-locked:not([data-scroll-lock]) {
   transform: scale(0.96);
 }
 
-// 首頁專用（見 app/pages/index.vue 的 definePageMeta）：只做 opacity，不帶 transform。
-// Hero 內有 position: fixed 的疊層（HeroLoader / HeroStart / HeroSymbolTransition）
-// 與 ScrollTrigger pin；進場期間父層若帶 transform，這些 fixed 元素會改以該變形層
-// 為定位基準而跳位，且 ScrollTrigger 初始化時會量到縮放後的尺寸。
+// **有 ScrollTrigger pin 的頁面一律吃這個轉場**：只做 opacity，不帶 transform。
+// 目前是首頁 ＋ 七個子頁（六個獨立子頁與連續閱讀頁 /subpage），各自在 definePageMeta
+// 裡 override；這條規則由 test/subpage-page-transition.spec.ts 守著。
+//
+// 首頁的理由：Hero 內有 position: fixed 的疊層（HeroLoader / HeroStart /
+// HeroSymbolTransition）與 ScrollTrigger pin；進場期間父層若帶 transform，這些
+// fixed 元素會改以該變形層為定位基準而跳位。
+//
+// 子頁的理由（同一個病根、症狀不同）：`mode: out-in` 下**新頁在 enter 一開始就 mount**，
+// 上面 .page-enter-from 的 scale(0.96) 還掛在頁面根元素上，於 onMounted 建立的 pin
+// 量到的是縮小 4% 的幾何，並把它**寫成 inline style 鎖住**。實測 1440×900 切子頁：
+//   .subpage__stage  width 1425 → 1368、height 900 → 864、pin-spacer 3600 → 3456
+// 轉場結束、transform 移除，但 inline 尺寸留著 → 內容停在偏右偏上的位置
+// （col--hero 是 margin auto 置中 ⇒ 偏右 (1425−1368)/2 = 28.5px；hero 只有 864 高
+// ⇒ hero-inner 置中偏上 (900−864)/2 = 18px）。直到
+// plugins/refresh-scroll-triggers.client.ts 補的那次 refresh 才改對 —— 那一下就是
+// 「切換瞬間往左下彈一下」的來源，且它發生在轉場演完之後，看起來像莫名一抖。
 .page-fade-leave-active {
   transition: opacity 220ms cubic-bezier(0.4, 0, 1, 1);
 }

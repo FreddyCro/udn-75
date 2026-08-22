@@ -188,6 +188,11 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
   height: 48px;
   justify-self: end;
   margin-left: auto;
+  // 不透明白底圓（對齊 .media 的 #fff）：擋掉飄到圓鈕後方的 metaball 團塊。
+  // 素材是 40×40 方形 viewBox、圓幾乎滿版，contain 後圓緣≈本體邊界，
+  // 所以直接用 border-radius 畫底，不必動共用的 svg（forum 也在用同一張）
+  background: #fff;
+  border-radius: 50%;
   transition: transform 0.25s ease;
 
   &::before,

@@ -28,6 +28,22 @@ const props = withDefaults(
   },
 );
 
+/**
+ * 兩張選項圖的 @1x 稿尺寸，依 options 的順序對應。一處供兩用：
+ *   ・w → flex 比例（兩張同高並排時的寬度分配，原本就寫死在 template 裡）
+ *   ・w/h → <img> 的 width/height ＝ **保留版位**
+ *
+ * ⚠️ 保留版位不是 CLS 的小事而已：圖是 lazy 載入的，沒有 width/height 時載入前佔 0 高、
+ *    載入後撐開，那一撐把它下面所有 ScrollTrigger pin 的實際位置往下推 —— 而 pin 的
+ *    起訖是量完就固定的絕對捲動座標，不會跟著更新（脈絡見 utils/scroll-trigger 的
+ *    refreshOnContentResize）。與素材的對帳見
+ *    test/subpage-image-space-reservation.spec.ts。
+ */
+const FIG_SIZE = [
+  { w: 394, h: 313 },
+  { w: 235, h: 313 },
+];
+
 // 對錯圖示為 runtime 組出的動態路徑，須自行補資產前綴
 const assetUrl = useAssetUrl();
 
@@ -49,13 +65,15 @@ function pick(i: number) {
         v-for="(o, i) in options"
         :key="i"
         class="ai-quiz__option"
-        :style="{ flex: `${i === 0 ? 394 : 235} 0 0%` }"
+        :style="{ flex: `${FIG_SIZE[i]?.w ?? 1} 0 0%` }"
       >
         <UPic
           classname="ai-quiz__img"
           :src="o.src"
           :use-prefix="false"
           :srcset="['mob']"
+          :width="FIG_SIZE[i]?.w"
+          :height="FIG_SIZE[i]?.h"
           :alt="o.alt ?? ''"
         />
       </figure>
