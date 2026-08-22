@@ -9,6 +9,7 @@ metadata:
 
 **How to apply:**
 - hero `min-height: 100vh` ＋ `100svh` 覆寫；文案距視窗頂固定（主標頂 mob 148／pad 180／pc 163），非垂直置中。
+- **例外（2026-08-22）：pin 版型下的滿屏媒體層改吃 `100dvh`**（`bottom: auto`＋媒體拍 `overflow: visible`）——100svh 是工具列展開時的小視口，iOS Safari 捲動中工具列收合後視口變高，滿屏照片底部會露一條 50–70pt 的縫。舞台高與 pin 距離**維持 svh 不動**（scrub 幾何不受影響），只有媒體層伸出去。hero 維持 svh（底下是白底，縫看不見）。
 - hero **保留 `position: relative`**：hero-bg 是 `position: absolute`，少了它 containing block 會掉回 initial containing block，`bottom: %` 變成量視窗高而非 hero 高，`overflow: hidden` 也不再生效。
 - 設計稿標註「文字畫面：定住」**經確認不做 sticky**（2026-08-02 決策），首屏只要「像 AOS 一樣由下往上淡入」。`.subpage__hero-inner` 以 GSAP `gsap.from`（autoAlpha 0 → 1、y 32 → 0、0.4s power2.out）進場；引言同款但掛 ScrollTrigger `once: true`。`prefers-reduced-motion` 時不建 tween，內容維持 CSS 可見狀態。
 - 後續內容仍包進 `.subpage__content`（`position: relative` ＋白底、z-index 維持 auto）——目的不是蓋過 hero，而是**不建立 stacking context**：右側 rail 與底部錨點列都是 `position: fixed` 且住在它裡面，這層一旦有 z-index，它們就跨不出去、會被外面隨便一個滿版區塊蓋掉。

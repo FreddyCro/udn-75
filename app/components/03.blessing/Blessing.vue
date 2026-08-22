@@ -27,6 +27,7 @@ const {
   blessingFrame,
   setBlessingProgress,
   stairsDone,
+  blessingOutProgress,
   setBlessingOutProgress,
   partnersOpacity,
   setCoverProgress,
@@ -51,6 +52,56 @@ const partnersIn = ref(false);
 watch(blessingProgress, (p) => {
   if (p >= 0.999) partnersIn.value = true;
   else if (p < 0.9) partnersIn.value = false;
+});
+
+// 面板淡入閘：階梯線畫完**且 outro 尚未開始**才淡入 —— 連續快捲時 stairsDone
+// 會落在淡出窗口內，面板閃一下就消失。已顯示的面板不收回，stairsDone 重置才收回。
+const panelIn = ref(false);
+watchEffect(() => {
+  if (!stairsDone.value) panelIn.value = false;
+  else if (partnersOpacity.value >= 1) panelIn.value = true;
+});
+
+// 閘門擋不住「已在飛行中的淡入」（淡入到一半整塊才開始淡出＝仍會閃），
+// 所以 outro 一開始就把面板 opacity 凍在當下值、關掉 transition，回捲到 opacity 1 才解凍。
+const panelRef = ref<HTMLElement | null>(null);
+watch(
+  () => partnersOpacity.value < 1,
+  (out) => {
+    const el = panelRef.value;
+    if (!el) return;
+    if (out) {
+      el.style.opacity = getComputedStyle(el).opacity;
+      el.style.transition = 'none';
+    } else {
+      el.style.opacity = '';
+      el.style.transition = '';
+    }
+  },
+);
+
+// outro 期間把夥伴清單裁到 veil 的現行寬度：veil 收得比清單窄後，露在橘柱外的
+// 白字落在白底上會憑空消失 —— 裁掉後文字改由橘柱邊緣「掃掉」。窗口外一律清除裁切。
+const veilRef = ref<HTMLElement | null>(null);
+watch(blessingOutProgress, (p) => {
+  const block = partnersRef.value;
+  const v = veilRef.value;
+  if (!block || !v) return;
+  if (p <= 0 || p >= 1) {
+    block.style.clipPath = '';
+    return;
+  }
+  const vr = v.getBoundingClientRect();
+  // veil 還沒現身（rect 為 0，如 reduced-motion 不建 timeline）就別裁
+  if (!vr.width) {
+    block.style.clipPath = '';
+    return;
+  }
+  const br = block.getBoundingClientRect();
+  const left = Math.max(0, vr.left - br.left);
+  const right = Math.max(0, br.right - vr.right);
+  block.style.clipPath =
+    left > 0.5 || right > 0.5 ? `inset(0 ${right}px 0 ${left}px)` : '';
 });
 
 // 捲動尺高度。ScrollTrigger 是 top top → bottom bottom，可跑的捲動距離＝「尺高 − 100vh」，
@@ -276,6 +327,7 @@ onBeforeUnmount(() => {
             過場期間就蓋掉整個視窗，那段過場直接破功。 -->
     <div
       v-show="coverDone"
+      ref="veilRef"
       class="section3__veil"
       data-morph-veil
       aria-hidden="true"
@@ -341,8 +393,9 @@ onBeforeUnmount(() => {
       <BlessingStairs v-model:done="stairsDone" :armed="partnersIn" />
 
       <div
+        ref="panelRef"
         class="section3__partners-panel"
-        :class="{ 'is-in': stairsDone }"
+        :class="{ 'is-in': panelIn }"
       >
         <BlessingPartners />
       </div>
@@ -426,7 +479,7 @@ onBeforeUnmount(() => {
 // ⚠️ 不設 z-index：疊層完全靠 DOM 順序（見 template）。給了 z-index 反而要同時
 //    維護後面每個兄弟的值。
 // ⚠️ 初始 visibility: hidden（同 `.media__morph`）：timeline 的 fromTo 起播才現身。
-//    這同時是三條降級路徑（reduce-motion / #media / 無 JS）的正確落點 —— 那些路徑
+//    這同時是兩條降級路徑（reduce-motion / 無 JS）的正確落點 —— 那些路徑
 //    不建 timeline，本層就永遠不現身，而底色也不會切白（見 outroWhiteAt）。
 // ⚠️ width: 100vw（不是 inset: 0 / width: 100%）＋ left: 50% ＋ GSAP 的
 //    xPercent: -50 置中（同 .media__bar / .media__line 那招）：這是與 morph 共用

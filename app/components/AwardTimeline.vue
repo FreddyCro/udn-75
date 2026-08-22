@@ -91,7 +91,9 @@ function build() {
         root.clientHeight >= window.innerHeight ? 'top top' : 'center center',
       end: `+=${props.pinDistance}`,
       pin: true,
-      anticipatePin: 1,
+      // 不設 anticipatePin：它依速度提早釘住，center center 起點快捲時會把整塊
+      // 提前跳到置中定位、壓住上方還沒捲走的段落（4:3 高視窗實測提早 259px、
+      // 疊字 195px 並停格）。準時 pin 最多晚一幀在自己的留白內回吸，碰不到文字。
       scrub: 1,
       invalidateOnRefresh: true,
       onRefresh: measure, // 版面／欄寬變動後重量門檻

@@ -1,7 +1,8 @@
 # Memory Index
 
 - [Dev server port ownership](dev-server-port-ownership.md) — 清 dev server 前先比對 PID 啟動時間；自己的 nuxt dev 可能落在 3001，殺 3000 會誤殺使用者的
-- [Verify scroll-driven visuals](verify-scroll-driven-visuals.md) — 用 ?pathdebug 的 __udnST 傳送到目標進度來驗 scrub 視覺；locator.screenshot() 會 scrollIntoView 弄掉捲動位置
+- [Dev server stale vite error](dev-server-stale-vite-error.md) — 除錯畫面異常前先查 vite-error-overlay；server 會卡在過期編譯錯誤讓 HMR 樣式失效，製造幽靈 bug，重啟即癒
+- [Verify scroll-driven visuals](verify-scroll-driven-visuals.md) — 用 ?pathdebug 的 \_\_udnST 傳送到目標進度來驗 scrub 視覺；locator.screenshot() 會 scrollIntoView 弄掉捲動位置
 - [No auto commit](no-auto-commit.md) — 絕不自行 commit；停下來給 commit message，由使用者決定
 - [Comment style](comment-style.md) — 註解精簡原則：不寫 Figma node ID、不寫敘事型檔頭，只留維護必要資訊
 - [UI component workflow](ui-component-workflow.md) — 共用元件建置流程與清單在 architecture/components.md；ui/ + U 前綴、五步 SOP
@@ -15,3 +16,4 @@
 - [Subpage hero 100vh](subpage-hero-100vh.md) — 子頁首屏滿版 100svh＋進場 fade-up（不做 sticky）；hero 須保留 position: relative
 - [Agenda core crossing](agenda-core-crossing.md) — 議程作用中判定為何不能每 tick 取樣（快捲跳號）、目標／當前分離＋一次走一步、箭頭幾何由單位 u 推導、群組留白刻意留 12
 - [Forum slash core alignment](forum-slash-core-alignment.md) — 論壇二 09/15 那一撇是核心畫出來的：撇的位置（CSS）與驅動線必須同一個真值；pad/mob 節點錨在撇上綁死、pc 只有守衛，動 pc 的 d 或 --coreslash-x/y 一定要回頭驗
+- [WebKit flex scroll intrinsic width](webkit-flex-scroll-intrinsic-width.md) — iOS 對 flex 裡的橫向捲動列寬度算錯（Chromium 看不出來）；寬度寫死、置中用首尾 auto margin、驗證用 Playwright WebKit

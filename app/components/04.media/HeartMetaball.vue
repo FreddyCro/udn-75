@@ -221,7 +221,7 @@ const props = withDefaults(
     tailBlobMin: 0.1,
     tailBlobMax: 0.5,
     autoRoam: false,
-    // 預設不暫停：降級路徑（reduced-motion、/#media）不建 timeline，底紋從一開始
+    // 預設不暫停：降級路徑（reduced-motion）不建 timeline，底紋從一開始
     // 就是可見的，父層不會、也不該去翻這個旗標
     paused: false,
   },
@@ -947,7 +947,9 @@ onMounted(() => {
 .metaballs {
   position: relative;
   width: 100%;
-  height: 100vh;
+  /* 一個視窗高（media 用法會被 .media__bg 覆寫）。本檔非 scss、vh() 不可用，
+     手寫 --vh 展開式（見 architecture/viewport-height.md 例外） */
+  height: calc(var(--vh, 1vh) * 100);
   overflow: hidden;
   pointer-events: none;
 }
