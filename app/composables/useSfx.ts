@@ -89,6 +89,9 @@ export function useSfx() {
    */
   const unlock = () => {
     for (const audio of pool.values()) {
+      // 正在播的跳過：它已經解鎖過了（不然播不出來），而這裡的靜音解鎖流程會把它
+      // 靜音並停掉 —— 開啟音效那一下的確認音就是這樣被自己殺掉的。
+      if (!audio.paused) continue;
       audio.muted = true;
       void audio
         .play()

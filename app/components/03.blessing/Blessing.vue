@@ -48,8 +48,17 @@ const {
 // 觸發點取 frame 0 → 1 而非 progress > 0：第 0 格是一塊白方塊、還不是臉
 // （見 ~/utils/blessing-face-frames），從那裡出聲會早半格。
 //
-// 減少動態時自然不會響：那個模式下 blessingFrame 從掛載起就固定在最後一格
-// （見 useOrangeCoreProgress），沒有上升緣。
+// 減少動態時不會響：**不是**因為 blessingFrame 從掛載起就固定在最後一格 ——
+// useOrangeCoreProgress 的 reduceMotion 是 useState、初值 false，要到 onMounted 的
+// probeReduceMotion() 才翻成 true；此時 cue 的 watcher 早已就位（設定當下
+// blessingFrame 還是 0），reduceMotion 一翻、blessingFrame 立刻從 0 跳到最後一格，
+// 上升緣其實成立。真正擋住它的是「首次載入時 soundOn 恆為 false」（useAppSound
+// 沒有持久化）→ play() no-op。
+//
+// 這條防線很脆弱：若日後有人給 soundOn 加上 localStorage 記憶，減少動態模式下
+// 頁面一載入就會播出 3.3 秒的笑臉音。第二道防線是 useSfxCue 的 settle 閘門
+// （CUE_SETTLE_MS，見該檔）——掛載後一小段時間內的變化只更新基準、不出聲，
+// 但這道防線同樣不該被當成唯一保障。
 const { cueOn } = useSfxCue();
 cueOn(() => blessingFrame.value >= 1, 'benedictionSmile');
 

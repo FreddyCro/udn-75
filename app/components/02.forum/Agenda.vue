@@ -71,10 +71,16 @@ const activeSlot = ref(-1);
 // 也刻意**不節流** —— activeSlot 以 STEP_MS 一次走一格去追目標，快速捲動時
 // 會連發，但那個逐格追趕本來就是刻意設計成看得見的（見 STEP_MS 的說明）。
 //
+// 方向守衛（next <= prev 不響）：捲動音效一律前進觸發、倒退靜音（同 risingEdge
+// 的規則，見 ~/utils/sfx-cue 檔頭）。這支不是用 cueOn，得自己補這道閘門 ——
+// 少了它，往回捲會讓箭頭倒著走過去的每一組都響一聲（實測：往回捲 7 次觸發，
+// 與議程 7 組精確吻合）。這行同時吸收了「值沒變就不響」：Vue 的 ref watcher
+// 本來就只在值不同時觸發，不必再另外判 next === prev。
+//
 // 界外不出聲：-1 ＝ 議程之上、groups.length ＝ 議程之下，那兩個值沒有對應的箭頭
 // （見 ~/utils/agenda-active）。少了這道閘門，進出議程段的頭尾會各多響一聲。
 watch(activeSlot, (next, prev) => {
-  if (next === prev) return;
+  if (next <= prev) return;
   if (next < 0 || next >= groups.length) return;
   play('sfx01');
 });

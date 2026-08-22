@@ -35,6 +35,14 @@ function onHomeSelect(target: string, e: MouseEvent) {
   emit('select', target);
   play('sfx01');
 }
+
+// 子頁：導航交給 NuxtLink，本函式只負責守修飾鍵（與 onHomeSelect 對齊，
+// 也與 AppHeader.onLogoClick、AppHeaderMenu.onHomeSelect / onAwaySelect 一致）——
+// ⌘/Ctrl 點擊＝開新分頁，不算本頁互動，不出聲。
+function onAwaySelect(e: MouseEvent) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  play('sfx01');
+}
 </script>
 
 <template>
@@ -68,7 +76,7 @@ function onHomeSelect(target: string, e: MouseEvent) {
         :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
         :to="`/#${anchor.target}`"
         @mouseenter="play('sfx01')"
-        @click="play('sfx01')"
+        @click="onAwaySelect"
       >
         <span class="app-header-nav__art" :style="artStyle(anchor.art.pc)" />
         <span class="visually-hidden">{{ anchor.title }}</span>
