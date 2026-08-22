@@ -50,7 +50,8 @@ function build() {
         root.clientHeight >= window.innerHeight ? 'top top' : 'center center',
       end: () => `+=${shift() * 0.7}`,
       pin: true,
-      anticipatePin: 1,
+      // 不設 anticipatePin：center center 起點的 pin 提早釘住＝可見的跳位，
+      // 理由與量測見 AwardTimeline 的同一條註解
       scrub: 1,
       invalidateOnRefresh: true,
     },

@@ -22,7 +22,7 @@
         :alt="card.alt"
       />
       <!-- 影片卡：glitch reveal 結束後淡入接手播放。
-           preload=none → hover 當下不下載，reveal 呼叫 play() 才開始載入 -->
+           src hover 才綁定＋preload=auto → glitch 期間先緩衝，reveal 時可立即播放 -->
       <video
         v-if="card.video"
         :ref="(el) => setVideoRef(el, i)"
@@ -31,7 +31,7 @@
         muted
         loop
         playsinline
-        preload="none"
+        preload="auto"
       />
       <div
         :ref="(el) => setOverlayRef(el, i)"
@@ -346,8 +346,9 @@ const playCard = async (
 // ---------- 觸發 / 播放 / 重置 ----------
 let tls: gsap.core.Timeline[] = [];
 let captionCall: gsap.core.Tween | null = null;
+let playGen = 0; // play() 等待 decode 期間可能被 reset()／重觸發 → 世代不符即放棄該輪
 
-const play = () => {
+const play = async () => {
   // 降級／instant：直接顯示完整圖（影片直接播放）+ 文字，不跑 glitch；
   // instant（已播過一次的重觸發）仍保留飄移與視差，reduced-motion 全靜止
   if (reducedMotion() || props.instant) {
@@ -368,6 +369,18 @@ const play = () => {
       gsap.set(v, { autoAlpha: 0 });
     }
   });
+
+  // 先等所有卡的顯示圖（影片卡＝poster）decode 完才開跑，stagger 才不會被載得慢的卡打亂
+  const gen = ++playGen;
+  await Promise.allSettled(
+    cards.value.map((card, i) => {
+      const img = imgEls[i];
+      return img && (card.video ? card.poster : card.src)
+        ? img.decode()
+        : Promise.resolve();
+    }),
+  );
+  if (gen !== playGen) return; // 等待期間已被 reset／重觸發
 
   let maxEnd = 0;
   cards.value.forEach((card, i) => {
@@ -411,10 +424,11 @@ const start = async () => {
     await nextTick();
   }
   reset();
-  play();
+  void play();
 };
 
 const reset = () => {
+  playGen++; // 使等待 decode 中的 play() 失效
   tls.forEach((tl) => tl.kill());
   tls = [];
   captionCall?.kill();
@@ -488,6 +502,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  playGen++; // 使等待 decode 中的 play() 失效，避免卸載後才啟動 timeline／rAF
   window.removeEventListener('pointermove', onPointerMove);
   stopFloat();
   captionCall?.kill();

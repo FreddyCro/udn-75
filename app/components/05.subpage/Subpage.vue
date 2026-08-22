@@ -614,6 +614,14 @@ onBeforeUnmount(() => {
     min-height: 0; // 高度由 inset 決定（= 舞台一屏），不再各自撐 100svh
     height: auto;
   }
+
+  // 舞台高是 100svh，iOS 工具列收合後視口變高、滿屏媒體底部會露出一條縫 ——
+  // 只把媒體層改吃 dvh、放掉 bottom，伸出舞台的部分靠 --media 拍放開 overflow（見下方）。
+  .subpage__media {
+    bottom: auto;
+    height: 100vh;
+    height: 100dvh;
+  }
 }
 
 // 媒體那一拍：整個舞台抬到 header（z-index 1000）之上，滿屏照片／影片才蓋得掉頂條。
@@ -628,6 +636,9 @@ onBeforeUnmount(() => {
 //    直到照片真的蓋上來。不會有「header 先消失一拍」的破綻。
 .subpage__stage--pinned.subpage__stage--media {
   z-index: 1100; // 與 SubpageIntroMedia 的 .intro-media 同值，兩處要一起改
+  // 讓 100dvh 的媒體層伸出 100svh 的舞台。只在媒體拍放開：
+  // 其餘拍維持 hidden，hero 進出場的位移才不會超出舞台。
+  overflow: visible;
 }
 
 // 舞台佔位（GSAP 插入的 .pin-spacer）不吃指標事件。

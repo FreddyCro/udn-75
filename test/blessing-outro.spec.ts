@@ -66,7 +66,7 @@ describe('partnersFadeAt', () => {
 });
 
 // veil 與底色切白必須同生共死。任一單獨生效都是破圖：
-//   只有白底 ＝ blessing 變成白底白字（reduce-motion / 無 JS / #media 深連結）
+//   只有白底 ＝ blessing 變成白底白字（reduce-motion / 無 JS）
 //   只有 veil ＝ 收窄後兩側露出的是橘、不是白，接縫變成一條可見的橫線
 // 閘門是「media 的 timeline 真的建起來了嗎」（mediaMotionArmed）。
 describe('outroWhiteAt', () => {
