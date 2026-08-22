@@ -22,6 +22,68 @@ export function refreshScrollTriggers() {
   ScrollTrigger.refresh();
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * 卸載時收尾（換頁路徑）
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 卸載時收掉 ScrollTrigger —— **`onBeforeUnmount` 裡一律用這支，不要裸呼 `st.kill()`**。
+ *
+ * 差別只有一個參數：`kill(false)`（不 revert）。而那個參數正是「首頁 → 子頁換頁時
+ * 整屏橘閃一下」的成因，機制如下（2026-08-22 逐幀量測，1522×868）：
+ *
+ * Vue 在 layout 的 `out-in` 轉場中，**leave 一開始就對整棵舊子樹呼叫 `beforeUnmount`**
+ * —— 此時舊頁的 DOM 還在畫面上、根元素 opacity 仍是 1，要再過 220ms 才淡完。於是
+ * 這裡寫下去的任何視覺狀態都會被使用者看到。而 `st.kill()` 預設會 revert：
+ *
+ *   kill(revert)  → disable(revert)
+ *   disable(reset)→ `reset !== false && self.revert(true, true)`   ← 不傳就 revert
+ *   revert(...)   → self.update(true) → `p = reset ? 0 : ...`      ← 進度歸零
+ *
+ * 兩條路徑都因此把畫面打回起始態，而起始態是橘的：
+ *
+ *   ① 掛了 `animation` 的 scrub 尺（useMediaIntroMotion 的 `st`）進度歸零 ＝ timeline
+ *      回到 time 0 ＝ 融合拍 `fromTo(veil, { scaleX: 1, autoAlpha: 1 }, …)` 的 **from**
+ *      ＝ 滿版橘、完全不透明。Blessing 的 `outroST` 同理（`--outro-white` 歸零 →
+ *      `.section3` 底色從白硬切回橘）。
+ *   ② 帶 `pin` 的尺（Hero 的 `transitionST`）revert 會拆掉 pin-spacer → 文件瞬間短
+ *      1041px → 瀏覽器把 scrollY clamp 同樣的量 → 頁面上**其餘還活著的** scrub 尺
+ *      收到 scroll 事件、忠實倒帶到那個位置，那裡同樣是滿版橘。
+ *
+ * 整棵 DOM 下一刻就要被丟掉，revert 沒有任何實際效益 —— 它唯一的效果就是這個 bug。
+ *
+ * ⚠️ **只用在卸載路徑**。「就地重建」（跨斷點重建 pin、HMR 重播）反而**需要** revert：
+ *    那裡要的是乾淨的幾何再重新量測，收掉 inline 樣式是刻意的。目前刻意保留裸 kill()
+ *    的有兩處，都在重建路徑上：`useMediaIntroMotion.buildMotion()` 開頭、
+ *    `FormulaBlocks` 的 `teardown()`（後者以參數區分兩種呼叫端）。
+ */
+export function killScrollTriggers(
+  ...triggers: (ScrollTrigger | null | undefined)[]
+): void {
+  for (const st of triggers) st?.kill(false);
+}
+
+/**
+ * 離開整頁時把**所有**尺一次收掉（同樣不 revert）—— 防護網，不是主修。
+ *
+ * 主修是各元件自己改用 `killScrollTriggers()`（見上）。這支補的是上面機制②的**通則**：
+ * 只要有任何一個元件在卸載時改動了文件高度，瀏覽器就會 clamp 捲軸，而頁面上還留在
+ * `_triggers` 裡的尺就會跟著倒帶、把畫面重畫在使用者眼前。`kill(false)` 會把尺從
+ * `_triggers` 移除，之後不論誰改動版面高度都不會再有東西跟著動。
+ *
+ * 掛在 **page 層**（`pages/index.vue`）而非各元件：Vue 的 `beforeUnmount` 是父先子後，
+ * page 這一刀因此落在所有子元件的收尾之前。
+ *
+ * ⚠️ 「全部」在這一刻是安全的：`out-in` 保證新頁還沒 mount，此時 `getAll()` 拿到的
+ *    就只有本頁自己那些尺（實測首頁 10 條）；layout 層（AppHeader／AppFooter）不建尺。
+ * ⚠️ 這支**取代不了**各元件的 `killScrollTriggers()`：GSAP 的 revert 判定是
+ *    `r = revert !== false || !self.enabled`，先 `kill(false)` 並不會讓後續那次裸
+ *    `kill()` 變成 no-op —— 它照樣 revert 一次。兩層各守一半。
+ */
+export function killAllScrollTriggers(): void {
+  for (const st of ScrollTrigger.getAll()) st.kill(false);
+}
+
 /**
  * 字體載入完成後重算一次 —— **整個 app 只註冊一次**。
  *

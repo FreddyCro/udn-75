@@ -10,6 +10,7 @@
 // 也因為視覺已經是 fixed，**不需要 pin**（少一層 transform / containing block 的雷）。
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { killScrollTriggers } from '~/utils/scroll-trigger';
 
 const {
   symbolMode,
@@ -99,7 +100,9 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  symbolST?.kill();
+  // kill(false)：換頁時舊頁還在畫面上淡出，revert 會把畫面打回起始態而被看見
+  // （見 utils/scroll-trigger 的 killScrollTriggers）
+  killScrollTriggers(symbolST);
   symbolST = null;
 });
 

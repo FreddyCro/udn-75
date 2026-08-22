@@ -14,7 +14,10 @@ import str from '@/locales/section3.json';
 // 明寫 import（本檔其他常數都吃 auto-import）：它是在 **template** 裡消費的，
 // 而 auto-import 只掃 script（同 BlessingFace.vue 的 FACE_GRID）。
 import { BLESSING_ANCHOR_VH } from '@/utils/orange-core-config';
-import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  killScrollTriggers,
+  refreshScrollTriggers,
+} from '@/utils/scroll-trigger';
 
 const { partner } = str;
 // 階梯線的逐格進場是否已播完（stairsDone）—— 播完才讓夥伴清單面板淡入。
@@ -280,11 +283,12 @@ onBeforeUnmount(() => {
   partnersRO = null;
   innerRO?.disconnect();
   innerRO = null;
-  coverST?.kill();
+  // kill(false)：換頁時舊頁還在畫面上淡出，而 outroST 的 revert 會把 --outro-white
+  // 打回 0 —— 本段底色從白硬切回橘，整屏橘閃一下。coverST 同理（--cover-orange）。
+  // 完整機制見 utils/scroll-trigger 的 killScrollTriggers。
+  killScrollTriggers(coverST, faceST, outroST);
   coverST = null;
-  faceST?.kill();
   faceST = null;
-  outroST?.kill();
   outroST = null;
 });
 </script>

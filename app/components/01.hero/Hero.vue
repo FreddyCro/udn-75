@@ -11,7 +11,10 @@ import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import str from '@/locales/section1.json';
 import { anchorLanding, anchorOffsetVh } from '@/utils/anchor-landing';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
-import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  killScrollTriggers,
+  refreshScrollTriggers,
+} from '@/utils/scroll-trigger';
 import {
   coverAnchorToScreen,
   isVerticallyOnScreen,
@@ -531,9 +534,12 @@ onBeforeUnmount(() => {
   // 就會讓 HeroSymbolTransition 處於 active —— 在 ScrollTrigger refresh 之前蓋一層近乎
   // 滿版的黑色 clip。
   setTransitionProgress(0);
-  transitionST?.kill();
+  // killScrollTriggers ＝ kill(false)，**不可**改回裸 kill()：transitionST 帶 pin，
+  // revert 會拆掉 pin-spacer 讓文件瞬間短一截（實測 1041px），瀏覽器 clamp 捲軸後
+  // 首頁其餘 scrub 尺跟著倒帶 —— 而此刻舊頁還在畫面上淡出，倒帶出來的滿版橘看得見。
+  // 完整機制見 utils/scroll-trigger 的 killScrollTriggers。
+  killScrollTriggers(transitionST, introFadeST);
   transitionST = null;
-  introFadeST?.kill();
   introFadeST = null;
   entranceTween?.kill();
   entranceTween = null;

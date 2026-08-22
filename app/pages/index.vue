@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import { killAllScrollTriggers } from '~/utils/scroll-trigger';
+
 // 首頁換頁轉場改用 page-fade（純 opacity、不帶 transform）。
 // Hero 有 ScrollTrigger pin 與 position: fixed 疊層，父層若在進場期間帶著 scale，
 // fixed 會以該變形層為定位基準而跳位、pin 也會量到縮放後的尺寸。
@@ -14,6 +16,18 @@ definePageMeta({
 // （這是它刻意不包 <DevOnly> 的原因，見該檔開頭），但沒開的人不必付這筆帳。
 const route = useRoute();
 const pathDebug = computed(() => route.query.pathdebug !== undefined);
+
+// 離開首頁時先把整頁的 ScrollTrigger 收乾淨（不 revert）。
+//
+// 這是防護網，不是主修 —— 主修是各元件的 onBeforeUnmount 改用 killScrollTriggers()。
+// 它守的是通則：`out-in` 下 Vue 在 leave 一開始就跑完整棵舊子樹的 beforeUnmount，
+// 而舊頁還要在畫面上淡出 220ms；期間只要有任何一個元件的收尾改動了文件高度
+// （最典型的是 pin-spacer 被拆），瀏覽器就會 clamp 捲軸，還留在 ScrollTrigger 名冊裡
+// 的尺便跟著倒帶、把畫面重畫給使用者看。先把名冊清空，這條路就不存在了。
+//
+// 掛在 page 層而非各元件：Vue 的 beforeUnmount 是父先子後，這一刀因此落在所有子元件
+// 的收尾之前。安全性與「為何取代不了各元件那一半」見 utils/scroll-trigger。
+onBeforeUnmount(killAllScrollTriggers);
 </script>
 
 <template>

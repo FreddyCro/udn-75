@@ -23,6 +23,7 @@ import {
   dissolveState,
   outroHoldScale,
 } from '@/utils/hero-dissolve';
+import { killScrollTriggers } from '@/utils/scroll-trigger';
 // ── 退場：兩階段，A 由本元件負責 ─────────────────────────────────────
 // 完整設計見 architecture/2026-08-21-hero-two-phase-exit-design.md。
 //   A（本元件）  0 → vh(HERO_DISSOLVE_VH)：影片 sticky 黏在畫面上播退場，走完**硬切**消失
@@ -587,7 +588,9 @@ onBeforeUnmount(() => {
   clearOutroLockFuse();
   heroIO?.disconnect();
   heroIO = null;
-  dissolveST?.kill();
+  // kill(false)：換頁時舊頁還在畫面上淡出，revert 會把畫面打回起始態而被看見
+  // （見 utils/scroll-trigger 的 killScrollTriggers）
+  killScrollTriggers(dissolveST);
   dissolveST = null;
 });
 </script>

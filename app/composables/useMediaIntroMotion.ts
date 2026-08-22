@@ -1,6 +1,7 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { Ref } from 'vue';
+import { killScrollTriggers } from '~/utils/scroll-trigger';
 
 /** MediaTitle 分件元素（getEls() 回傳；任一缺件時為 null，motion 降級不播） */
 export interface MediaTitleEls {
@@ -516,7 +517,14 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   });
 
   onBeforeUnmount(() => {
-    st?.kill();
+    // kill(false)：**這裡不可以 revert**（與上面 buildMotion() 開頭那次相反）。
+    // st 掛著 tl，revert 會把 timeline 拉回 time 0 —— 而 time 0 就是融合拍
+    // `fromTo(veil, { scaleX: 1, autoAlpha: 1 }, …)` 的 from ＝ 滿版橘、完全不透明。
+    // 換頁時舊頁還在畫面上淡出（Vue 的 beforeUnmount 早於 DOM 移除 220ms），
+    // 那一格橘因此被畫出來。完整機制見 utils/scroll-trigger 的 killScrollTriggers。
+    // ⚠️ kill() 內部已經會 `animation.kill()`，下面那行 tl?.kill() 只是把本地參照
+    //    一併收乾淨（Timeline.kill() 不寫樣式，不會重蹈上面的覆轍）。
+    killScrollTriggers(st);
     st = null;
     tl?.kill();
     tl = null;

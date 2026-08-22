@@ -38,6 +38,7 @@ import {
   type ForumTurn,
 } from '~/utils/forum-path-turns';
 import {
+  killScrollTriggers,
   refreshScrollTriggers,
   refreshOnFontsReady,
 } from '~/utils/scroll-trigger';
@@ -809,7 +810,9 @@ onBeforeUnmount(() => {
   mqPc?.removeEventListener('change', onBpChange);
   mqPad?.removeEventListener('change', onBpChange);
   ScrollTrigger.removeEventListener('refreshInit', build);
-  st?.kill();
+  // kill(false)：換頁時舊頁還在畫面上淡出，revert 會把畫面打回起始態而被看見
+  // （見 utils/scroll-trigger 的 killScrollTriggers）
+  killScrollTriggers(st);
   st = null;
 });
 </script>

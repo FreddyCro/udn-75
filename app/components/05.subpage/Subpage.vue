@@ -566,6 +566,7 @@ onBeforeUnmount(() => {
   @include rwd-min('pc') {
     height: calc(473.66 / 1280 * 100vw);
     gap: 120px;
+    margin-top: 5vh;
   }
   @include rwd-min('ultra') {
     height: calc(710.49 / 1920 * 100vw);
