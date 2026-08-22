@@ -50,7 +50,7 @@ const assetUrl = useAssetUrl();
     <!-- 近年得獎獎項 -->
     <div class="max-w-152 lg:max-w-157.5 mt-16 mx-auto">
       <h2 class="sp-subtitle text-center">{{ c.awards.title }}</h2>
-      <div class="mt-4 gap-8 flex flex-col sm:mt-8 lg:mt-5 lg:gap-6">
+      <div class="mt-4 gap-8 flex flex-col sm:mt-8 lg:mt-5 lg:gap-6 pl-6.5 pr-6.5 xs:pl-5 xs:pr-5 sm:pl-0 sm:pr-0">
         <div
           v-for="(a, i) in c.awards.items"
           :key="i"
