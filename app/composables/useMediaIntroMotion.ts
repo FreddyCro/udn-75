@@ -55,7 +55,6 @@ interface MediaIntroMotionTargets {
  * 分件位置全在 D／BAR／QUOTE／HOME 常數表（分鏡稿 px、753 基準），改稿改表。
  */
 export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
-  const route = useRoute();
   const { vhPx } = useViewportHeight();
   const { setMediaMotionArmed } = useOrangeCoreProgress();
   // header 的反白窗：橘塊收窄時，窗內那一段 header 維持橘底白字、窗外跟著露白。
@@ -203,8 +202,12 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const MORPH_H = 82;
 
     buffer.style.height = `${HOLD_BUFFER}px`;
+    // /#media 錨點落點＝motion 終點（section 頂 + HOLD_BUFFER），深連結直接看到完成態。
+    // dataset 給站內深連結（見 anchor-landing.ts）、scroll-margin-top 給 Nuxt 的 hash 捲動。
+    section.dataset.anchorOffsetVh = String(HOLD_BUFFER / vhPx(1));
+    section.style.scrollMarginTop = `${-HOLD_BUFFER}px`;
     // progress 0＝滿版橘塊，畫面上緣是整片橘。模板的預設值是 light（給
-    // reduced-motion 與 /#media 兩條降級路徑用），真的要播 motion 才改成 orange。
+    // reduced-motion 降級路徑用），真的要播 motion 才改成 orange。
     section.dataset.headerTheme = 'orange';
 
     tl = gsap.timeline({ paused: true });
@@ -504,10 +507,9 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
     const els = targets.titleEls();
     if (!section || !targets.hold.value || !targets.buffer.value || !els) return;
     if (!targets.morph.value || !targets.barL.value || !targets.barR.value) return;
-    // 降級：不建 timeline，直接顯示完成態（初始隱藏全靠 JS set，不寫在 CSS）
+    // 降級：不建 timeline，直接顯示完成態（初始隱藏全靠 JS set，不寫在 CSS）。
+    // /#media 深連結不再降級 —— 錨點落在 motion 終點（見 buildMotion），回捲即倒播。
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    // /#media 深連結：錨點在 section 頂＝scrub 進度 0，同降級直接顯示完成態
-    if (route.hash === '#media') return;
 
     gsap.registerPlugin(ScrollTrigger);
     buildMotion();

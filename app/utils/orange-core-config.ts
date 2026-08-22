@@ -869,8 +869,8 @@ export function partnersFadeAt(p: number): number {
  *  底色被完全遮住，所以硬切看不到。補間只會多出一條要與 veil 對齊的曲線。
  *
  *  `armed` ＝ media 的 timeline 真的建起來了嗎（見 useMediaIntroMotion）。
- *  ⚠️ 這個參數不是防禦性程式碼，是**必要條件**：reduce-motion / `/#media` 深連結 / 無 JS
- *     三條路徑都不建 timeline ⇒ veil 停在 CSS 初始態不會現身，此時若底色照樣翻白，
+ *  ⚠️ 這個參數不是防禦性程式碼，是**必要條件**：reduce-motion / 無 JS
+ *     兩條路徑都不建 timeline ⇒ veil 停在 CSS 初始態不會現身，此時若底色照樣翻白，
  *     blessing 整段會變成白底白字。veil 與底色必須同生共死。
  *
  *  純函式、不依賴 DOM —— 由 test/blessing-outro.spec.ts 守著。 */

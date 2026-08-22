@@ -99,8 +99,8 @@ useMediaIntroMotion({
        onMounted 的一次性 querySelectorAll 收到本元素；值由 useMediaIntroMotion 在
        捲動中接管 —— 融合拍與拍 1 期間是 orange（畫面上仍有一大塊橘：先是
        `.section3__veil`，接著是收窄中的橘柱），橘柱收成 28px 細條之後才翻 light
-       （門檻見 mediaHeaderLightAt）。reduced-motion 與 /#media 兩條降級路徑不建
-       timeline，veil 與橘塊都不出現，留在 light 天然正確。 -->
+       （門檻見 mediaHeaderLightAt）。reduced-motion 降級路徑不建 timeline，
+       veil 與橘塊都不出現，留在 light 天然正確。 -->
   <section
     id="media"
     ref="sectionRef"

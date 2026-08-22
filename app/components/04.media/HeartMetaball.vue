@@ -221,7 +221,7 @@ const props = withDefaults(
     tailBlobMin: 0.1,
     tailBlobMax: 0.5,
     autoRoam: false,
-    // 預設不暫停：降級路徑（reduced-motion、/#media）不建 timeline，底紋從一開始
+    // 預設不暫停：降級路徑（reduced-motion）不建 timeline，底紋從一開始
     // 就是可見的，父層不會、也不該去翻這個旗標
     paused: false,
   },
