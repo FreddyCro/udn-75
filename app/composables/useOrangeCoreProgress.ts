@@ -24,6 +24,7 @@ import {
   convergeAmountAt,
   convergeLightAt,
   coreWarmAt,
+  headerTintAt,
   symbolBgLightAt,
   coverHandoffAt,
   coverOrangeAt,
@@ -191,9 +192,19 @@ function buildOrangeCoreProgress() {
   const symbolCoreWarm = computed(() => coreWarmAt(symbolProgress.value));
   const symbolBgLight = computed(() => symbolBgLightAt(symbolProgress.value));
 
-  // 底色／header 主題該不該翻成淺色（＝ 底色過黑白中點，見 convergeLightAt）。
-  // 收成 boolean：它是 class 與 data-attribute 的條件，整拍只翻一次，不該逐幀 re-render。
+  // 段落底色（`.sec-symbol--light`）該不該翻成淺色（＝ 底色過黑白中點，見 convergeLightAt）。
+  // 收成 boolean：它是 class 的條件，整拍只翻一次，不該逐幀 re-render。
+  // ⚠ 2026-08-22 起 header **不再吃這個**，改吃下面的 symbolHeaderTint（逐幀插值）。
+  //   `.sec-symbol` 的底色留著硬翻：那一刻它一定被不透明的轉場層蓋著，看不到（見該元件）。
   const symbolConvergeLight = computed(() => convergeLightAt(symbolProgress.value));
+
+  // header 三顆色票在同一段窗口內的逐幀漸變量；null ＝ 窗口外，交還給 data-header-theme
+  // 的離散三檔（見 headerTintAt 的註解）。消費端是 SymbolScene → useHeaderTint。
+  //
+  // ⚠ 這裡**不**收成 boolean（與上面那個相反）：它就是要逐幀的那個數字。也因此消費端
+  //   不能直接 render 它 —— 它最後是被寫成 CSS 變數，不進 Vue 的 render 路徑，
+  //   理由見 useHeaderTint 的檔頭。
+  const symbolHeaderTint = computed(() => headerTintAt(symbolProgress.value));
 
   // forum 接棒視窗：symbolProgress ∈ [coreIn, coreOut) → 橘核心（ForumCore）現身。
   //   進入（≥coreIn）→ SymbolFace 收斂點交棒給橘核心（硬切，兩顆已同色同尺寸，見 FORUM_HANDOFF）；
@@ -381,6 +392,7 @@ function buildOrangeCoreProgress() {
     symbolCoreWarm,
     symbolBgLight,
     symbolConvergeLight,
+    symbolHeaderTint,
     forumCoreActive,
     forumCoreDotVisible,
     agendaRevealed,

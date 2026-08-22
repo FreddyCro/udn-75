@@ -18,6 +18,7 @@ const {
   setSymbolProgress,
   symbolLayerDone,
   symbolConvergeLight,
+  symbolHeaderTint,
 } = useOrangeCoreProgress();
 
 // 段落高度 ＝ SYMBOL_VH × 視窗高（見 ~/utils/orange-core-config）＝ 序列的捲動長度。
@@ -122,6 +123,20 @@ watch(symbolOnScreen, (on) => setAnchorClaim(on ? 'forum' : null), {
 });
 // 換到子頁時本元件會 unmount，但 useState 活著 —— watch 停了就沒人放手了。
 onBeforeUnmount(() => setAnchorClaim(null));
+
+// header 配色的逐幀漸變：底色黑→白那 20vh 內，header 跟著**同一條曲線**在 dark 與
+// light 之間連續插值，取代原本在窗口正中央硬翻一次（使用者回報的「進入 forum 直接
+// 切換主題」）。宣告權留在段落自己 —— header 只收一個數字，不認得符號段，同
+// data-header-theme／data-anchor-target 的分工。
+//
+// ⚠ 下面那行 data-header-theme **刻意不改**：tint 是疊在離散三檔之上的覆寫，窗口期間
+//   底下那個 0.5 硬翻看不見；窗口外 tint 放手，接手的正是它。兩者是同一段捲動的兩種
+//   讀法，不是兩份設定，見 headerTintAt 的註解。
+const { syncHeaderTint } = useHeaderTint();
+watch(symbolHeaderTint, (t) => syncHeaderTint(t), { immediate: true });
+// 換到子頁時本元件會 unmount，但旗標活著 —— watch 停了就沒人放手了（同 setAnchorClaim）。
+// 少這一行的症狀是：在窗口中途離開首頁，子頁的 header 會卡在那一刻的混色。
+onBeforeUnmount(() => syncHeaderTint(null));
 
 // scroll 主導：symbolProgress 解出的目標 → 指派 SymbolFace 的 mode 與轉場層的撤場旗標。
 // 分兩個 watch 只在「值真的改變」時觸發（mode 改變才會讓 SymbolFace 跑 2.2s 補間）。

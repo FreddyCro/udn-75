@@ -1,3 +1,4 @@
+import { setHeaderVar } from '~/utils/header-css-var';
 import type { HeaderTheme } from '~/utils/header-theme';
 
 // 轉場「開窗」時，窗內那一段 header 反白 —— 窗的座標由轉場自己交出來，header 只管畫。
@@ -8,9 +9,9 @@ import type { HeaderTheme } from '~/utils/header-theme';
 //
 // 為什麼是 CSS 變數而不是 useState：
 //   窗的左右緣**逐幀**變（轉場全程由 scroll scrub 驅動），走 reactive 等於每幀一次
-//   re-render；而 header 需要的其實只是兩個數字進到 CSS。故幾何寫 documentElement 的
-//   inline style（繼承給整棵樹），只有「有沒有開窗／窗內是什麼主題」這種**很少變**的狀態
-//   才是 useState —— 那個要驅動 v-if。
+//   re-render；而 header 需要的其實只是兩個數字進到 CSS。故幾何寫 header 元素的
+//   inline style（繼承給它的子樹，寫入細節與快取見 ~/utils/header-css-var），只有
+//   「有沒有開窗／窗內是什麼主題」這種**很少變**的狀態才是 useState —— 那個要驅動 v-if。
 //
 // 為什麼 header 那層要 v-if 而不是常駐（clip 成空）：
 //   反白層是整份 bar 的副本，裡面有 <AppHeaderShare>（onMounted 掛 document 監聽）。
@@ -40,30 +41,9 @@ export interface HeaderBandRect {
 const VAR_LEFT = '--hd-band-l';
 const VAR_RIGHT = '--hd-band-r';
 
-// 寫入目標：header 本體，不是 documentElement。
-//
-// 這兩個是**會繼承**的自訂屬性，寫在根節點等於每一幀讓整棵樹的 computed style 失效
-// （轉場全程逐幀寫），而真正的消費者只有 AppHeader 底下那兩層。改寫在 header 上，
-// 失效範圍從整份文件縮到 header 子樹，繼承照舊成立、CSS 一個字都不用改。
-// 元素以 data- 屬性尋址（同 data-header-theme／data-morph-veil 的慣例）；查一次快取，
-// 找不到就退回 documentElement（例如某頁沒有 header —— 行為與改版前相同）。
-let bandEl: HTMLElement | null = null;
-// 上一次寫進去的值（字串比對，見 syncHeaderBand）。換了目標元素必須一併清掉，
-// 否則新元素身上沒有這兩個變數、快取卻說「值沒變」，反白窗會停在錯誤位置
-let lastLeft = '';
-let lastRight = '';
-const bandTarget = () => {
-  // 只在「真的找到」時才快取 —— 若 fallback 也存進 bandEl，documentElement 永遠
-  // isConnected，header 之後掛上來也不會被重新認出
-  if (bandEl?.isConnected) return bandEl;
-  const found = document.querySelector<HTMLElement>('[data-header-band]');
-  if (found !== bandEl) {
-    lastLeft = '';
-    lastRight = '';
-  }
-  bandEl = found;
-  return found ?? document.documentElement;
-};
+// 寫入目標（header 本體）、值沒變就不寫、換了元素就清快取 —— 這三件事搬到
+// ~/utils/header-css-var 了，因為 useHeaderTint 需要**同一份**（那裡的快取失效
+// 時機才是真正微妙的地方，複製一份等於複製那些坑）。理由與細節見該檔檔頭。
 
 export function useHeaderBand() {
   const bandTheme = useState<HeaderTheme | null>('header-band', () => null);
@@ -91,18 +71,9 @@ export function useHeaderBand() {
     // ⚠️ 順序：先寫幾何、後翻 bandTheme。翻 theme 會觸發 v-if 掛上反白層，
     //    而 Vue 的 DOM 更新是下一個 tick —— 那時變數早就是對的值，不會有一幀
     //    用著上一輪殘留的 l / r 畫出來的錯位反白。
-    const s = bandTarget().style;
-    // 值沒變就不寫：座標是 toFixed(1) 之後的字串，收窄／展開的慢段常常好幾幀同值
-    const l = `${rect!.left.toFixed(1)}px`;
-    const r = `${rect!.right.toFixed(1)}px`;
-    if (l !== lastLeft) {
-      lastLeft = l;
-      s.setProperty(VAR_LEFT, l);
-    }
-    if (r !== lastRight) {
-      lastRight = r;
-      s.setProperty(VAR_RIGHT, r);
-    }
+    // 座標 toFixed(1)：收窄／展開的慢段常常好幾幀同值，setHeaderVar 靠字串比對擋掉重寫。
+    setHeaderVar(VAR_LEFT, `${rect!.left.toFixed(1)}px`);
+    setHeaderVar(VAR_RIGHT, `${rect!.right.toFixed(1)}px`);
     if (bandTheme.value !== rect!.theme) bandTheme.value = rect!.theme;
   };
 
