@@ -146,6 +146,22 @@ const { play } = useSfx();
 // ⚠️ :deep() 不可省：v-html 產生的 <br> 拿不到 scoped 的 data-v 屬性，
 //    直接寫 `br { … }` 會編成 `br[data-v-xxx]`，選不到。
 .agenda-report__cta-label {
+  // 窄機（≤374）縮字級，避免後半段折成第三行。
+  // 算式：後半段 13 個全形字，字幅 1em ＋ 字距 0.1em → 每字 1.1em；
+  //   20px → 286px；可用寬 ＝ 視窗 − 52（本區塊左右 padding 各 26）− 2（按鈕邊框）
+  //   → 視窗 340 以下就塞不下（實測 325 時可用 271，確實折三行、盒高 108）。
+  //   18px → 260px（Chrome 把 0.1em 字距進位成 2px，故是 13×20 而非 13×19.8），
+  //   320 的可用寬 266 放得下，還留 6px 餘裕（實測值）。
+  // 上界取 375 而非實測的 340：340~374 雖勉強塞得下，餘裕最少只剩 0px，
+  //   字體 fallback 或桌機捲軸一佔位就破，故整段一起縮。<320 不在支援範圍。
+  // 18 亦即 .u-btn 在 pad 的字級，不是憑空的數字。
+  //
+  // 行距與字距不必跟著調：字距是 0.1em（隨字級縮），行距是 .u-btn 的固定 36px
+  // → 兩行 72 仍小於 .agenda-report__cta 的 min-height 98，盒高不變。
+  @include rwd-max(375px) {
+    font-size: 18px;
+  }
+
   :deep(br) {
     @include rwd-min('tablet') {
       display: none;
