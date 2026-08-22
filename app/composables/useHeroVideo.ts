@@ -95,11 +95,17 @@ export function useHeroVideo() {
     state.value = s;
   };
 
+  // 子頁 logo → 首頁的「這次要從頭重播」旗子。子頁的 AppHeader 在 click handler 設起、
+  // Hero 在自己的 setup 內消耗一次（一次性語意是 ~/utils/home-intent 的純函式，有測試釘住）。
+  // 用 useState 而非 URL hash：旗子活不過整頁載入，於是 reload／新分頁不會重現一個
+  // 「跳過 start 閘門」的靜音開場，瀏覽器上一頁也不會再 restart 一次（理由見 home-intent）。
+  const restartIntent = useState('hero-restart-intent', () => false);
+
   // scrub 可不可以開始寫狀態。
-  // 帶 hash 進站（尤其子頁 → logo → /#loop）時，子頁的捲動位置會延續到 Hero 掛載之後，
-  // 而落點是在 nextTick 才被 scrollToTopForLoop() 修正的。scrub 若在那之前就寫狀態，
-  // 會先讀到一個很大的 p → 判 gone、把影片 seek 到退場段 → 下一 tick 被拉回 → 再倒回
-  // loop 又 seek 一次，使用者看到影片抽搐。故由 Hero.vue 在落點確定後才 arm。
+  // 帶 hash 進站（子頁選單的 /#forum 這類）或 logo 帶著 restartIntent 回來時，子頁的捲動
+  // 位置會延續到 Hero 掛載之後，而落點是在 nextTick 才被修正的。scrub 若在那之前就寫狀態，
+  // 會先讀到一個很大的 p → 判 gone、把影片 seek 到退場段 → 下一 tick 被拉回又 seek 一次，
+  // 使用者看到影片抽搐。故由 Hero.vue 在落點確定後才 arm。
   const scrubArmed = useState('hero-scrub-armed', () => false);
 
   // 「不經 scrub 抵達 gone」發生過沒。
@@ -155,7 +161,7 @@ export function useHeroVideo() {
    *
    * 動機是設計師的回報：帶 hash 從子頁進站的人落在 gone，等於再也看不到影片。裁決是
    * 「乾脆全部回到 page top 就重看影片」，故三條路徑共用同一個語意：
-   *   ① 子頁 logo → `/#loop` 進站（Hero 的 bypassToRestart）
+   *   ① 子頁 logo → 帶著 restartIntent 導航回 `/`（Hero 的 bypassToRestart）
    *   ② 首頁 logo 就地（本函式，skipLoader 預設 true）
    *   ③ 由下往上捲回 page top（scrub，見 ~/utils/hero-dissolve 的 dissolveState）
    *
@@ -174,7 +180,7 @@ export function useHeroVideo() {
   const restartOpening = ({ skipLoader = true } = {}) => {
     // skipLoader ＝ true（預設，首頁就地重播）：直接開閘，畫面立刻是正片第一幀。使用者已經在
     //   首頁上、載入層早就收掉了，這時把它請回來只會像整頁重載。
-    // skipLoader ＝ false（帶 #loop 進站）：**載入層留著跑完**。此時 hero 影片可能一次都
+    // skipLoader ＝ false（子頁 logo 帶 restartIntent 進站）：**載入層留著跑完**。此時 hero 影片可能一次都
     //   沒下載過（直接開子頁再點 logo），開閘會露出一片白 —— HERO_VIDEO_POSTER 三個裝置
     //   都是空字串，canplay 之前 <video> 什麼都不畫。載入層的 :ready="videoReady" 正是
     //   為此而設：進度封頂在 99% 等影片，ready 後才收尾到 100%。
@@ -202,6 +208,7 @@ export function useHeroVideo() {
     heroStarted,
     currentTime,
     scrubArmed,
+    restartIntent,
     skipOpening,
     openingSkipped,
     outroSpent,

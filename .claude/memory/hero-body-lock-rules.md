@@ -35,7 +35,7 @@ hero 開場的 **body 捲動鎖規則**（2026-08-04 與使用者逐拍確認；
 
 ## 2026-08-22：`main` 會重來，所以「不重新上鎖」的例外被移除
 
-設計師回報「帶 hash 從子頁進站（`/#forum` 這類）就再也看不到影片」，使用者裁決「**乾脆全部回到 page top 就重看影片**」（restart，完整紀錄見 `architecture/2026-08-22-hero-restart-on-top-design.md`）。於是 `heroState` 會再回到 `main`——三條路徑：子頁 logo → `/#loop` 進站、首頁 logo 就地、由下往上捲回 page top（`dissolveState` 的 `p < DISSOLVE_LEAVE`）。
+設計師回報「帶 hash 從子頁進站（`/#forum` 這類）就再也看不到影片」，使用者裁決「**乾脆全部回到 page top 就重看影片**」（restart，完整紀錄見 `architecture/2026-08-22-hero-restart-on-top-design.md`）。於是 `heroState` 會再回到 `main`——三條路徑：子頁 logo → 導航回 `/` 並帶 `restartIntent` 旗子（原本是 `/#loop`，2026-08-22 同日改掉，見該文件第十一節）、首頁 logo 就地、由下往上捲回 page top（`dissolveState` 的 `p < DISSOLVE_LEAVE`）。
 
 配套改動：
 - **`hasLeftLoop` 整個移除**（含 `setState('gone')` 裡的設值）。留著等於「重播不上鎖」，而重播那一趟不鎖就會被使用者自己的下一個捲動事件立刻打斷 —— 等於沒有重播。真值表因此只剩一個輸入。

@@ -131,8 +131,8 @@ main   0 → …       重播（重新上鎖）
   而現在退場在解鎖前就播完了）。使用者裁決先不動，實機看過再決定要不要縮回 1.0
   —— 縮回的話 `.sec1__inner` 的 `$sticky-floor` 保底會一併變成不作用（見
   `2026-08-21-hero-two-phase-exit-design.md` 第八節）。
-- **保留字 `#loop` 與行為不一致**（名稱是 loop、行為是 restart，而 `loop` 狀態已不存在）。
-  三處註解已標明，改名留待下一輪。
+- ~~**保留字 `#loop` 與行為不一致**（名稱是 loop、行為是 restart，而 `loop` 狀態已不存在）。
+  三處註解已標明，改名留待下一輪。~~ → **已解決，見第十一節**（不改名，直接拿掉 hash）。
 
 ---
 
@@ -348,3 +348,57 @@ $intro-at`）—— JS 側湊算式就會變成第三份雙寫。量測是單一
 - ⚠️ 1920×1080 的 +164 是四個一般尺寸中最薄的一個。它與 2026-08-21 記錄裡「`vh(1.2) + 固定
   200px` 在 1920×1080 上餘裕 −16px」是同一個尺度的兩件事 —— 少了那 200px 就從 −16 變 +164。
   再往上加距離（或改動引言文案長度、行高）都要重量這個數字。
+
+---
+
+## 十一、修訂：回首頁不帶 hash（同日，取代第五節最後一項代價）
+
+第五節記的最後一項代價是「保留字 `#loop` 與行為不一致，改名留待下一輪」。重新檢視後**不改名，
+直接拿掉 hash**：子頁 logo 改成導航到 `/`，意圖用一面一次性旗子（`restartIntent`）傳遞。
+
+### 為什麼不是改名
+
+改名（`#loop` → `#top` / `#restart`）只解決「名字對不上」，而 fragment 這個載體本身帶進三個
+**行為**缺陷 —— 名字換掉之後它們一個都不會消失：
+
+| # | 缺陷 | 為什麼 |
+|---|---|---|
+| 1 | 可被 reload／分享的**靜音開場** | 那條路徑 `heroStarted = true`，跳過 start 閘門，而 start 閘門是唯一能開聲的地方（`soundOn` 預設 false，header 在影片期間收起來）。整頁載入若也吃這個 hash，訪客的第一次觀看就是靜音且無法開聲 |
+| 2 | 瀏覽器**上一頁**回首頁會再 restart 一次 | pop 導航同樣帶著 hash 進 Hero 的 setup，於是蓋掉 Nuxt 還原的 `savedPosition`，把人拉回頂端鎖著看重播 |
+| 3 | `loop` 必須當**保留字** | 任何段落 id 都不能撞，要靠 `test/home-intent.spec.ts` 盯 `common.json` |
+
+旗子活不過整頁載入，三個一起消失。
+
+### 為什麼不能只用「無 hash 的 client-side 導航」推導
+
+上一頁回首頁也符合那個條件（見上表第 2 點），但它該還原 `savedPosition` 而不是重播。旗子只由
+logo 的 click handler 設起，對「導航是怎麼發生的」免疫。
+
+### 實作
+
+| 位置 | 改動 |
+|---|---|
+| `app/utils/home-intent.ts` | 移除 `HERO_RETURN_HASH`；`resolveHomeIntent(false).to` 改成 `/`；新增純函式 `requestHomeRestart()` / `consumeHomeRestart()`（一次性語意，吃 ref-like 載體所以測得到） |
+| `app/composables/useHeroVideo.ts` | 新增 `restartIntent`（`useState('hero-restart-intent')`），跨 client-side 導航存活 |
+| `app/components/ui/AppHeader.vue` | `onLogoClick` 的 navigate 分支設起旗子。⚠️ NuxtLink 內建 handler 先跑，但它的 `router.push()` 是非同步的 —— 同步碼必然搶在導航的 microtask 之前，不是競態 |
+| `app/components/01.hero/Hero.vue` | setup 內 `wantsRestart = import.meta.client && consumeHomeRestart(restartIntent)`；`initialHash === HERO_RETURN_HASH` 的三處判定（`loaderDuration`、`bypassForEntry`、落點分派）改吃它；`hashHandled` → `entryHandled`、`bypassForInitialHash()` → `bypassForEntry()` |
+
+`restartOpening({ skipLoader: false })` 那條路徑本身沒動；`scrollToTopForRestart()` 保留（Nuxt 預設
+scrollBehavior 對無 hash 的 push 導航雖然會給 `(0, 0)`，但那是 router 的時序，與
+`refreshScrollTriggers()` → `armScrub` 的順序無法保證）。
+
+### 代價
+
+- 舊的 `/#loop` 網址進站會落到 `bypassLoader()` → `gone`（看不到影片）。**不做向下相容**：這個 hash
+  只由 header logo 產生，沒有對外散布。
+- 多一面「一次性」旗子。沒消耗掉就會變幽靈狀態，故消耗點固定在 Hero 的 setup，並由
+  `test/home-intent.spec.ts` 釘住一次性語意（連續消耗第二次為 false）。
+
+### 驗到哪裡
+
+| 項目 | 結果 |
+|---|---|
+| `test/home-intent.spec.ts`（8 條：目的地不含 hash ＋ 旗子一次性） | passed ✔ |
+| 全套單元測試 | 688 passed；2 個既有失敗（`sound-manifest`、`viewport-height` 的 `Subpage.vue` 5vh）在乾淨樹上同樣失敗，與本次無關 |
+| dev server SSR 輸出 | `/news` 的 logo 是 `<a href="/">`，整份 HTML 無 `#loop` ✔ |
+| **未驗（互動路徑）** | 子頁 logo → 載入層跑完 → 影片從 0s ＋ 上鎖；瀏覽器上一頁不重播且還原 `savedPosition`；reload `/` 走首訪（start 閘門）。Playwright 的 Chrome profile 當時被既有工作階段佔用，未實測 |

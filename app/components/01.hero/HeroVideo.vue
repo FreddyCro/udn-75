@@ -249,8 +249,8 @@ function onLoadedMetadata() {
     resumeAt = 0;
   } else {
     // watch(heroState) 只在「狀態改變」時對齊，但狀態可能在本元件存在之前就已經設好：
-    // 帶 #loop 進站時 Hero 於自己的 setup 內就把 heroState 設好（2026-08-22 起是 main、
-    // 之前是已移除的 loop），那時本元件（子層）還沒建立、watcher 也還沒註冊 —— Vue 的 watch
+    // restartIntent 進站時 Hero 於自己的 setup 內就把 heroState 設成 main，
+    // 那時本元件（子層）還沒建立、watcher 也還沒註冊 —— Vue 的 watch
     // 不會補發早於它的變更。restart 的目標秒數恰好是 0，但這一行仍不可省：換 RWD 來源
     // 或狀態是 outro 時（例如 HMR 重新掛載）少了它就會播錯段落。
     alignToSegment(v);
@@ -527,9 +527,10 @@ function promotePreload() {
     if (!v || v.readyState >= 3) return;
     v.preload = 'auto';
     // 只改 preload 屬性不保證瀏覽器立刻續拉（各家實作不一），load() 才確定重啟緩衝。
-    // ⚠️ load() 會把 currentTime 重置回 0。原本這裡假設「此刻必為 0（還沒播過）」——
-    //    帶 #loop 進站時不成立：watch(heroState) 已經 seek 到 loop.start（30s）。
-    //    沿用 RWD 換來源那條路，記進 resumeAt、由 onLoadedMetadata 跳回去。
+    // ⚠️ load() 會把 currentTime 重置回 0。原本這裡假設「此刻必為 0（還沒播過）」，但掛載
+    //    當下的 heroState 是跨導航存活的：落在 outro 時 alignToSegment 已經 seek 到 36s
+    //    （restart 的目標秒數才是 0）。沿用 RWD 換來源那條路，記進 resumeAt、由
+    //    onLoadedMetadata 跳回去。
     if (v.currentTime > 0) resumeAt = v.currentTime;
     v.load();
   });
@@ -567,7 +568,7 @@ onMounted(() => {
 
   // 掛載當下就可能落在「鎖著」的狀態，而 watch(heroState) 只在**狀態改變**時才跑 ——
   // heroState / outroWatched 都是 useState、跨 client-side 導航存活，於是重新掛載時
-  // 狀態可能已經是 main（首訪、帶 #loop 進站的 restart）或 outro（上一輪還沒播完就
+  // 狀態可能已經是 main（首訪、子頁 logo 帶 restartIntent 進站）或 outro（上一輪還沒播完就
   // 換頁又回來）。兩根絲都在這裡補上一次；各自的 arm 函式會自己判斷該不該上。
   // ⚠️ 2026-08-22 code review：原本只補了 armStallFuse，且被夾在上面那個 else 裡
   //    （＝影片已可播就不上絲），兩件事都是漏洞。
@@ -775,8 +776,9 @@ onBeforeUnmount(() => {
   justify-content: center;
 
   // canplay 之前 <video> 什麼都不畫（HERO_VIDEO_POSTER 三個裝置都是空字串），
-  // 露出的是 .sec1 的白底。首次載入時看不到（載入層蓋著），但帶 #loop 進站
-  // 會略過載入層 —— 那時就是一瞬純白。這與退場溶解無關，純粹是防白閃，
+  // 露出的是 .sec1 的白底。首次載入與子頁 logo 進站看不到（兩者載入層都蓋著），但**首頁
+  // 就地重播**（restartOpening 的 skipLoader: true）沒有載入層 —— 那時就是一瞬純白。
+  // 這與退場溶解無關，純粹是防白閃，
   // 故不隨 dissolveST 一起拆掉。
   //
   // ⚠️ 這條 transition 只管「淡入」（is-loading → 非 is-loading），與退場溶解是兩件事：

@@ -9,7 +9,7 @@ import {
 } from '@/utils/header-theme';
 import { pickActiveAnchor } from '@/utils/anchor-spy';
 import { anchorLanding, anchorOffsetVh } from '@/utils/anchor-landing';
-import { resolveHomeIntent } from '@/utils/home-intent';
+import { requestHomeRestart, resolveHomeIntent } from '@/utils/home-intent';
 import type { HeaderAnchor } from '@/types/header';
 
 /**
@@ -43,7 +43,7 @@ const navActiveTarget = computed(() =>
 // 首頁所有 section 重新 mount、全部 ScrollTrigger 重建。子頁改走 NuxtLink 後
 // baseURL 由 router 自己套，子路徑部署（GitHub Pages 的 /udn-75/）不必再靠絕對網址。
 const homeIntent = computed(() => resolveHomeIntent(route.path === '/'));
-const { restartOpening, isGone } = useHeroVideo();
+const { restartOpening, isGone, restartIntent } = useHeroVideo();
 // 錨點落點要換算「段落宣告的深度（× 視窗高）」，見 scrollToTarget。
 const { vhPx } = useViewportHeight();
 
@@ -301,7 +301,7 @@ function scrollToTop(e?: Event) {
 }
 
 // logo：回到最開始 ＝ 從頭重播整支 hero 影片（2026-08-22 起，見 useHeroVideo 的 restartOpening）。
-// 首頁就地重播（不換頁），子頁交給 NuxtLink 導航到 /#loop（保留字未改名，只改行為）。
+// 首頁就地重播（不換頁），子頁設起 restartIntent 再交給 NuxtLink 導航到 `/`（不帶 hash）。
 function onLogoClick(e: MouseEvent) {
   // 修飾鍵點擊（Ctrl／⌘／Shift／Alt）是「開新分頁／新視窗」的意圖，一律放行給瀏覽器 ——
   // 攔下來會讓使用者按了沒反應。中鍵在現代瀏覽器發的是 auxclick，本來就不會進來。
@@ -312,7 +312,16 @@ function onLogoClick(e: MouseEvent) {
   // 使用者會看到「按了 logo，選單沒關、頁面鎖死」。
   menuOpen.value = false;
 
-  if (homeIntent.value.action !== 'in-page') return; // 子頁：讓 NuxtLink 走
+  if (homeIntent.value.action !== 'in-page') {
+    // 子頁：讓 NuxtLink 走，但先設起「這次要從頭重播」的旗子（Hero 在 setup 內消耗一次）。
+    // 必須排在修飾鍵那道 return 之後：⌘／Ctrl 點擊是開新分頁，那個分頁不該重播（旗子也活
+    // 不過整頁載入）。中鍵發的是 auxclick，本來就不會進來。
+    // NuxtLink 內建的 handler 雖然**先於**本函式執行（見 template 的說明），但它呼叫的
+    // router.push() 是非同步的 —— 本函式這段同步碼必然在導航的 microtask 之前跑完，
+    // 故旗子一定趕在 Hero 的 setup 之前設好，不是競態。
+    requestHomeRestart(restartIntent);
+    return;
+  }
 
   e.preventDefault();
   // auto 而非 smooth：restartOpening() 是瞬間生效的，smooth 期間影片已經淡回、
