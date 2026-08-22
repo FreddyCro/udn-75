@@ -71,8 +71,39 @@ const introMedia = computed(() => {
   return images.length ? { images } : null;
 });
 
-// 藝術字路徑來自 locales/*.json，需補上資產前綴才吃得到子路徑／CDN 部署（bg 走 UPic，內部已前綴）
-const assetUrl = useAssetUrl();
+// hero 主／副標藝術字走 build-time 內嵌（?raw）而非 <img> request：
+// SVG 與 DOM 同時渲染（SSR 直接進 payload），進場動畫播放時素材保證已在場，
+// 不會再有「淡入播完、字才蹦出來」的載入時間差。
+const heroArtRaw = import.meta.glob('~~/public/img/*/udn75_*_hero_*.svg', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>;
+
+/**
+ * 取出內嵌 SVG 並做兩件整形：
+ * 1. 命名空間化被 url(#…) 引用的 id（clipPath 等）—— 連續閱讀頁會把六篇共 12 個
+ *    SVG inline 進同一份文件，Figma 匯出的 id 會撞名（education 的主副標都叫
+ *    clip0_0_4），後者的 clip 會誤指到前者的定義。
+ * 2. 補 preserveAspectRatio="xMinYMid"，等價原本 <img> 的
+ *    object-fit: contain + object-position: left center（窄幅縮小時字形靠左）。
+ *    aria-hidden：無障礙文字由外層 wrapper 的 aria-label 提供。
+ */
+function inlineHeroArt(path: string): string {
+  const raw = Object.entries(heroArtRaw).find(([k]) => k.endsWith(path))?.[1];
+  if (!raw) return '';
+  const ns = path.replace(/^.*\//, '').replace(/\.svg$/, '');
+  let svg = raw;
+  for (const id of new Set([...raw.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]))) {
+    svg = svg
+      .replaceAll(`id="${id}"`, `id="${ns}-${id}"`)
+      .replaceAll(`url(#${id})`, `url(#${ns}-${id})`);
+  }
+  return svg.replace('<svg ', '<svg aria-hidden="true" preserveAspectRatio="xMinYMid" ');
+}
+
+const titleSvg = computed(() => inlineHeroArt(props.content.hero.titleImg));
+const subtitleSvg = computed(() => inlineHeroArt(props.content.hero.subtitleImg));
 
 const stageRef = ref<HTMLElement | null>(null);
 const heroRef = ref<HTMLElement | null>(null);
@@ -112,8 +143,8 @@ const stagePinned = ref(false);
  */
 const mediaActive = ref(true);
 
-// hero 進場：由下往上、透明度 0→100%，0.4s
-const REVEAL = { autoAlpha: 0, y: 200, duration: 0.4, ease: 'power2.out' };
+// hero 進場：由下往上、透明度 0→100%，0.8s（藝術字已內嵌，可放心拉長不怕素材遲到）
+const REVEAL = { autoAlpha: 0, y: 200, duration: 0.8, ease: 'power2.out' };
 
 let tweens: gsap.core.Tween[] = [];
 let triggers: ScrollTrigger[] = [];
@@ -419,17 +450,19 @@ onBeforeUnmount(() => {
           class="subpage__col subpage__col--hero subpage__hero-inner"
         >
           <h1 class="subpage__title">
-            <img
+            <span
               class="subpage__title-img"
-              :src="assetUrl(content.hero.titleImg)"
-              :alt="content.hero.title"
+              role="img"
+              :aria-label="content.hero.title"
+              v-html="titleSvg"
             />
           </h1>
           <p class="subpage__subtitle">
-            <img
+            <span
               class="subpage__subtitle-img"
-              :src="assetUrl(content.hero.subtitleImg)"
-              :alt="content.hero.subtitle"
+              role="img"
+              :aria-label="content.hero.subtitle"
+              v-html="subtitleSvg"
             />
           </p>
           <!-- <p class="subpage__unit">{{ content.hero.unit }}／{{ content.hero.author }}</p> -->
@@ -675,14 +708,17 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-// SVG 藝術字：定高、寬度隨比例，超出欄寬時等比縮小
+// SVG 藝術字（inline）：wrapper 定高、svg 撐滿；字形縮放與靠左交給
+// SVG 自己的 preserveAspectRatio="xMinYMid"（見 script 的 inlineHeroArt）
 .subpage__title-img {
   display: block;
-  width: auto;
   height: 40px;
-  max-width: 100%;
-  object-fit: contain;
-  object-position: left center;
+
+  :deep(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
 
   @include rwd-min('tablet') {
     height: 68px;
@@ -694,12 +730,14 @@ onBeforeUnmount(() => {
 
 .subpage__subtitle-img {
   display: block;
-  width: auto;
   height: 29px;
-  max-width: 100%;
-  object-fit: contain;
-  object-position: left center;
   margin-top: 16px;
+
+  :deep(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
 
   @include rwd-min('tablet') {
     height: 48px;

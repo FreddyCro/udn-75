@@ -554,11 +554,30 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-gray-light);
   transition:
     color 0.2s ease,
-    border-color 0.2s ease;
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
 
-  &:hover {
-    color: var(--color-body);
-    border-color: var(--color-body);
+  &:hover,
+  &:focus-visible {
+    color: #fff;
+    background: var(--color-orange);
+    border-color: var(--color-orange);
+
+    // 放大只給 pc 以上（pad／mob 是觸控，hover 不成立）。
+    // 比例取自設計稿 hover 態：280×68 → 290×75，非等比。
+    @include rwd-min('pc') {
+      transform: scale(calc(290 / 280), calc(75 / 68));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:hover,
+    &:focus-visible {
+      transform: none;
+    }
   }
 }
 </style>
