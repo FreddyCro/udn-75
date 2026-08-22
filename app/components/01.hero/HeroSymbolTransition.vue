@@ -45,6 +45,12 @@ const { syncHeaderBand } = useHeaderBand();
 // p>0 且尚未交棒才可見：p=0 時整層透明，避免在 core 移動途中疊一層同色方塊。
 const active = computed(() => !props.done && props.progress > 0);
 
+// 方塊遮罩轉場的起手音（設計標註「方塊遮罩轉場音效」）。
+// 觸發點取 p 由 0 翻正的那一刻 ＝ 橘方塊開始長大；整段 scrub 只響這一次。
+// 往回捲不響（規則見 ~/composables/useSfxCue）。
+const { cueOn } = useSfxCue();
+cueOn(() => props.progress > 0, 'aiFaceText');
+
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
 
