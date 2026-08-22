@@ -119,13 +119,15 @@ watch(activeSlug, () => nextTick(centerActive));
 }
 
 // 六欄固定寬（6 欄各 70 + 欄距 22 = 530）超出 mob 視窗 → 列本身為橫向捲動容器
-// （左右排列可滑動、藏捲軸）；pad 以上容得下時由外層 flex 置中。
-// 邊距留在捲動容器內，滑到端點時項目不被裁切。
+// （左右排列可滑動、藏捲軸）。邊距留在捲動容器內，滑到端點時項目不被裁切。
+//
+// ⚠️ 寬度必須寫死 100%：iOS/WebKit 對巢狀 flex 裡捲動容器的 intrinsic size 會算錯
+//    （實測只剩 162px，六項被裁到剩中間兩項）。置中改由首尾 item 的 auto margin 實現（見 __item）。
 .subpage-anchor-bar__list {
   display: flex;
   align-items: center;
   gap: 22px;
-  max-width: 100%;
+  width: 100%;
   margin: 0;
   padding: 0 26px;
   overflow-x: auto;
@@ -140,6 +142,16 @@ watch(activeSlug, () => nextTick(centerActive));
 
 .subpage-anchor-bar__item {
   flex: 0 0 70px;
+
+  // 容得下時 auto margin 置中、overflow 時歸零回到靠左可捲動；
+  // 不能用 justify-content: center —— overflow 時列首會滑不到。
+  &:first-child {
+    margin-left: auto;
+  }
+
+  &:last-child {
+    margin-right: auto;
+  }
 }
 
 .subpage-anchor-bar__link {
