@@ -25,7 +25,6 @@ const ALLOWED_PREFIXES = [
   'app/components/PixelRail.vue',
   'app/components/PixelBranch.vue',
   'app/components/AiImageQuiz.vue',
-  'app/pages/demo.vue',
 ];
 
 // C 類：WebGL / canvas 需要 hex 字串，CSS 變數取代不了。只有這一支放行，

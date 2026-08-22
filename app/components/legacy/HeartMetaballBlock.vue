@@ -4,7 +4,7 @@
   ============================================================================
 
   【狀態】⚠️ 已退役、不再維護。本檔內容取自 **0.5.0 branch** 的
-  app/components/04.media/HeartMetaball.vue，原樣保留供 demo page 對照。
+  app/components/04.media/HeartMetaball.vue，原樣保留供對照。
   以下說明皆為當時的實作，與現役底紋無關。
 
   現役底紋是 04.media/HeartMetaball.vue（三塊紋理 patch 漂移重疊），

@@ -279,7 +279,7 @@ onBeforeUnmount(() => {
   inset: 0;
   opacity: 0;
 
-  // SymbolFace 的 .stage 自帶 background:#fff（元件預設，demo 頁是白底場景）；
+  // SymbolFace 的 .stage 自帶 background:#fff（元件預設的白底場景）；
   // 這裡要透出下層由 JS 控制的色場（橘→黑），故清掉它的底色。
   //
   // ⚠️ height 也要覆寫掉它的 vh(1)：那是 --vh ＝ **large viewport**（凍結、收合網址列不變），
@@ -288,7 +288,7 @@ onBeforeUnmount(() => {
   //    而交棒對象 ForumCore 是對齊真實視窗中心 → coreIn 那個硬切會看得出跳動。
   //    改吃 100%（＝本層的框）後兩邊同一把尺；網址列收合造成的高度變化由 SymbolFace 的
   //    ResizeObserver 接住並重算投影（同它修捲軸寬那 7.67px 的機制）。
-  //    只在這裡覆寫、不動元件預設：demo 頁是 in-flow 用法，沒有可繼承高度的父框。
+  //    只在這裡覆寫、不動元件預設：in-flow 用法沒有可繼承高度的父框，得靠 vh(1)。
   :deep(.stage) {
     height: 100%;
     background-color: transparent;

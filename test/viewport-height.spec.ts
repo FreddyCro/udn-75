@@ -27,7 +27,6 @@ const OUT_OF_SCOPE = [
   // 註解寫明「不要靠 window.innerHeight」）—— 那是 large viewport，正是 --vh 的量法。
   // 兩者在行動裝置上差一整條網址列（實測 60–115px）：版面吃 svh、捲動幾何吃 vh，
   // 舞台底下就露一條縫，-65svh 的上拉也與拍長對不齊。
-  'app/pages/demo.vue', //         開發用示範頁
   'app/components/ShowcaseGallery.vue',
   'app/components/AwardTimeline.vue',
   'app/components/PhotoPanels.vue',

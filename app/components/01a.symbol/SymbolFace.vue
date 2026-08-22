@@ -16,9 +16,8 @@ import { FACE_HOVER_INFLUENCE, faceUv } from '~/utils/symbol-hint';
 import { EGG_CLOSED, nextEggIndex, tapEggIndex } from '~/utils/symbol-egg';
 import {
   SYMBOL_CONFIG_KEYS,
-  SYMBOL_LIVE_COLOR_KEYS,
   SYMBOL_MAX_GLITCH_ITEMS,
-} from '~/utils/symbol-face-schema';
+} from '~/utils/symbol-face-config';
 import { scrambleText } from '~/utils/symbol-scramble';
 import type { SymbolMode } from '~/composables/useOrangeCoreProgress';
 
@@ -150,7 +149,8 @@ const props = defineProps({
    *  「mode 剛剛翻了」，不知道捲到哪裡，於是往回滑時整拍靜止、補間要到離開那一拍
    *  才開始跑 —— 使用者看到的就是連續 96vh 一片白什麼都不動。完整推導在那支函式上方。
    *
-   *  demo 頁（側欄三顆按鈕）維持 null：那裡根本沒有捲動可以綁，按鈕按下去要有補間才看得到。
+   *  null ＝ 走元件自己的定時補間（mode 一翻就跑一次 disperseDuration）：沒有捲動
+   *  可綁的用法（單純掛著切 mode）只有這條看得到動作。
    *  所以這是**兩種驅動方式**，不是新舊版本 —— 兩條路都要留著。
    *
    *  ⚠️ 2026-08-17 起它**只**接管 uConverge（粒子的收攏）。底色與白→橘各自有自己的
@@ -161,7 +161,7 @@ const props = defineProps({
   convergeAmount: { type: Number as PropType<number | null>, default: null },
   /** 那顆已實心的 core 由白轉橘的量（0..1），由外部**逐幀**餵進來；
    *  null ＝ 沿用 mode 觸發的補間（與 uConverge 同一組 duration / ease，
-   *  ＝ 改版前「實心化的同時就是橘的」那個行為，demo 頁走這條）。
+   *  ＝ 改版前「實心化的同時就是橘的」那個行為）。
    *
    *  正式站傳 `symbolCoreWarm`（＝ coreWarmAt(symbolProgress)）。
    *  ⚠️ 只作用在已實心化的粒子上（vWarm ＝ solid × uWarm），所以收攏途中把它推到 1
@@ -258,7 +258,7 @@ const props = defineProps({
    *     （IO 只看幾何與 display:none，visibility / opacity 都不算），元件自己偵測不到
    *     「其實看不見」。唯一便宜的替代是每幀 getComputedStyle，那是強制 style recalc。
    *     故由做出隱藏決定的那一層把「本層在場嗎」傳進來。
-   *  預設 true：demo 等一般 in-flow 用法不必傳，交給下方 IntersectionObserver 判斷即可。 */
+   *  預設 true：一般 in-flow 用法不必傳，交給下方 IntersectionObserver 判斷即可。 */
   active: { type: Boolean, default: true },
 
   /** PC 互動提示文字（空字串＝不顯示）。換行用 \n，樣式端以 white-space: pre-line 呈現。
@@ -375,15 +375,15 @@ onBeforeUnmount(() => {
 });
 // 三種狀態：'face' = 集合（人像）/ 'disperse' = 分散（散場漂浮）/ 'converge' = 匯聚成點。
 // 三態互斥，由 uDisperse / uConverge 兩個 uniform 表示（同一時間至多一個為 1）。
-// v-model 由父層決定預設值並隨意切換（正式站是 SymbolScene 依捲動指派，
-// demo 頁是側欄面板的三顆按鈕）。
+// v-model 由父層決定預設值並隨意切換（正式站是 SymbolScene 依捲動指派）。
 // 型別取自 useOrangeCoreProgress（驅動端 SymbolScene 寫的就是那個 useState）——
 // 兩邊各宣告一份的話，哪天多一個狀態就會只改到一邊。
 const mode = defineModel<SymbolMode>('mode', { default: 'face' });
 let disperseFn: ((animated?: boolean) => void) | null = null;
 
 // 狀態改變時，可逆地補間 uDisperse / uConverge / uWarm（0↔1）與整片底色（見 syncBg）。
-// 全部吃同一組 duration / ease，故在 demo 那條路徑上「收攏」「轉橘」「翻底色」是同一個動作。
+// 全部吃同一組 duration / ease，故在「外部沒接管」那條路徑上，
+// 「收攏」「轉橘」「翻底色」是同一個動作。
 // ⚠️ 外部有接管的那幾樣改由捲動驅動，這兩支會讓開（見 convergeAmount / warmAmount /
 //    bgLightAmount 三個 prop）；mode 本身照舊翻面 —— disperse↔face 仍歸它管，
 //    faceFormed 也還讀它。
@@ -426,33 +426,24 @@ const faceFormed = ref(false);
 let syncActive: (() => void) | null = null;
 watch(() => props.active, () => syncActive?.());
 
-// ---------- 設定（cfg）與開發面板的對接 ----------
+// ---------- 設定（cfg）----------
 // cfg 是 three.js 實際讀取的設定（初值 = props 併入 default 後的結果；本檔內 three.js
-// 讀設定的地方一律讀 cfg 而不是 props）。開發面板本身住在 <SymbolFaceDevPanel>，
-// 由 demo 頁擺在 canvas 旁邊當側欄 —— 本元件只負責把 cfg 套進 three.js。
+// 讀設定的地方一律讀 cfg 而不是 props）。要抄哪些 prop 見 SYMBOL_CONFIG_KEYS。
 //
-// 對外兩條套用路徑（見檔尾 defineExpose）：
-//   ・applyConfig(next) —— 全套用：重建 atlas / 幾何 / 材質並重跑 reveal。非顏色參數走這條。
-//   ・applyColors(next) —— 只換一張 256×1 的 ramp texture 與幾個 uniform，不動幾何。
-//     顏色類參數走這條，所以拖色票 / 色標滑桿時畫面即時跟著變，不會每改一次就重跑
-//     3 秒的組合動畫。可即時的鍵名列在 SYMBOL_LIVE_COLOR_KEYS。
+// 套用只有一條路徑：applyConfig(next) —— 合併後重建 atlas / 幾何 / 材質並重跑 reveal。
 const cfg: Record<string, any> = {};
 for (const key of SYMBOL_CONFIG_KEYS) {
   cfg[key] = props[key as keyof typeof props];
 }
 
-// 面板的唯讀資訊：實際採用的格數與粒子數（cols 可能因 maxParticles 被降過）
-const gridStats = ref({ cols: 0, rows: 0, count: 0 });
-
-/** glitch 的 uniform 陣列長度。與面板的組數上限共用同一個常數 —— 這個數字同時出現在
+/** glitch 的 uniform 陣列長度。這個數字同時出現在
  *  JS（備幾組 uniform）與 GLSL（陣列宣告與迴圈上界，靠字串插值帶進去），
  *  兩邊分開寫的話擴組數時只會改到一半，多出來的組會安靜地不生效。
  *  ⚠️ GLSL ES 1.0 的陣列 uniform 長度與 for 迴圈上界都必須是**編譯期常數**，
  *     所以不能改成執行期依 glitchItems.length 動態決定。 */
 const GLITCH_SLOTS = SYMBOL_MAX_GLITCH_ITEMS;
 
-// glitch 跳色的 uniform 值。抽成函式是因為有兩個呼叫點：建材質時（buildParticles）
-// 與即時套色時（repaintColors）—— 後者要在材質已存在的情況下就地覆寫同一組 uniform。
+// glitch 跳色的 uniform 值（建材質時由 buildParticles 呼叫）。
 // GLSL ES 1.0 的陣列 uniform 必須是固定長度，故一律備 GLITCH_SLOTS 組，未使用的以
 // uGlitchCount 擋掉（density 0 也不會命中）。
 // ⚠️ 顏色必須走 srgbColor（理由見該 helper 上方）：直接 new THREE.Color(hex) 會被
@@ -474,9 +465,8 @@ const glitchUniforms = () => {
   };
 };
 
-// 兩者都在 onMounted 內指派（要有 scene / mat 才做得了事）
+// 在 onMounted 內指派（要有 scene / mat 才做得了事）
 let rebuildParticles: (() => void) | null = null;
-let repaintColors: (() => void) | null = null;
 
 /** 全套用：合併設定後重建粒子系統（換圖、換格數、換字重…都走這條）。 */
 const applyConfig = (next: Record<string, any>) => {
@@ -485,21 +475,13 @@ const applyConfig = (next: Record<string, any>) => {
 };
 
 // cfg 的初值是在 setup 抄一次 props，**之後 props 變動不會自動跟上** —— 這是刻意的：
-// cfg 每幀被 animate() 讀很多次，做成 reactive 等於每幀加一整排 proxy trap（見檔尾 defineExpose）。
+// cfg 每幀被 animate() 讀很多次，做成 reactive 等於每幀加一整排 proxy trap。
 // worldScale 是唯一破例追蹤的一項：正式站用它做 RWD（手機的人臉要再縮一號，見 01.hero/Hero.vue
 // 的 SYMBOL_WORLD_SCALE），而那個值會在轉向／跨斷點時才改變 —— 沒有這個 watch，
 // 使用者橫轉直的那一刻人臉就會維持桌機尺寸而被切掉左右。
 // 走 applyConfig ＝ 整組重建（它改的是取樣幾何），故必然伴隨一次 reveal 重跑；
-// 這在「跨斷點」的頻率下可接受，也正是面板 Refresh 走的同一條路。
+// 這在「跨斷點」的頻率下可接受。
 watch(() => props.worldScale, (v) => applyConfig({ worldScale: v }));
-
-/** 即時套色：只合併顏色鍵並就地更新 texture / uniform，不重建幾何。 */
-const applyColors = (next: Record<string, any>) => {
-  for (const key of SYMBOL_LIVE_COLOR_KEYS) {
-    if (key in next) cfg[key] = next[key];
-  }
-  repaintColors?.();
-};
 
 // ---------- 互動提示 ----------
 // 顯示條件三個都要成立：人臉已完整集合（faceFormed）、尚未 dismiss、斷點有稿（樣式端擋）。
@@ -586,12 +568,12 @@ onMounted(() => {
   // scrub 接管時的兩端色（下方 syncBg 的第一條分支就地 lerp 它們到 bgColor）。
   // 物件重複使用：那條路徑在捲動中**逐幀**會走到，每幀 new 兩顆 THREE.Color
   // 等於在整段最忙的那一拍餵 GC。每次都重讀 cfg 而不是建構時算一次 ——
-  // 面板可以即時改色（見 repaintColors）。
+  // rebuildParticles 可能換掉這兩個值。
   const bgFrom = new THREE.Color();
   const bgTo = new THREE.Color();
   // 兩端色的**解析結果**也重複使用：THREE.Color.set() 吃的是 CSS 顏色字串，逐幀重解
-  // 兩次等於每幀兩次字串剖析。只有面板改色（repaintColors / rebuildParticles）才會
-  // 動到 cfg 的這兩個值，故拿字串本身當快取鍵 —— 面板即時改色照樣立刻生效。
+  // 兩次等於每幀兩次字串剖析。只有 rebuildParticles 才會動到 cfg 的這兩個值，
+  // 故拿字串本身當快取鍵 —— 重建後換掉的色照樣立刻生效。
   let bgFromKey = '';
   let bgToKey = '';
   const ensureBgEnds = () => {
@@ -611,9 +593,9 @@ onMounted(() => {
 
   // 翻底色。兩條路徑：
   //   scrub（正式站）—— 直接把 bgLightAmount 當 lerp 的 t，往回捲自動沿原路退回。
-  //   mode （demo）  —— converge → convergeBgColor、其餘（集合 / 散場）→ bgColor 的可逆補間，
+  //   mode（未接管）—— converge → convergeBgColor、其餘（集合 / 散場）→ bgColor 的可逆補間，
   //                     與 disperseFn 同一套寫法與同一組 duration / ease。
-  // animated=false 用於初始定位、面板即時套色與重建粒子（scrub 路徑則恆等於 false 的行為）。
+  // animated=false 用於初始定位與重建粒子（scrub 路徑則恆等於 false 的行為）。
   // ⚠️ 這裡用 new THREE.Color(hex) 而不是本檔的 srgbColor()：scene.background 走的是
   //    three 自己的 output 轉換鏈（會轉回 sRGB 再輸出），與 raw shader 的 uniform 不同。
   //    詳見 srgbColor 上方那段。
@@ -897,7 +879,6 @@ onMounted(() => {
         '[SymbolFace] 取樣結果為 0 顆粒子，請檢查 contrast / invert / 圖片 alpha',
       );
       clearParticleState(); // ⚠️ 不能只是 return，理由見該函式
-      gridStats.value = { cols: sample.cols, rows: sample.rows, count: 0 };
       return;
     }
     if (count > cfg.maxParticles) {
@@ -905,7 +886,6 @@ onMounted(() => {
         `[SymbolFace] 粒子數 ${count} 已達 cols 下限仍超過上限 ${cfg.maxParticles}`,
       );
     }
-    gridStats.value = { cols: sample.cols, rows: sample.rows, count };
 
     // 人像置中於原點；自動游標在 ~70% 內遊走
     halfW = sample.halfW;
@@ -1268,7 +1248,7 @@ onMounted(() => {
       else mat.uniforms.uDisperse.value = dTarget;
 
       // uWarm：外部接管時**完全不碰**（同下方 uConverge）。沒接管時跟著 uConverge 一起補間 ——
-      // 顏色本來就只作用在已實心的粒子上（vWarm ＝ solid × uWarm），故 demo 按下「匯聚」
+      // 顏色本來就只作用在已實心的粒子上（vWarm ＝ solid × uWarm），故外部沒接管時切到「匯聚」
       // 看到的仍是「收攏末段凝成核心的同時轉橘」，＝ 2026-08-17 之前的行為。
       const wTarget = mode.value === 'converge' ? 1 : 0;
       if (scrubbedWarm() !== null) applyWarmFn?.();
@@ -1294,7 +1274,7 @@ onMounted(() => {
 
   // ---------- 執行閘門：三個訊號皆為真才跑 rAF（迴圈啟停見下方 syncRunning）----------
   //   props.active — 父層是否讓本層在場（元件看不到祖先的 visibility，見該 prop 的說明）
-  //   inView       — 自己的幾何是否落在視口內（demo 等 in-flow 用法的主訊號）
+  //   inView       — 自己的幾何是否落在視口內（in-flow 用法的主訊號）
   //   docVisible   — 分頁是否在前景（切分頁時瀏覽器雖已節流 rAF，仍要自己停以處理恢復接縫）
   let inView = false;
   let docVisible = true;
@@ -1386,31 +1366,6 @@ onMounted(() => {
     buildFromImage(loadedImg);
   };
 
-  // 即時套色：只換 ramp texture 與幾個 uniform，不碰幾何、不重跑 reveal。
-  // 面板的顏色類欄位（色票 / 色標滑桿 / glitch 卡片）每次 input 都會打到這裡，
-  // 所以這條路徑不能有取樣、烘 atlas、配置 Float32Array 之類的動作。
-  repaintColors = () => {
-    if (unmounted) return;
-    // 不換物件、只就地補到目前狀態該有的顏色（理由見 bgColor 宣告處）。
-    // 不動畫：面板拖色票是「即時預覽」，每次 input 都排一段 0.6s 補間會變成拖影。
-    syncBg(false);
-    if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
-    if (!mat) return; // 粒子系統還沒建好（圖片載入中）：cfg 已更新，等 build 時自然吃到
-
-    const nextRamp = makeColorRamp();
-    colorRamp?.dispose(); // 舊 texture 是這裡唯一的 owner，不 dispose 就每拖一格漏一張
-    colorRamp = nextRamp;
-    mat.uniforms.uColorRamp.value = nextRamp;
-    mat.uniforms.uColorRandom.value = cfg.colorMode === 'random' ? 1 : 0;
-    mat.uniforms.uSolidColor.value.copy(srgbColor(cfg.convergeColor));
-
-    const glitch = glitchUniforms();
-    mat.uniforms.uGlitchCount.value = glitch.count;
-    mat.uniforms.uGlitchColor.value = glitch.colors;
-    mat.uniforms.uGlitchDensity.value = glitch.density;
-    mat.uniforms.uGlitchFps.value = glitch.fps;
-  };
-
   // 圖片載入（初次與 refresh 換 src 共用）。
   // ⚠️ crossOrigin：本專案的圖片走 APP_ASSETS_PATH 前綴，正式站可能與頁面不同源 ——
   //    沒有 CORS 的圖畫進 canvas 會「污染」它，buildFromImage 的 getImageData() 就會在
@@ -1442,7 +1397,7 @@ onMounted(() => {
   // refresh：套用 cfg（背景色/彩蛋色即時更新）後重建粒子；src 變更則先載入新圖再重建
   rebuildParticles = () => {
     if (unmounted) return;
-    syncBg(false); // 同 repaintColors：就地補色、不換物件（理由見 bgColor 宣告處）
+    syncBg(false); // 就地補色、不換物件（理由見 bgColor 宣告處）
     if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
     if (cfg.src !== loadedSrc) {
       const nextSrc = cfg.src;
@@ -1798,8 +1753,8 @@ onMounted(() => {
     gsap.killTweensOf(bgColor); // 同上：底色補間也跑在 gsap 的 ticker 上
     syncBgFn = null;
     // ⚠️ dispose() 只釋放 three 這側的資源，WebGL context 本身要 forceContextLoss() 才會
-    //    還給瀏覽器。demo 頁的「矩陣／散點」切換每按一次就掛一個新的 WebGL 元件 ——
-    //    不還的話大約 8~16 次就撞到瀏覽器的 context 上限，之後新的 canvas 全黑。
+    //    還給瀏覽器。每次掛載就佔掉一個 context（開發時 HMR 反覆重掛最容易撞到）——
+    //    不還的話大約 8~16 次就到瀏覽器的 context 上限，之後新的 canvas 全黑。
     renderer.forceContextLoss();
     renderer.dispose();
     geom?.dispose();
@@ -1809,11 +1764,6 @@ onMounted(() => {
     wrap.removeChild(renderer.domElement);
   });
 });
-
-// 給開發面板用的介面（正式站不會碰到；面板只在 demo 頁掛載）。
-// config 是 plain object、故意不做成 reactive —— 它在 animate() 熱迴圈裡每幀被讀很多次，
-// 包成 reactive 等於在每幀加上一整排 proxy trap。面板只在初始化時讀它一次當 draft 初值。
-defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
 </script>
 
 <template>
@@ -1895,7 +1845,7 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
   width: 100%;
   // 視窗高的單一來源見 app/utils/viewport-height.ts；mixins.scss 由 nuxt.config
   // 的 additionalData 自動注入，不必在此 @use。
-  // 這是 in-flow 用法（demo 頁）的預設；掛在 hero 轉場層裡時由該層覆寫成 height:100%
+  // 這是 in-flow 用法的預設；掛在 hero 轉場層裡時由該層覆寫成 height:100%
   // —— 那層是 fixed inset:0（dynamic viewport），與 --vh（large viewport）不是同一把尺。
   // 理由寫在 01.hero/HeroSymbolTransition.vue 的 :deep(.stage)。
   height: vh(1);
@@ -2030,8 +1980,7 @@ $hint-icon-size: 88px;
 // ⚠️ 不補 --chrome-inset（與 hero 的 .sec1__hero-scroll 不同）：正式站本層住在
 //    HeroSymbolTransition 的 fixed inset:0 之內、.stage 被覆寫成 height:100%
 //    ＝ dynamic viewport，底緣就是「看得到的」底緣。hero 那邊要補是因為它的容器高是
-//    vh() ＝ large viewport（凍結、不隨網址列收合）。demo 頁是 in-flow 的 vh(1)，
-//    手機上這 44px 可能落在工具列底下 —— 那是除錯頁，不為它加旋鈕。
+//    vh() ＝ large viewport（凍結、不隨網址列收合）。
 //
 // ⚠️ pointer-events: auto 是必要條件，不是保險：外層 .hero-symbol-transition 是
 //    pointer-events: none（只有 :deep(canvas) 被打開，見該檔），不覆寫回來這顆按鈕

@@ -23,8 +23,8 @@ const {
   symbolHeaderTint,
 } = useOrangeCoreProgress();
 
-// 粒子收攏（converge）起手的音效。掛在本元件而非 SymbolFace：後者也被 demo 頁使用，
-// 掛在那裡會讓 demo 的三顆切換按鈕也出聲。本元件是正式站的捲動驅動端。
+// 粒子收攏（converge）起手的音效。掛在本元件而非 SymbolFace：後者只負責畫，
+// 不知道自己是被捲動驅動還是被父層直接切 mode。本元件是正式站的捲動驅動端。
 const { cueOn } = useSfxCue();
 cueOn(() => symbolConvergeAmount.value > 0, 'aiFaceBg');
 

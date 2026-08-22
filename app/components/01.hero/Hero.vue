@@ -41,7 +41,6 @@ import { consumeHomeRestart } from '@/utils/home-intent';
 // ⚠️ 下面四組值＋模板裡那幾個數字是 2026-08-20 設計師 preset 的移植結果
 //    （來源 temp/matrix_preset_.json，由他的 Matrix Image Generator 匯出）。
 //    改動前先看 SymbolFace 對應 prop 的註解 —— 那裡記著每個值是怎麼從他的 px / % 換算來的。
-//    demo 頁（pages/demo.vue）有一份一樣的，兩邊要同時改。
 //
 // 字元集：他的 customChars 去空白後的 24 個唯一字元。順序無意義（sortCharsByInk 會依
 // 墨水量重排），拼字也不影響輸出 —— 詳見 SymbolFace 的 chars 註解。
