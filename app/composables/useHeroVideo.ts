@@ -1,20 +1,26 @@
-// Section 1 hero 影片的四階段狀態，抽成全域共享狀態，讓其他元件也能控制。
-//   main  主要內容（播一次）
-//   loop  主要內容結束後的 loop 段落
-//   outro loop 期間向下滾動觸發的最後退場段落
-//   gone  退場結束、影片消失 → hero 轉白底、orange core 於正中央淡入
+// Section 1 hero 影片的三階段狀態，抽成全域共享狀態，讓其他元件也能控制。
+//   main  正片（0 → 33，播一次）—— 頁面鎖住
+//   outro 退場段（36 → 38.5）：由正片**自動順播**進來，播完才解鎖，之後等捲動溶解
+//   gone  溶解走完、影片硬切消失 → hero 轉白底、orange core 於正中央淡入
+//
+// 2026-08-22（使用者裁決）**loop 狀態已移除**。它原本是「正片播完等使用者下滑」的循環段，
+// 而現在正片直接順播到退場、退場播完才解鎖 —— 沒有等待階段可言。連帶簡化的還有：
+//   - `outroForced`（SKIP 在 page top 放 outro 的那面栓）：restart 改由「跨回頂端」這個
+//     事件觸發（見 ~/utils/hero-dissolve），不再用「p 落在 LEAVE 以下」判定，栓失去用途。
+//   - 「回捲重播 loop 段」整條路徑：影片進 gone 時就 seek 回 frame 0（見 HeroVideo 的
+//     watch(heroState)），回捲看到的是靜止的第一幀，不會再看到凍住的退場尾幀。
 //
 // 各階段在影片時間軸上的「秒數」定義於 ~/utils/hero-video-config（HERO_VIDEO_SEGMENTS）；
 // 實際推進（timeupdate / ended → 換狀態）由 01.hero/HeroVideo.vue 依該設定驅動，
 // 本 composable 只保管狀態本身，不含任何計時器。
 //
-// 2026-08-16 起退場改由捲動 scrub 驅動（見 architecture/2026-08-16-hero-scrub-dissolve-design.md），
+// 2026-08-16 起退場的**溶解**改由捲動 scrub 驅動（見 architecture/2026-08-16-hero-scrub-dissolve-design.md），
 // 本檔不再管任何 fade 計時器 —— 顯隱是 stage 的 opacity 直接綁捲動進度，沒有「淡完」這個時間點。
 import { shouldLockHeroScroll } from '~/utils/hero-scroll-lock';
 
-export type HeroState = 'main' | 'loop' | 'outro' | 'gone';
+export type HeroState = 'main' | 'outro' | 'gone';
 
-export const HERO_STATES: HeroState[] = ['main', 'loop', 'outro', 'gone'];
+export const HERO_STATES: HeroState[] = ['main', 'outro', 'gone'];
 
 /**
  * 全域 hero 影片狀態控制。任一元件皆可讀取 / 控制：
@@ -44,41 +50,48 @@ export function useHeroVideo() {
   // 供「綁影片時間軸」的判定使用 —— 目前是 skip 按鈕的現身時機（見 HERO_SKIP_APPEAR_AT）。
   const currentTime = useState('hero-video-time', () => 0);
 
-  // 是否已經看完過開場（進過 gone）。一旦為 true 就「永不重新上鎖」。
-  //
-  // 這是決策而非疏漏（2026-08-04 確認）：倒帶回 loop 發生在 scrollY 已是 0 的時候，
-  // 不鎖也上不去，所以省下重新上鎖的風險 —— iOS 在「往上橡皮筋回彈還在飛」的當下
-  // 切 overflow:hidden，畫面可能卡在彈起的位置。
-  //
-  // ⚠️ 判定點是 gone 而非 outro：2026-08-16 起鎖只剩 main 這一段（見 shouldLockScroll），
-  //    outro 起本來就不鎖，這面旗標純粹是「main 還要不要鎖」的記憶。
-  const hasLeftLoop = useState('hero-has-left-loop', () => false);
+  // 2026-08-22：`hasLeftLoop`（「看完過開場就永不重新上鎖」）已移除，理由見
+  // ~/utils/hero-scroll-lock 的檔頭 —— restart 規則讓 heroState 會再回到 main，
+  // 而那條例外正好會讓重播不上鎖、被使用者的下一個捲動事件立刻打斷。
 
   const isGone = computed(() => state.value === 'gone');
 
+  // 退場段已經播到最後一格。**這就是解鎖的那一刻**，也是「自動捲到引言」的觸發點
+  // （見 Hero.vue 的 scrollToIntroReading）。
+  //
+  // 2026-08-22 新增：鎖從「main 期間」延長到「main ＋ 還沒播完的 outro」，於是設計師
+  // 「不要因為捲太快而看不到 outro」第一次真正成立。2026-08-07 也曾鎖住 outro 而在
+  // 08-16 被推翻，但那次的失敗模式（鎖在半路介入、畫面凍在 scrollY 400）在新流程下
+  // 不可能發生 —— outro 是在 scrollY 0、還鎖著的狀態下由正片自動接進來的。
+  //
+  // 設起的點：影片播到 outro.end（HeroVideo 的 onTimeUpdate／onEnded），或退場卡住時的
+  // 保險絲逾時（armOutroLockFuse）。**SKIP 不設它** —— SKIP 只是跳到退場段，其後照常
+  // 播完才解鎖（理由見下方 skip 的註解）。
+  // 清掉的點只有一個：setState('main')（＝重新開始一趟，見下方）。
+  const outroWatched = useState('hero-outro-watched', () => false);
+
   // 真值表本身是 ~/utils/hero-scroll-lock 的純函式（有單元測試釘住），此處只餵值。
   const shouldLockScroll = computed(() =>
-    shouldLockHeroScroll(state.value, hasLeftLoop.value),
+    shouldLockHeroScroll(state.value, outroWatched.value),
   );
 
   // 這一趟下滑是否已經抵達過 gone（＝退場段已經放完、交棒給 DOM 的 orange core）。
   //
-  // 退場段播完是**停在最後一格**，而那一格的構圖就是 gone（橘方塊在正中央，見
-  // HERO_OUTRO_CORE_ANCHOR 的交棒）。少了這面旗標，往回捲時 dissolveState 會把狀態
-  // 送回 outro，於是淡回畫面上的是那一格凍住的畫面 —— 使用者看到的仍然是 gone，
-  // 影片「回不到 loop」（2026-08-16 實測：捲回 y=360 時 state 是 outro、影片停在 38.57s）。
+  // 用途（2026-08-22 起）：回捲時**不要再把狀態送回 outro**。送回去的話影片會 seek 回
+  // 36s 重播退場段，而使用者要的是「回捲不要看到 outro」——`dissolveState` 因此在
+  // outroSpent 為真時一律維持 gone，影片則停在 frame 0（見 HeroVideo 的 watch(heroState)）。
   //
   // 設起的點是 setState('gone')（不是 scrub 的某個門檻）：heroIO 的「捲出視窗就收尾」
-  // 也會直接進 gone，那條路徑同樣不該在捲回來時把凍住的退場段搬回畫面上。
-  // 清掉的點有二：捲回頂端（p < DISSOLVE_LEAVE，見 HeroVideo 的 applyDissolve）與
-  // returnToLoop() —— 兩者都是「重新開始一趟」，下次下滑要再看到完整的退場段。
+  // 也會直接進 gone，那條路徑同樣不該在捲回來時把退場段搬回畫面上。
+  // 清掉的點有二：跨回 page top（見 HeroVideo 的 applyDissolve）與 restartOpening()
+  // —— 兩者都是「重新開始一趟」，下次順播要再看到完整的退場段。
   const outroSpent = useState('hero-outro-spent', () => false);
 
   const setState = (s: HeroState) => {
-    if (s === 'gone') {
-      hasLeftLoop.value = true;
-      outroSpent.value = true;
-    }
+    if (s === 'gone') outroSpent.value = true;
+    // 進 main ＝ 重新開始一趟（首訪、restart 重播都是）：退場的保護要跟著回來，
+    // 否則重播播到退場那一刻不會再上鎖，捲太快照樣看不到（也就是這次改動的目的）。
+    if (s === 'main') outroWatched.value = false;
     state.value = s;
   };
 
@@ -94,19 +107,18 @@ export function useHeroVideo() {
   // stage 的 opacity 若純綁 1 − p，影片會賴在畫面上不走。故這個旗標要蓋過 scrub：
   // 為 true 時 stage 一律隱藏，且 scrub 不再驅動狀態（否則往下捲會把已經跳過的人
   // 送回 outro）。
-  // 清掉的點有二：returnToLoop()，以及**由下往上回捲跨回 page top**（同 outroSpent 的
-  // 重新武裝時機，見 HeroVideo 的 applyDissolve）—— 後者讓按過 SKIP 的人捲回頂端仍能
-  // 拿回影片、再往下捲重看一次退場段。
+  // 清掉的點有二：restartOpening()，以及**由下往上回捲跨回 page top**（同 outroSpent 的
+  // 重新武裝時機，見 HeroVideo 的 applyDissolve）—— 後者讓「按過 SKIP」與「帶 hash 從
+  // 子頁進站」的人捲回頂端就拿回影片，2026-08-22 起還是從 0s 的完整影片（restart）。
+  // 那正是設計師回報「從子頁進來就看不到影片」的解方。
   const openingSkipped = useState('hero-opening-skipped', () => false);
 
-  // 目前這個 outro 是 skip() 手動放的（＝在 page top、p ＝ 0 的位置放的）。
-  // dissolveState 的「p < LEAVE 就回 loop」對它不成立 —— 那條假設「還在頂端就是還沒開始
-  // 退場」，而 SKIP 的情形正好是「在頂端就已經開始退場」。少了這面栓，使用者捲一點點
-  // （p 尚未越過 ENTER）就會被送回 loop、影片 seek 回 30s，再捲多一點又跳回 outro
-  // seek 36s，看起來就是抽一下。
-  // 清掉的點只有一個：p 越過 ENTER（使用者真的開始捲了，見 HeroVideo 的 applyDissolve）。
-  // ⚠️ 那個清除點不是可有可無的收尾 —— 不清的話，捲到一半再回頂端會卡在 outro 回不去 loop。
-  const outroForced = useState('hero-outro-forced', () => false);
+  // 2026-08-22：`outroForced`（「這個 outro 是 SKIP 在 p ＝ 0 手動放的」那面栓）已移除。
+  // 它存在的唯一理由是 dissolveState 用「p 落在 LEAVE 以下」判定要不要倒回 —— 而在
+  // page top 放 outro 的情形正好命中那條。restart 改由「**跨回**頂端」這個事件觸發
+  // （見 ~/utils/hero-dissolve 的 returnedToTop），停在頂端不算事件，栓就不需要了。
+  // 這同時擋掉一個順播帶來的新陷阱：正片播完自動進 outro 時 p 也是 0，若還用位置判定，
+  // 會立刻被判成 restart → 重播 → 又進 outro → **無限重播**。
 
   /** 不經 scrub 直接結束開場。SKIP／載入失敗／帶 hash 進站共用這一條。 */
   const skipOpening = () => {
@@ -115,41 +127,59 @@ export function useHeroVideo() {
   };
 
   /**
-   * SKIP：在 main / loop 時「跳過正片，直接進退場段」（2026-08-17 使用者裁決；在此之前
-   * 是直接進 gone、連退場段都不放）。非 main / loop 時無作用。
+   * SKIP：在 main 時「跳過正片，直接進退場段」（2026-08-17 使用者裁決；在此之前
+   * 是直接進 gone、連退場段都不放）。非 main 時無作用。
    * 觸發者是 HeroVideo 右下角的 skip 按鈕（正片 3s 後淡入，見 HERO_SKIP_APPEAR_AT）。
    *
    * 收尾**不由這裡決定**：影片 seek 到 36s 播完 2.5 秒後停在最後一格（此時 p 仍是 0，
    * 舞台全實），要等使用者捲動才溶解進 gone —— outro → gone 的唯一權威仍是 scrub
    * （見 HeroVideo 的 onTimeUpdate 註解）。故這裡不設 openingSkipped：舞台若被強制隱藏，
    * 退場段等於放給空氣看。
+   *
+   * ⚠️ **刻意不設 `outroWatched`**（2026-08-22 使用者裁決；曾經設過，見下）：SKIP 的語意是
+   *    「跳到退場段」，之後的一切照正常流程走 —— 退場播到最後一格才解鎖，並由 Hero 的
+   *    `scrollToIntroReading()` 自動把畫面帶到引言。
+   *    先前設它的理由是「按了逃生口不該又被鎖 2.5 秒，而 skip 按鈕此刻已經消失」；
+   *    自動捲動上線後那個顧慮消失了 —— 使用者不必自己捲，畫面會自己過去。於是
+   *    `outroWatched` 回到單一語意：**影片真的播到退場最後一格**（另有卡住時的保險絲）。
    */
   const skip = () => {
-    if (state.value !== 'main' && state.value !== 'loop') return;
-    outroForced.value = true;
+    if (state.value !== 'main') return;
     setState('outro');
   };
 
   /**
-   * 「回到最開始」：由 header logo 觸發（見 ~/utils/home-intent）。
+   * 「回到最開始」＝ **從頭重播整支影片**（restart，2026-08-22 使用者裁決；在此之前是
+   * 倒帶到 loop 段、只剩 3 秒循環，而 loop 段本身已於同日移除）。由 header logo 觸發
+   * （見 ~/utils/home-intent）。
    *
-   * ⚠️ 刻意**不**把 hasLeftLoop 設回 false（＝不重新上鎖）。倒帶回 loop 之後頁面可自由
-   * 捲動，往下滑會再次驅動 scrub 進 outro —— 這是已接受的行為（見 hero-scroll-lock 的
-   * 真值表）。
+   * 動機是設計師的回報：帶 hash 從子頁進站的人落在 gone，等於再也看不到影片。裁決是
+   * 「乾脆全部回到 page top 就重看影片」，故三條路徑共用同一個語意：
+   *   ① 子頁 logo → `/#loop` 進站（Hero 的 bypassToRestart）
+   *   ② 首頁 logo 就地（本函式，skipLoader 預設 true）
+   *   ③ 由下往上捲回 page top（scrub，見 ~/utils/hero-dissolve 的 dissolveState）
    *
-   * 轉場進度的歸零**不在這裡**做，在 Hero 的 watch(heroState) 裡（見下方 Step 3）——
+   * 落在 `main` 就會**重新上鎖**（見 ~/utils/hero-scroll-lock）—— 重播就是重播，
+   * 逃生口是 SKIP（正片 3s 後淡入）。影片 seek 回 0 不在這裡做：狀態一變成 main，
+   * HeroVideo 的 watch(heroState) → alignToSegment 就會把 currentTime 拉回 0
+   * （影片進 gone 時本來就已經被 seek 回 0，見 HeroVideo 的 watch(heroState)）。
+   *
+   * ⚠️ start 閘門刻意**不**再出現一次（heroStarted 保持 true）：按 logo 本身就是使用者
+   * 手勢，有聲播放不會被封鎖，再擺一次閘門會像整頁重載。
+   *
+   * 轉場進度的歸零**不在這裡**做，在 Hero 的 watch(heroState) 裡 ——
    * 本 composable 不該去相依 useOrangeCoreProgress，那會把整組 core/forum 狀態
    * 拉進每一個 useHeroVideo() 呼叫者（含掛在所有子頁的 AppHeader）。
    */
-  const returnToLoop = ({ skipLoader = true } = {}) => {
-    // skipLoader ＝ true（預設，首頁就地倒帶）：直接開閘，畫面立刻是 loop。使用者已經在
+  const restartOpening = ({ skipLoader = true } = {}) => {
+    // skipLoader ＝ true（預設，首頁就地重播）：直接開閘，畫面立刻是正片第一幀。使用者已經在
     //   首頁上、載入層早就收掉了，這時把它請回來只會像整頁重載。
     // skipLoader ＝ false（帶 #loop 進站）：**載入層留著跑完**。此時 hero 影片可能一次都
     //   沒下載過（直接開子頁再點 logo），開閘會露出一片白 —— HERO_VIDEO_POSTER 三個裝置
     //   都是空字串，canplay 之前 <video> 什麼都不畫。載入層的 :ready="videoReady" 正是
     //   為此而設：進度封頂在 99% 等影片，ready 後才收尾到 100%。
     //   不會死結：緩衝與 canplay 都不看 loaderDone（見 HeroVideo 的 onMounted），
-    //   而下面的 setState('loop') 會讓影片在載入層底下先 seek 到 30s 並開始播。
+    //   而下面的 setState('main') 會讓影片在載入層底下就從 0s 開始播。
     if (skipLoader) loaderDone.value = true;
     heroStarted.value = true;
     // 按 logo 回來之後 stage 不能繼續被壓著隱藏 —— 否則影片明明重新開始播卻整層透明。
@@ -157,17 +187,16 @@ export function useHeroVideo() {
     // 「回到最開始」＝ 重新開始一趟：退場段要能再放一次，否則按了 logo 回來、再往下捲
     // 只會看到影片淡掉，沒有退場。
     outroSpent.value = false;
-    setState('loop');
+    setState('main');
   };
 
   return {
     state,
     setState,
     skip,
-    returnToLoop,
+    restartOpening,
     isGone,
     shouldLockScroll,
-    hasLeftLoop,
     videoReady,
     loaderDone,
     heroStarted,
@@ -176,6 +205,6 @@ export function useHeroVideo() {
     skipOpening,
     openingSkipped,
     outroSpent,
-    outroForced,
+    outroWatched,
   };
 }

@@ -1,13 +1,15 @@
 <script setup lang="ts">
 // hero：第一屏影片區塊（含 SEO 文字、skip 按鈕、下滑提示）。
-// 影片四階段狀態自 useHeroVideo 全域共享；「各階段秒數」與「RWD 影片來源」集中在
-// ~/utils/hero-video-config，本元件只負責依設定驅動 <video>（seek / loop / 換狀態）。
+// 影片三階段狀態自 useHeroVideo 全域共享；「各階段秒數」與「RWD 影片來源」集中在
+// ~/utils/hero-video-config，本元件只負責依設定驅動 <video>（seek / 順播 / 換狀態）。
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section1.json';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
 import {
   HERO_DISSOLVE_VH,
+  HERO_MAIN_STALL_FUSE_MS,
+  HERO_OUTRO_LOCK_GRACE_MS,
   HERO_SKIP_APPEAR_AT,
   HERO_VIDEO_POSTER,
   HERO_VIDEO_READY_TIMEOUT,
@@ -17,7 +19,6 @@ import {
   type HeroVideoSegment,
 } from '@/utils/hero-video-config';
 import {
-  DISSOLVE_ENTER,
   DISSOLVE_LEAVE,
   dissolveState,
   outroHoldScale,
@@ -28,15 +29,18 @@ import {
 //   B（Hero.vue）影片消失那一刻起，**時間驅動**：引言在原地淡入，orange core 同時
 //                從畫面中心淡入。B 不吃額外捲動距離（見 HERO_INTRO_REVEAL）。
 //
-// ⚠️ 已放棄設計師的「不要因為捲太快而看不到 outro」（使用者裁決）：100vh ＝ 900px，
-//    一般捲速 400–800 px/s 走完是 1.1–2.25 秒而退場是 2.5 秒 ⇒ 大部分人看到 45–90%。
+// ⚠️ 2026-08-22 起設計師的「不要因為捲太快而看不到 outro」**成立了**，但不是靠這段距離：
+//    退場段是由正片順播進來、在還鎖著的時候播完的（見 ~/utils/hero-scroll-lock）。
+//    A 階段的捲動距離現在純粹是「按住 ＋ 緩慢放大 ＋ 走完硬切」的收尾手勢。
 //
 // 影片全程以 1× 播放，不 seek、不變速、不暫停 —— 兩條被實測否決的路留在紀錄裡：
 //   逐幀 seek     三支剪輯關鍵幀平均間距 4.2s，退場段內 pc/pad 各 1 個、mob 0 個，
 //                 每次 seek 要重解 57–143 幀（實測 38–157ms）＝ 畫面只能更新 6–26 次／秒
-//   倍速追趕      連續值在固定刷新率螢幕上必然 cadence judder；改離散 {1,2} 後每次
-//                 改變 playbackRate 都讓媒體管線重新同步（約 200ms 擾動）反而更糟
-//                 （詳見 tickOutro 的註解）
+//   倍速追趕      連續值在固定刷新率螢幕上必然 cadence judder（影片 30fps／螢幕 60Hz，
+//                 只有 1× 與 2× 整除）；改離散 {1,2} 後**更糟** —— 每次**改變**
+//                 playbackRate 都讓媒體管線重新同步（約 200ms 擾動），加 600ms 最小駐留
+//                 仍有殘影。附帶結論：每幀寫入**相同**值無害，代價全在改變那一刻。
+//                 換到的好處也小（只影響捲很快的人最後等 1.25s 還是 2.5s），故恆定 1×。
 
 const {
   state: heroState,
@@ -49,17 +53,22 @@ const {
   skipOpening,
   openingSkipped,
   outroSpent,
-  outroForced,
+  outroWatched,
 } = useHeroVideo();
 
 // 視窗高的單一來源（--vh）：scrub 的 end 吃它，不吃 window.innerHeight
 // （後者在行動裝置上會隨網址列收合而變，見 useViewportHeight）。
 const { vhPx } = useViewportHeight();
 
-// skip 按鈕的現身條件（設計稿 #BN skip）：正片播放 HERO_SKIP_APPEAR_AT 秒後淡入，
-// 正片播完進 loop 就淡出。
-// 綁「影片時間軸」而非 setTimeout：暫停 / 換 RWD 來源重載 / 倒帶回 loop
+// skip 按鈕的現身條件：正片播放 HERO_SKIP_APPEAR_AT 秒（2026-08-22 起是 2s，稿上是 3s）後淡入，
+// 順播進退場段就淡出。
+// 綁「影片時間軸」而非 setTimeout：暫停 / 換 RWD 來源重載 / restart 重播
 // 都自動一致，也沒有計時器要清。currentTime 由 onTimeUpdate 寫入（約每 250ms）。
+// ⚠️ 2026-08-22 起這顆按鈕同時是**正片期間的唯一逃生口**（main 一律上鎖，見
+//    ~/utils/hero-scroll-lock）。按下去只跳過正片：影片 seek 到退場段、頁面仍鎖著，
+//    退場播完才解鎖並自動捲到引言（見 useHeroVideo 的 skip）。
+//    它綁影片時間軸 ⇒ 影片完全動不起來時它不會出現，
+//    那個死結由 armStallFuse 的保險絲兜著（見下方）。
 const showSkip = computed(
   () => heroState.value === 'main' && currentTime.value >= HERO_SKIP_APPEAR_AT,
 );
@@ -117,7 +126,87 @@ const markReady = () => {
     clearTimeout(readyTimer);
     readyTimer = undefined;
   }
+  // ⚠️ 這裡**刻意不清** armStallFuse 那根絲（2026-08-22 code review 修正）。原本清掉，
+  //    造成兩個問題：① 兩者同用 HERO_VIDEO_READY_TIMEOUT 且這支註冊得早 ⇒ markReady 先跑、
+  //    把絲清掉，它永遠不會觸發；② canplay 之後才卡住（緩衝斷掉）就再也沒有保險。
+  //    留著不清是安全的：那根絲在逾時當下才判斷影片能不能播，能播就什麼都不做。
 };
+
+// ── 保險絲：鎖在 main 卻沒有影片可看 ──────────────────────────────────
+// 2026-08-22 起只要身處 main 就上鎖（含 restart 重播，見 ~/utils/hero-scroll-lock），
+// 而 restart 這條路徑**沒有載入層也沒有 start 閘門**把關：影片此刻若拉不動（快取被清
+// ＋ 網路慢、或直接離線），使用者會被鎖在一片白 —— stage 的 .is-loading 是 opacity 0，
+// 露出來的是 .sec1 的白底 —— 而 SKIP 的現身條件綁影片時間軸（currentTime ≥ HERO_SKIP_APPEAR_AT），
+// 影片不動就永遠不出現 ⇒ **整頁鎖死，且畫面上沒有任何東西喊出來**。
+//
+// 故「身處 main」就上一根保險絲，逾時當下若影片**仍然不能播**就走 skipOpening()
+// （→ gone → 解鎖）。
+//
+// ⚠️ 判斷條件是 `readyState < HAVE_FUTURE_DATA`，**不是 elementReady**（2026-08-22 code
+//    review 修正）。elementReady 的語意是「載入層別再等了」—— 逾時放行時也會設起，
+//    拿它當條件等於在最需要保險的情形（影片始終不能播）判成「不必上絲」。
+// ⚠️ 逾時值另立 HERO_MAIN_STALL_FUSE_MS（15s）而**不沿用載入層那支 8s**：同值時
+//    markReady 的計時器註冊得早、會先把絲清掉；而且 8s 對慢速網路太短 —— 那時影片
+//    往往只是還沒開始播，不該把整段開場跳掉。
+// ⚠️ 守備範圍因此也含「canplay 之後才卡住」：只要逾時當下 readyState 掉回 3 以下就算。
+let stallTimer: ReturnType<typeof setTimeout> | undefined;
+
+function clearStallFuse() {
+  if (!stallTimer) return;
+  clearTimeout(stallTimer);
+  stallTimer = undefined;
+}
+
+function armStallFuse() {
+  clearStallFuse();
+  if (heroState.value !== 'main') return;
+  stallTimer = setTimeout(() => {
+    stallTimer = undefined;
+    // 逾時當下才判：還在 main（使用者可能已按 SKIP 離開），而影片仍然不能播。
+    if (heroState.value !== 'main') return;
+    const v = videoEl.value;
+    if (v && v.readyState >= 3) return; // HAVE_FUTURE_DATA 以上 ＝ 能播，不必動它
+    skipOpening();
+  }, HERO_MAIN_STALL_FUSE_MS);
+}
+
+// ── 退場鎖的解除 ────────────────────────────────────────────────────
+// 2026-08-22：退場段是在**還鎖著**的狀態下進來的（正片順播，或按 SKIP 跳過來 —— 兩條都鎖），
+// 播到最後一格才解鎖 —— 這就是「不要因為捲太快而看不到 outro」的實作。
+// 解鎖 ＝ 設 outroWatched，而那面旗標同時是 Hero「自動捲到引言」的觸發點
+// （見 Hero.vue 的 scrollToIntroReading）—— 所以這裡是「一鎖換一滑」的交接點。
+function releaseOutroLock() {
+  clearOutroLockFuse();
+  outroWatched.value = true;
+}
+
+// 鎖著的退場段若卡住（緩衝、解碼失敗、被瀏覽器暫停）就沒有任何東西會把鎖打開：
+// SKIP 只在 main 出現、`onTimeUpdate` 也不會再被呼叫 ⇒ **整頁鎖死且畫面全靜**。
+// 故進退場的同時上一根只看牆上時間的保險絲：退場段長度 ＋ 寬限之後無論如何解鎖。
+// （2026-08-16 曾把這類保險絲整組刪掉，理由是「outro 不鎖之後影片卡住不會鎖死頁面」——
+//  退場重新上鎖之後那個理由失效，見 HERO_OUTRO_LOCK_GRACE_MS 的註解。）
+let outroLockTimer: ReturnType<typeof setTimeout> | undefined;
+
+function clearOutroLockFuse() {
+  if (!outroLockTimer) return;
+  clearTimeout(outroLockTimer);
+  outroLockTimer = undefined;
+}
+
+function armOutroLockFuse() {
+  clearOutroLockFuse();
+  if (heroState.value !== 'outro' || outroWatched.value) return;
+  const seg = segments.value.outro;
+  // 段落長度取不到（end 是 HERO_VIDEO_END）時退回 0，保險絲就只剩寬限那一段。
+  const spanMs = Number.isFinite(seg.end)
+    ? Math.max(0, (seg.end - seg.start) * 1000)
+    : 0;
+  outroLockTimer = setTimeout(() => {
+    outroLockTimer = undefined;
+    if (heroState.value !== 'outro' || outroWatched.value) return;
+    outroWatched.value = true;
+  }, spanMs + HERO_OUTRO_LOCK_GRACE_MS);
+}
 
 // muted 的最終值由 JS 決定：template 上的 muted 屬性只是「JS 跑起來之前」的保險
 // （SSR / hydration 下 template 的 muted 不一定落到 DOM property，且絕不能先漏音）。
@@ -130,7 +219,7 @@ async function play() {
   try {
     await v.play();
   } catch (err) {
-    // ⚠️ 只有「自動播放被封鎖」才放棄整段 hero —— 那時非放棄不可，否則 main / loop 的
+    // ⚠️ 只有「自動播放被封鎖」才放棄整段 hero —— 那時非放棄不可，否則正片／退場段的
     // 捲動鎖會把使用者永久鎖在第一屏。其餘 rejection 幾乎都是 AbortError：
     // promotePreload() 的 load() 撞上掛載時這次 play()、或 RWD 換 :src 造成的中斷。
     // 影片本身沒問題，loadedmetadata / watch(heroState) 會再播一次；
@@ -159,9 +248,10 @@ function onLoadedMetadata() {
     resumeAt = 0;
   } else {
     // watch(heroState) 只在「狀態改變」時對齊，但狀態可能在本元件存在之前就已經設好：
-    // 帶 #loop 進站時 Hero 於自己的 setup 內就把 heroState 設成 loop，那時本元件（子層）
-    // 還沒建立、watcher 也還沒註冊 —— Vue 的 watch 不會補發早於它的變更。
-    // 不補這一次對齊，影片會從 0s 播整段正片，直到 33s 才跳回 loop 起點。
+    // 帶 #loop 進站時 Hero 於自己的 setup 內就把 heroState 設好（2026-08-22 起是 main、
+    // 之前是已移除的 loop），那時本元件（子層）還沒建立、watcher 也還沒註冊 —— Vue 的 watch
+    // 不會補發早於它的變更。restart 的目標秒數恰好是 0，但這一行仍不可省：換 RWD 來源
+    // 或狀態是 outro 時（例如 HMR 重新掛載）少了它就會播錯段落。
     alignToSegment(v);
   }
   // 使用者已按下 start 才播（首次載入時通常還沒按，由下方 watch(heroStarted) 接手）
@@ -188,7 +278,7 @@ function alignToSegment(v: HTMLVideoElement) {
   }
 }
 
-// 階段推進的單一真相＝影片時間軸：依 config 的段落秒數判斷何時換狀態 / 循環。
+// 階段推進的單一真相＝影片時間軸：依 config 的段落秒數判斷何時換狀態。
 function onTimeUpdate() {
   const v = videoEl.value;
   if (!v) return;
@@ -197,39 +287,34 @@ function onTimeUpdate() {
 
   switch (heroState.value) {
     case 'main':
-      if (v.currentTime >= seg.main.end) setState('loop'); // 主要內容播完 → loop 段
-      break;
-    case 'loop':
-      if (v.currentTime >= seg.loop.end) v.currentTime = seg.loop.start; // loop 段循環
+      // 正片播完 → **順播進退場段**（2026-08-22；原本是進 loop 等使用者下滑）。
+      // 頁面此刻仍鎖著，下方 watch(heroState) 會 seek 到 36s 續播。
+      if (v.currentTime >= seg.main.end) setState('outro');
       break;
     case 'outro':
-      // 退場段播到 outro.end（38.5s，非影片結尾）：停在最後一格，不再自己 setState('gone')。
+      // 退場段播到 outro.end（38.5s，非影片結尾）：停在最後一格 ＋ **解鎖**，
+      // 不自己 setState('gone')。
       // ⚠️ outro → gone 的唯一權威是 scrub（dissolveState，見 applyDissolve）。這裡若也
-      // 寫狀態，會與 scrub 變成兩個互相打架的驅動源：退場段只有 2.5 秒，使用者若捲得比
-      // 這慢（或捲進退場後停住），影片會先自己播完被判 gone；之後任何一點捲動讓 p 落回
-      // (ENTER, 1) 又會被 dissolveState 判回 outro，把影片 seek 回 36s 重播（2026-08-16
-      // 實測到的抽搐）。故這裡只暫停影片、把「該不該進 gone」整個交給 p 是否 ≥ 1。
+      // 寫狀態，會與 scrub 變成兩個互相打架的驅動源（2026-08-16 實測到的抽搐）。
+      // 故這裡只做兩件事：暫停影片、把鎖放開；「該不該進 gone」整個交給 p 是否 ≥ 1。
       // !v.paused 早退：避免 timeupdate 每幀（~250ms）都重複呼叫 pause()。
-      if (v.currentTime >= segEnd(v, seg.outro) && !v.paused) v.pause();
+      if (v.currentTime >= segEnd(v, seg.outro) && !v.paused) {
+        v.pause();
+        releaseOutroLock();
+      }
       break;
   }
 }
 
 // 影片播到尾（config 的 end 設得比影片長時會先發生）：視為當前段落結束。
 function onEnded() {
-  const seg = segments.value;
   if (heroState.value === 'main') {
-    setState('loop'); // 下方 watch 會把時間拉到 loop 起點
+    setState('outro'); // 下方 watch 會把時間 seek 到退場段起點
     return;
   }
-  if (heroState.value === 'loop') {
-    const v = videoEl.value;
-    if (v) v.currentTime = seg.loop.start;
-    void play();
-    return;
-  }
-  // outro 播到底（@ended，通常先被上面 onTimeUpdate 的暫停攔到，這裡是保險）：
-  // 影片已經自然停在最後一幀，不必再做什麼。狀態改變交給 scrub（理由同 onTimeUpdate）。
+  // outro 播到底（@ended，通常先被上面 onTimeUpdate 攔到，這裡是保險）：影片已經自然
+  // 停在最後一幀，只要把鎖放開。狀態改變交給 scrub（理由同 onTimeUpdate）。
+  if (heroState.value === 'outro') releaseOutroLock();
 }
 
 function onError() {
@@ -245,31 +330,37 @@ function onError() {
 // orange core 綁在 gone 上（見 Hero.vue 的 coreVisible），影片沒播完 core 就不會出現。
 // 影片都已經捲出視窗了，繼續播只是讓 core 遲到 —— 直接進 gone。兩種情形都吃得到：
 //   ① 退場播到一半被捲走 → 不必等剩下的秒數
-//   ② 倒帶回 loop 後用捲軸 / End 鍵跳走（跳得比 dissolveST 的 end 還遠，scrub 來不及
+//   ② 退場播完解鎖後用捲軸 / End 鍵跳走（跳得比 dissolveST 的 end 還遠，scrub 來不及
 //      判定就已經離開視窗）→ 否則影片在畫面外無限循環，core 永遠不出現
 // main 期間頁面鎖著（見 useHeroVideo 的 shouldLockScroll），hero 不可能離開視窗，
-// 故這條實際上只在「離開過 loop」之後生效。
+// 故這條實際上只在解鎖之後生效 —— 2026-08-22 的兩次改動都沒有改變這件事：
+// 重播回到 main 的同時也重新上鎖，而退場段播完之前也還鎖著。
 let heroIO: IntersectionObserver | null = null;
 
-// 狀態改變（SKIP / scrub / 自動推進）→ 對齊該段起點並續播；gone 則停住影片。
-// 已落在目標段內就不 seek：main → loop 是相接的，自動推進不會有跳動。
-// loop → outro 則必定 seek（33 → 36 中間刻意留白，見 hero-video-config 的段落表）。
+// 狀態改變（順播推進 / SKIP / scrub）→ 對齊該段起點並續播；gone 則停住影片並歸零。
+// 已落在目標段內就不 seek。main → outro 必定 seek（33 → 36 中間刻意留白，見段落表）。
 watch(heroState, (s) => {
   const v = videoEl.value;
-  // 離開退場就一定要收掉追趕迴圈（含 v 為 null 的情形），否則 rAF 會一直空轉。
-  stopOutroTick();
+  // 進 main（首訪／restart 重播）＝ 又被鎖起來了 → 補上保險絲；離開 main 則收掉。
+  armStallFuse();
+  // 進 outro ＝ 鎖還在（要等它播完）→ 補上退場鎖的保險絲；離開 outro 則收掉。
+  armOutroLockFuse();
   if (!v) return;
   if (s === 'gone') {
     v.pause();
+    // ── 進 gone 就把影片歸零（2026-08-22 使用者裁決）──────────────────
+    // 這一刻影片剛被**硬切**藏起來（見 applyDissolve），所以這個 seek 沒有人看得到；
+    // 而它讓「之後任何一次影片重新出現」看到的都是第一幀，不是凍住的退場尾幀 ——
+    // 使用者往回捲時原本會看到已經播完的 outro 那格，那是他明確不要的。
+    // 交棒不受影響：runCoreEntrance 讀的是 <video> 的**幾何**（元素矩形 ＋
+    // HERO_OUTRO_CORE_ANCHOR），不是畫面上的像素。
+    v.currentTime = segments.value.main.start;
     return;
   }
-  // 倍速歸位：main／loop 一律 1×，且回捲離開退場時要把上一輪殘留的倍速清掉 ——
-  // 不清的話 loop 段會以 2× 循環播放。
+  // 倍速歸位：一律 1×，且回捲離開退場時要把上一輪殘留的倍速清掉。
   v.playbackRate = 1;
   alignToSegment(v);
   void play();
-  // 這個 rAF 只在退場期間有工作（見 tickOutro）。
-  if (s === 'outro') outroRaf = requestAnimationFrame(tickOutro);
 });
 
 // 按下 start 後才開始播 main（見 useHeroVideo 的 heroStarted）
@@ -288,8 +379,6 @@ watch(soundOn, (on) => {
 let dissolveST: ScrollTrigger | null = null;
 // 上一次 applyDissolve 收到的 p：用來辨識「回捲跨過 DISSOLVE_LEAVE」那一刻（見下方）。
 let lastDissolveP = 0;
-// 退場期間的 rAF（見 tickOutro）。
-let outroRaf = 0;
 
 function buildDissolveST() {
   if (!heroEl.value) return;
@@ -313,43 +402,16 @@ function buildDissolveST() {
   });
 }
 
-// 退場期間每幀跑一次，唯一的工作是補叫 applyDissolve。
-//
-// 為什麼需要它：揭露引言的條件有一半是「影片播完」，而那**不由捲動事件驅動** ——
-// 使用者可能早就停下手了。少了這一條，影片播完也不會有人去揭露引言。
-// applyDissolve 是幂等的（同一個 p 重複呼叫只會寫回相同的 class、setState 只在改變時發），
-// 故直接每幀呼叫，不必多養一面「已播完」的旗子。
-//
-// ── 為什麼這裡不再調 playbackRate ────────────────────────────────────
-// 曾經有一版讓影片以倍速「追趕」捲動（2026-08-21 刪除，見 git 紀錄的
-// hero-outro-rate.ts）。刪掉的理由是量測結果：
-//   ① 連續變化的倍速在固定刷新率螢幕上必然抖 —— 影片 30fps、螢幕 60Hz，只有 1× 與 2×
-//      能整除，中間值會讓影格在 1 與 2 次刷新之間不規則交替（cadence judder）。
-//   ② 改成離散 {1, 2} 之後**更糟**：每次**改變** playbackRate 都讓媒體管線重新同步
-//      （約 200ms 的節奏擾動），而切換頻繁時比連續值還難看。加了 600ms 最小駐留把
-//      切換壓到 0–1 次仍留有殘影。
-//   （附帶結論：每幀寫入**相同**值是無害的，代價全在改變那一刻。）
-//
-// 而「追趕」換到的好處其實很小：揭露條件本來就會等影片播完，倍速只影響「捲很快的人
-// 在最後等多久」（1.25s vs 2.5s）。用一個看得見的擾動換那個，不划算。
-//
-// 恆定 1× ⇒ 零次節奏改變，而設計師的三條需求一條都沒掉：退場照樣完整播完
-// （揭露的雙條件保證）、不鎖捲動、不會因為捲太快而看不到退場。
-function tickOutro() {
-  outroRaf = 0;
-  if (!videoEl.value || heroState.value !== 'outro') return;
-  applyDissolve(dissolveST?.progress ?? 0);
-  outroRaf = requestAnimationFrame(tickOutro);
-}
-
-function stopOutroTick() {
-  if (outroRaf) cancelAnimationFrame(outroRaf);
-  outroRaf = 0;
-}
+// 2026-08-22（code review）：退場期間每幀補叫 applyDissolve 的那支 rAF（`tickOutro` /
+// `stopOutroTick` / `outroRaf`）**已移除**。它存在的唯一理由是「揭露引言的條件有一半是
+// 影片播完，而那不由捲動事件驅動」—— 而 2026-08-21 改成硬切之後，揭露只看
+// `openingSkipped || p >= 1 || handedOff`，三個輸入沒有一個跟影片時間軸有關；
+// p 的變化本來就由 dissolveST 的 onUpdate／onRefresh 送過來（自動捲動也是改捲動位置，
+// 一樣會觸發）。留著等於整段鎖著的退場期間每幀寫回一模一樣的 opacity / transform。
+// 倍速追趕那一版的實測紀錄搬到本檔檔頭，別再從這裡找。
 
 function applyDissolve(p: number) {
   const stage = stageEl.value;
-  const v = videoEl.value;
 
   // ── 回到頂端 ＝ 整趟重新武裝（連「開場已被跳過」也解除）──────────────
   // 判的是**跨越**而非 p < LEAVE 本身：SKIP／載入失敗／帶 hash 進站都發生在 p ＝ 0，
@@ -357,20 +419,54 @@ function applyDissolve(p: number) {
   // 影片根本不會消失（SKIP 等於失效）。只有「先離開過門檻、再回捲跨回來」才算數 ——
   // 那正是使用者由下往上捲回 page top 的軌跡。
   // 未 arm 期間的 p 是子頁帶過來的雜訊（見 scrubArmed），跨越照樣吞掉不處理。
+  //
+  // ⚠️ 這一條就是設計師「從子頁進來就看不到影片」的解方所在（2026-08-22）：帶 `/#forum`
+  //    這類 hash 進站的人 openingSkipped 為 true、舞台被壓著隱藏，而**捲回 page top 會
+  //    在這裡把它清掉**，影片於是回到畫面上；同一刻 dissolveState 把狀態判成 main
+  //    （restart），使用者看到的就是從 0s 開始的完整影片。
   const returnedToTop = p < DISSOLVE_LEAVE && lastDissolveP >= DISSOLVE_LEAVE;
   lastDissolveP = p;
   // 清掉後下方 alpha 才算得出 1（同一次呼叫內影片就淡回來，不必等下一個捲動事件）。
   if (returnedToTop && scrubArmed.value) openingSkipped.value = false;
 
   // ── 揭露引言：捲完 A 階段就收掉，**硬切** ────────────────────────────
-  // 2026-08-21 起不再等影片播完（使用者裁決，見設計文件第〇節）：滑完 vh(1) 影片就
-  // 消失，接著 B 階段讓引言原地淡入。
-  // ⚠️ 這放棄了設計師的第三條需求（「不要因為捲太快而看不到 outro」）——
-  //    100vh ＝ 900px，一般捲速 400–800 px/s 走完是 1.1–2.25 秒，而退場是 2.5 秒
-  //    ⇒ 大部分人看到 45–90%。這是已記錄的取捨，不是遺漏。
+  // 2026-08-21 起不再等影片播完（使用者裁決，見設計文件第〇節）：滑完 vh(HERO_DISSOLVE_VH)
+  // 影片就消失，接著 B 階段讓引言原地淡入。
   // ⚠️ 影片這一層是**硬切**（也是使用者裁決）：不與引言的淡入重疊。柔和度由 B 階段
   //    的淡入承擔，不由這裡。
-  const revealed = openingSkipped.value || p >= 1;
+  //
+  // ⚠️ **交棒過（outroSpent）就一律不再露出影片** —— 這一條是為了「兩顆橘塊」：
+  //    `.sec1__hero` 是 `position: sticky`，依規範 sticky **會建立堆疊脈絡** ⇒ 舞台的
+  //    `z-index: 4` 被關在裡面，而 `.sec1__hero` 對外是 `z-index: auto`（＝0），
+  //    輸給 `.sec1__orange-core` 的 `z-index: 2` —— 也就是 **DOM core 一直畫在影片之上**。
+  //    以前撞不到，是因為 core 只在 `gone` 可見、而 `gone` 時 `p ≥ 1`、舞台正好隱藏。
+  //    2026-08-22 兩件事同時打開了這個洞：影片進 gone 時 seek 回 frame 0（而 frame 0
+  //    畫面正中央就有一顆橘塊，實測佔畫面寬 6.15%，是退場尾幀那顆的 3.7 倍），而回捲
+  //    時 `p < 1` 又讓舞台亮回來 ⇒ 大顆（影片的）＋ 小顆（DOM core，26px）同時在畫面上
+  //    （820×1180 實測：p=0.85 時一顆在 y=590 一顆在 y=860）。
+  //    另有一條更早就存在的：`heroIO` 強制進 gone 時 `p` 可能還小於 1，同樣兩顆並存。
+  //    修法選「交棒後就不再露出影片」而非「舞台可見時藏 core」—— 後者會讓使用者在
+  //    回捲跨過 p=1 的瞬間看到方塊換了大小與位置（影片那顆與 DOM 那顆不同尺寸）。
+  //    重播（restart）時 outroSpent 已在上方被清掉，故影片照樣回得來。
+  //
+  // ⚠️ 狀態推導必須排在下面的 opacity 寫入**之前**（2026-08-22 調整）：restart 那一幀
+  //    `outroSpent` 會被清成 false、狀態變成 main，而 handedOff 讀的正是這兩個值。
+  //    順序反過來的話那一幀會判成「已交棒 → 隱藏」，而狀態改變不會再叫一次
+  //    applyDissolve ⇒ 影片重播了卻整層透明，要等下一個捲動事件才亮回來。
+  if (scrubArmed.value && !openingSkipped.value) {
+    // 跨回頂端 ＝ 重新武裝：這一趟重播要再看到完整的退場段。
+    // （設起的點在 setState('gone')，見 useHeroVideo 的 outroSpent。）
+    // ⚠️ 必須排在 dissolveState 之前：那條「已交棒過就維持 gone」的規則會蓋掉重播。
+    if (returnedToTop) outroSpent.value = false;
+    const next = dissolveState(p, heroState.value, {
+      returnedToTop,
+      outroSpent: outroSpent.value,
+    });
+    if (next !== heroState.value) setState(next);
+  }
+
+  const handedOff = outroSpent.value && heroState.value !== 'main';
+  const revealed = openingSkipped.value || p >= 1 || handedOff;
 
   // opacity 這幾行必須不論 scrubArmed／openingSkipped 都跑：SKIP／載入失敗當下 scrub
   // 可能還沒 arm（或已被跳過鎖死），stage 若少了這行會維持初始的完全不透明，
@@ -386,26 +482,12 @@ function applyDissolve(p: number) {
   if (videoEl.value) {
     videoEl.value.style.transform = `scale(${outroHoldScale(p).toFixed(4)})`;
   }
-  if (!scrubArmed.value || openingSkipped.value) return;
-  // 捲回頂端 ＝ 重新武裝：下一趟下滑要再放一次完整的退場段。
-  // （設起的點在 setState('gone')，見 useHeroVideo 的 outroSpent。）
-  if (p < DISSOLVE_LEAVE) outroSpent.value = false;
-  // 使用者真的開始捲了 → SKIP 那面栓退場，其後一切照常規則走。
-  // ⚠️ 不清的話，捲到一半再回頂端會卡在 outro 回不去 loop（栓會擋掉「回 loop」那一條）。
-  if (p >= DISSOLVE_ENTER) outroForced.value = false;
-  const next = dissolveState(
-    p,
-    heroState.value,
-    outroSpent.value,
-    outroForced.value,
-  );
-  if (next !== heroState.value) setState(next);
 }
 
 // openingSkipped 翻面時要立刻重套一次 —— applyDissolve 平常只由 ScrollTrigger 的
 // 回呼驅動，而 SKIP／載入失敗／帶 hash 進站都可能發生在 scrollY 0（根本沒有捲動事件），
 // 少了這一條，影片會賴在畫面上直到使用者捲動才被 scrub 淡掉（2026-08-16 實測發現）。
-// 讀 dissolveST?.progress 而非假設 0：returnToLoop() 也會把這面旗子清回 false，
+// 讀 dissolveST?.progress 而非假設 0：restartOpening() 也會把這面旗子清回 false，
 // 而那次翻轉可能發生在非 0 的捲動位置。若翻轉發生在 p ≥ 1（使用者已經捲過整段 pin、
 // 引言早就接上了），假設 0 會把舞台重新蓋回引言上。
 watch(openingSkipped, () => applyDissolve(dissolveST?.progress ?? 0));
@@ -414,7 +496,7 @@ watch(openingSkipped, () => applyDissolve(dissolveST?.progress ?? 0));
 // heroState 是 useState，跨導航存活：若在低 p（甚至 0）時重新掛載又還沒 arm，畫面會停在
 // 上一輪殘留的 gone（不透明度已被上面那行帶回實體），此時若只是「打開閘門」而不重新推導，
 // 就要等使用者捲動才會觸發 applyDissolve、狀態才追上 p —— 中間那格會先閃一次不透明的
-// 首幀、接著第一次捲動又直接跳去 outro（而非 loop），而非讓 arm 當下就把狀態拉回與 p
+// 首幀、接著第一次捲動又直接跳去 gone，而非讓 arm 當下就把狀態拉回與 p
 // 相符的那一格。故 arm 的當下要主動呼叫 applyDissolve，等同「補一次 onRefresh」。
 watch(scrubArmed, (on) => {
   if (on) applyDissolve(dissolveST?.progress ?? 0);
@@ -482,6 +564,15 @@ onMounted(() => {
     promotePreload();
   }
 
+  // 掛載當下就可能落在「鎖著」的狀態，而 watch(heroState) 只在**狀態改變**時才跑 ——
+  // heroState / outroWatched 都是 useState、跨 client-side 導航存活，於是重新掛載時
+  // 狀態可能已經是 main（首訪、帶 #loop 進站的 restart）或 outro（上一輪還沒播完就
+  // 換頁又回來）。兩根絲都在這裡補上一次；各自的 arm 函式會自己判斷該不該上。
+  // ⚠️ 2026-08-22 code review：原本只補了 armStallFuse，且被夾在上面那個 else 裡
+  //    （＝影片已可播就不上絲），兩件事都是漏洞。
+  armStallFuse();
+  armOutroLockFuse();
+
   // 同上一則的理由：來源在快取裡時 loadedmetadata 也可能早於 hydration 就觸發，
   // 那樣 onLoadedMetadata 的對齊就漏掉了 —— 掛載時補查一次（HAVE_METADATA 以上）。
   if (v && v.readyState >= 1) alignToSegment(v);
@@ -492,7 +583,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize);
   if (readyTimer) clearTimeout(readyTimer);
-  stopOutroTick();
+  clearStallFuse();
+  clearOutroLockFuse();
   heroIO?.disconnect();
   heroIO = null;
   dissolveST?.kill();
@@ -538,7 +630,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!--
-        skip：正片播放 3s 後「原地」淡入，進 loop 段淡出消失。
+        skip：正片播放 2s 後「原地」淡入，離開正片（跳到／順播進退場段）就淡出消失。
         按鈕本體（盒子、字級、雙箭頭、40% ↔ hover 100%）都在 <UBtnSkip>，
         本檔的 .sec1__hero-skip 只給版位與「現不現身」。
         刻意不用 v-if + <Transition>：常駐 DOM 只切 class，淡出期間 hover 規則已隨
@@ -547,7 +639,7 @@ onBeforeUnmount(() => {
         而且它會把已經在身上的 focus 逼出去（下一個 frame）—— 這是 tabindex -1 ＋ aria-hidden
         做不到的：那兩者只管「之後還能不能被 tab 到」，已握著的 focus 會留在原處，於是
         aria-hidden 蓋住 focus 元素，瀏覽器警告。
-        這條路徑不只有點擊：使用者 tab 到按鈕後正片自然播完（→ loop）也會走到，
+        這條路徑不只有點擊：使用者 tab 到按鈕後正片自然播完（→ 順播進退場段）也會走到，
         所以 onSkipClick 的 blur 不能替代 inert，兩者各補一半。
         tabindex 仍保留：inert 未支援時至少不會被 tab 進看不見的按鈕。
         pointer-events: none 也留在 scss，那是淡入淡出版位的一部分，不倚賴 inert。
@@ -563,11 +655,14 @@ onBeforeUnmount(() => {
       />
 
       <!--
-        下滑看更多：loop 與 outro 顯示（提示使用者向下滾動以觸發／繼續退場）。
-        outro 也要顯示是因為 SKIP：它把狀態直接放到 outro，而人還在 page top ——
-        退場段播完會停在最後一格且全實，此時畫面上必須有個「請往下捲」的指引，
-        否則使用者面對的是一格不會動也沒說明的凍結畫面。正常流程的 outro 也吃得到，
-        但那時它本來就隨舞台一起在溶解（提示在 stage 內），跟著淡掉不會卡住。
+        下滑看更多：**退場段播完（＝解鎖）之後**才顯示（2026-08-22 改；原本是 loop 與 outro
+        全程顯示，而 loop 已移除）。條件與捲動鎖是同一組輸入（見 ~/utils/hero-scroll-lock）：
+        退場還在播的時候頁面是鎖著的，那時擺一個「請往下捲」的指引是在騙人。按過 SKIP 的人
+        也一樣要等退場播完（SKIP 只跳過正片，見 useHeroVideo 的 skip）。
+        ⚠️ 解鎖那一刻 Hero 會自動把畫面帶到引言（scrollToIntroReading），所以這個提示在
+        正常流程下只會出現在那 1.1 秒的滑行途中。它真正的用途是**滑行被使用者中斷**時
+        （ScrollToPlugin 的 autoKill）—— 那時畫面停在半路、影片是一格不會動的凍結影像，
+        沒有這個指引使用者不知道還要往下捲。
         設計稿只有一個 22×12 的點陣 chevron，沒有文字也沒有那條垂直細線 ——
         文案改掛 .visually-hidden（由元件內部處理，見 label prop）：
         這個提示對讀不到圖形的使用者更重要。
@@ -576,7 +671,7 @@ onBeforeUnmount(() => {
         本檔的 .sec1__hero-scroll 只給版位與「現不現身」（同 .sec1__hero-skip 的分工）。
       -->
       <UBtnScrollHint
-        v-if="heroState === 'loop' || heroState === 'outro'"
+        v-if="heroState === 'outro' && outroWatched"
         class="sec1__hero-scroll"
         :label="str.hero.scrollHint"
       />
@@ -589,16 +684,14 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
-// ── hero 佔位的兩個旋鈕 ───────────────────────────────────────────────
-// $intro-at：退場結束時，引言上緣落在螢幕的哪裡（0.85 ＝ 露出約三行，
-//            這是設計核准過的那一格構圖）。
-// $exit：A 階段（影片退場）吃掉多少捲動距離（× 視窗高）。**必須與 hero-video-config
-//        的 HERO_DISSOLVE_VH 相同**（那邊算 ScrollTrigger 的 end，這邊算佔位高度）。
+@use './hero-geometry' as *;
+
+// ── hero 佔位 ─────────────────────────────────────────────────────────
+// 兩個旋鈕（$exit ／ $intro-at）的定義與沿革在 _hero-geometry.scss —— Hero.scss 的
+// 黏著保險（.sec1__inner 的 min-height）吃同一份，故不在此各留一份。
 // 佔位高 = 兩者相加，是推導值、不是第三個旋鈕：
 //   引言上緣螢幕位置 = 佔位高 − scrollY ⇒ scrollY = vh($exit) 時剛好等於 vh($intro-at)。
 // （B 階段的 $reveal 在 Hero.scss —— 那段由引言自己 sticky 停住，與本佔位無關。）
-$intro-at: 0.85;
-$exit: 1;
 
 .sec1__hero {
   // ⚠️ 必須是 sticky，**不可以改用 ScrollTrigger 的 pin**（2026-08-21 實測否決）。
@@ -620,8 +713,11 @@ $exit: 1;
   //    代數上：釋放點 = innerBottom − 佔位高 = 引言總高，故佔位高一起長大時釋放點不變。
   //    約束是「A 階段的捲動距離 < 引言總高」，超過就會在退場還沒走完時脫黏，影片邊播
   //    邊被往上捲走，而且**沒有任何錯誤訊息**。
-  //    實測餘裕（$exit ＝ 1）：375×667 +379、1440×900 +398、1920×1080 +164 —— 都過。
-  //    （前一版 vh(1.2) + 200px 在 1920×1080 上是 −16px，正是被這條擋掉才改回 vh(1)。）
+  //    2026-08-22（$exit 1 → 1.6）起這條約束由 .sec1__inner 的 min-height 保底
+  //    （$sticky-floor，見 Hero.scss）—— 桌機引言只撐得出 488px + 0.9vh，1.6vh 靠自己
+  //    一定不夠。實測釋放點餘裕（$exit ＝ 1.6，補保底後）：
+  //      375×667 +293（引言自己就夠，保底未作用）、768×1024 +52、1440×900 +45、1920×1080 +54
+  //    （沿革：vh(1.2) + 200px 在 1920×1080 上是 −16px → 改回 vh(1) 得 +380）。
   position: sticky;
   top: 0;
   width: 100%;
@@ -645,10 +741,19 @@ $exit: 1;
   //    —— 柔和度由 B 階段引言的原地淡入承擔（見 Hero.vue）。
   // cover 溢出的裁切從 .sec1__hero 移到這裡。
   overflow: hidden;
-  // 4 ＞ .sec1__scene 的 3（見 Hero.scss 的層序說明）：引言頂端就是被這一層蓋住的。
-  // ⚠️ 這是**整個遮擋機制的全部** —— 沒有 clip-path、沒有狀態旗標、沒有 opacity 閘門。
-  // ⚠️ 本元素有 z-index 又是 positioned ⇒ 建立堆疊脈絡 ⇒ 內層的 skip（z-index 2）與
-  //    下滑提示都被關在這個脈絡裡，相對順序不變，兩者都**不必**跟著調 z-index。
+  // ⚠️ **這個 4 對外沒有作用**（2026-08-22 實測更正；原註解主張「4 ＞ .sec1__scene 的 3，
+  //    引言頂端就是被這一層蓋住的，這是整個遮擋機制的全部」—— 那是錯的）。
+  //    父層 `.sec1__hero` 是 `position: sticky`，依規範 sticky **會建立堆疊脈絡** ⇒ 這個 4
+  //    只在該脈絡「內部」有效；`.sec1__hero` 本身是 `z-index: auto`（＝0），對外**輸給**
+  //    `.sec1__scene` 的 3 與 `.sec1__orange-core` 的 2。
+  //    實測（820×1180，退場期間強制把引言設成 opacity 1）：同一點的最上層元素是
+  //    `.sec1__intro-p`，不是本舞台 —— 引言其實畫在影片**之上**。
+  //    真正讓引言在退場期間看不見的是**引言自己的 opacity 0**（introReveal 要到 gone 才
+  //    跑），不是這個 z-index。同一個成因也讓 DOM core 畫在影片之上（見 script 的
+  //    applyDissolve 對「兩顆橘塊」的說明）。
+  //    留著這個 4 的理由只剩脈絡內部的順序（skip 2 / 下滑提示 3 疊在影片層之上）。
+  //    要讓層序與原本的意圖相符就得給 `.sec1__hero` 補一個 z-index（例如 4）——
+  //    那會改動繪製順序，是獨立的一次決定，不在本次改動範圍。
   z-index: 4;
   // 它是覆蓋在引言上方的視覺層，攔下指標就等於讓露出來的引言選不到、點不到
   // （實測 elementFromPoint 命中的是已經全透明的 .sec1__hero-video，而非底下的引言段落）。

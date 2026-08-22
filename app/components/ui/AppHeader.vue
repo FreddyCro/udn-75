@@ -43,7 +43,7 @@ const navActiveTarget = computed(() =>
 // 首頁所有 section 重新 mount、全部 ScrollTrigger 重建。子頁改走 NuxtLink 後
 // baseURL 由 router 自己套，子路徑部署（GitHub Pages 的 /udn-75/）不必再靠絕對網址。
 const homeIntent = computed(() => resolveHomeIntent(route.path === '/'));
-const { returnToLoop, isGone } = useHeroVideo();
+const { restartOpening, isGone } = useHeroVideo();
 // 錨點落點要換算「段落宣告的深度（× 視窗高）」，見 scrollToTarget。
 const { vhPx } = useViewportHeight();
 
@@ -77,7 +77,7 @@ const heroOut = ref(!props.autoHide);
 //            「完全捲離視窗」要到 scrollY 4000 以上才成立（實測 1440×900 約 4223），
 //            整段引言與轉場都還看不到 header。設計要的是「影片一消失 header 就在」，
 //            那正是 gone，故直接讀狀態，不再另外量幾何。
-//   ⚠️ 倒帶回 loop（logo 就地倒帶／往回捲）時 isGone 轉 false，header 會跟著收回去 ——
+//   ⚠️ 影片重新回到畫面上（logo 就地重播／回捲到頂端 restart）時 isGone 轉 false，header 會跟著收回去 ——
 //      這是對的：那時影片又回到畫面上了。
 const isVisible = computed(
   () => !props.autoHide || heroOut.value || isGone.value,
@@ -300,7 +300,8 @@ function scrollToTop(e?: Event) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// logo：回到 hero 的 loop 段。首頁就地倒帶（不換頁），子頁交給 NuxtLink 導航到 /#loop。
+// logo：回到最開始 ＝ 從頭重播整支 hero 影片（2026-08-22 起，見 useHeroVideo 的 restartOpening）。
+// 首頁就地重播（不換頁），子頁交給 NuxtLink 導航到 /#loop（保留字未改名，只改行為）。
 function onLogoClick(e: MouseEvent) {
   // 修飾鍵點擊（Ctrl／⌘／Shift／Alt）是「開新分頁／新視窗」的意圖，一律放行給瀏覽器 ——
   // 攔下來會讓使用者按了沒反應。中鍵在現代瀏覽器發的是 auxclick，本來就不會進來。
@@ -314,10 +315,10 @@ function onLogoClick(e: MouseEvent) {
   if (homeIntent.value.action !== 'in-page') return; // 子頁：讓 NuxtLink 走
 
   e.preventDefault();
-  // auto 而非 smooth：returnToLoop() 是瞬間生效的，smooth 期間影片已經淡回、
+  // auto 而非 smooth：restartOpening() 是瞬間生效的，smooth 期間影片已經淡回、
   // 轉場層還在漸進收，兩者會打架（理由同 Hero 的 scrollToInitialHash）。
   window.scrollTo({ top: 0, behavior: 'auto' });
-  returnToLoop();
+  restartOpening();
 }
 
 // 選單面板是白底（設計稿只有這一版），開啟期間 header 一併切白底
@@ -425,7 +426,7 @@ const layers = computed<HeaderLayer[]>(() => {
           <!-- 首頁用原生 <a>，不用 NuxtLink：NuxtLink 內建的 click handler 會**先於**本元件的
                @click 執行，且它是在那個時間點才檢查 e.defaultPrevented —— onLogoClick 的
                preventDefault 還沒跑，攔不住它。結果是推入一次真正的導航到 /，多一筆歷史紀錄、
-               讓「上一頁」失效。就地倒帶一律走 onLogoClick（捲頂 ＋ returnToLoop）。
+               讓「上一頁」失效。就地重播一律走 onLogoClick（捲頂 ＋ restartOpening）。
                （同 AppHeaderNav / AppHeaderMenu 已修過的順序陷阱。） -->
           <a
             v-if="homeIntent.action === 'in-page'"
