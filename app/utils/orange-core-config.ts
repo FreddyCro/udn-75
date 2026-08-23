@@ -786,10 +786,10 @@ export function blessingFrameAt(p: number): number {
  *  設計師指定的落點是「第一顆笑臉逐格走完的那一刻」，不是段落上緣 ——
  *  上緣是 02 → 03 覆蓋過場的**接縫**，那一刻臉還沒開始畫（第 0 格是一塊白方塊）。
  *
- *  ⚠️ 起算點是 `.section3` 的上緣，而落點的定義卻在**臉的捲動尺**（`.section3__face-track`）
- *     的座標系裡 —— 兩者恆等：捲動尺是 `.section3` 的第一個**佔位**子元素（它前面只有
- *     `.section3__veil`，那是 fixed），且 `.section3` 沒有 padding-top。這條性質壞掉的話
- *     落點會整段偏移，畫面上不會有東西壞掉喊出來。
+ *  ⚠️ 起算點是 `.section3` 的上緣，而落點的定義卻在**臉的捲動尺**（`.section3__ruler`）
+ *     的座標系裡 —— 兩者恆等：量尺是 `.section3` 的絕對定位子元素、`top: 0`，而
+ *     `.section3` 沒有 padding-top。這條性質壞掉的話落點會整段偏移，畫面上不會有
+ *     東西壞掉喊出來。
  *
  *  ⚠️ 取停格的起點（1 − BLESSING_HOLD），而不是「最後一格剛出現的那一刻」
  *     （後者是 ×(格數−1)/格數，早 0.05 個進度）：停格的起點就是設計上「臉畫完」的
@@ -916,9 +916,9 @@ export function mediaHeaderLightAt(
 }
 
 // ── 夥伴清單的閱讀定格（× 視窗高）────────────────────────────────────
-// `.section3__partners` 是 sticky top: 0，這個值是它定住的捲動距離
-//（由 `.section3__partners-hold` spacer 撐出來 —— sticky 的活動範圍是父層的
-// **content box**，用 `.section3` 的 padding 撐不出來，見 Media.vue 同一個坑）。
+// 這個值是清單定住的捲動距離。定住的其實是整個剛體（`.section3__unit` 的
+// `.is-pin-list`，錨點換算成「清單頂貼 header」），行程則算進
+// `.section3__unit-track` 的高度裡（見 blessingUnitTrackHeight）。
 //
 // 為什麼需要它：面板塊高約 778px、視窗約 900px，「完整在畫面上」的捲動距離只有
 // 兩者之差（≈122px），跟過場長度無關 —— 不定住就一定來不及看。
@@ -928,6 +928,33 @@ export function mediaHeaderLightAt(
 // 定住期間頁面不動但**沒有上鎖**：指標在清單上時 wheel 捲清單（14 家夥伴約 1500px
 // 塞在 600px 高的面板裡），捲到底瀏覽器自動把捲動接回頁面。
 export const BLESSING_PARTNERS_HOLD_VH = 1;
+
+/** `.section3__unit-track`（剛體軌道）的高度（px）。
+ *
+ *  ＝ 剛體高 ＋ ①逐格臉的行程 ＋ ③閱讀定格的行程。剛體是絕對定位、不佔流內高度，
+ *  所以軌道必須明寫這個高度 —— 它就是本段全部的流內高度（GSAP pin-spacer 的角色）。
+ *
+ *  **與改版前逐 px 相等**，故 `.section3` 的總高、下游 media 的 pin 起點都零位移：
+ *
+ *    改版前 ＝ (1 + BLESSING_VH)·V          ← .section3__face-track
+ *           ＋ (h/2 − V/2) ＋ partnersH      ← .section3__partners（含負 margin）
+ *           ＋ hold·V                        ← .section3__partners-hold
+ *    剛體高 ＝ V ＋ (h/2 − V/2) ＋ partnersH  ← 臉屏 100vh ＋ 同一條負 margin
+ *    ⇒ 改版前 ＝ 剛體高 ＋ BLESSING_VH·V ＋ hold·V ＝ 本函式
+ *
+ *  `held` ＝ 清單塞得進視窗（見 Blessing.vue 的 partnersHeld）。不定住時行程收成 0,
+ *  狀態機的 ③ 窗口也跟著收成 0（見 measurePin 的 pinPark）。
+ *
+ *  純函式、不依賴 DOM —— 等價性由 test/blessing-unit-track.spec.ts 守著。 */
+export function blessingUnitTrackHeight(
+  unitHeight: number,
+  vh: number,
+  held: boolean,
+): number {
+  return (
+    unitHeight + (BLESSING_VH + (held ? BLESSING_PARTNERS_HOLD_VH : 0)) * vh
+  );
+}
 
 /** 夥伴清單在退場軌 p 時的 opacity（1 → 0）。
  *  smoothstep 兩端一階導數為 0 → scrub 淡出的頭尾沒有硬轉折，且它本身已夾在 [0,1]。
@@ -1177,7 +1204,7 @@ export const SEQUENCE: readonly SequenceChapter[] = [
       { key: 'cover', label: `色塊往上蓋（${COVER_CONTACT * 100}% 處接觸、淺藍轉橘）`, drive: 'scrub', track: 'cover' },
       { key: 'face', label: `逐格臉（尾 ${BLESSING_HOLD * 100}% 停格）`, drive: 'scrub', track: 'blessing' },
       { key: 'stairs', label: '階梯線逐格進場', drive: 'time', flag: 'stairs' },
-      { key: 'partners', label: `夥伴清單（sticky 定住 ${BLESSING_PARTNERS_HOLD_VH * 100}vh 供閱讀）`, drive: 'none', vh: BLESSING_PARTNERS_HOLD_VH },
+      { key: 'partners', label: `夥伴清單（定住 ${BLESSING_PARTNERS_HOLD_VH * 100}vh 供閱讀）`, drive: 'none', vh: BLESSING_PARTNERS_HOLD_VH },
       // 03 → 04 過場第一拍。放在 partners 之後還有一個副作用是修掉既有問題：
       // partners 是無軌 part，「結束了沒」靠下一段反推（useCoreSequence 的 ②），
       // 在此之前它是序列末端 → 永遠停在未完成，dashboard 的游標卡在那裡。

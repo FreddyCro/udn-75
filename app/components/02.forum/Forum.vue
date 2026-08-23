@@ -363,8 +363,7 @@ onBeforeUnmount(() => {
 }
 
 // 覆蓋過場的 sticky 活動範圍：高度由 inline style 給（vhLength(1)），這裡不定高 ——
-// 與 .section3__partners-hold 同一個作法（sticky 的活動範圍必須是**子元素**撐出來的，
-// 用 .sec2 的 padding 撐不出來）。
+// sticky 的活動範圍必須是**子元素**撐出來的，用 .sec2 的 padding 撐不出來。
 
 // 論壇四的容器：<ForumEvent> 的 pc 版位是絕對定位到 1280 設計稿座標，
 // 而 .sec2__pin 沒有限寬（它要讓 <AgendaReport> 的灰底滿版）→ 這層補上與

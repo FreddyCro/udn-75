@@ -7,7 +7,12 @@
 //      對應 Figma 永續祝福01–03（pc 2065:140462 / pad 2065:125534 / mob 2065:121838）。
 //   ② 夥伴清單 —— 階梯線 ＋ 清單面板。
 //
-// 不 pin：sticky 就夠，少一層 transform／containing block 的雷（同 SymbolScene 的取捨）。
+// 兩者住在同一個剛體（`.section3__unit`）裡 —— 相對位置由版面固定，捲動全程不會有
+// 一個先滑走。定格因此不能用 sticky（一個元素只有一個錨點，這段需要兩個），改成
+// 手動 pin：定格窗口內 fixed、窗口外 absolute 停在軌道兩端。詳見下方剛體區塊。
+//
+// 仍然不用 GSAP 的 pin：少一層 pin-spacer／transform／containing block 的雷
+//（同 SymbolScene 的取捨），而且同一個元素也不能被兩條 trigger 各 pin 一次。
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import str from '@/locales/section3.json';
@@ -64,9 +69,10 @@ cueOn(() => blessingFrame.value >= 1, 'benedictionSmile');
 
 // 夥伴清單整塊的現身時機。
 //
-// 捲動尺跑完（progress 1）的那一刻，sticky 臉屏剛好釋放，而 .section3__partners 的頂端
-// 也剛好與臉的下緣重合（見 style 裡 margin-top 的算式）—— 只有這一刻它是「貼著臉」的，
-// 所以淡入要壓在這裡，才不會看到它從畫面底部滑上來。之後整段一起往上捲。
+// 它從頭到尾都貼著臉的下緣（同一個剛體，見 style 裡 margin-top 的算式），所以這個
+// 門檻現在**只管敘事**：臉逐格畫完（progress 1）才輪到清單，在那之前雖然頂端已經
+// 露在畫面裡，但透明。改版前它還兼著遮住「清單從畫面底部滑上來」的過程 ——
+// 那個問題已經從幾何上消失了。
 //
 // 門檻做遲滯（進 0.999 / 出 0.9）而非單一值：交界處微幅上下捲不會反覆閃爍，
 // 真的往回看臉的動畫才收回去、下次重新現身。
@@ -126,7 +132,7 @@ watch(blessingOutProgress, (p) => {
     left > 0.5 || right > 0.5 ? `inset(0 ${right}px 0 ${left}px)` : '';
 });
 
-// 捲動尺高度。ScrollTrigger 是 top top → bottom bottom，可跑的捲動距離＝「尺高 − 100vh」，
+// 逐格臉量尺的高度。ScrollTrigger 是 top top → bottom bottom，可跑的捲動距離＝「尺高 − 100vh」，
 // 所以要 +1，實際動畫距離才等於 BLESSING_VH × 100vh（見 ~/utils/orange-core-config）。
 // 寫成 BLESSING_VH × 100vh 是錯的 —— 動畫只會剩 (BLESSING_VH − 1) 個視窗高可跑。
 // 用 vhLength 而非字面 vh：視窗高有單一來源（--vh），見 ~/utils/viewport-height。
@@ -134,12 +140,10 @@ const faceTrackHeight = vhLength(1 + BLESSING_VH);
 
 const { vhPx } = useViewportHeight();
 
-// 夥伴清單的閱讀定格行程。必須是 `.section3` 的**子元素**才算進 sticky 的活動範圍
-//（sticky 看父層的 content box，padding 不算 —— 見 BLESSING_PARTNERS_HOLD_VH 的註解）。
-const partnersHoldHeight = vhLength(BLESSING_PARTNERS_HOLD_VH);
-
 const sectionRef = ref<HTMLElement | null>(null);
 const trackRef = ref<HTMLElement | null>(null);
+const unitTrackRef = ref<HTMLElement | null>(null);
+const unitRef = ref<HTMLElement | null>(null);
 const innerRef = ref<HTMLElement | null>(null);
 const screenRef = ref<HTMLElement | null>(null);
 const faceRef = ref<HTMLElement | null>(null);
@@ -147,47 +151,151 @@ const partnersRef = ref<HTMLElement | null>(null);
 let coverST: ScrollTrigger | null = null;
 let faceST: ScrollTrigger | null = null;
 let outroST: ScrollTrigger | null = null;
+let pinST: ScrollTrigger | null = null;
 let innerRO: ResizeObserver | null = null;
 let partnersRO: ResizeObserver | null = null;
+let unitRO: ResizeObserver | null = null;
 
-// 夥伴清單塊是否定住閱讀。**只在它塞得進視窗（扣掉 header）時才定住** ——
+// 夥伴清單是否定住閱讀。**只在它塞得進視窗（扣掉 header）時才定住** ——
 // 塊高逐斷點不同（pc 778 / pad 1044 / mob 769），pad 在 1024 高、mob 在 667 高的
 // 視窗都比視窗還高。那種情形定住會讓下緣永久留在畫面外（改成貼底則換成階梯線被切），
-// 使用者反而看得更少，所以退回原本的自然捲動、spacer 收成 0。
+// 使用者反而看得更少，所以退回原本的自然捲動、定格行程收成 0。
 //
 // 用 vhPx() 的凍結值而非 window.innerHeight：後者會隨行動裝置網址列收合而變，
-// 會讓這個判斷在捲動途中翻面 —— 連帶把 100vh 的 spacer 加進／拿掉，版面直接跳。
+// 會讓這個判斷在捲動途中翻面 —— 連帶把 100vh 的行程加進／拿掉，版面直接跳。
 const partnersHeld = ref(false);
+const headerPx = () =>
+  parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue(
+      '--header-height',
+    ),
+  ) || 0;
 const syncPartnersHeld = () => {
   const el = partnersRef.value;
   if (!el) return;
-  const headerH =
-    parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue(
-        '--header-height',
-      ),
-    ) || 0;
-  partnersHeld.value = el.offsetHeight <= vhPx(1) - headerH;
+  partnersHeld.value = el.offsetHeight <= vhPx(1) - headerPx();
 };
 
-// spacer 的高度一變，`.section3` 的高度就跟著變 → 兩條 ScrollTrigger 量到的位置全部過期。
-// 必須自己 refresh：spacer 是靠 inline style 長出來的，既不觸發 resize、也不在 GSAP
-// 自動 refresh 的時機上。等 nextTick 是因為 partnersHeld 是 ref，樣式下一個 tick 才進 DOM
-// —— SSR 是 false，hydration 後才翻 true，而那時 ScrollTrigger 已經建好了。
-// 走 refreshScrollTriggers()（先 sort 再 refresh）而非裸 refresh：spacer 改變的是
+/* ── 剛體（.section3__unit）：臉屏 ＋ 夥伴清單 ───────────────────────────
+ *
+ * 兩塊住在同一個元素裡，相對位置純粹由版面決定 → 捲動全程恆定，不會有一個先滑走。
+ * 代價是「定格」不能再交給 sticky：一個元素只有一個 sticky 錨點，而這段需要兩個 ——
+ *
+ *   ① 臉屏定格（臉在畫面正中）→ ② 自由捲一段 → ③ 清單定格（清單頂貼 header）
+ *
+ * 所以改成手動 pin：定格窗口內 position: fixed，窗口外 position: absolute 停在軌道
+ * 兩端（top: 0 / bottom: 0）。這正是 GSAP pin 在做的事，但不經過 pin-spacer ——
+ * 檔頭那句「不 pin：少一層 transform／containing block 的雷」仍然成立，而且同一個
+ * 元素本來就不能被兩條 trigger 各 pin 一次（兩個 pin-spacer 會打架），這段偏偏要兩段。
+ *
+ * 軌道（.section3__unit-track）的高度 ＝ 剛體高 ＋ ① 的長度 ＋ ③ 的長度，展開後
+ * 恰好等於改版前「face-track ＋ 清單（含負 margin）＋ 定格 spacer」的總和 ——
+ * `.section3` 的總高一格未變，下游 media 的 pin 起點因此零位移
+ * （算式與等價性見 blessingUnitTrackHeight，由 test/blessing-unit-track.spec.ts 守著）。
+ */
+const unitH = ref(0);
+const syncUnitHeight = () => {
+  const el = unitRef.value;
+  if (!el) return;
+  unitH.value = el.offsetHeight;
+};
+
+// 量到之前（SSR 與 hydration 之前）不給 inline height，由 SCSS 的估值頂著。
+const unitTrackStyle = computed(() =>
+  unitH.value
+    ? {
+        height: `${blessingUnitTrackHeight(
+          unitH.value,
+          vhPx(1),
+          partnersHeld.value,
+        )}px`,
+      }
+    : undefined,
+);
+
+// 軌道高度一變，`.section3` 的高度就跟著變 → 每一條 ScrollTrigger 量到的位置全部過期。
+// 必須自己 refresh：它是靠 inline style 長出來的，既不觸發 resize、也不在 GSAP
+// 自動 refresh 的時機上。等 nextTick 是因為它綁在 ref 上，樣式下一個 tick 才進 DOM
+// —— SSR 沒有這個高度，hydration 後才寫進去，而那時 ScrollTrigger 已經建好了。
+// 走 refreshScrollTriggers()（先 sort 再 refresh）而非裸 refresh：改變的是
 // `.section3` 的高度，下游 Media 段的 pin 起點全部跟著移動 —— 那些 pin 的建立順序
 // 與位置順序無關，不先 sort 就可能用舊的佔位重算（見 utils/scroll-trigger）。
-watch(partnersHeld, async () => {
+watch(unitTrackStyle, async () => {
   await nextTick();
   refreshScrollTriggers();
 });
+
+// 剛體的狀態。'flow' 是還沒接手前的自然流（SSR 與 hydration 之前），
+// 其餘五個見 style 裡的 .section3__unit。
+type PinState = 'flow' | 'enter' | 'pin-face' | 'transit' | 'pin-list' | 'exit';
+
+// 定格幾何。全部在 refresh 時算一次 —— 捲動途中只比大小，不量 rect。
+let pinStart = 0; // 軌道上緣的文件座標（＝ pinST.start）
+let pinRunway = 0; // ① 的長度 ＝ faceST 的可跑距離
+let pinHoldTop = 0; // ③ 的錨點：剛體上緣的視窗 y（負值）
+let pinPark = 0; // ④ 的起點：軌道上緣的視窗 y
+let pinState: PinState = 'flow';
+
+const measurePin = (start: number) => {
+  const unit = unitRef.value;
+  const partners = partnersRef.value;
+  if (!unit || !partners) return;
+  pinStart = start;
+  pinRunway = BLESSING_VH * vhPx(1);
+  // 清單在剛體內的 y。量 offsetTop 而非用 (100vh + --face-block-h) / 2 推：量到的值
+  // 自動跟著負 margin、padding 與斷點走，不必在 JS 再抄一份 CSS 的算式。
+  // （offsetParent 在 'flow' 態是 `.section3`、其餘態是剛體本身，但軌道與剛體的上緣
+  //   都疊在 section 上緣，兩種情形量到的是同一個數。）
+  pinHoldTop = headerPx() - partners.offsetTop;
+  // ④ 的起點：剛體以 bottom: 0 停在軌道下緣時，它的上緣正好落在 ③ 的錨點上 ——
+  //   剛體上緣 ＝ ty + 軌道高 − 剛體高 ＝ pinHoldTop
+  //   而 軌道高 − 剛體高 ＝ (BLESSING_VH ＋ 定格) × 視窗高（見 blessingUnitTrackHeight）
+  // 兩段因此無縫接上：③ 放手的那一刻剛體正好貼在軌道下緣，位置零位移。
+  // 用算式而非量 DOM：軌道的 inline height 是 ref 驅動的，要下一個 tick 才進 DOM，
+  // 量 offsetHeight 會在剛掛載那一瞬間拿到還沒套上的舊值。
+  // 沒有定格（清單塞不進視窗）時後面那一項是 0 → ③ 的窗口自然收成 0，不必特判。
+  pinPark =
+    pinHoldTop -
+    pinRunway -
+    (partnersHeld.value ? BLESSING_PARTNERS_HOLD_VH * vhPx(1) : 0);
+  unit.style.setProperty('--unit-transit-top', `${pinRunway}px`);
+  unit.style.setProperty('--unit-hold-top', `${pinHoldTop}px`);
+};
+
+// class 用 classList 直接寫、不走 ref → template。ref 要等下一個 tick 才進 DOM，
+// 而這裡切的是 fixed / absolute：慢一幀就是使用者看得到的一下跳動。
+// （同一份取捨見上面 panelRef 的 opacity 凍結。）
+const setPinState = (next: PinState) => {
+  const el = unitRef.value;
+  if (!el || next === pinState) return;
+  el.classList.remove(`is-${pinState}`);
+  el.classList.add(`is-${next}`);
+  pinState = next;
+};
+
+const applyPinState = (scroll: number) => {
+  // ty ＝ 軌道上緣此刻的視窗 y（往下捲遞減）。用 start − scroll 而非量 rect：
+  // 捲動途中讀 getBoundingClientRect 會逼出一次同步版面計算。
+  const ty = pinStart - scroll;
+  setPinState(
+    ty > 0
+      ? 'enter'
+      : ty > -pinRunway
+        ? 'pin-face'
+        : ty > pinHoldTop - pinRunway
+          ? 'transit'
+          : ty > pinPark
+            ? 'pin-list'
+            : 'exit',
+  );
+};
 
 // 把臉＋文字這一整塊的實際高度寫進 --face-block-h，供 .section3__partners 的負 margin
 // 與臉屏的 min-height 用。量 offsetHeight 而非寫死數字：pad / mob 是直排，
 // 塊高會隨文案斷行改變。
 //
-// ⚠️ 一定要寫在 section 根節點：.section3__partners 是 .section3__face-track 的**兄弟**，
-//    自訂屬性只往下繼承，寫在臉屏上它讀不到（會靜靜退回 fallback 280px —— pc 剛好對，
+// ⚠️ 一定要寫在 section 根節點：.section3__partners 是臉屏的**兄弟**，自訂屬性只往下
+//    繼承，寫在臉屏上它讀不到（會靜靜退回 fallback 280px —— pc 剛好對，
 //    pad / mob 就整個歪掉）。
 //
 // --face-cell-y ＝ 臉框上緣在臉屏內的 y ＝ 白方塊要走的距離
@@ -197,8 +305,10 @@ watch(partnersHeld, async () => {
 //    flex item（臉框上緣 ＝ inner 上緣），但 **pad／mob 的 .section3__face 是
 //    order: 2、排在文字下方**，臉框上緣還要加上 intro 高度與 gap，CSS 算不出來。
 //
-// 量相對值（兩個 rect 相減）而非絕對座標：臉屏是 sticky，絕對座標會隨 sticky 是否
-// engage 而變，相對值不會 —— 這個偏移純粹是版面內部的事。
+// 量相對值（兩個 rect 相減）而非絕對座標：臉屏會隨剛體在 absolute / fixed 之間切換而
+// 換座標系，相對值不會 —— 這個偏移純粹是版面內部的事。
+// 這也是「臉屏維持一個視窗高、內容置中」不能省的理由之一：cover 期間剛體停在
+// 軌道上緣（＝ section 上緣 ＝ 接縫），臉屏上緣就是接縫，量到的 y 正好是白方塊的行程。
 const syncFaceMetrics = () => {
   if (!sectionRef.value || !innerRef.value) return;
   sectionRef.value.style.setProperty(
@@ -231,12 +341,20 @@ onMounted(() => {
   }
   window.addEventListener('resize', syncPartnersHeld, { passive: true });
 
+  // 剛體高 → 軌道高。不會回授：軌道長高不會回頭改變剛體的高度（剛體是絕對定位、
+  // 左右撐滿、高度由內容決定），所以沒有 observe → 改高 → 再觸發 observe 的迴圈。
+  syncUnitHeight();
+  if (unitRef.value && typeof ResizeObserver !== 'undefined') {
+    unitRO = new ResizeObserver(syncUnitHeight);
+    unitRO.observe(unitRef.value);
+  }
+
   gsap.registerPlugin(ScrollTrigger);
 
   // 02 → 03 覆蓋過場：色塊上緣從視窗底緣升到視窗頂緣。
   // `top bottom` → `top top` 幾何上恆為一個視窗高，不需要（也不該有）長度旋鈕。
   // trigger 用 sectionRef 而非 trackRef：量的是 section 的上緣 ＝ 色塊上緣 ＝ 接縫。
-  // 與 faceST 首尾相接不重疊：那條的 start（`.section3__face-track` 的 top top）
+  // 與 faceST 首尾相接不重疊：那條的 start（`.section3__ruler` 的 top top）
   // 就是本條的 end。
   //
   // onRefresh 不是可有可無的：header 的 #blessing 是深連結，直接落在段落中段時
@@ -294,6 +412,31 @@ onMounted(() => {
     onLeaveBack: () => setBlessingOutProgress(0),
     onLeave: () => setBlessingOutProgress(1),
   });
+
+  // 剛體的手動 pin。**不餵任何 progress、也不掛 animation** —— 它只在四個門檻上換
+  // class（見 applyPinState），上面三條 scrub 的 trigger / start / end 完全沒動。
+  //
+  // 範圍取「軌道上緣抵達視窗頂」→「軌道下緣抵達視窗頂」：整段狀態機都在裡面，
+  // 兩端之外由 onLeaveBack / onLeave 補上終端狀態（同上面三條的理由 —— 深連結
+  // 直接落在段落中段時 onUpdate 不保證發火）。
+  //
+  // onRefresh 一定要重量：--vh、斷點、字體到齊都會改變 pinHoldTop 與 pinPark，
+  // 而它們是 fixed 的錨點 —— 過期的話定格會定在錯的地方。
+  if (unitTrackRef.value) {
+    pinST = ScrollTrigger.create({
+      trigger: unitTrackRef.value,
+      start: 'top top',
+      end: 'bottom top',
+      invalidateOnRefresh: true,
+      onRefresh: (self) => {
+        measurePin(self.start);
+        applyPinState(self.scroll());
+      },
+      onUpdate: (self) => applyPinState(self.scroll()),
+      onLeaveBack: () => setPinState('enter'),
+      onLeave: () => setPinState('exit'),
+    });
+  }
 });
 
 onBeforeUnmount(() => {
@@ -302,13 +445,17 @@ onBeforeUnmount(() => {
   partnersRO = null;
   innerRO?.disconnect();
   innerRO = null;
+  unitRO?.disconnect();
+  unitRO = null;
   // kill(false)：換頁時舊頁還在畫面上淡出，而 outroST 的 revert 會把 --outro-white
   // 打回 0 —— 本段底色從白硬切回橘，整屏橘閃一下。coverST 同理（--cover-orange）。
+  // pinST 沒有 revert 的問題（它不掛 animation、也不寫進度），但一樣走同一個入口。
   // 完整機制見 utils/scroll-trigger 的 killScrollTriggers。
-  killScrollTriggers(coverST, faceST, outroST);
+  killScrollTriggers(coverST, faceST, outroST, pinST);
   coverST = null;
   faceST = null;
   outroST = null;
+  pinST = null;
 });
 </script>
 
@@ -356,81 +503,99 @@ onBeforeUnmount(() => {
       aria-hidden="true"
     />
 
-    <!-- ① 逐格臉屏 -->
+    <!-- 逐格臉的量尺：faceST 唯一的 trigger。
+         **絕對定位、不佔流內高度** —— 它的上緣就是 section 上緣、高度仍是
+         (1 + BLESSING_VH) × 100vh，所以 `top top` → `bottom bottom` 量到的
+         start / end / progress 與改版前逐幀相同（見 architecture 的設計筆記）。
+         改版前這個角色由 `.section3__face-track` 兼任（既是量尺、又是 sticky 臉屏的
+         容納塊）；現在臉屏與夥伴清單合併成一個手動 pin 的剛體，容納塊換成
+         `.section3__unit-track`，量尺就得自己獨立出來、且不能再佔流內高度。 -->
     <div
       ref="trackRef"
-      class="section3__face-track"
+      class="section3__ruler"
       :style="{ height: faceTrackHeight }"
+      aria-hidden="true"
+    />
+
+    <!-- 剛體的軌道 ＝ 本段**全部**的流內高度（＝改版前 face-track ＋ 清單 ＋ 定格
+         spacer 三者的總和，見 script 的 unitTrackHeight）。剛體本身是絕對定位、
+         不佔位，所以這裡的高度必須明寫 —— 就是 GSAP pin-spacer 在做的事。 -->
+    <div
+      ref="unitTrackRef"
+      class="section3__unit-track"
+      :style="unitTrackStyle"
     >
-      <div ref="screenRef" class="section3__face-screen">
-        <div ref="innerRef" class="section3__face-inner">
-          <div ref="faceRef" class="section3__face">
-            <!-- 逐格臉：cover 跑完才現身，與白方塊交棒（兩者同格同色同位置 → 硬切）。
-                 門檻掛在 svg 自己身上，**不是** .section3__face —— 白方塊住在後者裡面，
-                 藏外層會把方塊一起藏掉。 -->
-            <BlessingFace
-              class="section3__face-art"
-              :class="{ 'is-in': coverFaceVisible }"
-              :frame="blessingFrame"
-            />
+      <!-- ①＋② 剛體：臉屏與夥伴清單的相對位置由**版面**決定，捲動過程中恆定不變。
+           它的四個狀態（enter / pin-face / transit / pin-list / exit）由 pinST 以
+           class 切換，見 script 的 applyPinState。 -->
+      <div ref="unitRef" class="section3__unit">
+        <!-- ① 逐格臉屏 -->
+        <div ref="screenRef" class="section3__face-screen">
+          <div ref="innerRef" class="section3__face-inner">
+            <div ref="faceRef" class="section3__face">
+              <!-- 逐格臉：cover 跑完才現身，與白方塊交棒（兩者同格同色同位置 → 硬切）。
+                   門檻掛在 svg 自己身上，**不是** .section3__face —— 白方塊住在後者裡面，
+                   藏外層會把方塊一起藏掉。 -->
+              <BlessingFace
+                class="section3__face-art"
+                :class="{ 'is-in': coverFaceVisible }"
+                :frame="blessingFrame"
+              />
 
-            <!-- 白方塊：紙飛機沒入色塊後從接縫長出來的那一格 ＝ 逐格臉的第 01 格
-                 （FACE_FRAMES[0] = [7,0,2,2]）。位置用網格比例寫死、不需量測；
-                 只有位移的幅度要量（--face-cell-y，見 script）。
-                 --cover-grow ＝ 從接縫「長出來」的高度比例，與飛機下潛共用同一條
-                 曲線（coverHandoff）—— 兩者同一個 x、同一個窗口，是同一個變身。 -->
-            <span
-              v-if="coverSeedVisible"
-              class="section3__face-seed"
-              :style="{ '--cover-seed': coverSeed, '--cover-grow': coverHandoff }"
-              aria-hidden="true"
-            />
+              <!-- 白方塊：紙飛機沒入色塊後從接縫長出來的那一格 ＝ 逐格臉的第 01 格
+                   （FACE_FRAMES[0] = [7,0,2,2]）。位置用網格比例寫死、不需量測；
+                   只有位移的幅度要量（--face-cell-y，見 script）。
+                   --cover-grow ＝ 從接縫「長出來」的高度比例，與飛機下潛共用同一條
+                   曲線（coverHandoff）—— 兩者同一個 x、同一個窗口，是同一個變身。 -->
+              <span
+                v-if="coverSeedVisible"
+                class="section3__face-seed"
+                :style="{
+                  '--cover-seed': coverSeed,
+                  '--cover-grow': coverHandoff,
+                }"
+                aria-hidden="true"
+              />
+            </div>
+
+            <div class="section3__intro">
+              <!-- 稿字形素材（白字）＋ visually-hidden 的真文字，機制見
+                   architecture/2026-08-12-forum1-text-art-design.md。行盒仍是 line-height
+                   撐出來的，故標題高度不變 —— 下面那兩個量測值（--face-block-h／--face-cell-y）
+                   靠它。⚠️ <UArtLine> 現在不只論壇在用（見它的檔頭）。 -->
+              <h2 class="section3__title">
+                <UArtLine class="section3__title-art" :line="partner.title" />
+              </h2>
+              <p class="section3__body">{{ partner.body }}</p>
+            </div>
           </div>
+        </div>
 
-          <div class="section3__intro">
-            <!-- 稿字形素材（白字）＋ visually-hidden 的真文字，機制見
-                 architecture/2026-08-12-forum1-text-art-design.md。行盒仍是 line-height
-                 撐出來的，故標題高度不變 —— 下面那兩個量測值（--face-block-h／--face-cell-y）
-                 靠它。⚠️ <UArtLine> 現在不只論壇在用（見它的檔頭）。 -->
-            <h2 class="section3__title">
-              <UArtLine class="section3__title-art" :line="partner.title" />
-            </h2>
-            <p class="section3__body">{{ partner.body }}</p>
+        <!-- ② 夥伴清單：位置由版面固定在臉的下緣（負 margin，見 style），
+             捲動過程中永遠貼著臉；淡入仍壓在臉的捲動尺跑完那一刻（partnersIn），
+             但那已經只是「就地淡入」—— 它不會再從畫面下方滑上來。
+             段落尾端整塊淡出（過場第一拍）。 -->
+        <div
+          ref="partnersRef"
+          class="section3__partners"
+          :class="{
+            'is-in': partnersIn,
+            'is-out': partnersOpacity < 1,
+          }"
+          :style="{ '--partners-out': partnersOpacity }"
+        >
+          <BlessingStairs v-model:done="stairsDone" :armed="partnersIn" />
+
+          <div
+            ref="panelRef"
+            class="section3__partners-panel"
+            :class="{ 'is-in': panelIn }"
+          >
+            <BlessingPartners />
           </div>
         </div>
       </div>
     </div>
-
-    <!-- ② 夥伴清單：整塊在臉的捲動尺跑完、且已貼齊臉的下緣時淡入，
-         接著階梯線逐格畫、畫完面板再淡入；段落尾端再整塊淡出（過場第一拍） -->
-    <div
-      ref="partnersRef"
-      class="section3__partners"
-      :class="{
-        'is-in': partnersIn,
-        'is-out': partnersOpacity < 1,
-        'is-held': partnersHeld,
-      }"
-      :style="{ '--partners-out': partnersOpacity }"
-    >
-      <BlessingStairs v-model:done="stairsDone" :armed="partnersIn" />
-
-      <div
-        ref="panelRef"
-        class="section3__partners-panel"
-        :class="{ 'is-in': panelIn }"
-      >
-        <BlessingPartners />
-      </div>
-    </div>
-
-    <!-- 閱讀定格行程：撐出 .section3__partners 的 sticky 活動範圍。
-         沒定住（塊比視窗高）時收成 0，否則會多出一段空橘 -->
-    <div
-      class="section3__partners-hold"
-      :style="{ height: partnersHeld ? partnersHoldHeight : '0px' }"
-      aria-hidden="true"
-    />
   </section>
 </template>
 
@@ -526,18 +691,101 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.section3__face-track {
+// 逐格臉的量尺（faceST 的 trigger）。絕對定位、不佔流內高度、不吃事件 ——
+// 它唯一的作用是提供「上緣 ＝ section 上緣、高 ＝ (1 + BLESSING_VH) × 100vh」這組幾何，
+// 讓改版後的 start / end / progress 與改版前逐幀相同（見 template 的說明）。
+.section3__ruler {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  // height 由 inline style 給（(1 + BLESSING_VH) × 100vh）
+}
+
+// 剛體的軌道 ＝ 本段全部的流內高度。
+//
+// height 由 JS 量測後以 inline style 覆蓋（見 script 的 unitTrackStyle）。**量到之前
+// 刻意留 auto** —— 那一刻剛體還是 static（見下方），軌道高就等於剛體高，SSR 與
+// hydration 之前的版面因此是「臉屏 100vh ＋ 清單」自然堆疊，不會塌成 0
+//（若在這裡寫死估值，就等於把 BLESSING_VH / BLESSING_PARTNERS_HOLD_VH 這兩個
+//  只存在於 TS 的旋鈕再抄一份到 SCSS —— 兩份會各自漂走）。
+//
+// ⚠️ 必須是 positioned：剛體 pin 起來之後是 absolute，要以本層為定位基準；同時它也是
+//    template 裡橘幕那條「後面的兄弟都是 positioned，依樹序畫在它之上」的一環。
+.section3__unit-track {
   position: relative;
-  // height 由 inline style 給（BLESSING_VH × 100vh）
+}
+
+// 剛體：臉屏 ＋ 夥伴清單。base 是「還沒量到、還沒接手」的自然流狀態，其餘五個由
+// applyPinState 依捲動位置切換（見 script 的 PinState）：
+//
+//   .is-enter     進場前 —— 停在軌道上緣，隨頁面上來（cover 過場就在這個狀態）
+//   .is-pin-face  ① 臉屏定格 —— 臉在畫面正中
+//   .is-transit   ② 自由捲 —— 停在軌道內 BLESSING_VH 個視窗高處，隨頁面上移
+//   .is-pin-list  ③ 閱讀定格 —— 清單頂貼 header（錨點是負值，臉退到 header 後面）
+//   .is-exit      ④ 退場 —— 停在軌道下緣，隨頁面捲走
+//
+// 兩個定格用 fixed 而非 sticky：sticky 一個元素只有一個錨點，這裡需要 ① 與 ③ 兩個
+// （完整理由見 script 的剛體區塊）。--unit-transit-top / --unit-hold-top 由 measurePin
+// 在 refresh 時寫入，捲動途中不會變。
+//
+// ⚠️ fixed 的定位基準是視窗，前提是祖先沒有 transform / filter / backdrop-filter /
+//    will-change —— 與 `.section3__veil` 同一條約束（見它上方的 ⚠️）。給 `.section3`
+//    或 `.section3__unit-track` 加 transform 會讓兩個定格通通退化成相對定位。
+// ⚠️ pointer-events: none 是縱深防線（子層各自收回 auto）：剛體是一整塊比視窗還高的
+//    透明盒子，定格期間鋪滿畫面，本層自己絕不該接到任何事件。
+// ⚠️ 五個狀態都要 right / left: 0：離開一般流之後寬度不再自動撐滿，少了就會塌成
+//    shrink-to-fit，臉與清單的欄寬、置中全部歪掉。fixed 兩態的 ICB 寬度（不含捲軸）
+//    與 absolute 兩態的軌道寬度相同 —— 切換時不會有橫向跳動。
+.section3__unit {
+  pointer-events: none;
+
+  &.is-enter,
+  &.is-pin-face,
+  &.is-transit,
+  &.is-pin-list,
+  &.is-exit {
+    right: 0;
+    left: 0;
+  }
+
+  &.is-enter {
+    position: absolute;
+    top: 0;
+  }
+
+  &.is-pin-face {
+    position: fixed;
+    top: 0;
+  }
+
+  &.is-transit {
+    position: absolute;
+    top: var(--unit-transit-top, 0px);
+  }
+
+  &.is-pin-list {
+    position: fixed;
+    top: var(--unit-hold-top, 0px);
+  }
+
+  &.is-exit {
+    position: absolute;
+    bottom: 0;
+  }
 }
 
 // 把整塊往上拉「臉下方那塊空橘色」的高度 ——
 //
 //   臉屏是一個視窗高、內容置中 → 臉的下緣在 (V + h)/2；
-//   本塊在一般流裡的自然位置是捲動尺的底部，也就是 V（sticky 釋放的那一刻＝畫面底緣）；
+//   本塊在剛體裡的自然位置是臉屏的下緣，也就是 V；
 //   兩者要重合 → margin-top ＝ (V + h)/2 − V ＝ h/2 − V/2（負值）。
 //
-// 於是「捲動尺跑完」與「貼齊臉的下緣」是同一個瞬間，臉隨即釋放，整段一起往上捲。
+// **這條負 margin 就是「相對位置固定」的全部** —— 臉屏與本塊住在同一個剛體裡，
+// 兩者的距離純粹由版面決定，與捲動位置、與剛體處在哪一個 pin 狀態都無關。
+// （改版前兩塊是各自 sticky 的兄弟，只有在臉的捲動尺跑完那一瞬間才對齊，
+//   ① 期間本塊從下方逼近、③ 期間臉往上跑掉，這就是「其中一個會先滑走」。）
 // h 由 --face-block-h 帶入（JS 量 .section3__face-inner，見 script）；
 // fallback 280px ＝ pc 臉的高度，SSR 與 hydration 之前不會歪。
 //
@@ -547,25 +795,24 @@ onBeforeUnmount(() => {
 //   mob 27 ＝ 階梯線 y27（臉貼齊帶底 596）
 // gap 則是設計稿的「階梯線 → 面板」距離。
 //
-// 淡入壓在 progress 1（見 script 的 partnersIn）：在那之前它雖然已經在版面上、
-// 也已經捲進視窗，但還沒貼到臉的下緣 —— 藏著才不會看到它滑上來的過程。
+// 淡入仍壓在 progress 1（見 script 的 partnersIn）：本塊在 ① 期間就已經定在臉的
+// 下緣、頂端甚至已經露在畫面裡，藏著是為了「臉畫完才輪到清單」的敘事 ——
+// 而不再是為了遮住它滑上來的過程（現在它根本不會滑）。
 .section3__partners {
-  // ⚠️ **不可以是 static。** 上面那個負 margin 讓本塊的頂端疊進 .section3__face-track
-  //    的最後 (100vh − h)/2 px，而 face-track 是 position: relative、裡面的
-  //    .section3__face-screen 是 position: sticky —— 兩者都是 positioned 且 DOM 在前。
-  //    static 之下本塊依繪製順序落在它們**之下**，面板頂端那一條就變成
+  // ⚠️ **不可以是 static。** 上面那個負 margin 讓本塊的頂端疊進 .section3__face-screen
+  //    的最後 (100vh − h)/2 px，而臉屏是 position: relative、DOM 又在前。
+  //    static 之下本塊依繪製順序落在它**之下**，面板頂端那一條就變成
   //    「看得到、摸不到」：hit test 命中的是臉屏那塊空白（它沒有背景，所以看不出來），
   //    內卷軸完全捲不動。fixed 的 .section3__veil 同理會蓋掉整份清單（見 template）。
   //
   //    2026-08-23 實測（834×1120 ＝ iPad Pro 11" 二代直立在 Safari 的可視高）：
   //    死區 107px，elementFromPoint 命中 .section3__face-screen；改成 positioned 後
-  //    4/4 命中面板。條件是 906 < --vh < 1127（下界 ＝ 死區為正、上界 ＝ .is-held 的
-  //    門檻），所以 11"／10.5" 直立中獎、12.9" 二代直立會 is-held 沒事、橫置死區為 0
-  //    —— 現場的症狀因此一律是「有時候」。規則由
-  //    test/blessing-partners-hit-test.spec.ts 守著。
+  //    4/4 命中面板。當時的中獎條件是 906 < --vh < 1127，現在死區與定格與否無關
+  //    （重疊區恆等於 (100vh − h)/2），所以**每一台**都會中 —— 這條更不能拿掉。
+  //    規則由 test/blessing-partners-hit-test.spec.ts 守著。
   //
   //    relative 而非別的：無偏移的 relative 與 static 的算繪結果完全相同（負 margin、
-  //    sticky 幾何、--face-block-h 的算式全部不變），只是把本塊抬進 positioned 那一層。
+  //    --face-block-h 的算式全部不變），只是把本塊抬進 positioned 那一層。
   //    z-index 一律不給 —— 疊層全靠 DOM 順序（同 template 裡橘幕那三條 ⚠️）。
   position: relative;
   display: flex;
@@ -582,15 +829,10 @@ onBeforeUnmount(() => {
     pointer-events: auto;
   }
 
-  // 閱讀定格：塊高與視窗高之差就是它「完整在畫面上」的捲動距離（pc ≈122px），
-  // 不定住來不及看。定住行程由後面的 .section3__partners-hold 撐出來。
-  // 由 JS 上 class 而非純 CSS：條件是「塊塞得進視窗」—— 那是量測不是斷點（見 script）。
-  // top 貼 header 底緣，階梯線與第一個分層標題才不會被壓在 header 底下。
-  // 負 margin 不受影響 —— sticky 從正常流位置起算偏移，「貼齊臉下緣」的算式照舊。
-  &.is-held {
-    position: sticky;
-    top: var(--header-height);
-  }
+  // 閱讀定格（塊高與視窗高之差就是它「完整在畫面上」的捲動距離，pc ≈122px，不定住
+  // 來不及看）不在本塊上做了 —— 定住的是整個剛體（.section3__unit 的 .is-pin-list），
+  // 錨點換算成「清單頂貼 header」，臉跟著一起定住。是否啟用仍由 partnersHeld 決定
+  //（條件是「塊塞得進視窗」，那是量測不是斷點，見 script）。
 
   // 退場（過場第一拍）：scrub 驅動，**必須**關掉 transition —— 0.4s 補間會讓
   // 每一幀都滯後於捲動，手感發黏。
@@ -618,8 +860,9 @@ onBeforeUnmount(() => {
   }
 }
 
-// 閱讀定格行程：高度由 inline style 給（BLESSING_PARTNERS_HOLD_VH），這裡不定樣式。
-// 它是 .section3 的子元素而非 padding，sticky 的活動範圍才算得進去。
+// 閱讀定格行程（BLESSING_PARTNERS_HOLD_VH）不再是一個 spacer 元素，改為算進
+// `.section3__unit-track` 的高度裡（見 blessingUnitTrackHeight）—— 手動 pin 的
+// 活動範圍就是那條軌道，不像 sticky 要靠父層的 content box 撐。
 
 // 夥伴清單面板：等階梯線逐格畫完（BlessingStairs 的 done）才淡入。
 // 用 opacity 而非 v-if／display，讓面板一直佔位、版面不會在淡入時跳動；
@@ -639,9 +882,13 @@ onBeforeUnmount(() => {
   }
 }
 
-// 臉屏＝一個視窗高、內容置中 → pin 住的整段，臉這一塊的垂直中心恆等於畫面正中，
-// 與視窗高、內容高都無關。臉與階梯線之間那塊空橘色不在這裡處理，
-// 由 .section3__partners 的負 margin-top 收掉（見下方）。
+// 臉屏＝一個視窗高、內容置中 → ① 定格期間（剛體 .is-pin-face，top: 0）臉這一塊的
+// 垂直中心恆等於畫面正中，與視窗高、內容高都無關。臉與階梯線之間那塊空橘色不在這裡處理，
+// 由 .section3__partners 的負 margin-top 收掉（見上方）。
+//
+// **不再是 sticky**：定格改由剛體整塊做（見 .section3__unit）。本層留著 100vh 這個高度
+// 有三個作用：① 的置中、--face-cell-y 的量測基準（cover 期間本層上緣＝接縫）、
+// 以及下面那條「信箱式空白不吃指標事件」的縱深防線。
 //
 // min-height 是給「視窗比內容還矮」的橫置手機用的：置中 ＋ overflow: hidden 會上下都切掉，
 // 至少讓臉屏長到容得下內容。
@@ -655,8 +902,9 @@ onBeforeUnmount(() => {
 // .section3__intro 的 <h2> 與引言 —— 整層 none 會讓那兩段文字不能選取。
 // 放行 inner 不會把死區放回來：重疊區恆等於「inner 之外的空白」，兩者互斥。
 .section3__face-screen {
-  position: sticky;
-  top: 0;
+  // relative 而非 static：夥伴清單靠負 margin 疊上來，兩者都是 positioned 時
+  // 由 DOM 順序決勝（清單在後、贏）—— 見 .section3__partners 的第一條 ⚠️。
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
