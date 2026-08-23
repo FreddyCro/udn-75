@@ -287,8 +287,8 @@ const props = defineProps({
   hintMob: { type: String, default: '' },
   /** 下滑提示的說明文字（空字串＝不渲染這顆按鈕）。設計稿 Figma 2065:139741。
    *  圖示本體、漂移動態與「點了往下捲一屏」都在 <UBtnScrollHint>，本元件只給版位。
-   *  ⚠️ 目前**持續顯示**（只要有文案就在）—— 顯示時機（例如比照 hint 綁 faceFormed）
-   *     尚未定案，先這樣看效果。要接時機的話改這裡的 v-if，元件本身不必動。 */
+   *  ⚠️ 有文案**不等於**會出現：顯示時機是三個條件的交集（2026-08-23 定案，見 scrollHintOn）
+   *     —— 本層在場 ＋ 停超過十秒沒捲動 ＋ 手機版互動提示不在畫面上。 */
   scrollHint: { type: String, default: '' },
   /** 提示是否「整個生命週期只出現一次」。
    *  false（預設）＝ 每次**重新完整集合**都再出現一次；游標碰到人像仍立即收起，
@@ -555,6 +555,65 @@ watch(faceFormed, (formed) => {
   if (!formed) closeEgg();
 });
 
+// ---------- 下滑提示 ----------
+// 三個條件同時成立才出現（2026-08-23 定案，取代原本「有文案就常駐」）：
+//   ① onStage    ── 本層在場（＝ rAF 的執行閘門 shouldRun：active ＋ inView ＋ 分頁在前景）
+//   ② scrollIdle ── 連續 SCROLL_IDLE_MS 沒有捲動
+//   ③ !mobHintOn ── 手機版互動提示不在畫面上
+//
+// ⚠️ ① 刻意用執行閘門、不是 faceFormed：這顆是「還有下文」的指引，使用者停在散開／匯聚
+//    那兩拍一樣需要它；faceFormed 是上面兩組「這裡可以互動」提示的判準，語意不同。
+// ⚠️ ③ 只擋手機那組：稿上手機的說明排在人像下方、這顆距框底 44px，兩者都擠在下半部，
+//    同時出現會變成兩個互搶注意力的提示。PC 那組錨在右下臉頰、與這顆不重疊，故不擋。
+
+/** 停多久算「停下來了」。 */
+const SCROLL_IDLE_MS = 10_000;
+
+// 本層是否在場：由 onMounted 內的 syncRunning 寫入 —— inView / docVisible 都住在那層，
+// 這裡只收結果（也因此「在場」與「跑不跑 rAF」永遠是同一個判斷，不會各自漂移）。
+const onStage = ref(false);
+// 連續 SCROLL_IDLE_MS 沒捲動 → true；任何一次捲動立即打回 false 並重新計時。
+const scrollIdle = ref(false);
+let idleTimer = 0;
+
+/** 重新計時。可重複觸發 —— 使用者每次停下來都會再拿到一次提示（不是一生一次）。
+ *  ⚠️ 離開現場時只清計時器、不排新的：回來那一刻 onStage 的 watch 會重新排，
+ *     於是「十秒」永遠是從真的看得到這一段開始算。 */
+const armIdleTimer = () => {
+  scrollIdle.value = false;
+  clearTimeout(idleTimer);
+  if (!onStage.value) return;
+  idleTimer = window.setTimeout(() => {
+    scrollIdle.value = true;
+  }, SCROLL_IDLE_MS);
+};
+
+// 進場／離場都要重排計時（切分頁回來也走這條，見 onDocVisibility → syncRunning）。
+watch(onStage, armIdleTimer);
+
+// 斷點的反應式副本。熱迴圈用的 isMob 刻意是非 reactive（見它的宣告處），但 mobHintOn
+// 要進 template，得有人通知 Vue 重算 —— 兩者在同一批地方一起更新（onMounted 的 matchMedia）。
+const isMobView = ref(false);
+
+// 手機版互動提示此刻是否真的在畫面上：條件與 .hint-mob 的 v-if ＋ .hint-mob--on 完全一致，
+// 外加它只在 <768px 才 display:block 的那道樣式條件（＝ isMobView，同一把尺 MOB_QUERY）。
+const mobHintOn = computed(
+  () =>
+    isMobView.value &&
+    !!props.hintMob &&
+    !!hintMobPos.value &&
+    hintVisible.value,
+);
+
+/** 下滑提示的顯隱（template 的唯一判斷點）。 */
+const scrollHintOn = computed(
+  () =>
+    !!props.scrollHint &&
+    onStage.value &&
+    scrollIdle.value &&
+    !mobHintOn.value,
+);
+
 
 onMounted(() => {
   const wrap = wrapRef.value;
@@ -567,8 +626,10 @@ onMounted(() => {
   // 再重算 hint 錨點（pc 與 mob 的 HINT_ICON_UV 不同）。
   const mobMq = window.matchMedia(MOB_QUERY);
   isMob = mobMq.matches;
+  isMobView.value = isMob; // 反應式副本（給 mobHintOn 用，見它的宣告處）
   const onMobChange = (e: MediaQueryListEvent) => {
     isMob = e.matches;
+    isMobView.value = isMob;
     closeEgg();
     updateHintAnchor();
   };
@@ -738,7 +799,14 @@ onMounted(() => {
   // passive：兩支都沒有 preventDefault，宣告出來瀏覽器才不必為了等它而延後捲動
   renderer.domElement.addEventListener('pointermove', onMove, { passive: true });
   renderer.domElement.addEventListener('pointerleave', onLeave, { passive: true });
-  window.addEventListener('scroll', invalidateRect, { passive: true });
+  // 捲動時做兩件事：作廢 canvas 位置快取（見 invalidateRect），以及把下滑提示的十秒
+  // 重新計時（見 armIdleTimer）。併成同一支 listener ＝ 一次事件派發做完，
+  // 不為了「兩件事不相干」各掛一支 —— 這支在捲動中是每幀都會被叫的路徑。
+  const onScroll = () => {
+    invalidateRect();
+    armIdleTimer();
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
 
   // 彩蛋關閉時鬆開真空（closeEgg 走這條，見它的宣告處）。桌機不受影響：
   // 那邊的 influence 一律由游標的進出決定，closeEgg 只是在離開集合態時順手收東西。
@@ -1727,7 +1795,10 @@ onMounted(() => {
     }
   };
   const syncRunning = () => {
-    if (shouldRun()) {
+    // 下滑提示吃同一組訊號（見 scrollHintOn 的 ①）：這裡是三個訊號變動的唯一匯流點，
+    // 故在場與否也在這裡交出去，不另外再接一套 IO／watch。
+    onStage.value = shouldRun();
+    if (onStage.value) {
       tryReveal();
       startLoop();
     } else {
@@ -1797,7 +1868,8 @@ onMounted(() => {
     renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('pointerleave', onLeave);
     renderer.domElement.removeEventListener('click', onTap);
-    window.removeEventListener('scroll', invalidateRect);
+    window.removeEventListener('scroll', onScroll);
+    clearTimeout(idleTimer); // 下滑提示的十秒計時（由上面那支 onScroll 排的）
     mobMq.removeEventListener('change', onMobChange);
     revealTween?.kill(); // gsap ticker 上的補間，不會隨 rAF 一起停
     revealTween = null;
@@ -1880,10 +1952,10 @@ onMounted(() => {
     </p>
 
     <!-- 下滑提示：水平置中、距舞台底緣 44px（Figma 2065:139741）。
-         與上面兩組提示無關 —— 那兩組是「這裡可以互動」的邀請，這顆是「還有下文」的指引。
-         顯示時機尚未定案，目前只要有文案就持續顯示（見 scrollHint prop）。 -->
+         語意與上面兩組不同 —— 那兩組是「這裡可以互動」的邀請，這顆是「還有下文」的指引；
+         但在手機兩者會擠在同一塊，故顯示時機上互斥（三個條件見 scrollHintOn）。 -->
     <UBtnScrollHint
-      v-if="scrollHint"
+      v-if="scrollHintOn"
       class="scroll-hint"
       :label="scrollHint"
     />
