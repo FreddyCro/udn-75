@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { coreHandoffBackY } from '../app/utils/hero-core-handoff';
 
-// 實測基準（Chromium 1522×868，?pathdebug 的 __udnST）：
-//   dissolveST  start 0    end 1042 ＝ vh(HERO_DISSOLVE_VH 1.2)
+// 實測基準（Chromium 1522×868，?pathdebug 的 __udnST；量於 HERO_DISSOLVE_VH ＝ 1.2 的年代，
+// 該值 2026-08-23 已改為 0.6 —— 下面的數字是自帶常數的固定 fixture，與設定值脫鉤是刻意的：
+// 這支測的是 coreHandoffBackY 的代數性質，不是當下的幾何）：
+//   dissolveST  start 0    end 1042 ＝ vh(1.2)
 //   pathST      start 1042 end 2181
 //   路徑起點 sy ＝ vh(1.2) + vh(0.5) ＝ 1042 + 434 ＝ 1476（**文件座標**）
 const VH = 868;
