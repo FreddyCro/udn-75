@@ -44,11 +44,23 @@ export const HERO_VIDEO_SRC: Record<HeroVideoDevice, string> = {
   mob: '/img/udn75_bg_video_opening_mob.mp4',
 };
 
-// poster 首幀（RWD 預留）：空字串 ＝ 不設 poster。
+// poster 首幀：空字串 ＝ 不設 poster。
+//
+// 每支影片的第一幀（白底＋中央橘色 core，與 HeroStart 的畫面一致），由
+// `node scripts/hero-assets.mjs --poster` 產生，WebP 只有 2–4 KB。
+//
+// ⚠️ 沒有 poster 時 `<video>` 在 canplay 之前**什麼都不畫**。正常情況下那段有 HeroLoader
+//    蓋著看不出來，但一旦 HERO_VIDEO_READY_TIMEOUT／HERO_MAIN_STALL_FUSE_MS 燒斷
+//    （慢速手機上會，見 architecture/LIU_FEEDBACK_5.md:10），載入層已經退場而影片還沒好，
+//    使用者看到的就是一片白。poster 讓那條失敗路徑退成「靜止的 core」而不是空畫面，
+//    而且與 start gate 的畫面連續。
+//
+// ⚠️ 尺寸與各自的來源影片同解析度（pc 1920×1080 / pad 1024×1364 / mob 720×1280），
+//    換剪輯時要一起重跑腳本，否則 poster 會是上一版的畫面。
 export const HERO_VIDEO_POSTER: Record<HeroVideoDevice, string> = {
-  pc: '',
-  pad: '',
-  mob: '',
+  pc: '/img/udn75_bg_video_opening_pc_poster.webp',
+  pad: '/img/udn75_bg_video_opening_pad_poster.webp',
+  mob: '/img/udn75_bg_video_opening_mob_poster.webp',
 };
 
 /**

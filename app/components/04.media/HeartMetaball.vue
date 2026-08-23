@@ -414,6 +414,27 @@ onMounted(() => {
     rectDirty = false;
   };
 
+  // ---------- 橘格延後繪製：把每幀數千次 fillStyle 換成 2 次 ----------
+  //
+  // 原本是逐格 `ctx.fillStyle = accent ? ACCENT : COLOR` 再 fillRect。實測 390×844 手機
+  // 每幀約 3,000–5,000 格，也就是每幀數千次 fillStyle setter —— 每一次瀏覽器都得重新
+  // 解析並驗證那個色彩字串，即使值跟上一格一模一樣。
+  //
+  // 全場只有兩種顏色，而每格 fillRect 是 CELL 見方的整數對齊格、彼此不重疊
+  // （gx/gy 為整數、CELL=4、DPR 上限 2 ⇒ device px 也是整數），所以**繪製順序無關**：
+  // 掃描時藍格照樣即畫，橘格只記下座標，掃完再一次切成 ACCENT 補畫。
+  // 兩次 fillStyle，畫面逐像素相同。
+  //
+  // 座標存進預配置的 Int32Array（不是物件陣列）—— 這支元件的內圈本來就刻意零配置，
+  // 為了省 fillStyle 而每幀生出幾千個短命物件是本末倒置。
+  let accentBuf = new Int32Array(0);
+  let accentCount = 0;
+  const ensureAccentBuf = (cells: number) => {
+    // 最壞情況是整個 bbox 都是橘格；(gx, gy) 成對存放故 ×2。
+    const need = Math.max(1, cells) * 2;
+    if (accentBuf.length < need) accentBuf = new Int32Array(need);
+  };
+
   const setSize = () => {
     width = wrap.clientWidth;
     height = wrap.clientHeight;
@@ -423,6 +444,7 @@ onMounted(() => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cols = Math.ceil(width / CELL);
     rows = Math.ceil(height / CELL);
+    ensureAccentBuf(cols * rows);
     rectDirty = true;
     // 改過 canvas.width/height 的畫布是空的 → 沒有殘影要清
     lastGx1 = lastGx0;
@@ -757,6 +779,10 @@ onMounted(() => {
 
     // 逐格：先查 patch（便宜的矩形/紋理測試），命中才算 metaball 場（貴），
     // 場強 ≥ 該格隨機閾值才畫 → patch 拼貼被場遮罩收邊、外緣有機溶解
+    //
+    // fillStyle 在這裡設定一次，整趟掃描都不再動它；橘格改記進 accentBuf，掃完補畫。
+    ctx.fillStyle = COLOR;
+    accentCount = 0;
     for (let gy = gy0; gy < gy1; gy++) {
       for (let gx = gx0; gx < gx1; gx++) {
         const cx = (gx + 0.5) * CELL;
@@ -889,8 +915,21 @@ onMounted(() => {
           if (hash3(gx * 0.7 + 3.1, gy * 1.3 + 9.7, hEpoch + 4.2) < holeP)
             accent = false;
         }
-        ctx.fillStyle = accent ? ACCENT : COLOR;
-        ctx.fillRect(gx * CELL, gy * CELL, CELL, CELL);
+        if (accent) {
+          // 延後：等這趟掃描結束、切一次 fillStyle 再補畫（見 accentBuf 宣告處）
+          accentBuf[accentCount++] = gx;
+          accentBuf[accentCount++] = gy;
+        } else {
+          ctx.fillRect(gx * CELL, gy * CELL, CELL, CELL);
+        }
+      }
+    }
+
+    // 橘格補畫：整幀第二次、也是最後一次 fillStyle
+    if (accentCount) {
+      ctx.fillStyle = ACCENT;
+      for (let i = 0; i < accentCount; i += 2) {
+        ctx.fillRect(accentBuf[i]! * CELL, accentBuf[i + 1]! * CELL, CELL, CELL);
       }
     }
 

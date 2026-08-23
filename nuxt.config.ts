@@ -1,4 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
+import { dedupeFontFace } from './build/dedupe-font-face';
+import { aliasDemotedPageChunks } from './build/preload-page-chunks';
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
@@ -104,8 +106,22 @@ export default defineNuxtConfig({
   // @udn-digital-center/common-components 內部 import 的 vue-scrollto 為 CJS，
   // 需在此預打包成 ESM（並把 vue-scrollto 裝成直接相依），否則 dev 會報
   // "does not provide an export named 'default'"。
+  // build:manifest：補回首頁 route chunk 遺失的 manifest 別名，恢復它的 modulepreload。
+  // 成因與做法見 build/preload-page-chunks.ts —— 那支 chunk 有 664 KB，少一條 hint
+  // 就是多一整跳的序列瀑布。
+  hooks: {
+    'build:manifest': (manifest) => {
+      aliasDemotedPageChunks(
+        manifest as unknown as Parameters<typeof aliasDemotedPageChunks>[0],
+        (msg) => console.info(msg),
+      );
+    },
+  },
+
   vite: {
-    plugins: [tailwindcss()],
+    // dedupeFontFace 必須排在 tailwind 之後：它是 enforce: 'post' + generateBundle，
+    // 看到的是所有 CSS 處理（含 @nuxt/fonts 注入與 minify）都跑完的最終產物。
+    plugins: [tailwindcss(), dedupeFontFace()],
     build: {
       // 關掉小資源 inline（預設 4096 bytes 以下會被轉成 data URI 內嵌進 JS/CSS）。
       // 本專案圖片多半靠 runtimeConfig 的 APP_ASSETS_PATH 在 runtime 組路徑（見 UPic/UVid），

@@ -520,7 +520,11 @@ const layers = computed<HeaderLayer[]>(() => {
   position: fixed;
   inset: 0 0 auto 0;
   z-index: 1000;
-  font-family: 'Noto Sans TC', sans-serif;
+  // ⚠️ 這裡刻意**不宣告 font-family**。header 一個文字節點都沒有（logo 與三顆 anchor
+  //    全是 <img> SVG、按鈕只有 aria-label），所以宣告了也沒有字要排；而 @nuxt/fonts
+  //    是「每一個提到已註冊家族的宣告點，各注入一整組 unicode-range @font-face」，
+  //    這一行的代價是每張預算頁多出 320 條 @font-face／約 328 KB 的內嵌 CSS。
+  //    真要排字時請走 base.scss 的 html 堆疊（繼承），不要在這裡重新宣告家族名。
   // icon 外框：音效／share／漢堡三顆共用同一個版位尺寸（mob／pad 稿 35×28、pc 稿 27.5×22）。
   // 稿上 icon 群組總寬正好是「兩顆外框＋間距」：82 = 35+12+35、75 = 27.5+20+27.5，
   // 故外框寬不可省成 auto，否則群組寬度會隨 glyph 比例漂移。

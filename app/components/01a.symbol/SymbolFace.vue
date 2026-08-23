@@ -2,7 +2,23 @@
 // @ts-nocheck
 import * as THREE from 'three';
 import { gsap } from 'gsap';
-import portraitUrl from '~/assets/img/face.png';
+// 512×747 lossless WebP（268 KB），由 `node scripts/hero-assets.mjs --face` 從
+// face.png（1013×1478 RGBA、1.62 MB）降尺寸而來。
+//
+// 為什麼可以降：這張圖**只被拿去取樣粒子位置**，而 buildFromImage 自己會先縮到
+// cols(89) × SAMPLE_PX_PER_CELL(4) = 356 px 寬再取樣（見該處註解）—— 1013 px 有 2.8 倍
+// 是白付的頻寬，而且它在 onMounted 就開抓，正好和 9.8 MB 的開場影片搶同一段。
+//
+// 實測等價（temp/face-sample-equiv.mjs，對兩張圖跑同一條 sampleImageToGrid）：
+//   網格 89×84 相同 · 粒子數 5,981 ↔ 5,981 完全相同 · 位置偏差 0.000000 world
+//   字元階 98/5,981 顆不同 (1.64%) · 平均亮度差 0.00075
+// 也就是輪廓與密度逐點相同，只有少數卡在亮度階界的格子換了字元。
+//
+// ⚠️ 用 lossless 而非有損：sampler 以 alpha ≥ 0.5 判斷「去背輪廓內」（symbol-sampler.ts），
+//    有損 WebP 的 alpha 量化會直接改變粒子數。
+// ⚠️ 換素材時目標寬度不可低於 cols × SAMPLE_PX_PER_CELL，否則取樣解析度不足。
+// （face.png 原檔留在 repo 供對照；沒有 import 就不會進 bundle。）
+import portraitUrl from '~/assets/img/face.webp';
 // import portraitUrl from '~/assets/img/einstein.png';
 import {
   buildColorRamp,
@@ -776,6 +792,17 @@ onMounted(() => {
   let targetArr: Float32Array | null = null; // formation 座標（命中測試用）
   let seedArr: Float32Array | null = null; // 每顆隨機種子（impulse 發散角／z 散射用）
   let dispAttr: THREE.BufferAttribute | null = null;
+  // 物理已完全靜止（disp／vel 全部小於 SETTLE_EPS）且沒有新的游標命中 ⇒ 整段積分與
+  // aDisp 的 VBO 上傳都可以跳過。
+  //
+  // 為什麼值得做：aDisp 是 pCount × 3 個 float，實測 5,471 顆 ≈ 64 KB／幀（60fps ≈ 3.8 MB/s）。
+  // 而觸控裝置沒有 hover，`canHit` 幾乎恆為 false、disp 恆為 0 —— 這筆頻寬與那 pCount 次
+  // 空轉的積分是純白付。**這是首頁在低階手機上唯一「省下來完全看不出差別」的每幀成本。**
+  //
+  // ⚠️ 判定要同時看 vel：disp 可能剛好路過 0 而 vel 還很大（撞散後回位的過程中），
+  //    只看 disp 會把粒子凍在半路上。
+  let dispSettled = false;
+  const SETTLE_EPS = 0.01; // world 單位。world 寬約 274–560 對應整個視窗寬 ⇒ 0.01 遠低於一個次像素
   let pCount = 0;
   // 人像半寬高 + 自動游標遊走半徑（buildFromImage 依人像實際範圍設定）
   let halfW = 0;
@@ -1495,7 +1522,12 @@ onMounted(() => {
     // 每顆粒子維持 disp(位移)+vel(速度)：速度只保留動量並靠 friction 衰減（負責往外散）；
     // 位置每幀對原位(0)做指數 lerp（單調趨近、不會回彈）。游標半徑內持續注入外推速度 → 在時開洞、
     // 離開後速度衰減、位置 ease 回原位（脫離果凍感）。
-    if (dispArr && velArr && targetArr && dispAttr) {
+    //
+    // dispSettled 這道閘門（宣告處有完整說明）刻意放在最外面：靜止時連 velDecay／easeAmt
+    // 這些 Math.exp 都不必算。canHit 得先於閘門求值 —— 它就是「該不該醒過來」的訊號。
+    const canHit = mode.value === 'face' && influence > 0.01;
+    if (canHit) dispSettled = false;
+    if (!dispSettled && dispArr && velArr && targetArr && dispAttr) {
       const disp = dispArr;
       const vel = velArr;
       const tgt = targetArr;
@@ -1504,7 +1536,10 @@ onMounted(() => {
       const easeAmt = 1 - Math.exp(-cfg.returnEase * dt); // 與幀率無關的回位 lerp 係數（趨近 0）
       const hitR = cfg.holeRadius + cfg.holeSpread;
       const hitR2 = hitR * hitR;
-      const canHit = mode.value === 'face' && influence > 0.01;
+      // 本幀 disp／vel 的最大平方量 → 決定下一幀能不能休息（見 dispSettled）。
+      // 存平方而非絕對值：內圈本來就會算 v2，位移也只多一次平方和，省掉 pCount 次 sqrt。
+      let settleD2 = 0;
+      let settleV2 = 0;
       const mx = smoothMouse.x;
       const my = smoothMouse.y;
       const kick = cfg.impulseStrength * influence;
@@ -1576,11 +1611,25 @@ onMounted(() => {
         vel[i3 + 2] = vz;
         // 位置：動量位移 + 對原位(0)做指數 ease（disp*(1-easeAmt) 單調趨近，無回彈）。
         // 等價於 reference 的 x += vx + (origin - x)*ease，這裡 origin=0（disp 是相對 formation 的位移）。
-        disp[i3] = disp[i3]! * (1 - easeAmt) + vx * dt;
-        disp[i3 + 1] = disp[i3 + 1]! * (1 - easeAmt) + vy * dt;
-        disp[i3 + 2] = disp[i3 + 2]! * (1 - easeAmt) + vz * dt;
+        const dx2 = disp[i3]! * (1 - easeAmt) + vx * dt;
+        const dy2 = disp[i3 + 1]! * (1 - easeAmt) + vy * dt;
+        const dz2 = disp[i3 + 2]! * (1 - easeAmt) + vz * dt;
+        disp[i3] = dx2;
+        disp[i3 + 1] = dy2;
+        disp[i3 + 2] = dz2;
+        const d2 = dx2 * dx2 + dy2 * dy2 + dz2 * dz2;
+        if (d2 > settleD2) settleD2 = d2;
+        if (v2 > settleV2) settleV2 = v2;
       }
       dispAttr.needsUpdate = true;
+      // 這一幀已經把 ~0 寫回 VBO 了，所以下一幀起才能休息（不是這一幀就跳過上傳）。
+      // 速度也要夠小：VEL_EPS 0.5 world/秒 ＝ 60fps 下每幀約 0.008 world 位移，
+      // 低於 SETTLE_EPS，不會出現「凍在半路」。
+      if (!canHit) {
+        const VEL_EPS = 0.5;
+        dispSettled =
+          settleD2 < SETTLE_EPS * SETTLE_EPS && settleV2 < VEL_EPS * VEL_EPS;
+      }
     }
 
     // 「完整集合」判定（見 faceFormed 宣告處）：三個 uniform 的實況，不是 mode 這道指令。
@@ -1673,6 +1722,8 @@ onMounted(() => {
       dispArr.fill(0);
       velArr.fill(0);
       dispAttr.needsUpdate = true;
+      // 已經是全 0 且已上傳 → 恢復後直接從「靜止」起跳，第一個 canHit 會把它叫醒。
+      dispSettled = true;
     }
   };
   const syncRunning = () => {

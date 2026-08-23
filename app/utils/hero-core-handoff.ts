@@ -109,15 +109,24 @@ export function unrotateDelta(
  *
  * @param rawP  ScrollTrigger 的 progress（已 clamp 在 0..1），**不是**套過 ease 的值
  * @param pathY 驅動線上算出來的 y（section 座標）
- * @param scrolledWithinSection 目前捲動位置在 section 座標系裡的值（＝ −section.top）
+ * @param scrolledWithinSection 目前捲動位置在 section 座標系裡的值（＝ −section.top）。
+ *   可以傳 **thunk**：本函式只在 `rawP <= 0` 時需要這個值，而它的來源
+ *   （`-section.getBoundingClientRect().top`）是一次 forced reflow。傳函式進來，
+ *   整段 path 巡航（`rawP > 0`，正常捲動的每一幀）就完全不會去量 layout。
+ *   ⚠️ 這是本函式唯一存在惰性求值的理由 —— 呼叫端緊接著就 `gsap.set` 寫入，
+ *      無條件先讀 rect 等於每幀一次 read-then-write layout thrash。
  * @param halfViewport 半個視窗高（vhPx(0.5)，與驅動線的 runway 同一把尺）
  */
 export function coreHandoffBackY(
   rawP: number,
   pathY: number,
-  scrolledWithinSection: number,
+  scrolledWithinSection: number | (() => number),
   halfViewport: number,
 ): number {
   if (rawP > 0) return pathY;
-  return scrolledWithinSection + halfViewport;
+  const scrolled =
+    typeof scrolledWithinSection === 'function'
+      ? scrolledWithinSection()
+      : scrolledWithinSection;
+  return scrolled + halfViewport;
 }

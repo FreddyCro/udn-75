@@ -151,7 +151,12 @@ function place(rawP: number) {
   const y = coreHandoffBackY(
     rawP,
     pt.y,
-    -sec.getBoundingClientRect().top, // 捲動位置換算到 section 座標系（同 build 的基準）
+    // 捲動位置換算到 section 座標系（同 build 的基準）。
+    // ⚠️ 傳 **thunk** 而非值：這個 rect 只有 rawP <= 0（由下往上回捲進退場區間）才會被
+    //    用到，coreHandoffBackY 在 rawP > 0 時直接回傳 pathY、整個丟掉這個參數。
+    //    原本無條件先算 ⇒ 整段 path 巡航的每一幀都白付一次 forced reflow，而且下一行
+    //    緊接著 gsap.set 寫入，正是最典型的 read-then-write layout thrash。
+    () => -sec.getBoundingClientRect().top,
     vhPx(0.5),
   );
   gsap.set(core, { x: pt.x, y, rotation: motionAngle });
@@ -193,7 +198,8 @@ function init() {
     //    這裡的 start 是**數值**，故 pinnedContainer 不會給它加任何 pin 位移補償
     //    （ScrollTrigger.js L1412 的 `isNaN(parsedStart)`），start/end 的語意不變。
     pinnedContainer: props.pinnedEl ?? undefined,
-    scrub: true,
+    // scrub 已移除：它只對「掛在 ST 上的 animation」有意義，本 ST 沒有動畫、只讀 progress
+    // （同 HeroVideo 的 buildDissolveST）。留著不會讓誰變慢，但會讓人以為這裡有補間。
     invalidateOnRefresh: true,
     onUpdate: (self) => place(self.progress),
     // 幾何重建掛在**這裡**，不是全域的 refreshInit：後者早於 pin 的 revert、也早於本尺

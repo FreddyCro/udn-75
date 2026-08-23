@@ -796,7 +796,8 @@ onMounted(async () => {
       // ⚠ 刻意不掛 endTrigger：.forum-event__date 是 position: absolute，量不到有效高度；
       //   也刻意不碰 .sec2 的 bottom —— 上游 SymbolScene 的 pin-spacer 會撐高它，變成循環依賴。
       end: () => `top+=${tailEndY} ${coverContactAlign()}`,
-      scrub: true,
+      // scrub 已移除：它只對「掛在 ST 上的 animation」有意義，本 ST 沒有動畫、只讀 progress
+      // （同 HeroVideo 的 buildDissolveST）。留著不會讓誰變慢，但會讓人以為這裡有補間。
       invalidateOnRefresh: true,
       onUpdate: (self) => place(self.progress),
     });

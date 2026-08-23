@@ -408,7 +408,8 @@ onMounted(() => {
       //       **帶著 pin 位移**量的）—— 那不是可以倚賴的東西。
       //    同一個坑的另一半在 OrangeCorePath（那邊 core 會掉出視窗）。
       pinnedContainer: innerRef.value,
-      scrub: true,
+      // scrub 已移除：它只對「掛在 ST 上的 animation」有意義，本 ST 沒有動畫、只讀 progress
+      // （同 HeroVideo 的 buildDissolveST）。留著不會讓誰變慢，但會讓人以為這裡有補間。
       invalidateOnRefresh: true,
       onUpdate: (self) => (introFade.value = self.progress),
       // 捲過整段後 ScrollTrigger 不再 update：明確補到 0 / 1，否則快速捲動會留下殘影透明度。
