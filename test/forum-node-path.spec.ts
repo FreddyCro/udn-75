@@ -59,15 +59,17 @@ function endpoints(d: string): [number, number][] {
 // 不是稿的原值 —— 撇畫在哪，核心就得經過哪，兩者本來就同一個真值（見 forum-node-path
 // 的 SLASH_SEL）。所以這裡驗的是「P7a/P7b（Q7a/Q7b）確實落在撇的右上角與左下角」，
 // 抓的是 edge 打錯（left/right 顛倒、top/bottom 顛倒）這類錯誤。
-// mob：--coreslash 132/68，48.6×97.3；容器 padding 26 → left 158、top 日期組上緣 +68。
-const MOB_SLASH = { left: 158, width: 48.6, top: 3105.47 + 68, height: 97.3 };
-// pad：--coreslash 190/96，69.3×139.6；padding 80 → left 270、top 日期組上緣 +96。
+// mob：--coreslash 132/106，48.6×97.3；容器 padding 26 → left 158、top 日期組上緣 +106。
+// （2026-08-23：y 68 → 106，把整撇從「2026 與 09 之間」移到「09 與 15 之間」。）
+const MOB_SLASH = { left: 158, width: 48.6, top: 3105.47 + 106, height: 97.3 };
+// pad：--coreslash 175/105，55.44×111.68；padding 80 → left 255、top 日期組上緣 +105。
 // 日期組上緣 ＝ __meta 上緣 +46（實測 pad：meta 3485.67 / date 3531.67）。
+// （2026-08-23：整撇縮短 20% 並移到「09 與 15 之間」，原本是 190/96、69.3×139.6。）
 const PAD_SLASH = {
-  left: 270,
-  width: 69.29,
-  top: 3226.37 + 46 + 96,
-  height: 139.59,
+  left: 255,
+  width: 55.44,
+  top: 3226.37 + 46 + 105,
+  height: 111.68,
 };
 
 const MOB_RECTS: FixtureRects = {
@@ -102,7 +104,9 @@ const MOB_VERTICES: [number, number][] = [
   [410.0, 1175], [0.5, 1938],
   // P7 刻意偏離稿 3143.5 → 2793.47（dy +38 → −312，讓 P7→撇→P8 共線；理由見
   // forum-node-path 的 P7）。斷言寫**意圖值**而非稿值，dy 打錯照樣抓得到。
-  [411.0, 3105.47 - 312],
+  // ⚠ 這個數字綁著撇的位置 —— `--coreslash-y` 一改就要重推
+  //   （2026-08-23：撇往下移 38 → dy −312 變 −275）。
+  [411.0, 3105.47 - 275],
   [MOB_SLASH.left + MOB_SLASH.width, MOB_SLASH.top], // P7a 撇的右上角
   [MOB_SLASH.left, MOB_SLASH.top + MOB_SLASH.height], // P7b 撇的左下角
   [107.0, 3786], [295.32, 3868.92],
@@ -118,6 +122,12 @@ const PAD_RECTS: FixtureRects = {
   '論壇一/.forum-event__date': { top: 816.65, height: 160 },
   '論壇一/.forum-event__meta': { top: 816.65, height: 284 }, // 日期＋地點 下緣 1100.65
   '論壇一/.forum-event__photo': { top: 1100.65, height: 233 },
+  // 2026-08-23 新增：Q4 改掛講者組上緣（原本掛 __meta 下緣 −34，見 forum-node-path 的 Q4）。
+  // ⚠ 稿上「講者組上緣 ＝ 照片上緣 ＝ 1100.65」，**沒有間距**；瀏覽器實測則多了
+  //   `.forum-event--quote .forum-event__speakers` 的 `margin: 60px 0 0`。
+  //   fixture 是**稿座標系**（整組斷言都是對稿頂點），故這裡填稿的 1100.65；
+  //   那 60px 的差反映在 PAD_TOL.Q4 之外的**瀏覽器實測**上，見同日的節點實測報告。
+  '論壇一/.forum-event__speakers': { top: 1100.65, height: 1838 },
   '論壇二/.forum-event__meta': { top: 3226.37, height: 366.65 },
   // 講者組改單人（稿 2652:53305 → 論壇二 y=2527.37 內的「講者」3399:29051 y=1086.63、233 高）。
   // 改版前是 { 3593.02, 390 }。論壇二段落總高沒變（1541），故論壇三以下不受影響。
@@ -144,17 +154,26 @@ type Tol = { x?: number; y?: number };
 //   P0 ：稿 y=43 → 歸零，保交棒零跳點
 //   P5/P6：釘容器邊緣 ±2，稿是 410 / 0.5
 //   P13：x 釘中心，稿 198.5
+//   P4/P8：2026-08-23 的「碰到但不進入」規則 —— 稿的線是沒有厚度的水印、核心卻是 26px，
+//         故轉折點改成掛區塊邊緣 ∓13（見 forum-node-path 的 CORE_TOUCH）。
+//         P4 稿 1069 → 講者組上緣 1073.47 − 13 ＝ 1060.47（差 8.5）
+//         P8 稿 3786 → 講者組上緣 3819.47 − 13 ＝ 3806.47（差 20.5）
 const MOB_TOL: Record<string, Tol> = {
   P0: { y: 44 },
+  P4: { y: 9 },
   P5: { x: 2 },
   P6: { x: 2 },
+  P8: { y: 21 },
   P13: { x: 9 },
 };
 //   Q0 ：稿 y=191 → 歸零；x 釘中心（384），稿是 386.9
 //   Q1 ：x 同樣釘中心
+//   Q4 ：同 MOB_TOL 的 P4/P8（碰到但不進入）——
+//        稿 1066.5 → 講者組上緣 1100.65 − 13 ＝ 1087.65（差 21.2）
 const PAD_TOL: Record<string, Tol> = {
   Q0: { x: 3, y: 192 },
   Q1: { x: 3 },
+  Q4: { y: 22 },
 };
 
 describe.each([
@@ -277,10 +296,10 @@ describe('錨點量不到時', () => {
     // 這裡攔截掉，斷言「有警告」而非讓它污染測試輸出。
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const partial: ForumPathMeasure = (a) =>
-      a.sel === '.forum-event__venue' ? null : measure(a);
+      a.sel === '.forum-event__speakers' ? null : measure(a);
     expect(buildNodePathD(MOB_NODES, { width: 414, measure: partial })).toBeNull();
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0]![0]).toContain('.forum-event__venue');
+    expect(warn.mock.calls[0]![0]).toContain('.forum-event__speakers');
     warn.mockRestore();
   });
 
@@ -620,5 +639,100 @@ describe('buildNodePathD 的 segs 回傳', () => {
     const out = buildNodePathD(nodes, { width: 100, measure: m })!;
     expect(out.segs.map((s) => s.id)).toEqual(['A', 'C']);
     expect(out.segs.map((s) => s.d).join('')).toBe(out.d);
+  });
+});
+
+// ── relIn: 'smooth'（切線接續）────────────────────────────────────────
+// 為什麼要有它、以及它修掉的是什麼，見 forum-node-path 的 ForumPathJoin。
+// 這裡驗的是「產生器真的把出發切線接到上一段的到達切線上」，而不是某個節點的形狀。
+describe("relIn: 'smooth'", () => {
+  /** 從 d 取出所有數字，逐段還原成 [起點, c1, c2, 終點] */
+  const cubics = (d: string) => {
+    const cmds = d.match(/[MLC][^MLC]*/g)!;
+    const pts: number[][] = [];
+    let cur: [number, number] = [0, 0];
+    for (const c of cmds) {
+      const n = c.slice(1).trim().split(/[\s,]+/).map(Number);
+      if (c[0] === 'M') cur = [n[0]!, n[1]!];
+      // 直線用「三等分點當控制點」升成 cubic —— 直接拿端點當控制點會讓
+      // 「c2 → 終點」退化成零向量，切線算出來恆為 0（第一版就是這樣寫錯的）。
+      else if (c[0] === 'L') {
+        const [x0, y0] = cur;
+        const [x1, y1] = [n[0]!, n[1]!];
+        pts.push([x0!, y0!, x0! + (x1 - x0!) / 3, y0! + (y1 - y0!) / 3, x0! + (2 * (x1 - x0!)) / 3, y0! + (2 * (y1 - y0!)) / 3, x1, y1]);
+        cur = [x1, y1];
+      }
+      else { pts.push([...cur, n[0]!, n[1]!, n[2]!, n[3]!, n[4]!, n[5]!]); cur = [n[4]!, n[5]!]; }
+    }
+    return pts;
+  };
+  const deg = (ax: number, ay: number, bx: number, by: number) =>
+    (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
+  /** 上一段在其終點的到達切線 vs 下一段在其起點的出發切線，夾角差（度） */
+  const kinkAt = (d: string, i: number) => {
+    const s = cubics(d);
+    const a = s[i - 1]!; // [x0,y0, c1x,c1y, c2x,c2y, x1,y1]
+    const b = s[i]!;
+    const inDeg = deg(a[4]!, a[5]!, a[6]!, a[7]!); // c2 → 終點
+    const outDeg = deg(b[0]!, b[1]!, b[2]!, b[3]!); // 起點 → c1
+    return Math.abs((((outDeg - inDeg + 180) % 360) + 360) % 360 - 180);
+  };
+
+  const rects: FixtureRects = { a: { top: 0 }, b: { top: 300 }, c: { top: 500 } };
+  const m = measureFrom(rects);
+  const node = (id: string, x: ForumPathX, sel: string, join?: ForumPathNode['join']): ForumPathNode =>
+    ({ id, x, anchor: { sel, edge: 'top' }, join });
+
+  it('接在直線之後：出發切線＝那條直線的方向，該節點不是折角', () => {
+    const smooth = buildNodePathD(
+      [node('A', 'left', 'a', 'line'), node('B', 'center', 'b', { relIn: 'smooth', relOut: 20, hIn: 0.4, hOut: 0.4 }), node('C', 'right', 'c')],
+      { width: 400, measure: m },
+    )!;
+    expect(kinkAt(smooth.d, 1)).toBeLessThan(0.5);
+  });
+
+  it('同一組節點寫死角度時會留下折角 —— 對照組，證明上面那條不是恆真', () => {
+    const hard = buildNodePathD(
+      [node('A', 'left', 'a', 'line'), node('B', 'center', 'b', { relIn: -40, relOut: 20, hIn: 0.4, hOut: 0.4 }), node('C', 'right', 'c')],
+      { width: 400, measure: m },
+    )!;
+    expect(kinkAt(hard.d, 1)).toBeGreaterThan(10);
+  });
+
+  it('接在曲線之後：出發切線＝上一段的到達切線', () => {
+    const out = buildNodePathD(
+      [
+        node('A', 'left', 'a', { relIn: 10, relOut: -25, hIn: 0.4, hOut: 0.4 }),
+        node('B', 'center', 'b', { relIn: 'smooth', relOut: 15, hIn: 0.4, hOut: 0.4 }),
+        node('C', 'right', 'c'),
+      ],
+      { width: 400, measure: m },
+    )!;
+    expect(kinkAt(out.d, 1)).toBeLessThan(0.5);
+  });
+
+  it('用在第一個節點時退回「順著 chord 出發」，不會炸也不會 NaN', () => {
+    const out = buildNodePathD(
+      [node('A', 'left', 'a', { relIn: 'smooth', relOut: 20, hIn: 0.4, hOut: 0.4 }), node('B', 'center', 'b')],
+      { width: 400, measure: m },
+    )!;
+    expect(out.d).not.toContain('NaN');
+    const [s] = cubics(out.d);
+    expect(deg(s![0]!, s![1]!, s![2]!, s![3]!)).toBeCloseTo(deg(s![0]!, s![1]!, s![6]!, s![7]!), 5);
+  });
+
+  it('紙飛機段的節點都標了 smooth（首節點除外 —— 那是回頭彎）', () => {
+    const first: Record<'pc' | 'pad' | 'mob', string> = { pc: 'R1', pad: 'S1', mob: 'T1' };
+    for (const bp of ['pc', 'pad', 'mob'] as const) {
+      const list = FORUM_PATH_NODES[bp]!;
+      const from = list.findIndex((n) => n.id === first[bp]);
+      expect(from, `${bp} 找不到紙飛機段的首節點`).toBeGreaterThan(-1);
+      // 首節點之後、最後一點之前的每個節點都要接續切線
+      const tail = list.slice(from + 1, -1);
+      expect(tail.length).toBeGreaterThan(0);
+      for (const n of tail) {
+        expect(typeof n.join === 'object' ? n.join.relIn : 'line', `${bp} ${n.id}`).toBe('smooth');
+      }
+    }
   });
 });

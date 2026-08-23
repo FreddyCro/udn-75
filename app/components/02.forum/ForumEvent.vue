@@ -302,11 +302,16 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       --stair-x2: 215px;
       --stair-row1: 80px;
       --stair-row2: 80px;
-      --coreslash-w: 69.3px;
-      --coreslash-h: 139.6px;
-      // 目視微調（同上）：170/87 → 190/96，理由同 mob 那行。
-      --coreslash-x: 190px;
-      --coreslash-y: 96px;
+      // 2026-08-23：整撇縮短 20%（69.3×139.6 → 55.44×111.68）。
+      // ⚠ w/h 一起乘 0.8，**比例不變**（0.4964）→ 下方寫死的 `rotate(26.7deg)` 仍然正確。
+      --coreslash-w: 55.44px;
+      --coreslash-h: 111.68px;
+      // 目視微調（同上）：170/87 → 190/96 → 175/105。
+      // 190/96 時整撇偏右下（實測撇心 (305, 370)，而「09」右下角與「15」左上角的中點是
+      // (283, 365)）。縮短 20% 會讓撇心自然往左上移 (−6.9, −14)，故 x 再減 15、y 再加 9。
+      // ⚠ 這一撇的版位是唯一真值（Q7a/Q7b 掛在它身上），改完同步 spec 的 PAD_SLASH。
+      --coreslash-x: 175px;
+      --coreslash-y: 105px;
 
       // padding-bottom 221 ＝ 稿的講者塊下緣 1319.6 到論壇二段落下緣 1541（理由同 pc）。
       padding: 32px 80px 221px;
@@ -322,8 +327,13 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       --coreslash-w: 48.6px;
       --coreslash-h: 97.3px;
       // 目視微調（同上）：118/62 → 132/68，把上端從壓到「9」的筆畫移到它右下的空隙。
+      // 2026-08-23 再往下 38：68 的位置整撇夾在「2026」與「09」之間（實測撇心 y 342.5、
+      // 而「09」列與「15」列的交界在 381），視覺上不像「09/15」的那一撇。
+      // ⚠ 這一撇的版位是**唯一的真值** —— 設計線的 P7a/P7b 掛在這個元素上（見
+      //   forum-node-path 的 SLASH_SEL），改這裡線會自己跟上，**不要**去 forum-node-path
+      //   另抄一份座標。改完記得同步 test/forum-node-path.spec.ts 的 MOB_SLASH。
       --coreslash-x: 132px;
-      --coreslash-y: 68px;
+      --coreslash-y: 106px;
 
       padding: 32px 26px 140px;
     }
