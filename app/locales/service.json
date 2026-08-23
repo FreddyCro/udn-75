@@ -1,4 +1,5 @@
 {
+  "slug": "service",
   "hero": {
     "title": "永續影響",
     "subtitle": "持續創造有價值的新聞",
@@ -62,6 +63,7 @@
       {
         "title": "自辦重劃發財夢：玩弄人頭、套利百億 拆解一場圍繞土地的金錢遊戲",
         "desc": "自辦市地重劃亂象頻傳，記者調查拆解揭露制度為何變調？土地整合、重新分配的過程中，到底實現誰的發財夢？",
+        "gaTerm": "service_landswindlers",
         "url": "https://vip.udn.com/newmedia/2025/landswindlers/",
         "thumbs": [
           "/img/service/udn75_video20_01.mp4"
@@ -80,6 +82,7 @@
       {
         "title": "新太空時代：地緣角力、國安戰場、商業版圖 誰將搶占宇宙藍海？",
         "desc": "太空成為全球競逐新戰場，台灣憑藉科技業基礎，積極搶灘全球供應鏈，每個選擇都攸關國安、經濟與產業未來。",
+        "gaTerm": "service_newspaceera",
         "url": "https://vip.udn.com/newmedia/2025/newspaceera/",
         "thumbs": [
           "/img/service/udn75_pic21_01.jpg",
@@ -112,6 +115,7 @@
       {
         "title": "全球瞭望－2024美選觀測系列報導",
         "desc": "美國大選牽動世界局勢，從關鍵議題、選民結構到權力角逐，深入剖析下一任白宮領導人如何影響全球秩序。",
+        "gaTerm": "service_us_election",
         "url": "https://vip.udn.com/event/vip_us-election",
         "thumbs": [
           "/img/service/udn75_pic22_01.jpg"
@@ -130,6 +134,7 @@
       {
         "title": "雞蛋、衛生紙近3年價格漲多少？測驗你的「體感通膨」程度",
         "desc": "體感通膨比官方數字更有感？透過估計日常商品在過去幾年的價格變化，測驗你對通膨的真實感受與判斷力。",
+        "gaTerm": "service_inflation_quiz",
         "url": "https://vip.udn.com/newmedia/2024/inflation-quiz/",
         "thumbs": [
           "/img/service/udn75_video23_01.mp4"
@@ -148,6 +153,7 @@
       {
         "title": "農地黑「膜」法：焚燒、掩埋與棄置 廢塑膠亂象直擊",
         "desc": "台灣年產1.3萬噸農業塑膠膜，記者走訪全台發現不少亂象。農膜如何衍生「黑魔法」？揭露廢棄物失控真相。",
+        "gaTerm": "service_agricultural_waste",
         "url": "https://vip.udn.com/event/newmedia_agricultural-waste",
         "thumbs": [
           "/img/service/udn75_pic24_01.jpg"
@@ -166,6 +172,7 @@
       {
         "title": "樓鳳、人蛇、學生妹：疫後新南向為何淪為性樂園？",
         "desc": "逾千名東南亞樓鳳遍布台灣91鄉鎮區，團隊爬梳機房數據、訪談業界人士，探究台灣為何淪為跨國性產業天堂。",
+        "gaTerm": "service_sexworkers",
         "url": "https://vip.udn.com/event/newmedia_foreignsexworkers",
         "thumbs": [
           "/img/service/udn75_video25_01.mp4"
@@ -184,6 +191,7 @@
       {
         "title": "霾葬大林蒲：16種致癌物圍城 694億遷村抹不去的罪",
         "desc": "大林蒲遷村案推動多年，團隊深入當地傾聽居民控訴國家帶給他們的空汙原罪與傷痛，大林蒲的下一步何去何從？",
+        "gaTerm": "service_dalinpo",
         "url": "https://vip.udn.com/newmedia/2023/dalinpo/",
         "thumbs": [
           "/img/service/udn75_video26_01.mp4",
@@ -216,6 +224,7 @@
       {
         "title": "25個台北租屋故事 被剝奪的居住尊嚴",
         "desc": "你在台北快樂嗎？無數青年來此追夢，卻連「住」都難安心，團隊走進25個房間，直擊年輕世代的居住困境。",
+        "gaTerm": "service_rent_taipei",
         "url": "https://vip.udn.com/newmedia/2023/rent-in-taipei/",
         "thumbs": [
           "/img/service/udn75_video27_01.mp4",
@@ -241,6 +250,7 @@
       {
         "title": "藥頭、車手、感化院 6名中途少年的觸法自白",
         "desc": "6位中途少年的自白，訴說著觸法行為背後的困境與茫然，走進這群少年的世界，傾聽他們的掙扎與徬徨。",
+        "gaTerm": "service_youth_crime",
         "url": "https://vip.udn.com/newmedia/2022/youth_crime/story",
         "thumbs": [
           "/img/service/udn75_video28_01.mp4",
@@ -266,6 +276,7 @@
       {
         "title": "解凍格陵蘭 探訪世界的邊境",
         "desc": "全球暖化加劇，位於北極圈的格陵蘭首當其衝。聯合報與願景工程基金會遠赴世界的盡頭，直擊氣候變遷現場。",
+        "gaTerm": "service_greenland",
         "url": "https://vip.udn.com/newmedia/2022/greenland/",
         "thumbs": [
           "/img/service/udn75_video29_01.mp4",

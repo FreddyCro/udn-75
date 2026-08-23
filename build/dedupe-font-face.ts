@@ -26,51 +26,111 @@ import type { Plugin } from 'vite';
  * 2. 只處理 `depth === 0` 的區塊。巢在 `@media` / `@supports` 裡的 `@font-face`
  *    在不同條件下語意不同，不可跨層去重（實測目前產物 3,219 條全在 top level、
  *    0 條巢狀，此保護是為了將來）。
- * 3. 掃描時會跳過字串常值，避免 `url("...{...}")` 這類內容干擾 brace 深度計數。
+ * 3. 掃描時會跳過**字串常值與註解** —— `url("...{...}")` 裡的大括號、以及 `/*!` 開頭的
+ *    法律聲明註解裡的引號與大括號，都不該參與 brace 深度計數（見 stringEnd／commentEnd）。
  *
  * ⚠️ 這裡**不碰字體檔案本身**。227 支 woff2 靠 unicode-range 分片，瀏覽器只會抓用到的
  *    片段，那部分本來就是對的。壞的一直只有「宣告它們的 CSS」。
  */
+const BACKSLASH = String.fromCharCode(92);
+const AT = '@font-face';
+
+/**
+ * 從 `i`（指向引號）往後找字串常值的結尾，回傳**結尾之後**的索引。
+ * 沒有收尾引號時回 `css.length`（＝整段照抄，行為等同改動前）。
+ */
+function stringEnd(css: string, i: number): number {
+  const quote = css[i]!;
+  let j = i + 1;
+  while (j < css.length) {
+    const ch = css[j]!;
+    if (ch === BACKSLASH) {
+      j += 2; // 逃脫序列：連同被逃脫的那個字元一起跳過
+      continue;
+    }
+    if (ch === quote) return j + 1;
+    j += 1;
+  }
+  return css.length;
+}
+
+/**
+ * 從 `i`（指向 `/*`）往後找註解的結尾，回傳**結尾之後**的索引。
+ *
+ * ⚠️ 為什麼一定要處理註解：minifier 會保留 `/*!` 開頭的法律聲明註解，而字體授權文字
+ *    裡出現一個撇號（`don't`、`Google's`）是常態。若把它當成字串起頭，從那裡開始整份 CSS
+ *    都會被誤判成「在字串裡」→ 一條 @font-face 都認不出來、去重整份失效，
+ *    而且**完全無聲**（省下 0 bytes、原本連 log 都不會印）。
+ */
+function commentEnd(css: string, i: number): number {
+  const end = css.indexOf('*/', i + 2);
+  return end === -1 ? css.length : end + 2;
+}
+
+/**
+ * 從 `open`（指向 `{`）往後找配對的 `}`，途中跳過字串常值與註解；找不到回 −1。
+ *
+ * ⚠️ 不能用 `indexOf('}')`：`}` 可以合法出現在字串常值（`url("a}b.woff2")`）與註解裡，
+ *    那樣會把區塊切在半路 —— 前半段進 seen、後半段留在輸出，兩邊都壞掉。
+ *    `@font-face` 內部不會有巢狀區塊，仍用深度計數，讓將來的語法（如 nesting）不會靜默壞掉。
+ */
+function blockEnd(css: string, open: number): number {
+  let depth = 0;
+  let i = open;
+  while (i < css.length) {
+    const ch = css[i]!;
+    if (ch === '"' || ch === "'") {
+      i = stringEnd(css, i);
+      continue;
+    }
+    if (ch === '/' && css[i + 1] === '*') {
+      i = commentEnd(css, i);
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+    i += 1;
+  }
+  return -1;
+}
+
 export function dedupeTopLevelFontFace(css: string): string {
-  const AT = '@font-face';
   // 先便宜地判斷：連兩條都沒有就不必掃。
   if (css.indexOf(AT) === -1) return css;
 
-  const BACKSLASH = String.fromCharCode(92);
   const seen = new Set<string>();
   const out: string[] = [];
   let depth = 0;
-  let quote = '';
   let i = 0;
 
   while (i < css.length) {
     const ch = css[i]!;
 
-    // ── 字串常值：整段照抄，不參與 brace 計數 ──
-    if (quote) {
-      out.push(ch);
-      if (ch === BACKSLASH && i + 1 < css.length) {
-        out.push(css[i + 1]!);
-        i += 2;
-        continue;
-      }
-      if (ch === quote) quote = '';
-      i += 1;
+    // ── 字串常值／註解：整段照抄，不參與 brace 計數 ──
+    if (ch === '"' || ch === "'") {
+      const end = stringEnd(css, i);
+      out.push(css.slice(i, end));
+      i = end;
       continue;
     }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      out.push(ch);
-      i += 1;
+    if (ch === '/' && css[i + 1] === '*') {
+      const end = commentEnd(css, i);
+      out.push(css.slice(i, end));
+      i = end;
       continue;
     }
 
     // ── top-level @font-face：整塊取出、比對、決定留或丟 ──
+    // 只跳空白，不跳註解 —— at-keyword 與 `{` 之間插了註解的寫法不會被認成候選，
+    // 那塊就原樣留下（少去重一條，不會切錯）。minifier 不產生這種形狀，先不為它加分支。
     if (depth === 0 && css.startsWith(AT, i)) {
       let j = i + AT.length;
       while (j < css.length && /\s/.test(css[j]!)) j += 1;
       if (css[j] === '{') {
-        const end = css.indexOf('}', j);
+        const end = blockEnd(css, j);
         if (end !== -1) {
           const block = css.slice(i, end + 1);
           if (seen.has(block)) {
@@ -108,6 +168,8 @@ export function dedupeTopLevelFontFace(css: string): string {
 export function dedupeFontFace(): Plugin {
   let saved = 0;
   let removed = 0;
+  /** 含 @font-face 的 CSS 資產數 —— 用來分辨「沒東西可去重」與「去重壞了」 */
+  let scanned = 0;
 
   return {
     name: 'udn75:dedupe-font-face',
@@ -123,6 +185,7 @@ export function dedupeFontFace(): Plugin {
           typeof chunk.source === 'string'
             ? chunk.source
             : Buffer.from(chunk.source).toString('utf8');
+        if (before.includes(AT)) scanned += 1;
         const after = dedupeTopLevelFontFace(before);
         if (after.length === before.length) continue;
 
@@ -133,11 +196,22 @@ export function dedupeFontFace(): Plugin {
     },
 
     closeBundle() {
-      if (!saved) return;
-      // 這筆數字值得留在 build log 上：它是首頁關鍵路徑最大的單一變因，
-      // 哪天升級 common-components 之後掉回 0，就是注入策略又變了。
-      this.info?.(
-        `dedupe-font-face: ${removed} 支 CSS 共省下 ${(saved / 1024).toFixed(0)} KB 重複的 @font-face`,
+      if (saved) {
+        // 這筆數字值得留在 build log 上：它是首頁關鍵路徑最大的單一變因，
+        // 哪天升級 common-components 之後掉回 0，就是注入策略又變了。
+        this.info?.(
+          `dedupe-font-face: ${removed} 支 CSS 共省下 ${(saved / 1024).toFixed(0)} KB 重複的 @font-face`,
+        );
+        return;
+      }
+      // 產物裡本來就沒有 @font-face（例如整組字體改成別的載入方式）＝ 沒東西可去重，正常。
+      if (!scanned) return;
+      // ⚠️ 有 @font-face 卻一條都沒去重 —— 這支 plugin 存在的理由就是那 480 KB 的重複，
+      //    真的歸零只有兩種可能：注入策略變了（好事，該把 plugin 拿掉），
+      //    或掃描器被 CSS 的某個形狀擋住了（壞事，關鍵路徑靜靜地胖回去）。
+      //    兩者都必須有人看到，所以這裡**不能沉默**（原本 `if (!saved) return` 就是沉默的）。
+      this.warn?.(
+        `dedupe-font-face: ${scanned} 支 CSS 含 @font-face，卻一條重複都沒去掉 —— 請確認注入策略是否改了，或掃描器是否被擋住`,
       );
     },
   };

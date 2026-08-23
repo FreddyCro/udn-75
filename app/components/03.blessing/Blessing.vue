@@ -19,6 +19,7 @@ import str from '@/locales/section3.json';
 // 明寫 import（本檔其他常數都吃 auto-import）：它是在 **template** 裡消費的，
 // 而 auto-import 只掃 script（同 BlessingFace.vue 的 FACE_GRID）。
 import { BLESSING_ANCHOR_VH } from '@/utils/orange-core-config';
+import { gaSectionViewOnce } from '@/utils/tracking-event';
 import {
   killScrollTriggers,
   refreshScrollTriggers,
@@ -271,6 +272,15 @@ const setPinState = (next: PinState) => {
   el.classList.remove(`is-${pinState}`);
   el.classList.add(`is-${next}`);
   pinState = next;
+
+  // GA section_view：benediction。
+  //
+  // ⚠️ 不掛 v-ga-view：這一段是**手動 pin**（is-pin-face / is-pin-list 會把剛體切成
+  //    position: fixed，見下方 .section3__unit），釘住期間它恆在視窗內，
+  //    IntersectionObserver 會在剛體剛接手時就成立、之後永遠成立。
+  // 用 'enter' 之後的第一個狀態當門檻：'enter' 只代表軌道上緣還在視窗內（段落正在進場），
+  // 'pin-face' 才是臉屏真的被定住、使用者確實在看這一段。
+  if (next !== 'flow' && next !== 'enter') gaSectionViewOnce('benediction');
 };
 
 const applyPinState = (scroll: number) => {

@@ -1,6 +1,13 @@
+import { basename } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import { dedupeFontFace } from './build/dedupe-font-face';
 import { aliasDemotedPageChunks } from './build/preload-page-chunks';
+
+// `pages:extend` 蒐集到的頁面名（＝ app/pages/<name>.vue 的 <name>），
+// 給 `build:manifest` 驗證「這個 chunk 真的是某個頁面的」用 ——
+// 光看 chunk name 是不夠的（`index` 這種名字到處都有，見 build/preload-page-chunks.ts）。
+// 兩個 hook 都在同一次 build 內、`pages:extend` 先跑，故用模組層變數傳遞就夠。
+const pageNames = new Set<string>();
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
@@ -110,10 +117,20 @@ export default defineNuxtConfig({
   // 成因與做法見 build/preload-page-chunks.ts —— 那支 chunk 有 664 KB，少一條 hint
   // 就是多一整跳的序列瀑布。
   hooks: {
+    // 頁面清單的真值來源。⚠️ 只收扁平的 app/pages/<name>.vue —— 別名的組法是
+    // `pages/<name>.vue`，巢狀頁面（pages/a/b.vue）組不出來，故一併排除、不亂認領。
+    'pages:extend': (pages) => {
+      for (const page of pages) {
+        if (!page.file?.endsWith('.vue')) continue;
+        if (!/[\\/]pages[\\/][^\\/]+\.vue$/.test(page.file)) continue;
+        pageNames.add(basename(page.file, '.vue'));
+      }
+    },
+
     'build:manifest': (manifest) => {
       aliasDemotedPageChunks(
         manifest as unknown as Parameters<typeof aliasDemotedPageChunks>[0],
-        (msg) => console.info(msg),
+        { log: (msg) => console.info(msg), pageNames },
       );
     },
   },

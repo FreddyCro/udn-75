@@ -6,6 +6,7 @@
 -->
 <script setup lang="ts">
 import str from '@/locales/section2.json';
+import { gaClickButton } from '~/utils/tracking-event';
 
 const { heading, body, cta } = str.report;
 
@@ -28,7 +29,7 @@ const { play } = useSfx();
       class="agenda-report__cta"
       :href="cta.href"
       @mouseenter="play('sfx01')"
-      @click="play('sfx01')"
+      @click="play('sfx01'); gaClickButton('button', cta.gaTerm)"
     >
       <!-- 文案含「mob 才斷行」的 <br/>（見 locales 的 cta.label 與下方 :deep(br)），
            故走 v-html —— 同 subpage 各頁 sp-h3／sp-lead 的既有慣例。

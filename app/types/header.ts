@@ -25,5 +25,13 @@ export type HeaderAnchorArt = {
 export type HeaderAnchor = {
   title: string;
   target: string;
+  /**
+   * GA 的 click_menu term。
+   *
+   * ⚠️ 刻意與 target 分開存：事件表定的是 symposium / benediction / newmedia，
+   *    而段落 id 是 forum / blessing / media —— 兩者**不同名**。用 target 去推
+   *    會需要一張硬編的對照表藏在元件裡；存成資料欄位則兩邊各自是自己的真值。
+   */
+  ga: string;
   art: HeaderAnchorArt;
 };

@@ -17,6 +17,7 @@ import { refreshOnFontsReady } from '~/utils/scroll-trigger';
 import { stepToward, targetSlotAt } from '~/utils/agenda-active';
 import { CORE } from '~/utils/orange-core-config';
 import type { UBtnVariant } from '~/types/ui';
+import { gaClickButton } from '~/utils/tracking-event';
 
 const { groups } = str.agenda;
 
@@ -29,6 +30,8 @@ const { groups } = str.agenda;
 type AgendaAction = {
   /** DOM id（GTM 點擊事件用） */
   id: string;
+  /** GA term（click_button / area=signup）：agenda_download ／ agenda_signup */
+  gaTerm: string;
   label: string;
   href: string;
   variant: string;
@@ -235,7 +238,7 @@ onBeforeUnmount(() => {
         :href="action.href"
         :download="action.download"
         @mouseenter="play('sfx01')"
-        @click="play('sfx01')"
+        @click="play('sfx01'); gaClickButton('signup', action.gaTerm)"
       >
         {{ action.label }}
       </UBtn>

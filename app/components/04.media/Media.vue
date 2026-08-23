@@ -133,7 +133,17 @@ useMediaIntroMotion({
           <div ref="roamRef" class="media__roam" aria-hidden="true" />
         </div>
 
-        <MediaList ref="listRef" />
+        <!-- v-ga-view：section_view（見 plugins/ga-section-view.client.ts）。
+             ⚠️ 一定要串 bgRevealed：清單是開場 motion 的 settle 尾端才 autoAlpha 淡入的
+             （與底紋同一個 tween，onBgReveal 就掛在它的 onStart 上），在那之前它已經佔了
+             版位但完全看不見 —— 只靠 IntersectionObserver 會在組字動畫還在演時就回報。
+             ⚠️ 另一半理由是 .media__hold 的 sticky：hold 期間整組定在視窗頂，IO 一旦成立
+             就不會再變。reduced-motion 降級路徑不建 timeline，bgRevealed 保持初值 true，
+             此時退化成純 IO 判定 —— 那條路徑上清單本來就一直看得見，語意正確。 -->
+        <MediaList
+          ref="listRef"
+          v-ga-view="bgRevealed ? 'newmedia_anchor' : ''"
+        />
       </div>
 
       <!-- 開場 motion 舞台：morph 色塊、兩側 bar 與分裂直線（絕對置中於第一屏） -->

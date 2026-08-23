@@ -11,6 +11,7 @@
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { killScrollTriggers } from '~/utils/scroll-trigger';
+import { gaSectionViewOnce } from '~/utils/tracking-event';
 
 const {
   symbolMode,
@@ -104,7 +105,16 @@ onMounted(() => {
     end: 'bottom center', // ＝ ForumCorePath 的 start，見上方 ⚠️
     // 刻意沒有 invalidateOnRefresh：它是「refresh 時對綁定的動畫呼叫 invalidate()」，
     // 而本 trigger 沒有掛動畫 → 純粹的 no-op。start/end 是字串，refresh 本來就會重算。
-    onUpdate: (self) => setSymbolProgress(self.progress),
+    onUpdate: (self) => {
+      setSymbolProgress(self.progress);
+      // GA section_view：ai_face ＝ 人臉序列。
+      //
+      // ⚠️ 不掛 v-ga-view：`.sec-symbol` 只是一把尺，畫面本體住在 hero 的 slot 裡
+      //    fixed 滿版（見檔頭），IO 量這個空佔位得到的時機與畫面上演到哪裡無關。
+      //    門檻 0.2：本段前 20% 是粒子從星空開始收斂，人臉在那之後才辨認得出來
+      //    （reveal 本身更早、發生在前一軌，見上方註解）。
+      if (self.progress >= 0.2) gaSectionViewOnce('ai_face');
+    },
     // ⚠️ onRefresh 不是可有可無的（同 Blessing 三條軌的理由）：symbolProgress 是 useState，
     //    **跨 client-side 導航存活**，而下面三個回呼都只在「狀態改變」時才寫入。
     //    子頁換回首頁時本元件 remount，這支 trigger 是全新的、自己的 progress 從 0 起算：

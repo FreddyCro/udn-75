@@ -48,6 +48,45 @@ describe('dedupeTopLevelFontFace', () => {
     );
   });
 
+  // ── 註解：這是實測會整份靜默失效的那一組 ──────────────────────────
+  it('註解裡的單一撇號不會被當成字串起頭（否則整份去重失效）', () => {
+    // minifier 保留的法律聲明（`/*!` 開頭）裡出現 `don't` 是常態。若沒跳過註解，
+    // 那個撇號會被當成字串起頭 → 從此整份都在「字串裡」，一條 @font-face 都認不出來。
+    // ⚠ 撇號必須是**奇數個**：偶數個會兩兩配對、剛好抵消掉舊實作的 bug
+    //   （實測 `Google's ... don't` 兩個撇號時舊實作照樣正常，抓不到這個洞）。
+    const legal = "/*! Noto Sans TC — don't remove */";
+    const block = '@font-face{font-family:"N";src:url(/a.woff2)}';
+    expect(dedupeTopLevelFontFace(`${legal}${block}${block}`)).toBe(
+      `${legal}${block}`,
+    );
+  });
+
+  it('註解裡的大括號不會打亂 depth 計數', () => {
+    const weird = '/* 這裡有 { 沒有配對 */';
+    const block = '@font-face{font-family:"N"}';
+    expect(dedupeTopLevelFontFace(`${weird}${block}${block}`)).toBe(
+      `${weird}${block}`,
+    );
+  });
+
+  it('未收尾的註解整段照抄，不會誤刪後面的內容', () => {
+    const css = '@font-face{font-family:"N"}/* 沒收尾 @font-face{x}';
+    expect(dedupeTopLevelFontFace(css)).toBe(css);
+  });
+
+  // ── 區塊結尾：不能用 indexOf('}')，`}` 在字串與註解裡都合法 ──────────
+  it('區塊內字串常值裡的 } 不會把區塊切在半路', () => {
+    // 若在第一個 `}`（url 裡那個）就收尾，區塊會被切成兩半：前半進 seen、
+    // 後半留在輸出 → 兩條都在，而且輸出還壞掉。
+    const block = '@font-face{font-family:"N";src:url("a}b.woff2")}';
+    expect(dedupeTopLevelFontFace(`${block}${block}`)).toBe(block);
+  });
+
+  it('區塊內註解裡的 } 不會把區塊切在半路', () => {
+    const block = '@font-face{font-family:"N";/* } */src:url(/a.woff2)}';
+    expect(dedupeTopLevelFontFace(`${block}${block}`)).toBe(block);
+  });
+
   it('沒有 @font-face 就原樣回傳', () => {
     const css = '.a{color:red}.b{color:blue}';
     expect(dedupeTopLevelFontFace(css)).toBe(css);
@@ -66,6 +105,9 @@ describe('dedupeTopLevelFontFace', () => {
 });
 
 describe('aliasDemotedPageChunks', () => {
+  // 實際呼叫端（nuxt.config 的 pages:extend）給的就是這一組扁平頁面名。
+  const PAGES = ['index', 'news', 'visual', 'data', 'education', 'health'];
+
   it('替共享 chunk 形態的 dynamic entry 補上 pages/<name>.vue 別名', () => {
     const indexEntry = {
       file: 'C7tgiC4b.js',
@@ -75,7 +117,7 @@ describe('aliasDemotedPageChunks', () => {
     const manifest: Record<string, typeof indexEntry> = {
       '_C7tgiC4b.js': indexEntry,
     };
-    aliasDemotedPageChunks(manifest);
+    aliasDemotedPageChunks(manifest, { pageNames: PAGES });
     // 指向同一個物件（manifest 內部大量共用參考，複製會壞掉）
     expect(manifest['pages/index.vue']).toBe(indexEntry);
   });
@@ -84,7 +126,7 @@ describe('aliasDemotedPageChunks', () => {
     const real = { file: 'real.js', name: 'news', isDynamicEntry: true };
     const shared = { file: 'shared.js', name: 'news', isDynamicEntry: true };
     const manifest = { 'pages/news.vue': real, '_shared.js': shared };
-    aliasDemotedPageChunks(manifest);
+    aliasDemotedPageChunks(manifest, { pageNames: PAGES });
     expect(manifest['pages/news.vue']).toBe(real);
   });
 
@@ -97,10 +139,47 @@ describe('aliasDemotedPageChunks', () => {
         isDynamicEntry: true,
       },
     };
-    aliasDemotedPageChunks(manifest);
+    aliasDemotedPageChunks(manifest, { pageNames: PAGES });
     expect(Object.keys(manifest).sort()).toEqual([
       '_vendor.js',
       'components/DevCoreProgress.vue',
     ]);
+  });
+
+  // ── 驗證一：只有真的存在的頁面名才有資格認領 ────────────────────────
+  it('名字不在 pageNames 裡就不認領（chunk name 不等於「這是那個頁面」）', () => {
+    // 相依套件的 index.js 被切成共享 chunk 時就叫 `index` —— 名字一樣，但它不是頁面。
+    const manifest = {
+      '_dep-index.js': { file: 'dep.js', name: 'index', isDynamicEntry: true },
+    };
+    aliasDemotedPageChunks(manifest, { pageNames: ['news'] });
+    expect(Object.keys(manifest)).toEqual(['_dep-index.js']);
+  });
+
+  // ── 驗證二：撞名時誰都不補 ──────────────────────────────────────────
+  it('兩個候選搶同一個別名時誰都不補，並印出警告', () => {
+    // 首頁 chunk 被降級（失去 key），而某個相依套件的共享 chunk 也叫 index ——
+    // 照 name 直接認領會看物件順序決定勝負，preload 就可能指向 dep.js。
+    const manifest = {
+      '_C7tgiC4b.js': { file: 'C7tgiC4b.js', name: 'index', isDynamicEntry: true },
+      '_dep-index.js': { file: 'dep.js', name: 'index', isDynamicEntry: true },
+    };
+    const logs: string[] = [];
+    aliasDemotedPageChunks(manifest, {
+      pageNames: PAGES,
+      log: (m) => logs.push(m),
+    });
+    expect(manifest['pages/index.vue']).toBeUndefined();
+    expect(logs.join('\n')).toContain('2 個同名候選');
+  });
+
+  it('沒給 pageNames 時仍會補（舊行為），但會印一行「無驗證模式」', () => {
+    const manifest = {
+      '_C7tgiC4b.js': { file: 'C7tgiC4b.js', name: 'index', isDynamicEntry: true },
+    };
+    const logs: string[] = [];
+    aliasDemotedPageChunks(manifest, { log: (m) => logs.push(m) });
+    expect(manifest['pages/index.vue']).toBeDefined();
+    expect(logs.join('\n')).toContain('無驗證模式');
   });
 });

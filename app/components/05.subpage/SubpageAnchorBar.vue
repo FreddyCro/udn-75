@@ -9,6 +9,7 @@
  */
 import str from '~/locales/common.json';
 import { anchorSlug } from '~/utils/subpage-stream';
+import { gaClickAnchor } from '~/utils/tracking-event';
 
 defineProps<{
   /** true 時滑入；預設隱藏在視窗下緣之外 */
@@ -31,6 +32,10 @@ const isActive = (url: string) =>
 const linkTo = (url: string) => (mode.value === 'scroll' ? `#${anchorSlug(url)}` : url);
 
 function onClick(e: MouseEvent, url: string) {
+  // ⚠️ GA 必須排在下面那道 return **之前**（同 SubpageAnchor 的理由）：route 模式會早退
+  //    把導航交給 NuxtLink，埋在後面就只有連續閱讀頁的點擊會被記到。
+  gaClickAnchor(anchorSlug(url));
+
   if (mode.value !== 'scroll') return; // route 模式：交給 NuxtLink 換頁
   e.preventDefault();
   const slug = anchorSlug(url);

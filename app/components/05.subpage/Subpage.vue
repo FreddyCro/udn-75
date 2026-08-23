@@ -19,6 +19,7 @@ import {
   stageLines,
   type StageBlockState,
 } from '@/utils/subpage-stage-beats';
+import { gaSectionViewOnce } from '@/utils/tracking-event';
 import type { IntroMediaImage, IntroMediaVideo } from './SubpageIntroMedia.vue';
 
 export interface SubpageNavData {
@@ -37,6 +38,13 @@ export interface SubpageIntroMediaData {
   video?: IntroMediaVideo;
 }
 export interface SubpageContent {
+  /**
+   * 這一篇的識別代號（news／visual／…），＝ 路由 path 也＝ GA term 的前綴。
+   *
+   * ⚠️ 必須是資料欄位，不能從 useRoute() 推：連續閱讀頁（<768 的 /subpage）把六篇串在
+   *    同一份文件裡，六個 <Subpage> 實例的 route.path 全都是 /subpage，推不出誰是誰。
+   */
+  slug: string;
   hero: {
     title: string;
     subtitle: string;
@@ -311,6 +319,20 @@ onMounted(async () => {
     { instant = false, replayHero = false, force = false } = {},
   ) {
     const wantHero = p < lines.heroOut;
+
+    // GA section_view：{slug}_keyvisual_upper／_lower。
+    //
+    // ⚠️ 這兩拍**不能**用 IntersectionObserver（故不掛 v-ga-view）：hero 與引言都住在
+    //    .subpage__stage 裡，而那一塊是 GSAP 的 pin: true —— 釘住期間整塊是 fixed、
+    //    恆在視窗內，IO 會在舞台一接手時就同時判定兩者都看到了。
+    //    真正的語意在這條尺的進度上：hero 與引言是同一個 pin 內先後兩拍，靠 p 切換。
+    // 用 wantHero（本幀算出來的期望值）而不是 heroShown：後者是「已套用的狀態」，
+    // 相同時這個函式的下游會整段跳過。heroRevealed 是進場動畫的閘門 ——
+    // 還沒播過時 hero 是藏著的，不能算看到。
+    if (wantHero && heroRevealed) {
+      gaSectionViewOnce(`${props.content.slug}_keyvisual_upper`);
+    }
+
     if (force || wantHero !== heroShown) {
       if (!wantHero) {
         heroShown = false;
@@ -326,6 +348,9 @@ onMounted(async () => {
 
     // 沒有第三拍時 introOut 落在 1 之後，永遠進不了 after，行為與加入媒體前相同
     const wantIntro = blockState(p, lines.introIn, lines.introOut);
+    if (wantIntro === 'shown') {
+      gaSectionViewOnce(`${props.content.slug}_keyvisual_lower`);
+    }
     if (force || wantIntro !== introState) {
       introState = wantIntro;
       if (wantIntro === 'shown') introFade.show(instant);
@@ -517,7 +542,11 @@ onBeforeUnmount(() => {
         <slot />
       </div>
 
-      <SubpageNav :back-url="content.nav.backUrl" :next="content.nav.next" />
+      <SubpageNav
+        :back-url="content.nav.backUrl"
+        :next="content.nav.next"
+        :slug="content.slug"
+      />
     </div>
   </article>
 </template>

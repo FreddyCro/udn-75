@@ -5,11 +5,14 @@
  * 獨立元件，供頁面以預設 slot 排版時直接使用（原為 JSON 驅動版型的一部分）。
  */
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { gaClickButton } from '~/utils/tracking-event';
 
 export interface SubpageWorkItem {
   title?: string;
   desc?: string;
   url?: string;
+  /** GA term（click_button / area=works），如 visual_etomidate。無 url 的列不需要 */
+  gaTerm?: string;
   /** 懸浮縮圖（單張；與 thumbs 擇一，thumbs 優先） */
   thumb?: string;
   /** 懸浮縮圖多重疊圖（最多 3 張，依序對應 thumbLayout 的 slot）。
@@ -238,7 +241,7 @@ onBeforeUnmount(() => {
         :active="activeIdx === i"
         :dimmed="activeIdx !== -1 && activeIdx !== i"
         @mouseenter="onEnter(i, $event)"
-        @click="play('sfx01')"
+        @click="play('sfx01'); w.gaTerm && gaClickButton('works', w.gaTerm)"
       />
     </div>
   </div>

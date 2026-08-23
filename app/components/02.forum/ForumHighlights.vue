@@ -6,6 +6,7 @@
 -->
 <script setup lang="ts">
 import str from '@/locales/section2.json';
+import { gaClickNews } from '~/utils/tracking-event';
 
 const { heading, items } = str.highlights;
 
@@ -41,7 +42,7 @@ const { play } = useSfx();
             class="highlights__cta"
             :href="item.href"
             @mouseenter="play('sfx01')"
-            @click="play('sfx01')"
+            @click="play('sfx01'); gaClickNews(item.gaTerm)"
           >
             {{ item.cta }}
             <img

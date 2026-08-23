@@ -30,6 +30,7 @@ import {
   HERO_OUTRO_CORE_ANCHOR,
 } from '@/utils/hero-video-config';
 import { consumeHomeRestart } from '@/utils/home-intent';
+import { gaSectionViewOnce } from '@/utils/tracking-event';
 
 // ── <SymbolFace> 的常數 props ────────────────────────────────────────────
 // 提到模組層而不是寫成 template 裡的字面值：本元件的 render effect 會被捲動打到
@@ -133,6 +134,17 @@ const introReveal = ref(0);
 const introOpacity = computed(() =>
   String((1 - introFade.value) * introReveal.value),
 );
+
+// GA section_view：keyvisual_lower ＝ 引言屏。
+//
+// ⚠️ 這一段不能用 IntersectionObserver（不掛 v-ga-view）：它住在被 transitionST 釘住的
+//    .sec1__inner 裡，pin 期間整塊是 fixed、恆在視窗內 —— IO 會在 pin 一開始就成立。
+//    而且它「被看到」的定義本來就不是 DOM 位置，是這裡這個淡入進度（影片硬切消失後才起跑）。
+//    門檻取 0.6：稿上引言在 60% 不透明度就已經清楚可讀，等到 1 會漏掉「淡入還沒走完就
+//    繼續往下捲」的使用者（introReveal 與 introFade 會短暫重疊，見上方註解）。
+watch(introOpacity, (v) => {
+  if (Number(v) >= 0.6) gaSectionViewOnce('keyvisual_lower');
+});
 
 // 引言的 runway：50vh（core 從文字底緣走到視窗中央所需）＋ 淡出窗口，兩者都由
 // INTRO_FADE_VH 推出 → 淡出必然剛好在 pin 接手的同一刻結束（見 orange-core-config）。
@@ -371,6 +383,13 @@ onMounted(() => {
   // 而由別處補的路徑）：watch(heroState) 接不到那次改變，引言會停在 opacity 0 看不見。
   // 這些使用者沒看過影片，沒有「接上」可言 → 直接給 1，不做淡入。
   if (isGone.value && !introRevealTween) introReveal.value = 1;
+
+  // GA section_view：keyvisual_upper ＝ 開場影片那一屏。
+  //
+  // 它就是進站的第一屏，故不需要任何觀測 —— 只要影片還沒被跳過就代表使用者看到了。
+  // ⚠️ 一定要排在上面 bypassForEntry() 之後：帶 hash 進站（/#forum、從子頁按錨點回來）
+  //    的人會被直接推到 gone，那條路徑根本沒渲染過開場 KV，不該送。
+  if (!isGone.value) gaSectionViewOnce('keyvisual_upper');
 
   if (!introRef.value || !innerRef.value) return;
   gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
@@ -825,6 +844,7 @@ function applyScrollLock() {
           :bg-light-amount="symbolBgLight"
           :phrases="str.symbol.phrases"
           :hint="str.symbol.hint"
+          :hint-pad="str.symbol.hintPad"
           :hint-mob="str.symbol.hintMob"
           :scroll-hint="str.symbol.scrollHint"
           :hole-radius="25"

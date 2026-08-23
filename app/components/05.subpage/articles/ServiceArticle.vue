@@ -53,13 +53,13 @@ const c = raw as ServiceContent;
     </div>
 
     <!-- 在資訊洪流中守住信任 -->
-    <div class="sp-col mt-16">
+    <div v-ga-view="'service_algorithm'" class="sp-col mt-16">
       <h2 class="sp-h3 mb-4">{{ c.trust.title }}</h2>
       <p class="sp-p" v-html="c.trust.body" />
     </div>
 
     <!-- 近年得獎獎項：寬欄；小標 mob 靠左、pad 以上置中 -->
-    <div class="sp-col sp-col--wide mt-16 mb-16">
+    <div v-ga-view="'service_award'" class="sp-col sp-col--wide mt-16 mb-16">
       <h2 class="sp-subtitle text-center">{{ c.awards.title }}</h2>
       <!-- 桂冠圖表 svg 自帶上下留白 32 → pad 以上貼著小標排即為對稿間距；mob 版 svg 無留白，補 32 -->
       <figure class="award-chart mx-auto mt-8 max-w-140.75 sm:mt-0">

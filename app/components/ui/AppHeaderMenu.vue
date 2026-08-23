@@ -4,6 +4,7 @@
  * 開啟時 header 一律切白底（設計稿只有白面板一版），由 AppHeader 控制。
  */
 import type { HeaderAnchor } from '~/types/header';
+import { gaClickMenu } from '~/utils/tracking-event';
 
 const props = defineProps<{
   open: boolean;
@@ -25,20 +26,25 @@ const artStyle = useArtMask();
 const isHome = computed(() => route.path === '/');
 
 // 首頁：攔下路由、就地捲動。
-function onHomeSelect(target: string, e: MouseEvent) {
+//
+// GA 的 term 走 anchor.ga（symposium／benediction／newmedia）而不是 target
+// （forum／blessing／media）—— 事件表與段落 id 不同名，見 types/header.ts 的說明。
+function onHomeSelect(anchor: HeaderAnchor, e: MouseEvent) {
   // 修飾鍵點擊＝開新分頁的意圖，放行給瀏覽器，面板也不收（使用者還留在本頁）。
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
   emit('close');
-  emit('select', target);
+  emit('select', anchor.target);
   play('sfx01');
+  gaClickMenu(anchor.ga);
 }
 
 // 子頁：導航交給 NuxtLink，本函式只負責把面板收起來。
-function onAwaySelect(e: MouseEvent) {
+function onAwaySelect(anchor: HeaderAnchor, e: MouseEvent) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   emit('close');
   play('sfx01');
+  gaClickMenu(anchor.ga);
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -149,7 +155,7 @@ onBeforeUnmount(() => {
             :href="`#${anchor.target}`"
             :tabindex="open ? 0 : -1"
             @mouseenter="play('sfx01')"
-            @click="onHomeSelect(anchor.target, $event)"
+            @click="onHomeSelect(anchor, $event)"
           >
             <span class="app-header-menu__art" :style="artStyle(anchor.art.menu)" />
             <!-- 真文字只有這一份（SR／SEO 的唯一來源），不做第二份複本 -->
@@ -168,7 +174,7 @@ onBeforeUnmount(() => {
             :to="`/#${anchor.target}`"
             :tabindex="open ? 0 : -1"
             @mouseenter="play('sfx01')"
-            @click="onAwaySelect"
+            @click="onAwaySelect(anchor, $event)"
           >
             <span class="app-header-menu__art" :style="artStyle(anchor.art.menu)" />
             <span class="visually-hidden">{{ anchor.title }}</span>

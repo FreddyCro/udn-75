@@ -31,14 +31,14 @@ const assetUrl = useAssetUrl();
     </div>
 
     <!-- 縮短社會鴻溝 凝聚行動力 -->
-    <div class="sp-col mt-16">
+    <div v-ga-view="'health_dementia'" class="sp-col mt-16">
       <h2 class="sp-h3 mb-4">{{ c.gap.title }}</h2>
       <p class="sp-p" v-html="c.gap.body" />
     </div>
 
     <!-- 失智社群按鈕 -->
     <div class="mt-8">
-      <SubpageCta :label="c.communityCta.label" :url="c.communityCta.url" />
+      <SubpageCta :label="c.communityCta.label" :url="c.communityCta.url" ga-term="dementia" />
     </div>
 
     <!-- 媒體不只報導 更提供解方 -->
@@ -48,7 +48,7 @@ const assetUrl = useAssetUrl();
     </div>
 
     <!-- 近年得獎獎項 -->
-    <div class="max-w-152 lg:max-w-157.5 mt-16 mx-auto">
+    <div v-ga-view="'health_award'" class="max-w-152 lg:max-w-157.5 mt-16 mx-auto">
       <h2 class="sp-subtitle text-center">{{ c.awards.title }}</h2>
       <div class="mt-4 gap-8 flex flex-col sm:mt-8 lg:mt-5 lg:gap-6 pl-5 pr-5 xs:pl-6.5 xs:pr-6.5 sm:pl-0 sm:pr-0">
         <div
@@ -84,7 +84,7 @@ const assetUrl = useAssetUrl();
 
     <!-- 共享按鈕 -->
     <div class="mt-16 mb-16">
-      <SubpageCta :lead="c.finalCta.lead" :label="c.finalCta.label" :url="c.finalCta.url" />
+      <SubpageCta :lead="c.finalCta.lead" :label="c.finalCta.label" :url="c.finalCta.url" ga-term="new_medical" />
     </div>
   </Subpage>
 </template>

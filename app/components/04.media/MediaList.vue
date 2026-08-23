@@ -3,6 +3,7 @@
 import common from '@/locales/common.json';
 import { TABLET_BREAKPOINTS } from '~/utils/constants';
 import { anchorSlug } from '~/utils/subpage-stream';
+import { gaClickAnchor } from '~/utils/tracking-event';
 
 const { subpageAnchors } = common;
 
@@ -54,7 +55,7 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
         class="media__row"
         :to="linkFor(a.url)"
         @mouseenter="play('sfx01')"
-        @click="play('sfx01')"
+        @click="play('sfx01'); gaClickAnchor(anchorSlug(a.url))"
       >
         <!-- 文字塊（編號＋標題，hover 整塊 scale）；break 只在 mob 稿於「：」後換行 -->
         <span class="media__text">

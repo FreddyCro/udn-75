@@ -13,6 +13,7 @@
     {
       "title": "論壇",
       "target": "forum",
+      "ga": "symposium",
       "art": {
         "pc": { "src": "/img/header/anchor-forum-pc.svg", "w": 35.0012, "h": 15.0017 },
         "menu": { "src": "/img/header/anchor-forum-menu.svg", "w": 89.0166, "h": 52.9983 }
@@ -21,6 +22,7 @@
     {
       "title": "永續祝福",
       "target": "blessing",
+      "ga": "benediction",
       "art": {
         "pc": { "src": "/img/header/anchor-blessing-pc.svg", "w": 72.0096, "h": 15.0012 },
         "menu": { "src": "/img/header/anchor-blessing-menu.svg", "w": 183, "h": 53.0127 }
@@ -29,6 +31,7 @@
     {
       "title": "智慧新媒體",
       "target": "media",
+      "ga": "newmedia",
       "art": {
         "pc": { "src": "/img/header/anchor-media-pc.svg", "w": 90.4569, "h": 14.99 },
         "menu": { "src": "/img/header/anchor-media-menu.svg", "w": 231, "h": 52.9886 }

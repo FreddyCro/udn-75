@@ -21,8 +21,8 @@ const c = raw as EducationContent;
     </div>
 
     <!-- 線上特輯按鈕 -->
-    <div class="mt-8 lg:mt-16 mb-16 md:mb-8">
-      <SubpageCta :label="c.cta.label" :url="c.cta.url" />
+    <div v-ga-view="'education_competition20'" class="mt-8 lg:mt-16 mb-16 md:mb-8">
+      <SubpageCta :label="c.cta.label" :url="c.cta.url" ga-term="competition20" />
     </div>
   </Subpage>
 </template>

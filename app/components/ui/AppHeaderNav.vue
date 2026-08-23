@@ -7,6 +7,7 @@
  * 子頁 PC 的 header 就只剩 logo ＋ 音效 ＋ share，完全沒有導覽。
  */
 import type { HeaderAnchor } from '~/types/header';
+import { gaClickMenu } from '~/utils/tracking-event';
 
 defineProps<{
   anchors: HeaderAnchor[];
@@ -28,20 +29,28 @@ const isHome = computed(() => route.path === '/');
 const artStyle = useArtMask();
 
 // 首頁：攔下瀏覽器的預設跳轉，改走 scrollToTarget（它會補掉 fixed header 的高度）。
-function onHomeSelect(target: string, e: MouseEvent) {
+//
+// GA 的 term 走 anchor.ga（symposium／benediction／newmedia）而不是 target
+// （forum／blessing／media）—— 事件表與段落 id 不同名，見 types/header.ts 的說明。
+// ⚠️ 這一列在 <1280 是 display:none，但**仍會渲染**（見檔頭說明），所以 GA 只在真的被點到
+//    時才送 —— 與漢堡選單共用同一個事件與同一組 term（決策：PC 錨點列也算 click_menu），
+//    要切裝置維度在 GA 端做。
+function onHomeSelect(anchor: HeaderAnchor, e: MouseEvent) {
   // 修飾鍵點擊＝開新分頁的意圖，一律放行給瀏覽器。
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
-  emit('select', target);
+  emit('select', anchor.target);
   play('sfx01');
+  gaClickMenu(anchor.ga);
 }
 
 // 子頁：導航交給 NuxtLink，本函式只負責守修飾鍵（與 onHomeSelect 對齊，
 // 也與 AppHeader.onLogoClick、AppHeaderMenu.onHomeSelect / onAwaySelect 一致）——
 // ⌘/Ctrl 點擊＝開新分頁，不算本頁互動，不出聲。
-function onAwaySelect(e: MouseEvent) {
+function onAwaySelect(anchor: HeaderAnchor, e: MouseEvent) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   play('sfx01');
+  gaClickMenu(anchor.ga);
 }
 </script>
 
@@ -59,7 +68,7 @@ function onAwaySelect(e: MouseEvent) {
         :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
         :href="`#${anchor.target}`"
         @mouseenter="play('sfx01')"
-        @click="onHomeSelect(anchor.target, $event)"
+        @click="onHomeSelect(anchor, $event)"
       >
         <span class="app-header-nav__art" :style="artStyle(anchor.art.pc)" />
         <!-- 真文字只有這一份（SR／SEO 的唯一來源），不做第二份複本 -->
@@ -76,7 +85,7 @@ function onAwaySelect(e: MouseEvent) {
         :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
         :to="`/#${anchor.target}`"
         @mouseenter="play('sfx01')"
-        @click="onAwaySelect"
+        @click="onAwaySelect(anchor, $event)"
       >
         <span class="app-header-nav__art" :style="artStyle(anchor.art.pc)" />
         <span class="visually-hidden">{{ anchor.title }}</span>

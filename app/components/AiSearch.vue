@@ -13,6 +13,7 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { gaClickButton } from '~/utils/tracking-event';
 import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 export interface AiKeyword {
@@ -272,7 +273,13 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="ai-search__cta-row">
-      <a class="ai-search__cta" :href="ctaUrl" target="_blank" rel="noopener">
+      <a
+        class="ai-search__cta"
+        :href="ctaUrl"
+        target="_blank"
+        rel="noopener"
+        @click="gaClickButton('button', 'vip')"
+      >
         深入體驗聯合報數位版
       </a>
     </div>

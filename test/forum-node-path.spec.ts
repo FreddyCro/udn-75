@@ -141,7 +141,11 @@ const PAD_RECTS: FixtureRects = {
 //   順著撇穿過去（實測差 5–7px），這兩點只是把它釘成精準重合。
 const PAD_VERTICES: [number, number][] = [
   [386.9, 191.0], [386.9, 398.5], [571.4, 339.0], [665.9, 792.5], [232.4, 1066.5],
-  [549.9, 1308.5], [619.9, 3219.5], [380.9, 3312.0],
+  [549.9, 1308.5], [619.9, 3219.5],
+  // Q7 刻意偏離稿 x 380.9 → 342.7（0.496 → 0.4462，讓 Q7→撇 共線；理由見
+  // forum-node-path 的 Q7）。同 mob 的 P7：斷言寫**意圖值**而非稿值。
+  // ⚠ 這個數字綁著撇的位置 —— `--coreslash-*` 一改就要重推。
+  [342.7, 3312.0],
   [PAD_SLASH.left + PAD_SLASH.width, PAD_SLASH.top], // Q7a 撇的右上角
   [PAD_SLASH.left, PAD_SLASH.top + PAD_SLASH.height], // Q7b 撇的左下角
   [246.0, 3595.0], [109.0, 3627.0],
@@ -262,6 +266,72 @@ describe('完整路徑（前半段 ＋ 後半段）', () => {
     // 進入端是右上角、離開端是左下角（核心在這一帶往左下走）
     expect((enter.x as { edge: string }).edge).toBe('right');
     expect((exit!.x as { edge: string }).edge).toBe('left');
+  });
+
+  // ── 撇的前一段要接成同一筆（折角把關）─────────────────────────────
+  //
+  // 為什麼非得有這條測試：這幾個折角**全部低於 forum-path-turns 的 90° 轉折門檻**
+  // → 面板上看不到、轉折音也不會多一顆，畫面上卻是實實在在的折角。
+  // 2026-08-23 pad 的撇縮短 20% 之後漏了重推 Q7，折角從 10° 撐到 21° 就是這樣溜過去的
+  //（同一個 commit 有替 mob 的 P7 重推，pad 漏了）。
+  //
+  // 參考寬（REF_WIDTH）不是稿寬，是**共線成立的那個寬度**：
+  //   pad —— 容器固定 768（見 forum-node-path 的 Q10），Q7 是 768 的比例 → 就是 768。
+  //   mob —— P7 釘右牆（隨寬度跑），撇卻是固定 px 的 left/width（不隨寬度跑），
+  //          兩者的水平距離因此隨寬度變 → 共線只在一個寬度上精準成立。
+  //          P7 的 dy 是在實機約 399px 寬下量的（見該處註解的「水平距離 190.08」），
+  //          故這裡用 399 而非 414 稿寬；在 414 下殘留 1.8°（無害，記在此）。
+  // ⚠ 這個值只要撇一動就要跟著重推 —— 測試失敗時**不要調寬鬆容差**，
+  //   要回去重推 Q7 的 x（pad）／P7 的 dy（mob）。
+  const REF_WIDTH = { pad: 768, mob: 399 } as const;
+
+  /** 相鄰兩點連線的方位角（度，螢幕座標 y 向下 → 正角度＝順時針） */
+  const segAngle = (p: [number, number], q: [number, number]) =>
+    (Math.atan2(q[1] - p[1], q[0] - p[0]) * 180) / Math.PI;
+  /** 兩段方位角之間的折角（0–180） */
+  const turnBetween = (a: number, b: number) => {
+    const d = (((b - a) % 360) + 360) % 360;
+    return d > 180 ? 360 - d : d;
+  };
+
+  /** 回傳 [進入端的折角, 離開端的折角]，單位度 */
+  const slashKinks = (bp: 'pad' | 'mob') => {
+    const nodes = bp === 'pad' ? PAD_NODES : MOB_NODES;
+    const rects = bp === 'pad' ? PAD_RECTS : MOB_RECTS;
+    const built = buildNodePathD(nodes, {
+      width: REF_WIDTH[bp],
+      measure: measureFrom(rects),
+    })!;
+    const pts = endpoints(built.d);
+    const i = nodes.findIndex(
+      (n) =>
+        n.anchor.sel === '.forum-event__date-coreslash' &&
+        n.anchor.edge === 'top',
+    );
+    const before = segAngle(pts[i - 1]!, pts[i]!);
+    const slash = segAngle(pts[i]!, pts[i + 1]!);
+    const after = segAngle(pts[i + 1]!, pts[i + 2]!);
+    return [turnBetween(before, slash), turnBetween(slash, after)] as const;
+  };
+
+  it.each(['pad', 'mob'] as const)(
+    '%s：撇的前一段落在撇的延長線上（Q7／P7 沒漏重推）',
+    (bp) => {
+      const [enter] = slashKinks(bp);
+      expect(enter).toBeLessThan(0.5);
+    },
+  );
+
+  // 離開端（Q7b／P7b → Q8／P8）的折角**不是**用 Q7／P7 調得動的：它只由撇的左下角
+  // 與髮夾彎頂點決定，而那個頂點是「碰到講者組上緣」的設計規則（見 CORE_TOUCH），
+  // 不為了對齊撇而搬。故這裡不是斷言它很小，而是**釘住現值**：撇再動一次、
+  // 或髮夾彎的錨點再改一次，這條會先叫出來，讓人去重看那一帶還像不像同一筆。
+  it.each([
+    ['pad', 21.4],
+    ['mob', 20.3],
+  ] as const)('%s：撇的後一段折角維持在 %s° 附近（釘住現值）', (bp, expected) => {
+    const [, exit] = slashKinks(bp);
+    expect(exit).toBeCloseTo(expected, 0);
   });
 
   it.each(['pc', 'pad', 'mob'] as const)('%s 的最後一點掛在接縫（不受開關影響）', (bp) => {

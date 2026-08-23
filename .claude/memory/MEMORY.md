@@ -4,6 +4,7 @@
 - [Dev server stale vite error](dev-server-stale-vite-error.md) — 除錯畫面異常前先查 vite-error-overlay；server 會卡在過期編譯錯誤讓 HMR 樣式失效，製造幽靈 bug，重啟即癒
 - [Verify scroll-driven visuals](verify-scroll-driven-visuals.md) — 用 ?pathdebug 的 \_\_udnST 傳送到目標進度來驗 scrub 視覺；locator.screenshot() 會 scrollIntoView 弄掉捲動位置
 - [No auto commit](no-auto-commit.md) — 絕不自行 commit；停下來給 commit message，由使用者決定
+- [Bash heredoc unreliable](bash-heredoc-unreliable.md) — 本機 Bash 的 heredoc 會 parse 失敗甚至截斷目標檔；寫檔一律用 Write。附帶：Windows 刪除進回收筒，檔案不見先查回收筒
 - [Comment style](comment-style.md) — 註解精簡原則：不寫 Figma node ID、不寫敘事型檔頭，只留維護必要資訊
 - [UI component workflow](ui-component-workflow.md) — 共用元件建置流程與清單在 architecture/components.md；ui/ + U 前綴、五步 SOP
 - [RWD breakpoint mapping](rwd-breakpoint-mapping.md) — 斷點權威來源是 mixins.scss；這裡只留 1024 誤傳的更正、JS matchMedia 值、稿的細切原則

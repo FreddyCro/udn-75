@@ -10,6 +10,7 @@ import {
 import { pickActiveAnchor } from '@/utils/anchor-spy';
 import { anchorLanding, anchorOffsetVh } from '@/utils/anchor-landing';
 import { requestHomeRestart, resolveHomeIntent } from '@/utils/home-intent';
+import { gaLogo } from '@/utils/tracking-event';
 import type { HeaderAnchor } from '@/types/header';
 
 /**
@@ -309,6 +310,8 @@ function onLogoClick(e: MouseEvent) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 
   play('sfx01');
+  // 兩個渲染分支（首頁 <a> ／子頁 <NuxtLink>）都導到這裡，故 GA 只需埋這一處。
+  gaLogo();
 
   // 選單開著時 logo 仍可點：.app-header__bar-wrap 的 z-index 2 疊在面板（z-index 1）之上。
   // 就地倒帶不換頁 → 面板不會自己消失，.is-menu-locked 也還鎖著 html/body，

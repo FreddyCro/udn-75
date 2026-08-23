@@ -27,7 +27,7 @@ const c = raw as VisualContent;
     </div>
 
     <!-- 哪一張是AI生成圖?：小標 + 滿版二選一測驗 -->
-    <div class="sp-col mt-16">
+    <div v-ga-view="'visual_ai_image'" class="sp-col mt-16">
       <h2 class="ai-title">{{ c.quiz.title }}</h2>
     </div>
     <div class="mt-4">
@@ -52,7 +52,7 @@ const c = raw as VisualContent;
     </div>
 
     <!-- 近年得獎獎項：寬欄；小標 mob 靠左、pad 以上置中 -->
-    <div class="sp-col sp-col--wide mt-16 mb-16">
+    <div v-ga-view="'visual_award'" class="sp-col sp-col--wide mt-16 mb-16">
       <h2 class="sp-subtitle text-center">{{ c.awards.title }}</h2>
       <!-- 桂冠圖表 svg 自帶上下留白 32 → pad 以上貼著小標排即為對稿間距；mob 版 svg 無留白，補 32 -->
       <figure class="award-chart mx-auto mt-8 max-w-(--subpage-content-w) sm:mt-0">

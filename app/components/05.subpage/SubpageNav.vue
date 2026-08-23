@@ -1,13 +1,23 @@
 <script lang="ts" setup>
 /** SubpageNav — 子頁最下方的「返回 / 下一篇」導覽。 */
-withDefaults(
+import { gaClickButton } from '~/utils/tracking-event';
+
+const props = withDefaults(
   defineProps<{
     backUrl?: string;
     backLabel?: string;
     next?: { title?: string; url?: string };
+    /** 所在頁的 slug（news／visual／…），GA term 用：{slug}_back ／ {slug}_next */
+    slug?: string;
   }>(),
-  { backUrl: '/', backLabel: '返回' },
+  { backUrl: '/', backLabel: '返回', slug: '' },
 );
+
+// term 以「離開哪一篇」命名，而不是「去哪裡」——「使用者從 news 往下一篇」比
+// 「使用者去了 visual」更能回答「哪一篇留得住人」，而目的地本來就由順序決定。
+const gaNav = (dir: 'back' | 'next') => {
+  if (props.slug) gaClickButton('nav', `${props.slug}_${dir}`);
+};
 </script>
 
 <template>
@@ -15,7 +25,11 @@ withDefaults(
     <div class="subpage-nav__inner">
       <!-- 用 NuxtLink 而非原生 <a>：原生 href 是整頁重載，不走 vue-router，
            換頁轉場（app.pageTransition）不會觸發。to 收乾淨的 route path，baseURL 由 NuxtLink 處理。 -->
-      <NuxtLink class="subpage-nav__link subpage-nav__link--back" :to="backUrl">
+      <NuxtLink
+        class="subpage-nav__link subpage-nav__link--back"
+        :to="backUrl"
+        @click="gaNav('back')"
+      >
         <!-- 靜止／hover 同一顆圖示，只換顏色（圓：透明→橘、箭頭：灰→白）與尺寸——
              <img> 載入的 svg 無法用 CSS 上色，故內嵌。
              幾何＝udn75_nav_prev.svg／udn75_nav_prev_hover.svg（兩者箭頭路徑相同，只差顏色）。 -->
@@ -37,6 +51,7 @@ withDefaults(
         v-if="next?.url"
         class="subpage-nav__link subpage-nav__link--next"
         :to="next.url"
+        @click="gaNav('next')"
       >
         <span class="subpage-nav__label">{{ next.title }}</span>
         <!-- 兩段音波（同 HeroStart 音效提示）：兩圈相位差半個週期的擴散波，墊在圓鈕背後；

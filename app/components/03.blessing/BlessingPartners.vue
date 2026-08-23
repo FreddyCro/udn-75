@@ -14,6 +14,7 @@
 // 空 quote 整行不輸出——空的 <p> 會佔掉一行行高、把該列撐高。欄位一律保留而不省略，
 // 是為了讓 JSON 的每一列型別一致（TS 從 JSON import 推型別，缺欄位會讓 item.url 報錯）。
 import str from '@/locales/section3.json';
+import { gaClickButton } from '~/utils/tracking-event';
 
 const assetUrl = useAssetUrl();
 
@@ -48,7 +49,7 @@ const { play } = useSfx();
             :target="item.url ? '_blank' : undefined"
             :rel="item.url ? 'noopener' : undefined"
             @mouseenter="play('sfx01')"
-            @click="play('sfx01')"
+            @click="play('sfx01'); item.gaTerm && gaClickButton('partner', item.gaTerm)"
           >
             <!-- 外框尺寸固定為設計稿的 logo 框，圖以 contain 內縮，換不同比例的 logo 也不變形 -->
             <img

@@ -124,9 +124,14 @@ onBeforeUnmount(() => {
       <!-- photo-reveal ＝ 講者照的藍塊狀態（三態，見 <ForumEvent> 的 prop 說明）。
            對照用場次名而非 v-for 索引：論壇三查不到 key ⇒ undefined ⇒ 不渲染遮罩，
            與它沒有講者的事實自然一致。 -->
+      <!-- v-ga-view：section_view（見 plugins/ga-section-view.client.ts）。
+           掛在 Forum 而不是 ForumEvent 內部：本區的三場在正常流、恆可見，而論壇四與議程
+           那一組還要吃 agendaRevealed 這道可見度閘門（見下方）—— 兩種條件都只有這裡知道。
+           指令掛在元件上會落到它的根節點（.forum-event），與 ForumCorePath 的量測錨點無關。 -->
       <ForumEvent
         v-for="(e, i) in forum.events"
         :key="i"
+        v-ga-view="`symposium_${e.gaTerm}`"
         :event="e"
         :photo-reveal="photoRevealOf(e.no)"
       />
@@ -145,8 +150,14 @@ onBeforeUnmount(() => {
         'sec2__pin--held': coverHoldArmed,
       }"
     >
-      <Agenda />
-      <AgendaReport />
+      <!-- ⚠️ 本組（議程／報告／論壇四／精彩活動）的 section_view 一律要串上 agendaRevealed：
+           .sec2__pin 在揭露前是 opacity 0 但**照樣佔版位**，只靠 IntersectionObserver 會在
+           使用者還看不到任何東西時就回報。term 綁成 '' 時指令不送，揭露後才換成真值
+           （指令會重新註冊觀測，讓「已在視窗內」的元素也補得到回呼 —— 見該 plugin 的說明）。
+           ⚠️ 這裡**不需要**顧慮 --held 的 sticky：本塊平時是 relative，只有覆蓋過場那 100vh
+           才掛 sticky，那時整組早就回報完了（見下方 .sec2__pin 的註解）。 -->
+      <Agenda v-ga-view="agendaRevealed ? 'symposium_agenda' : ''" />
+      <AgendaReport v-ga-view="agendaRevealed ? 'symposium_report' : ''" />
 
       <!-- 論壇四（青年永續築夢論壇）：結構與前三場相同，故直接用 <ForumEvent>，
            版式是它專屬的 layout: 'youth'（見 types/forum.ts）。
@@ -154,11 +165,20 @@ onBeforeUnmount(() => {
            1280 設計稿座標 —— .sec2__pin 沒有 max-width，故外面補一層同寬的容器。
            ⚠️ 也因為不在 .sec2__path 內，<ForumCorePath> 的錨點查找範圍必須涵蓋這一塊
            （後半段路徑會掛在它身上）。 -->
-      <div class="sec2__forum4">
+      <div
+        v-ga-view="agendaRevealed ? `symposium_${forum.event4.gaTerm}` : ''"
+        class="sec2__forum4"
+      >
         <ForumEvent :event="forum.event4" />
       </div>
 
-      <ForumHighlights v-if="highlightsVisible" />
+      <!-- ⚠️ 精彩活動目前藏在 ?highlights=1 之後（見上方 highlightsVisible）。
+           埋著沒有壞處：旗子一開 GA 就跟著生效；沒開時這個 term 不會有任何資料，
+           那與「區塊還沒上線」的事實一致。 -->
+      <ForumHighlights
+        v-if="highlightsVisible"
+        v-ga-view="agendaRevealed ? 'symposium_review' : ''"
+      />
     </div>
 
     <!-- 接縫標記：零高度、**不** sticky，位置恆等於 .sec2__pin 的自然下緣。

@@ -277,13 +277,18 @@ const props = defineProps({
    *  預設 true：一般 in-flow 用法不必傳，交給下方 IntersectionObserver 判斷即可。 */
   active: { type: Boolean, default: true },
 
-  /** PC 互動提示文字（空字串＝不顯示）。換行用 \n，樣式端以 white-space: pre-line 呈現。
+  /** PC 互動提示文字（≥1280px，空字串＝不顯示）。換行用 \n，樣式端以 white-space: pre-line 呈現。
    *  設計稿 Figma 2065:139734：圓環圖示 + 兩行說明橫排，錨在人像右下臉頰（見 HINT_ICON_UV）。
-   *  只在 ≥1280px 出現（樣式端擋），且游標真的碰到人像就收起（收多久見 hintOnce）。 */
+   *  游標真的碰到人像就收起（收多久見 hintOnce）。 */
   hint: { type: String, default: '' },
+  /** 平板互動提示文字（768–1279px，空字串＝不顯示）。
+   *  **版位與 hint 同一套**（圓環圖示 + 右側兩行橫排，見 .hint__text 的斷點），只有文案不同
+   *  —— 這一段的操作邏輯跟手機一樣是點擊（見 TAP_QUERY），沿用 hint 的「游標移動」
+   *  等於叫使用者移動一個不存在的游標。故是獨立一份文案、不是獨立一套版位。 */
+  hintPad: { type: String, default: '' },
   /** 手機版互動提示文字（＜768px，空字串＝不顯示）。設計稿 Figma 2065:120222。
-   *  與 hint 的差別是**版位與文案**：手機的說明不排在圖示右邊，而是單行置中排在人像下方；
-   *  文案也不同（手機沒有游標，稿上是「點擊人臉…」）。圓環圖示本身兩個斷點共用。 */
+   *  與 hint / hintPad 的差別是**版位**：手機的說明不排在圖示右邊，而是單行置中排在人像下方
+   *  （見 .hint-mob）。圓環圖示本身三個斷點共用。 */
   hintMob: { type: String, default: '' },
   /** 下滑提示的說明文字（空字串＝不渲染這顆按鈕）。設計稿 Figma 2065:139741。
    *  圖示本體、漂移動態與「點了往下捲一屏」都在 <UBtnScrollHint>，本元件只給版位。
@@ -312,7 +317,7 @@ const srgbColor = (style: string) =>
 const wrapRef = ref<HTMLDivElement | null>(null);
 const eggRef = ref<HTMLDivElement | null>(null);
 // 目前顯示的彩蛋句 index（EGG_CLOSED ＝ 不顯示），只在換句時更新 → slot 內容僅換句才 re-render。
-// 兩種驅動方式（見下方 isMob 那段）：桌機是游標所在宮格逐幀推導，手機是 tap／計時器寫入。
+// 兩種驅動方式（見下方 TAP_QUERY 那段）：桌機是游標所在宮格逐幀推導，手機／平板是 tap／計時器寫入。
 const activeEgg = ref(EGG_CLOSED);
 
 // 彩蛋換句的音效。⚠️ **不要**掛在 watch(activeEgg) 上 —— 那個 watcher 對自動換句
@@ -346,20 +351,32 @@ watch(activeEgg, (idx) => {
   runScramble(idx >= 0 ? (cfg.phrases[idx] ?? '') : '');
 });
 
-// ---------- 手機版彩蛋：tap 驅動 ----------
-// 手機沒有 hover，故 <768px 走另一套：點人臉**任一處**就依序換下一句（不分宮格，
+// ---------- 彩蛋：tap 驅動（手機 ＋ 平板）----------
+// 手機與平板都沒有 hover，故 <1280px 走另一套：點人臉**任一處**就依序換下一句（不分宮格，
 // 規則見 ~/utils/symbol-egg），開啟後每 EGG_AUTO_MS 自動換下一句，且**不因手指離開而收起**
 // —— 只有點在人臉以外、或整個離開集合態（見 faceFormed 的 watch）才關。
 // 桌機維持宮格 hover 對位，兩套只在 animate() 的彩蛋段分流。
 //
-// 斷點沿用 hint 那把尺（下方 HINT_ICON_UV 的 mob 版位也吃它）：與 hintMob 的文案
-// 「點擊人臉…」、Hero 的 worldScale 同一個 768 界線，全站一致。
-// ⚠️ 已知取捨（同 .hint 的 SCSS 註解）：≥768px 的觸控裝置仍走 hover 那套，在那些機器上
-//    彩蛋摸不到。改用 (hover: none) 可解，但會與吃寬度的 hint 版位脫鉤，故依專案慣例走斷點。
+// ⚠️ 這裡有**兩把不同的尺**，別再併回同一個查詢（2026-08-23 拆開）：
+//   TAP_QUERY(<1280) ── 互動模式。平板是觸控，界線得畫在 pc 那一格才吃得到 tap。
+//                       併回 768 的話 768–1279 會落在「走 hover 那套、但機器沒有 hover」
+//                       的縫裡 ＝ 彩蛋整段摸不到。
+//   MOB_QUERY(<768)  ── hint **版位**（HINT_ICON_UV 的 mob/pc 版位、.hint-mob 的存在）。
+//                       稿只有 mob 與 pc 兩版，平板沿用 pc 版位、只換文案（見 hintPad）。
+// 也就是說平板 ＝ 「pc 的版位 ＋ mob 的操作」，這正是它掉在縫裡的原因。
+// ⚠️ 已知取捨：768–1279 外接滑鼠的機器（Surface、iPad + 觸控板）也走 tap ——
+//    hover 不再開彩蛋，要點一下。改用 (hover: none) 能分辨，但會與吃寬度的 hint 版位脫鉤，
+//    故依專案慣例一律走斷點。
+const TAP_QUERY = '(max-width: 1279.98px)'; // ＝ mixins.scss 的 rwd-max('pc')
 const MOB_QUERY = '(max-width: 767.98px)'; // ＝ mixins.scss 的 rwd-max('tablet')
 // 非 reactive：animate() 每幀讀它分流，包成 ref 等於在熱迴圈多一次 getter。
 // 真正需要重繪的狀態是 activeEgg，那個才是 ref。初值與後續變動見 onMounted 的 matchMedia。
-let isMob = false;
+let isTapMode = false;
+// 版位那把尺的反應式副本：這兩支要進 template（文案來源、.hint-mob 的存在），
+// 不在熱迴圈裡，故用 ref。與 isTapMode 在同一批地方一起更新（onMounted 的 matchMedia）。
+const isMobView = ref(false);
+/** 768–1279：pc 的 hint 版位 ＋ mob 的 tap 操作。 */
+const isPadView = ref(false);
 /** 自動換下一句的間隔（ms）。扣掉 480ms 的亂碼動畫還有 2.5 秒可讀。 */
 const EGG_AUTO_MS = 3000;
 let eggAutoTimer = 0;
@@ -504,7 +521,7 @@ watch(() => props.worldScale, (v) => applyConfig({ worldScale: v }));
 // 位置由 onMounted 內把人像 bbox 上的錨點投影到螢幕算出，null ＝ 人像還沒建好、先不渲染。
 
 // 圓環圖示的錨點：人像 bbox 內的正規化座標（u 由左、v 由上，0..1）。
-// 稿上兩個斷點放的位置不同，故分開列：
+// 稿只有兩版版位，故只有兩組（平板沿用 pc 那組，見 MOB_QUERY 那段的兩把尺）：
 //   pc  ── 使用者提供的 pc 版位參考圖，量圖示中心相對 bbox 的比例（右下臉頰、壓在下顎線上）
 //   mob ── Figma 2065:120222：bbox (62,135) 293×428、圖示 88×88 落在 (269,368)
 //          → u=(269+44-62)/293、v=(368+44-135)/428
@@ -516,7 +533,18 @@ const HINT_ICON_UV = {
 };
 // 手機版說明文字與人像 bbox 底緣的距離（Figma 2065:120222：bbox 底 563 → 文字頂 594）。
 // 實際寫在 .hint-mob 的 margin-top，這裡只是註記出處。
-// 斷點判定共用上方彩蛋那支 isMob（同一把尺，見 MOB_QUERY）。
+// 版位判定吃 MOB_QUERY 那把尺（＜768 才有這一組），與互動模式的 TAP_QUERY 分開。
+
+/** 圓環圖示右側那段橫排文字（pc 與平板共用版位、只換文案；手機不在這組裡，見 .hint-mob）。 */
+const hintText = computed(() =>
+  isPadView.value ? props.hintPad : props.hint,
+);
+/** 當下斷點真的會出現在畫面上的那一份文案 ＝ hint 顯隱的判準（見 syncHintVisible）。
+ *  ⚠️ 不能一律讀 props.hint：平板讀的是 hintPad、手機讀的是 hintMob，
+ *     用 props.hint 當判準的話，只給了其中一份文案的斷點會整組不出現。 */
+const hintCopy = computed(() =>
+  isMobView.value ? props.hintMob : hintText.value,
+);
 
 const hintVisible = ref(false);
 const hintPos = ref<{ x: number; y: number } | null>(null);
@@ -532,12 +560,20 @@ const dismissHint = () => {
   hintVisible.value = false;
 };
 
+/** 依當下斷點與集合狀態重算 hint 顯隱。兩個呼叫點：集合狀態改變（faceFormed 的 watch）、
+ *  以及拉視窗／轉向跨過斷點（onTierChange）。
+ *  ⚠️ 後者是必要的、不是保險：文案來源會跟著斷點換（見 hintCopy），
+ *     從有文案的那一格換到沒文案的那一格時，舊的 true 會賴在畫面上。 */
+const syncHintVisible = () => {
+  hintVisible.value = faceFormed.value && !hintDismissed && !!hintCopy.value;
+};
+
 // 綁 faceFormed 而不是 mode：粒子真的聚成人臉那一刻才淡入，離開集合態（捲回 disperse、
 // 前進 converge、或捲出視窗停掉迴圈）立即隱藏。
 // ⚠️ 這裡不再排 setTimeout —— 舊寫法是「mode 翻成 face 後等 disperseDuration」去**猜**
 //    集合完成的時間點：猜不到首次進場的 revealDuration、也猜不到補間被 kill/重跑
 //    （見 disperseFn 的 killTweensOf）或迴圈中途被停掉的情形。
-// props.hint / props.hintOnce 都是靜態常數（文案從 section1.json import，once 由父層寫死），
+// 三份文案與 props.hintOnce 都是靜態常數（文案從 section1.json import，once 由父層寫死），
 // 故不納入 watch source；若之後改成動態值，需一併加進來追蹤。
 watch(faceFormed, (formed) => {
   // 非 once：離開集合態時把「已收起」還原 → 下一次完整集合會再出現一次。
@@ -545,9 +581,9 @@ watch(faceFormed, (formed) => {
   //    dismissHint 與這裡會在同一輪集合內互踩 —— 游標一停在人像上，
   //    收起與復原會輪流發生，提示變成閃爍。
   if (!formed && !props.hintOnce) hintDismissed = false;
-  hintVisible.value = formed && !hintDismissed && !!props.hint;
+  syncHintVisible();
 
-  // 手機版彩蛋的第二個（也是最後一個）關閉入口：離開集合態 —— 捲到 disperse／converge、
+  // tap 版彩蛋的第二個（也是最後一個）關閉入口：離開集合態 —— 捲到 disperse／converge、
   // 捲出視口、切分頁（見 stopLoop 也會把 faceFormed 收成 false）。
   // ⚠️ 少了這一段，捲到匯聚那一拍畫面只剩一顆橘核心，卻還飄著一句橘字，
   //    而且背景那支 3 秒計時器會一直換句換下去。
@@ -591,12 +627,9 @@ const armIdleTimer = () => {
 // 進場／離場都要重排計時（切分頁回來也走這條，見 onDocVisibility → syncRunning）。
 watch(onStage, armIdleTimer);
 
-// 斷點的反應式副本。熱迴圈用的 isMob 刻意是非 reactive（見它的宣告處），但 mobHintOn
-// 要進 template，得有人通知 Vue 重算 —— 兩者在同一批地方一起更新（onMounted 的 matchMedia）。
-const isMobView = ref(false);
-
 // 手機版互動提示此刻是否真的在畫面上：條件與 .hint-mob 的 v-if ＋ .hint-mob--on 完全一致，
 // 外加它只在 <768px 才 display:block 的那道樣式條件（＝ isMobView，同一把尺 MOB_QUERY）。
+// ⚠️ 平板不算在內：那一段的說明排在圖示右邊（pc 版位）、與下滑提示不重疊，故不必互斥。
 const mobHintOn = computed(
   () =>
     isMobView.value &&
@@ -621,19 +654,30 @@ onMounted(() => {
   const width = wrap.clientWidth;
   const height = wrap.clientHeight;
 
-  // 手機版彩蛋走 tap（見 MOB_QUERY 那段），hint 的版位也吃同一把尺。
-  // 轉向／拉視窗跨過斷點時：先關掉彩蛋（換到桌機那套後，tap 開的那句沒有人會再收），
-  // 再重算 hint 錨點（pc 與 mob 的 HINT_ICON_UV 不同）。
+  // 兩把尺（理由與界線見 TAP_QUERY / MOB_QUERY 那段）：<1280 走 tap 操作，<768 走 mob 版位。
+  // 兩個查詢的 change 共用同一支處理器 —— 跨過任何一條界線都要做同樣三件事：
+  //   ① 關掉彩蛋 ── 換到桌機那套後，tap 開的那句沒有人會再收（桌機的 index 由游標重算）
+  //   ② 重算 hint 錨點 ── pc 與 mob 的 HINT_ICON_UV 不同
+  //   ③ 重算 hint 顯隱 ── 文案來源跟著斷點換（見 syncHintVisible）
+  // ⚠️ 每次都重讀兩顆 mq 的 matches、不用事件的 e.matches：一次 change 只告訴你**其中一條**
+  //    界線的新值，拿它去寫另一支旗標會寫錯（例如 1280→1200 只有 tapMq 觸發，
+  //    此時 isMobView 應維持 false，用 e.matches 會被寫成 true）。
+  const tapMq = window.matchMedia(TAP_QUERY);
   const mobMq = window.matchMedia(MOB_QUERY);
-  isMob = mobMq.matches;
-  isMobView.value = isMob; // 反應式副本（給 mobHintOn 用，見它的宣告處）
-  const onMobChange = (e: MediaQueryListEvent) => {
-    isMob = e.matches;
-    isMobView.value = isMob;
+  const readTier = () => {
+    isTapMode = tapMq.matches;
+    isMobView.value = mobMq.matches;
+    isPadView.value = tapMq.matches && !mobMq.matches;
+  };
+  readTier();
+  const onTierChange = () => {
+    readTier();
     closeEgg();
     updateHintAnchor();
+    syncHintVisible();
   };
-  mobMq.addEventListener('change', onMobChange);
+  tapMq.addEventListener('change', onTierChange);
+  mobMq.addEventListener('change', onTierChange);
 
   const scene = new THREE.Scene();
   // ⚠️ 這顆 Color 物件從頭到尾是同一個 instance（下方 syncBg 就地補間 r/g/b），
@@ -744,8 +788,8 @@ onMounted(() => {
   //    存 px 的話文字會釘在舊像素位置、與人臉脫節；存 world 則由 animate() 每幀投影，
   //    自動跟著人臉走（同 hint 錨點的做法）。
   const eggAnchor = new THREE.Vector3();
-  /** 手機彩蛋開著嗎 ＝ 真空是否該定住不放（見 onLeave）。 */
-  const eggHolding = () => isMob && activeEgg.value >= 0;
+  /** tap 版彩蛋開著嗎 ＝ 真空是否該定住不放（見 onLeave）。 */
+  const eggHolding = () => isTapMode && activeEgg.value >= 0;
 
   // canvas 左上角（視窗座標）：clientX/Y → NDC 的換算基準。
   //
@@ -811,19 +855,19 @@ onMounted(() => {
   // 彩蛋關閉時鬆開真空（closeEgg 走這條，見它的宣告處）。桌機不受影響：
   // 那邊的 influence 一律由游標的進出決定，closeEgg 只是在離開集合態時順手收東西。
   releaseMouseFn = () => {
-    if (isMob) targetInfluence = 0;
+    if (isTapMode) targetInfluence = 0;
   };
 
-  // 手機版彩蛋：點人臉換下一句、點人臉以外關閉（桌機讓開，走 animate() 的宮格路徑）。
+  // tap 版彩蛋（手機 ＋ 平板）：點人臉換下一句、點人臉以外關閉（桌機讓開，走 animate() 的宮格路徑）。
   // ⚠️ 用 click 而不是 pointerdown：捲動拖曳會走 pointercancel、不會合成 click，
   //    故「捲頁時手指掃過人臉」不會誤開彩蛋 —— 這一段畫面本來就是靠捲動推進的。
   const onTap = (e: MouseEvent) => {
     // 集合途中／散場中點下去不該冒出彩蛋（同 PC 提示，理由見 faceFormed 宣告處）
-    if (!isMob || !faceFormed.value) return;
+    if (!isTapMode || !faceFormed.value) return;
     toNdc(e.clientX, e.clientY);
     raycaster.setFromCamera(ndc, camera);
     if (!raycaster.ray.intersectPlane(plane, hit)) return;
-    // 命中框與桌機宮格同一套（faceUv），差別只在手機不再把它切成 gridCols × gridRows
+    // 命中框與桌機宮格同一套（faceUv），差別只在 tap 版不再把它切成 gridCols × gridRows
     const uv = faceUv(hit.x, hit.y, halfW, halfH);
     const next = tapEggIndex(activeEgg.value, cfg.phrases.length, !!uv);
     activeEgg.value = next;
@@ -837,7 +881,7 @@ onMounted(() => {
       mouse.copy(hit);
       targetInfluence = 1;
       startEggAuto(); // 點擊＝剛換過一句，3 秒從頭算
-      // 手機的提示文案就是「點擊人臉…」，點到了就等於學會了 → 收起（收多久見 hintOnce）
+      // tap 版的提示文案就是「點擊人臉…」，點到了就等於學會了 → 收起（收多久見 hintOnce）
       if (!hintDismissed) dismissHint();
     } else {
       stopEggAuto();
@@ -1546,9 +1590,10 @@ onMounted(() => {
     //    啟動 rAF），此時 camera.matrixWorldInverse 仍是單位矩陣、position.z 還沒烘進去，
     //    project() 的透視除法會除以 0 → Infinity。先手動更新矩陣，補上 renderer 尚未做的那一步。
     camera.updateMatrixWorld();
-    // 斷點讀彩蛋那支 isMob（onMounted 內以 matchMedia 初始化並追蹤變動）：
+    // 版位讀 isMobView（onMounted 內以 matchMedia 初始化並追蹤變動，見 readTier）：
     // 跨斷點時 change 回呼會直接再呼叫本函式一次，不必在這裡重新查詢 media query。
-    const [u, v] = isMob ? HINT_ICON_UV.mob : HINT_ICON_UV.pc;
+    // ⚠️ 讀的是 **MOB_QUERY 那把尺**、不是互動模式的 isTapMode —— 平板走 pc 版位。
+    const [u, v] = isMobView.value ? HINT_ICON_UV.mob : HINT_ICON_UV.pc;
     // uv(0..1，左上原點) → world：x 由 -halfW 到 +halfW、y 由 +halfH 到 -halfH
     hintPos.value = projectAnchor(halfW * (u! * 2 - 1), -halfH * (v! * 2 - 1));
     hintMobPos.value = projectAnchor(0, -halfH);
@@ -1721,17 +1766,17 @@ onMounted(() => {
     // PC 提示：游標真的碰到人像 → 永久收起。
     // ⚠️ 判定用 bbox 而非「真的撞散粒子」（holeRadius 命中）—— 後者在臉的空白處移動不會觸發，
     //    提示會賴著不走。autoMouse 是無 hover 環境用的虛擬游標，會自己戳到，不算使用者互動。
-    // ⚠️ 手機讓開（!isMob）：那邊沒有 hover，收起時機改在 tap（見 onTap）——
+    // ⚠️ tap 版讓開（!isTapMode）：那邊沒有 hover，收起時機改在 tap（見 onTap）——
     //    不擋的話，手指為了捲動掃過人臉就會把「點擊人臉…」這句提示收掉，而使用者根本沒點過。
-    if (onFace && !hintDismissed && !cfg.autoMouse && !isMob) dismissHint();
+    if (onFace && !hintDismissed && !cfg.autoMouse && !isTapMode) dismissHint();
 
-    // 彩蛋：兩套驅動（見 MOB_QUERY 那段）
-    //   手機 ── index 由 tap／3 秒計時器寫入，這裡只負責定位；錨點是最後一次點擊處，
-    //           顯隱**不看 influence**（手指早就離開了，看它就會自己淡掉）。
-    //   桌機 ── index 由游標所在宮格逐幀推導，文字跟著游標跑、濃度跟著 influence 淡入淡出。
+    // 彩蛋：兩套驅動（見 TAP_QUERY 那段）
+    //   手機／平板 ── index 由 tap／3 秒計時器寫入，這裡只負責定位；錨點是最後一次點擊處，
+    //                 顯隱**不看 influence**（手指早就離開了，看它就會自己淡掉）。
+    //   桌機       ── index 由游標所在宮格逐幀推導，文字跟著游標跑、濃度跟著 influence 淡入淡出。
     const eggEl = eggRef.value;
     if (eggEl && halfW > 0) {
-      if (isMob) {
+      if (isTapMode) {
         const open = activeEgg.value >= 0;
         if (open) placeEgg(eggEl, eggAnchor);
         eggEl.style.opacity = open ? '1' : '0';
@@ -1870,7 +1915,8 @@ onMounted(() => {
     renderer.domElement.removeEventListener('click', onTap);
     window.removeEventListener('scroll', onScroll);
     clearTimeout(idleTimer); // 下滑提示的十秒計時（由上面那支 onScroll 排的）
-    mobMq.removeEventListener('change', onMobChange);
+    tapMq.removeEventListener('change', onTierChange);
+    mobMq.removeEventListener('change', onTierChange);
     revealTween?.kill(); // gsap ticker 上的補間，不會隨 rAF 一起停
     revealTween = null;
     gsap.killTweensOf(bgColor); // 同上：底色補間也跑在 gsap 的 ticker 上
@@ -1899,10 +1945,11 @@ onMounted(() => {
     </div>
 
     <!-- 互動提示：圓環圖示錨在人像右下臉頰（位置由 JS 投影寫成 --hint-x/y，對位交給 CSS），
-         游標/手指真的碰到人像後收起。圖示照 Figma 2065:139734 的三個同心圓，兩個斷點共用；
-         說明文字 pc 排在圖示右邊（.hint__text）、手機排在人像下方（.hint-mob）。 -->
+         游標/手指真的碰到人像後收起。圖示照 Figma 2065:139734 的三個同心圓，三個斷點共用；
+         說明文字 pc／平板排在圖示右邊（.hint__text，兩者文案不同見 hintText）、
+         手機排在人像下方（.hint-mob）。 -->
     <div
-      v-if="(hint || hintMob) && hintPos"
+      v-if="(hint || hintPad || hintMob) && hintPos"
       class="hint"
       :class="{ 'hint--on': hintVisible }"
       :style="{ '--hint-x': `${hintPos.x}px`, '--hint-y': `${hintPos.y}px` }"
@@ -1933,7 +1980,7 @@ onMounted(() => {
         />
         <circle cx="44" cy="44" r="8" fill="white" fill-opacity="0.85" />
       </svg>
-      <p class="hint__text">{{ hint }}</p>
+      <p class="hint__text">{{ hintText }}</p>
     </div>
 
     <!-- 手機版說明文字：單行置中，錨在人像 bbox 底緣中點、下移 31px（Figma 2065:120222）。
@@ -2002,8 +2049,10 @@ onMounted(() => {
 }
 
 // 圓環圖示那一組：位置由 JS 把 bbox 上的錨點投影成螢幕 px，寫進 --hint-x/y。
-// tablet（768–1279）不顯示：稿只有 mob 與 pc 兩版，中間那段沒有版位可依。
-// ⚠️ 已知取捨：寬度 ≥1280 的觸控裝置（iPad Pro 橫向、Surface）也會看到 pc 那句「游標移動」，
+// 三個斷點都出現。稿只有 mob 與 pc 兩版，平板沿用 pc 版位、只換文案（見 hintPad prop）——
+// 2026-08-23 之前 tablet（768–1279）是 display:none，那一段整組提示看不到，而彩蛋也同時
+// 卡在「走 hover 那套、但機器沒有 hover」的縫裡（見 script 側 TAP_QUERY 那段）。
+// ⚠️ 已知取捨：寬度 ≥1280 的觸控裝置（iPad Pro 橫向、Surface）仍會看到 pc 那句「游標移動」，
 //    但那台機器沒有游標。改用 (hover: hover) 能擋掉，此處依專案決定一律走斷點。
 $hint-icon-size: 88px;
 
@@ -2012,7 +2061,7 @@ $hint-icon-size: 88px;
   left: 0;
   top: 0;
   z-index: 2;
-  display: none;
+  display: flex;
   align-items: center;
   gap: 16px;
   // ⚠️ 第二段位移是把**圖示中心**（而非整組的中心）對到錨點：pc 稿的說明文字排在圖示
@@ -2024,14 +2073,6 @@ $hint-icon-size: 88px;
   opacity: 0;
   transition: opacity 0.4s ease;
   will-change: opacity;
-
-  @include rwd-max('tablet') {
-    display: flex;
-  }
-
-  @include rwd-min('pc') {
-    display: flex;
-  }
 }
 
 .hint--on {
@@ -2046,7 +2087,8 @@ $hint-icon-size: 88px;
 }
 
 // pc 稿的橫排說明：Noto Sans TC Light 13 / 26、字距 1.3、白色（主字體由 base.scss 全域指定）。
-// 手機不排在圖示旁邊，故 <pc 一律不出現 —— 這也讓 .hint 在手機只剩圖示、上面那道
+// 平板共用這一組版位、只換文案（見 script 側的 hintText），故界線畫在 tablet 而不是 pc。
+// 手機不排在圖示旁邊，故 <768 一律不出現 —— 這也讓 .hint 在手機只剩圖示、上面那道
 // translate 自然等於置中。
 .hint__text {
   display: none;
@@ -2058,7 +2100,7 @@ $hint-icon-size: 88px;
   color: #fff;
   white-space: pre-line; // 吃文案裡的 \n
 
-  @include rwd-min('pc') {
+  @include rwd-min('tablet') {
     display: block;
   }
 }

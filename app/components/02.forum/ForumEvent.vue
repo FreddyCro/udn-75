@@ -11,6 +11,7 @@
 -->
 <script setup lang="ts">
 import type { ForumEvent, ForumLine, ForumTextArt } from '~/types/forum';
+import { gaClickButton } from '~/utils/tracking-event';
 
 const props = withDefaults(
   defineProps<{
@@ -126,7 +127,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
         class="forum-event__cta"
         href="#"
         @mouseenter="play('sfx01')"
-        @click="play('sfx01')"
+        @click="play('sfx01'); gaClickButton('signup', event.ctaGaTerm ?? '')"
       >
         {{ event.cta }}
       </UBtn>
@@ -309,7 +310,10 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       // 目視微調（同上）：170/87 → 190/96 → 175/105。
       // 190/96 時整撇偏右下（實測撇心 (305, 370)，而「09」右下角與「15」左上角的中點是
       // (283, 365)）。縮短 20% 會讓撇心自然往左上移 (−6.9, −14)，故 x 再減 15、y 再加 9。
-      // ⚠ 這一撇的版位是唯一真值（Q7a/Q7b 掛在它身上），改完同步 spec 的 PAD_SLASH。
+      // ⚠ 這一撇的版位是唯一真值（Q7a/Q7b 掛在它身上），改完要做兩件事：
+      //   ① 同步 spec 的 PAD_SLASH；
+      //   ② **重推 forum-node-path 的 Q7 的 x** —— 它是「撇的延長線上」反推的，
+      //      不會自己跟上（本次縮短 20% 就漏了，折角從 10° 撐到 21°）。
       --coreslash-x: 175px;
       --coreslash-y: 105px;
 
@@ -330,8 +334,9 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       // 2026-08-23 再往下 38：68 的位置整撇夾在「2026」與「09」之間（實測撇心 y 342.5、
       // 而「09」列與「15」列的交界在 381），視覺上不像「09/15」的那一撇。
       // ⚠ 這一撇的版位是**唯一的真值** —— 設計線的 P7a/P7b 掛在這個元素上（見
-      //   forum-node-path 的 SLASH_SEL），改這裡線會自己跟上，**不要**去 forum-node-path
-      //   另抄一份座標。改完記得同步 test/forum-node-path.spec.ts 的 MOB_SLASH。
+      //   forum-node-path 的 SLASH_SEL），那兩點會自己跟上，**不要**去 forum-node-path
+      //   另抄一份座標。但 **P7 的 dy 不會自己跟上**（它是從撇的位置反推的），
+      //   改完要重推它，並同步 test/forum-node-path.spec.ts 的 MOB_SLASH。
       --coreslash-x: 132px;
       --coreslash-y: 106px;
 

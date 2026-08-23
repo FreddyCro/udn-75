@@ -1,16 +1,30 @@
 <script lang="ts" setup>
 /** SubpageCta — 子頁置中外連按鈕（可選 lead 引導句，education / health 頁）。 */
+import { gaClickButton } from '~/utils/tracking-event';
+
 defineProps<{
   label: string;
   url: string;
   lead?: string;
+  /**
+   * GA term（click_button / area=button）：competition20 ／ dementia ／ new_medical。
+   * 由呼叫端給而不是從 url 推：term 是事件表定好的識別，網址日後改了不該讓 GA 斷代。
+   */
+  gaTerm?: string;
 }>();
 </script>
 
 <template>
   <div class="subpage-cta">
     <p v-if="lead" class="subpage-cta__lead">{{ lead }}</p>
-    <a class="subpage-cta__btn" :href="url" target="_blank" rel="noopener">{{ label }}</a>
+    <a
+      class="subpage-cta__btn"
+      :href="url"
+      target="_blank"
+      rel="noopener"
+      @click="gaTerm && gaClickButton('button', gaTerm)"
+      >{{ label }}</a
+    >
   </div>
 </template>
 
