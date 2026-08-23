@@ -748,6 +748,34 @@ export const FORUM_PLANE = {
   scale: { pc: 1, pad: 1, mob: 1 } as Record<'pc' | 'pad' | 'mob', number>,
 };
 
+// ── 轉折的撞擊擠壓 ───────────────────────────────────────────────────
+// 核心撞上一個轉折時除了出聲（FORUM_TURN_SFX），方塊還要**先壓扁再彈回**：
+// 26×26（原始，稿 2652-52697）→ 32×17（撞擊瞬間，稿 2652-52711）→ 26×26。
+//
+// 壓的軸向是**行進方向**（見 ForumCorePath 的 writeCore）：方塊全程繞著切線轉，
+// 撞上去的那一面永遠是它的 local −y。故稿上那個「32 寬 17 高」量的是
+// 「垂直行進方向鼓出 32、沿行進方向被壓成 17」，不是螢幕座標的寬高。
+//
+// 為什麼是**時間**驅動而非捲動驅動（本段其他東西一律 scrub）：撞擊是一個事件、
+// 不是一段路程 —— 與音效同一個觸發點、同一種語意（見 ForumCorePath 的 hitTurnsCrossed）。
+// 做成 scrub 的話，慢慢捲過轉折會看到方塊被「按住」壓扁停在那裡，那是擠壓、不是撞擊。
+//
+// inDur 遠短於 outDur：撞上去是硬的、彈回來是軟的，兩段等長會像在呼吸。
+// outEase 用 back.out —— 它的回彈會讓 amount 越過 0 變**負**，也就是反向的拉長
+//（back.out(2.2) 實測谷底 amount ≈ −0.15 → 約 25.1×27.4），那正是文字描述裡的「再彈起」。
+// 想完全照稿、只要那兩個狀態不要那一下拉長，把它換成 'power2.out' 即可。
+export const FORUM_TURN_SQUASH = {
+  /** 撞擊瞬間的方塊尺寸（px），對照原始的 CORE.dotSize × CORE.dotSize。
+   *  換算成倍率的算式與退化見 ~/utils/forum-path-turns 的 squashScaleAt。 */
+  size: [32, 17] as [number, number],
+  /** 壓下去吃掉的秒數。 */
+  inDur: 0.07,
+  /** 彈回吃掉的秒數。 */
+  outDur: 0.36,
+  inEase: 'power3.out',
+  outEase: 'back.out(2.2)',
+};
+
 // 註：原有 PATH（桌機設計中心線幾何：stub 垂直段 + C/L 曲線片段 + 相對 date 大標左上角的
 // anchorOffset）已隨 date 段移除。新稿 hero 段的路徑是「第一屏中央 → 視窗正中央」的垂直線，
 // 幾何直接由 section 量測推導、不需常數（見 OrangeCorePath.vue 的 build()）。

@@ -34,6 +34,7 @@ import {
   FORUM_TURN_SAMPLE_LEN,
   FORUM_TURN_SFX,
   pickTurns,
+  squashScaleAt,
   turnAngleDeg,
   type ForumTurn,
 } from '~/utils/forum-path-turns';
@@ -155,6 +156,40 @@ let slashTipScale = 1;
 let turnLens: number[] = [];
 let lastTurnLen: number | null = null;
 
+// 撞擊擠壓的補間狀態（見 orange-core-config 的 FORUM_TURN_SQUASH）。
+// squash.v ＝ 壓了多少：0 原尺寸、1 稿上的 32×17、負值 ＝ 回彈那一下的拉長。
+// 用一個純資料物件當補間目標而非直接補 DOM：核心的 transform 只能有**一個作者**
+// （writeCore），這裡補的是那個作者的輸入，不是它的輸出（同 place() 裡 scale 那段的理由）。
+const squash = { v: 0 };
+let squashTw: gsap.core.Timeline | null = null;
+
+// 撞擊：出一聲 ＋ 壓一下。兩者同一個觸發點，故寫在同一支（見 hitTurnsCrossed）。
+//
+// 每次撞擊都把上一次的補間 kill 掉重跑：連續兩個轉折靠得很近時（間隔下限是
+// FORUM_TURN_MIN_GAP_LEN 的 300px 弧長，快速捲動下可以是幾十毫秒），疊上去會讓
+// 第二次從「還沒彈回的形狀」起跳、越壓越扁。重跑 ＝ 每一次撞擊都是完整的一下。
+//
+// prefers-reduced-motion 下整段跳過（音效照出、核心照走）：這是本元件唯一一個**不吃捲動**
+// 的動作 —— 使用者停著不動它也會自己彈，正是那個設定在講的東西。核心沿線移動不在此列，
+// 那是捲動的直接結果。查詢每次現查：使用者可以在不重整頁面的情況下改系統設定。
+function hitSquash() {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const { inDur, outDur, inEase, outEase } = FORUM_TURN_SQUASH;
+  squashTw?.kill();
+  squashTw = gsap
+    .timeline({
+      // 補間期間捲動可能是靜止的（撞擊是時間驅動的，見 FORUM_TURN_SQUASH 的註解），
+      // place() 不會被呼叫 —— 所以要自己把每一幀寫回去。
+      onUpdate: () => writeCore(),
+      onComplete: () => {
+        squash.v = 0; // ease 的落點理論上就是 0，明確歸零避免累積誤差殘留在 transform 上
+        writeCore();
+      },
+    })
+    .to(squash, { v: 1, duration: inDur, ease: inEase })
+    .to(squash, { v: 0, duration: outDur, ease: outEase });
+}
+
 // 沒有可跑的驅動線時清空：核心藏起來，橘點回到原本的 coreOut 淡出（見 forumCoreDotVisible）。
 // ⚠ progress 也要歸零，不能只清 active：從 pc 切到 pad/mob 時它會留著上一個斷點的殘值，
 //   forumPathRiding 因此卡在 true —— 路徑核心保持可見，而 place() 已因 pathLen=0 提早
@@ -196,6 +231,12 @@ function reset() {
   turnLens = [];
   lastTurnLen = null;
   setForumTurns(null);
+  // 撞擊擠壓也要收：它是**時間**驅動的，幾何重建（refresh／斷點切換）不會讓它自己停 ——
+  // 不 kill 的話補間會繼續 writeCore()，把剛清成 null 的 pose 之前那筆殘姿再寫一次。
+  // v 一併歸零，否則下一次定位會用上一輪壓到一半的形狀畫第一幀。
+  squashTw?.kill();
+  squashTw = null;
+  squash.v = 0;
   setForumCoreCenterOffset(0);
 }
 
@@ -464,18 +505,23 @@ function syncTurns(
   return turns;
 }
 
-// 核心從 lastTurnLen 走到 len 之間跨過任何轉折 → 出一聲。
+// 核心從 lastTurnLen 走到 len 之間跨過任何轉折 → 撞一下：出一聲 ＋ 方塊壓扁再彈回。
 //
-// ・往回捲不出聲（只更新位置）—— 來回微調捲動位置時不該被轟炸，「核心往前跑」的方向感
+// 音效與擠壓是**同一個事件的兩個表現**，故共用這一個判定 —— 分兩處判會在門檻或方向條件
+// 哪天被改掉一邊時，變成「有聲音沒動作」或反之，而那種不同步不會有人立刻發現。
+//
+// ・往回捲不撞（只更新位置）—— 來回微調捲動位置時不該被轟炸，「核心往前跑」的方向感
 //   也因此更明確。回頭再往下捲會再響一次，那與 useSfx 的重複觸發語意一致。
-// ・一幀跨過多個轉折（快速捲動）合併成一聲：some() 短路，且 play() 本身不疊音。
+// ・一幀跨過多個轉折（快速捲動）合併成一次：some() 短路，且 play() 本身不疊音。
 // ・首次呼叫（lastTurnLen 為 null）只定錨。這是「重新載入時捲動位置被瀏覽器還原到論壇段
 //   中段」不會一次噴完前面所有轉折的原因。
-function playTurnsCrossed(len: number) {
+function hitTurnsCrossed(len: number) {
   const prev = lastTurnLen;
   lastTurnLen = len;
   if (prev == null || len <= prev || !turnLens.length) return;
-  if (turnLens.some((t) => t > prev && t <= len)) play(FORUM_TURN_SFX);
+  if (!turnLens.some((t) => t > prev && t <= len)) return;
+  play(FORUM_TURN_SFX);
+  hitSquash();
 }
 
 // ?pathdebug 才掛：外部量測腳本（Playwright）要驗「事件門檻是否精準落在節點上」，
@@ -666,11 +712,20 @@ function writeCore(next?: CorePose) {
   }
   const dive = handoff * ((planeOverhang ?? 0) + PLANE_DIVE_MARGIN_PX);
   const rad = (pose.angle * Math.PI) / 180;
+  // 撞擊擠壓疊在 pose.scale 上（相乘，不是取代）：pose.scale 是「這一段路上核心該多大」
+  // （筆尖縮放），擠壓是「此刻被撞成什麼形狀」，兩件事互不知情、合成才對。
+  //
+  // 寫的是 scaleX / scaleY 而非 scale：方塊已經被 rotation 轉到切線方向（永遠 +90，
+  // 機鼻朝 local −y），所以 local y ＝ 行進方向、local x ＝ 側向 —— 稿上「壓成 32×17」
+  // 落在這一組軸上就是「沿行進方向壓扁、側向鼓出」，不必再為轉角補任何三角。
+  // ⚠ 不要同時給 scale 與 scaleX/scaleY，gsap 的 transform 只認後寫的那一個。
+  const [sx, sy] = squashScaleAt(squash.v, FORUM_TURN_SQUASH.size, CORE.dotSize);
   gsap.set(core, {
     x: pose.x + Math.cos(rad) * dive,
     y: pose.y + Math.sin(rad) * dive,
     rotation: pose.angle + 90,
-    scale: pose.scale,
+    scaleX: pose.scale * sx,
+    scaleY: pose.scale * sy,
   });
 }
 
@@ -691,9 +746,9 @@ function place(rawP: number) {
   // 節點表把它換算成弧長 —— 節點上核心精準落在視窗中央，節點之間才照弧長等比走。
   const centerY = rawP * tailEndY;
   const len = arcAtCenterY(centerY, knots, easeMove);
-  // 音效掛在 len 上而不是 forumPathProgress 上：轉折本身就是弧長，同一個量比大小
+  // 撞擊掛在 len 上而不是 forumPathProgress 上：轉折本身就是弧長，同一個量比大小
   // 不必再換算，也不會受 progress 那層 clamp 影響。
-  playTurnsCrossed(len);
+  hitTurnsCrossed(len);
   const pt = motion.getPointAtLength(len);
   const d = 1; // 取樣間距（px）
   // 取樣點夾在 [0, pathLen] 內，故切線在兩端也穩定（不會因 eps=0 而歸零）。
@@ -821,6 +876,10 @@ onBeforeUnmount(() => {
   // （見 utils/scroll-trigger 的 killScrollTriggers）
   killScrollTriggers(st);
   st = null;
+  // 撞擊擠壓不掛在 ScrollTrigger 上（時間驅動），killScrollTriggers 收不到它 ——
+  // 留著的話補間會在元件卸載後繼續 onUpdate → writeCore()，對著已經沒人要的節點寫 transform。
+  squashTw?.kill();
+  squashTw = null;
 });
 </script>
 
