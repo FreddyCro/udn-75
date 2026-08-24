@@ -6,8 +6,13 @@
 -->
 <script setup lang="ts">
 import str from '@/locales/section2.json';
+import { gaClickNews } from '~/utils/tracking-event';
 
 const { heading, items } = str.highlights;
+
+// 「閱讀完整報導」的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀
+// runtimeConfig，見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，開關關著時靜默。
+const { play } = useSfx();
 </script>
 
 <template>
@@ -32,7 +37,13 @@ const { heading, items } = str.highlights;
         <div class="highlights__detail">
           <p class="highlights__title">{{ item.title }}</p>
           <p class="highlights__excerpt">{{ item.excerpt }}</p>
-          <a class="highlights__cta" :href="item.href">
+          <a
+            :id="item.id"
+            class="highlights__cta"
+            :href="item.href"
+            @mouseenter="play('sfx01')"
+            @click="play('sfx01'); gaClickNews(item.gaTerm)"
+          >
             {{ item.cta }}
             <img
               class="highlights__arrow"

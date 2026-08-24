@@ -68,8 +68,23 @@ export type ForumPathX = 'left' | 'center' | 'right' | number | ForumPathXAnchor
 export type ForumPathJoin =
   | 'line'
   | {
-      /** 出發角（度，相對 chord） */
-      relIn: number;
+      /**
+       * 出發角（度，相對 chord）。
+       *
+       * `'smooth'` ＝ **切線接續**：出發切線等於上一段的到達切線，該節點必為弧形、不是尖角。
+       * 為什麼要有這個選項：`relIn` 與上一段的 `relOut` 是**兩個各自獨立的數字**，
+       * 而且各自相對自己的 chord。稿寬下它們剛好對得起來（數字就是從稿抽的），
+       * 但視窗一變、文字撐高撐矮，兩條 chord 各自旋轉不同角度 → 節點上冒出尖角。
+       * 寫死一個角度救不了：某個寬度對了，換個寬度又歪。
+       *
+       * 實測（2026-08-23，見 temp/audit/2026-08-23-node-audit.md）：紙飛機段的
+       * mob `T3` 44.3°／`T5` 36.1°／`T4` 27.5° 就是這樣來的 —— 都低於
+       * `forum-path-turns` 的 90° 門檻，故不算「轉折」、面板上看不到，畫面上卻是折角。
+       *
+       * ⚠ 只給**該平滑的節點**用。髮夾彎（`W3` `P8` 這類 130–166° 的）是設計語彙，
+       *   它們的尖角是刻意的，也是轉折音的來源，不要順手標上去。
+       */
+      relIn: number | 'smooth';
       /** 到達角（度，相對 chord） */
       relOut: number;
       /** 出發側 handle 長度 ÷ 兩點距離（越大彎越鼓；0 ＝ 硬轉角） */
@@ -103,6 +118,26 @@ export const FORUM_PATH_STROKE = 4;
 const EDGE_INSET = FORUM_PATH_STROKE / 2;
 
 /**
+ * 「碰到」用的 dy —— 讓**核心邊緣**切齊區塊邊緣，而不是讓線的中心壓在區塊上。
+ *
+ * 為什麼需要一組常數而不是每個節點各填一個數字：
+ * 稿的線是 `rgba(#000, .1)` 的**水印**（見 ForumCorePath 的 `.forum-path__gen`），
+ * 沒有厚度、穿過文字無害，稿因此從不迴避文字。但 production **一條線都不畫**
+ * （`stroke: none`），畫面上只有一顆 26px 的實心核心在跑 —— 所以「照稿」在碰撞這件事上
+ * 是錯的參考系：稿從來沒有處理過「一顆 26px 的實心物體沿這條線走會壓到什麼」。
+ *
+ * 設計規則（2026-08-23 定調）：**轉折點要碰到旁邊的區塊，不進入、也不浮空**，
+ * 間距 0~2px、視覺上看起來有接觸。侵入與浮空是同一個錯的兩面。
+ *
+ * 值 ＝ `CORE.dotSize / 2`（orange-core-config）。刻意不 import ——
+ * 那支是捲動設定、這支是純幾何產生器（vitest 不設 alias、跑的是純函式），
+ * 為了一個常數建立相依會把整條設定鏈拖進測試。兩邊都標了註解，改一邊要改另一邊。
+ */
+// 用法：從**上方**碰到某塊的上緣 → `edge: 'top', dy: CORE_TOUCH`；
+//       從**下方**碰到某塊的下緣 → `edge: 'bottom', dy: -CORE_TOUCH`。
+const CORE_TOUCH = -13;
+
+/**
  * 議程的箭頭欄 —— 線穿過議程時要落在這一欄上，核心才「剛好接到箭頭」。
  *
  * 掛 `.agenda__rows` 的左緣而非 `.agenda__arrow` 本身：那條 1px 的 border-left 就是箭頭的
@@ -116,14 +151,74 @@ const EDGE_INSET = FORUM_PATH_STROKE / 2;
  * 仍掛 element 是因為：① 上述捲軸情境比例值會偏；② 讓線與 `.agenda` 的 608 解耦，
  * 那邊改寬度時這裡不用跟著重算。見 ForumPathXAnchor。
  *
- * 只有 pad 掛它：pc 的 `.agenda`（1064）與 `.forum-path`（1280 上限）同樣置中於視窗，
- * 相對位移是常數、不會隨寬度飄；mob 沒有豎線也沒有箭頭（見 Agenda.vue）。
+ * mob 沒有豎線也沒有箭頭（見 Agenda.vue），故只有 pc / pad 掛它。
+ *
+ * ⚠ 2026-08-23 之前這裡寫「**只有 pad 掛它**：pc 的 `.agenda`（1064）與 `.forum-path`
+ *   （1280 上限）同樣置中於視窗，相對位移是常數、不會隨寬度飄」。那段推理沒錯 ——
+ *   但**飄不飄與對不對是兩回事**：pc 原本寫死的 `x: 0.256`（容器 327.7）實測落在豎線
+ *   （316.5）**右側 11.2px**，核心整顆在豎線右邊，而設計要的是「核心中心穿越豎線」。
+ *   掛 element 之後這件事由構造保證，不再靠一個湊出來的比例。
  */
 const AGENDA_ARROW_X: ForumPathXAnchor = {
   sel: '.agenda__rows',
   edge: 'left',
   dx: 0.5,
   fallback: 0.262, // ＝ 稿寬 768 下的箭頭位置，也是改動前寫死的值
+};
+
+/**
+ * 同上，pc 版 —— 只有 `fallback` 不同（那是**容器寬的比例**，而 pc 容器上限 1280、
+ * pad 是 768，兩者不能共用一個數字）。
+ * 0.247 ＝ 實測豎線 316.5 ÷ 1280；量不到 `.agenda__rows` 時才會用到。
+ */
+const AGENDA_ARROW_X_PC: ForumPathXAnchor = {
+  sel: '.agenda__rows',
+  edge: 'left',
+  dx: 0.5,
+  fallback: 0.247,
+};
+
+/**
+ * 論壇二 09/15 那一撇 —— 撇的兩端**就是**路徑上的兩個節點。
+ *
+ * 那一撇是核心「畫」出來的（見 ForumEvent 的 .forum-event__date-coreslash 與
+ * ~/utils/forum-slash），所以「核心經過哪裡」與「撇畫在哪裡」必須是同一個真值。
+ * 撇的版位住在 ForumEvent.vue 的 --coreslash-x/y（逐斷點、且有目視微調），日期文案一改
+ * （月份變兩位數、行數變了、字級調了）它就跟著動 —— 節點掛它自己，兩邊才永遠同步。
+ *
+ * ⚠ **不要**在這裡抄一份稿座標或改掛 `__date` + dy。那會有兩份真值，漂掉時畫面上是
+ *   「撇畫在 A、核心在 B」，而兩邊都不報錯 —— 2026-08-22 修的 mob bug 就是這樣來的
+ *   （撇在 x 158–207，線卻走 x 235–370，差 126–168px）。
+ *
+ * ⚠ 兩點之間的 join 必須是 `'line'`：那一段**就是**撇本身，撇是直線。
+ *
+ * optional 是必要的：`slash` 不是 'core' 的場次沒有這個元素，量不到就跳過這兩點 ——
+ * 少一撇只是少一個裝飾，讓整條線放棄會讓橘核心在論壇段整段消失。
+ */
+const SLASH_SEL = '.forum-event__date-coreslash';
+/** 撇的進入端（右上角）。fallback 是稿寬下的比例，只在撇不存在時用得到。 */
+const slashEnterX = (fallback: number): ForumPathXAnchor => ({
+  event: '論壇二',
+  sel: SLASH_SEL,
+  edge: 'right',
+  fallback,
+});
+/** 撇的離開端（左下角） */
+const slashExitX = (fallback: number): ForumPathXAnchor => ({
+  event: '論壇二',
+  sel: SLASH_SEL,
+  edge: 'left',
+  fallback,
+});
+const SLASH_ENTER_Y: ForumPathAnchor = {
+  event: '論壇二',
+  sel: SLASH_SEL,
+  edge: 'top',
+};
+const SLASH_EXIT_Y: ForumPathAnchor = {
+  event: '論壇二',
+  sel: SLASH_SEL,
+  edge: 'bottom',
 };
 
 // ── pad（768 稿，Figma Vector 276 / temp/pad.svg）─────────────────────
@@ -165,9 +260,14 @@ const PAD_NODES: ForumPathNode[] = [
     join: { relIn: 95.2, relOut: -47.2, hIn: 0.347, hOut: 0.661 }, // 髮夾彎
   },
   {
-    id: 'Q4', // 稿 (232.4, 1066.5)；日期／地點組下緣 1100.65
+    id: 'Q4', // 容器 (228, 1237)；論壇一講者組上緣 −13（稿 (232.4, 1066.5)）
     x: 0.303,
-    anchor: { event: '論壇一', sel: '.forum-event__meta', edge: 'bottom', dy: -34 },
+    // 2026-08-23：原本掛 `__meta` 下緣 −34。稿上 `__meta` 下緣 ＝ 照片上緣 ＝ 1100.65，
+    // **沒有間距**；但實作在 pad 補了 `.forum-event--quote .forum-event__speakers`
+    // 的 `margin: 60px 0 0`，於是彎頂實測落在講者組上方 81px（浮空、還沒碰到就轉彎）。
+    // 改掛講者組自己的上緣 −13。⚠ 不動那 60px —— 那是 pad 版面自己的間距。
+    anchor: { event: '論壇一', sel: '.forum-event__speakers', edge: 'top', dy: CORE_TOUCH },
+    note: '刻意偏離稿：彎頂下探到碰著講者組上緣（2026-08-23）',
     join: { relIn: -76.8, relOut: 42.2, hIn: 0.359, hOut: 0.672 },
   },
   {
@@ -190,8 +290,43 @@ const PAD_NODES: ForumPathNode[] = [
   },
   {
     id: 'Q7', // 稿 (380.9, 3312)；論壇二日期組內 +86
-    x: 0.496,
+    // ⚠ **刻意偏離稿 x 0.496 → 0.4462**（往左 38px）—— 同 mob 的 P7：把它挪到
+    //    撇的延長線上，讓 Q7→撇 成為同一條直線。**撇一移這個數字就過期**。
+    //    2026-08-23 撇縮短 20% 並移位（190/96、69.3×139.6 → 175/105、55.44×111.68）之後，
+    //    稿的 x（380.9）離撇的延長線變成 39px，Q7a 的折角從 10.2° 撐到 20.9°（見下方）。
+    //    重推：撇的斜率 dx/dy ＝ −55.44 / 111.68 ＝ −0.4964（＝ rotate 26.7° 的那一撇），
+    //    Q7 在撇上端之上 65px（撇 y=105 相對日期組上緣，Q7 是 meta +86 ＝ 日期組 +40），
+    //    故 Q7 應在撇右上角 x 310.44 ＋ 0.4964 × 65 ＝ 342.71 → 342.71 / 768 ＝ 0.4462。
+    x: 0.4462,
     anchor: { event: '論壇二', sel: '.forum-event__meta', edge: 'top', dy: 86 },
+    note: '刻意偏離稿 x 0.496 → 0.4462：讓 Q7→撇 共線（撇一移就要重推）',
+    join: 'line',
+  },
+  // ── 09/15 那一撇（見 SLASH_SEL 那一段）──────────────────────────────
+  // pad 的稿本來就把 Q7→Q8 那條直線畫成「順著撇的角度穿過去」（實測線 120.9°、
+  // 撇 116.4°，只差 4.5°），這兩點只是把它從「差 5–7px」釘成「精準重合」。
+  //
+  // 折角現況（2026-08-23 撇縮短 20% 之後重推，見 Q7 的 x）：
+  //   Q7a 0.0°（Q7 挪到撇的延長線上）、Q7b 21.4°、總轉角 21.4°
+  //   —— 總量與改動前（10.2° ＋ 10.8° ＝ 21.1°）相同，但全部落在 Q7b。
+  // ⚠ Q7b 的折角**動 Q7 是改不到的**：它只由 Q7b（撇的左下角）與 Q8 決定，
+  //   而 Q8 是「碰到講者組上緣」的設計規則（見 CORE_TOUCH），不為對齊撇而搬。
+  //   要讓三段全共線就得把 Q8 的 x 從 0.32 移到 0.2636（往左 43px）——
+  //   那會挪動稿上髮夾彎的頂點，是設計決定，不在這裡偷偷做。
+  // 這三段的折角由 test/forum-node-path.spec.ts 的「撇的前後接成同一筆」把關 ——
+  // 21° 遠低於 forum-path-turns 的 90° 轉折門檻，沒有測試就不會有人發現。
+  {
+    id: 'Q7a', // 撇的右上角；稿寬 768 下 x ≈ 339.3
+    x: slashEnterX(0.4418),
+    anchor: SLASH_ENTER_Y,
+    optional: true,
+    join: 'line', // ⚠ 這一段就是撇本身，必須是直線
+  },
+  {
+    id: 'Q7b', // 撇的左下角；稿寬 768 下 x ≈ 270
+    x: slashExitX(0.3516),
+    anchor: SLASH_EXIT_Y,
+    optional: true,
     join: 'line',
   },
   // ⚠ Q8～Q10 的 dy 在 2026-08-17 重校過：論壇二的講者組從「兩張並排卡片 ＋ 上方標籤列」
@@ -287,9 +422,14 @@ const MOB_NODES: ForumPathNode[] = [
     join: { relIn: 111.2, relOut: -35.8, hIn: 0.23, hOut: 1.01 }, // 髮夾彎
   },
   {
-    id: 'P4', // 稿 (59.0, 1069)；日期／地點組下緣 1073.5
+    id: 'P4', // 容器 (57, 1141)；論壇一講者組上緣 −13（稿 (59.0, 1069)）
     x: 0.143,
-    anchor: { event: '論壇一', sel: '.forum-event__venue', edge: 'bottom', dy: -4 },
+    // 2026-08-23：原本掛 `__venue` 下緣 −4。稿上 `__venue` 下緣 ＝ 照片上緣 ＝ 1073.5，
+    // **沒有間距**；但實作在 mob 補了 `.forum-event--quote .forum-event__speakers`
+    // 的 `margin-top: 88px`，於是彎頂實測落在講者組上方 79px（浮空）。
+    // 改掛講者組自己的上緣 −13（同 pad 的 Q4）。⚠ 不動那 88px。
+    anchor: { event: '論壇一', sel: '.forum-event__speakers', edge: 'top', dy: CORE_TOUCH },
+    note: '刻意偏離稿：彎頂下探到碰著講者組上緣（2026-08-23）',
     join: { relIn: -55.9, relOut: 42.5, hIn: 0.22, hOut: 0.7 },
   },
   {
@@ -318,7 +458,47 @@ const MOB_NODES: ForumPathNode[] = [
   {
     id: 'P7', // 稿 (411.0, 3143.5)；論壇二日期組上緣 3105.5
     x: 'right',
-    anchor: { sel: '[data-forum-anchor="論壇二"]', edge: 'top', dy: 38 },
+    // ⚠ **刻意偏離稿 dy +38 → −312**（撞右牆的位置往上移 350）。理由是下面那一撇：
+    //    dy +38 時 P7→P7a 的 chord 幾乎是水平的（171°），而撇是 116.5° —— 線得先橫著
+    //    掃 190px 再急轉 55° 才進得去撇，而且那個轉角會讓 P7 的折角從 66° 變成 94°、
+    //    越過 90° 門檻多冒一顆轉折音（見 forum-path-turns）。
+    //    往上移到「撇的延長線上」之後 P7→P7a→P7b 幾乎共線（chord 116.6° vs 撇 116.5°），
+    //    撇就是一條長直線的一部分 —— 這正是 pc／pad 稿的語彙（實測 pc 在撇的前後各有
+    //    120／150px 的直線）。折角回到 P7 42°／P7a 0°／P7b 5°，轉折音也回到 5 顆。
+    //    −312 ＝ 190.1（撇到右牆的水平距離）× tan(撇的角度) 反推，故三段共線。
+    // ⚠ **撇一移，這個數字就過期** —— 它是從撇的位置反推的，不是設計值。
+    //    2026-08-23 撇往下移 38（--coreslash-y 68 → 106），故這裡跟著 −312 → −275：
+    //    水平距離 190.08 × (97.29 / 48.59) ＝ 380.6 ＝ P7 到撇上端的垂直距離，
+    //    撇上端實測 3858.2 ⇒ P7 應在 3477.6，而論壇二錨點上緣 3752.2 → dy −274.6。
+    //    不改的話 P7→P7a 與撇的夾角從 ~0° 變成 2.1°（還不到會多冒轉折音的程度，但那條
+    //    「三段是同一條直線」的不變量就破了，下次再動撇會愈積愈大）。
+    anchor: { sel: '[data-forum-anchor="論壇二"]', edge: 'top', dy: -275 },
+    note: '刻意偏離稿 dy +38 → −275：讓 P7→撇→P8 共線（見 P7a；撇一移就要重推）',
+    join: 'line',
+  },
+  // ── 09/15 那一撇（見 SLASH_SEL 那一段）──────────────────────────────
+  // ⚠ **刻意偏離 mob 線稿**：稿上這一段是 P7→P8 的一條長直線，撇則是獨立的靜態圖稿
+  //   （Figma 2574:87050），兩者在稿上就差 150–200px —— 稿沒有把 mob 的撇當成核心畫的。
+  //   實作三個斷點共用 `slash: 'core'`（section2.json 的場次資料，沒有逐斷點），
+  //   所以 mob 也會畫，只能讓線去咬撇。要改回「mob 不畫撇」就是把資料改成逐斷點，
+  //   那是另一件事（見 architecture/forum-node-path.md 第三節）。
+  {
+    id: 'P7a', // 撇的右上角；稿寬 414 下 x ≈ 206.6
+    x: slashEnterX(0.499),
+    anchor: SLASH_ENTER_Y,
+    optional: true,
+    note: '刻意偏離稿：稿的 mob 線不經過那一撇，這兩點把線拉去咬撇',
+    join: 'line', // ⚠ 這一段就是撇本身，必須是直線
+  },
+  {
+    id: 'P7b', // 撇的左下角；稿寬 414 下 x ≈ 158
+    x: slashExitX(0.3816),
+    anchor: SLASH_EXIT_Y,
+    optional: true,
+    // 往 P8 直線接下去。⚠ 折角實測 20.7°（撇 116.5°、P7b→P8 95.8°）—— 註解原本寫
+    // 「只差 5°」，那是 P8 還掛舊講者組（dy −33、更遠）時量的，2026-08-23 P8 改成 −13
+    // 之後就過期了。20.7° 的可接受理由與 pad 的 Q7b 相同（見那裡）：這一段有 500px，
+    // 折角落在整頁尺度上讀起來是「線在轉向」而不是「一筆斷掉」。
     join: 'line',
   },
   // ⚠ P8～P10 在 2026-08-17 重接過。論壇二的講者組從「標籤列 ＋ 兩張直排卡片」
@@ -332,9 +512,15 @@ const MOB_NODES: ForumPathNode[] = [
   //   重校成稿上原本的頂點。**mob 線稿沒有重畫**，所以 P8／P9 精準落回稿；P10 是
   //   「講者組下緣 +12」，語意不變、絕對位置隨組變矮往上移 191（記在第七節）。
   {
-    id: 'P8', // 稿 (107.0, 3786)；論壇二講者組上緣 3819.5 − 33（角落在照片正上方）
+    id: 'P8', // 容器 (103, 4026)；論壇二講者組上緣 −13（稿 (107.0, 3786) ＝ 上緣 −33）
     x: 0.259,
-    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'top', dy: -33 },
+    // 2026-08-23：dy −33 → −13。−33 是稿值（稿註解「角落在照片正上方」），但稿的線是
+    // 沒有厚度的水印 —— 實測核心在講者組上方 20px 就轉彎了（浮空）。
+    // ⚠ 這裡**與 margin 無關**：本節點本來就掛 `__speakers`，`--stair` 在 mob 的
+    //   `margin: 68px 0 0` 早就被錨點吸收掉了（對照 P4 掛 `__venue` 才會出事）。
+    // ⚠ 本節點是 `forum2PhotoReveal` 的 mob 定址節點 → 藍塊刷開晚 20px，見 forum-path-events。
+    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'top', dy: CORE_TOUCH },
+    note: '刻意偏離稿 −33 → −13：轉角碰到講者組上緣（2026-08-23）',
     join: { relIn: -69, relOut: 53.2, hIn: 0.43, hOut: 0.69 },
   },
   {
@@ -415,9 +601,20 @@ const PC_FRONT_NODES: ForumPathNode[] = [
     join: { relIn: -64.4, relOut: 24.7, hIn: 0.14, hOut: 0.7 },
   },
   {
-    id: 'W3', // 容器 (930, 888)。髮夾彎（右側頂點）
+    id: 'W3', // 容器 (930, 854)。髮夾彎（右側頂點）
     x: 0.726,
-    anchor: { event: '論壇一', sel: '.forum-event__date', edge: 'top', dy: -80 },
+    // 2026-08-23：原本掛 `.forum-event__date`（**左欄**的日期）上緣 −80，但它的 x（0.726
+    // → 容器 ~929）落在**右欄**的引言裡（`.forum-event__quote` 是 pc 專屬的絕對定位塊，
+    // top 470 / left 718 / width 454 → 水平 718–1172）。用左欄定位、畫在右欄上，實測核心
+    // 整顆壓在引言第一行（gap −13）。而且引言行數由 `event.quoteEn` 決定，行數一多它完全無感。
+    // 改掛引言自己的上緣 −13 ＝ 核心下緣切齊引言上緣（見 CORE_TOUCH）。
+    // ⚠ **不要**加 `, .forum-event__meta` 當 fallback：`querySelectorAll` 是照**文件順序**
+    //   取第一個，而 `__meta` 是 `__quote` 的**父層** → 逗號清單一定先命中 `__meta`，
+    //   彎頂會跳到整組的上緣（實測 y 888 → 384）。W5 的
+    //   `'.forum-event__photo, .forum-event__photo-slot'` 沒事是因為那兩個互斥、不巢狀。
+    //   量不到就整條放棄是刻意的（必要錨點的 fail-loud，見 buildNodePathD）。
+    anchor: { event: '論壇一', sel: '.forum-event__quote', edge: 'top', dy: CORE_TOUCH },
+    note: '刻意偏離稿：改掛引言上緣，核心碰到但不壓字（2026-08-23）',
     join: { relIn: 29.3, relOut: -31.9, hIn: 0.34, hOut: 0.38 },
   },
   {
@@ -427,12 +624,15 @@ const PC_FRONT_NODES: ForumPathNode[] = [
     join: { relIn: 63.8, relOut: -15.7, hIn: 0.22, hOut: 0.4 },
   },
   {
-    id: 'W5', // 容器 (535, 1509)。髮夾彎（左下）—— 稿上這個彎頂**進到照片裡**（碰到講者照）
+    id: 'W5', // 容器 (535, 1481)。髮夾彎（左下）—— 彎頂碰到講者照上緣、不進入
     x: 0.418,
-    // dy 原為 -87：那是照片還被 margin collapse 壓低 102 時量出來的（見 ForumEvent.vue
-    // .forum-event__speaker 的說明）。照片歸位後同一個容器 y 對應的 dy ＝ -87 + 102 ＝ 15，
-    // 也就是彎頂落在照片上緣下方 15 —— 與稿一致（稿：彎頂 1581.75、照片上緣 1566.9）。
-    anchor: { event: '論壇一', sel: '.forum-event__photo, .forum-event__photo-slot', edge: 'top', dy: 15 },
+    // 2026-08-23：dy 15 → CORE_TOUCH。稿上這個彎頂是**進到照片裡**的（稿：彎頂 1581.75、
+    // 照片上緣 1566.9 → +15），實測核心整顆沒入藍塊（gap −13）。設計決策改成
+    // 「碰到但不進入，0~2px、視覺上有接觸」—— `forum1PhotoReveal` 的「核心碰到講者照
+    // 上緣的那一刻」語意因此**更精準**（觸發點就是接觸點），見 forum-path-events。
+    // （更早的 dy −87 是照片還被 margin collapse 壓低 102 時量的，已不適用。）
+    anchor: { event: '論壇一', sel: '.forum-event__photo, .forum-event__photo-slot', edge: 'top', dy: CORE_TOUCH },
+    note: '刻意偏離稿 +15 → −13：核心碰到照片上緣但不進入（2026-08-23）',
     join: { relIn: 32.7, relOut: -34.9, hIn: 0.34, hOut: 0.38 },
   },
   {
@@ -450,9 +650,13 @@ const PC_FRONT_NODES: ForumPathNode[] = [
     join: { relIn: 3.4, relOut: -3.9, hIn: 0.36, hOut: 0.26 },
   },
   {
-    id: 'W8', // 容器 (174, 2935)。撞左牆的硬轉角
+    id: 'W8', // 容器 (174, 2905)。撞左牆的硬轉角
     x: 0.136,
-    anchor: { event: '論壇二', sel: '.forum-event__tag', edge: 'fraction', t: 0.4375 },
+    // 2026-08-23：原本 `fraction 0.4375` —— **直接錨在標眉塊內 43.75% 處**，
+    // 硬轉角必然落在標眉上（實測 gap −13、核心整顆壓在「論壇二」上）。
+    // x 不能動（撞左牆是這個節點的語彙），故只動 y：改成碰標眉上緣。
+    anchor: { event: '論壇二', sel: '.forum-event__tag', edge: 'top', dy: CORE_TOUCH },
+    note: '刻意偏離稿：轉角碰到標眉上緣、不壓字（2026-08-23）',
     join: { relIn: -24.3, relOut: 32.7, hIn: 0.38, hOut: 0.36 },
   },
   {
@@ -468,9 +672,12 @@ const PC_FRONT_NODES: ForumPathNode[] = [
     join: { relIn: -8.7, relOut: 8.4, hIn: 0.34, hOut: 0.34 },
   },
   {
-    id: 'W11', // 容器 (1026, 3629)。髮夾彎（右緣）
+    id: 'W11', // 容器 (1026, 3595)。髮夾彎（右緣）
     x: 0.801,
-    anchor: { event: '論壇二', sel: '.forum-event__venue', edge: 'fraction', t: 0.1109 },
+    // 2026-08-23：原本 `fraction 0.1109` —— 錨在場地塊內 11% 處，彎頂必然壓在
+    //「集思台大會議中心」上（實測 gap −13）。同 W8，改成碰它的上緣。
+    anchor: { event: '論壇二', sel: '.forum-event__venue', edge: 'top', dy: CORE_TOUCH },
+    note: '刻意偏離稿：彎頂碰到場地上緣、不壓字（2026-08-23）',
     join: { relIn: 31, relOut: -37.1, hIn: 0.34, hOut: 0.4 },
   },
   {
@@ -494,9 +701,16 @@ const PC_FRONT_NODES: ForumPathNode[] = [
     join: 'line',
   },
   {
-    id: 'W15', // 容器 (546, 4046)。髮夾彎
+    id: 'W15', // 容器 (546, 4082)。髮夾彎 —— 彎頂碰到論壇二講者組上緣
     x: 0.426,
-    anchor: { event: '論壇二', sel: '.forum-event__date', edge: 'bottom', dy: 13 },
+    // 2026-08-23：原本掛 `.forum-event__date` 下緣 +13，與下方的講者區塊沒有任何關係
+    // → 實測彎頂在講者組上方 37px（浮空），核心還沒碰到就翻上來了。
+    // 改掛講者組上緣 −13。⚠ 這同時改變 `forum2PhotoReveal` 的語意：
+    // 2026-08-16 曾把它「從碰到照片上緣**提前**到照片前面那個轉彎」，而彎頂下探到接觸點
+    // 之後那個提前量就沒了 —— 使用者 2026-08-23 選 (a)：改成與論壇一同語意（碰到那一刻），
+    // `dLen` 維持 0。見 forum-path-events 的該筆註解。
+    anchor: { event: '論壇二', sel: '.forum-event__speakers', edge: 'top', dy: CORE_TOUCH },
+    note: '刻意偏離稿：彎頂下探到碰著講者組上緣（2026-08-23）',
     join: { relIn: 116.9, relOut: -29.7, hIn: 0.06, hOut: 0.52 },
   },
   {
@@ -512,9 +726,12 @@ const PC_FRONT_NODES: ForumPathNode[] = [
     join: { relIn: 7.5, relOut: -97.6, hIn: 0.5, hOut: 0.02 },
   },
   {
-    id: 'W18', // 容器 (152, 4588)。撞左牆
+    id: 'W18', // 容器 (152, 4632)。撞左牆 —— 轉角碰到論壇三整組的上緣
     x: 0.119,
-    anchor: { event: '論壇三', sel: '.forum-event__tag', edge: 'top', dy: -37 },
+    // 2026-08-23：原本標眉上緣 −37 → 核心懸在標眉左上方 26px（浮空）。
+    // 改掛 `__head`（＝標眉＋大標＋副標那一整組，第一個子項就是標眉）的上緣 −13。
+    anchor: { event: '論壇三', sel: '.forum-event__head', edge: 'top', dy: CORE_TOUCH },
+    note: '刻意偏離稿 −37 → −13：轉角碰到論壇三整組上緣（2026-08-23）',
     join: { relIn: -25.5, relOut: 29.9, hIn: 0.38, hOut: 0.36 },
   },
   {
@@ -572,8 +789,10 @@ const PC_FRONT_NODES: ForumPathNode[] = [
     join: { relIn: 35.8, relOut: -31, hIn: 0.44, hOut: 0.3 },
   },
   {
-    id: 'W28', // 容器 (327, 5400)＝前半段終點，其後接 PC_TAIL_NODES
-    x: 0.256,
+    id: 'W28', // 容器 (316.5, 5400)＝前半段終點，其後接 PC_TAIL_NODES
+    // 2026-08-23：x 從寫死的 0.256（容器 327.7）改掛議程豎線 —— W28 / R0 / R1 三點同 x，
+    // 那條垂直線才會整段落在豎線上（只改中間一點會變成斜線；同 PAD_TAIL_NODES 的 S0/S1）。
+    x: AGENDA_ARROW_X_PC,
     anchor: { event: '論壇三', sel: '.forum-event__venue', edge: 'fraction', t: 0.8678 },
     join: 'line',
   },
@@ -606,17 +825,25 @@ const SEAM_END: ForumPathAnchor = { sel: '.sec2__seam', edge: 'top' };
 const HL_ITEM: ForumPathAnchor = { sel: '.highlights__item', nth: 1, edge: 'top' };
 
 const PC_TAIL_NODES: ForumPathNode[] = [
-  { id: 'R0', x: 0.256, anchor: AGENDA_END, join: 'line' },
-  { id: 'R1', x: 0.256, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top' },
+  // R0 / R1 與前半段末端的 W28 同 x（議程豎線）：核心**中心**穿越豎線，見 AGENDA_ARROW_X_PC。
+  { id: 'R0', x: AGENDA_ARROW_X_PC, anchor: AGENDA_END, join: 'line' },
+  // dy: CORE_TOUCH —— 原本 dy 0（核心中心壓在標眉上緣）實測 gap −10.7，核心壓到「論壇四」。
+  // ⚠ relIn 維持數字、**不標 'smooth'**：這裡是 139° 的回頭彎，強迫切線接續會讓曲線
+  //   先往下衝再繞回來（打一個圈）。紙飛機段其餘節點才標，見下方。
+  { id: 'R1', x: AGENDA_ARROW_X_PC, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top', dy: CORE_TOUCH },
     join: { relIn: -35.2, relOut: 27, hIn: 0.13, hOut: 0.54 } },
+  // ── 以下是紙飛機段（`FORUM_PLANE.node` ＝ R1 之後）：relIn 一律 'smooth' ──
+  // 飛機有機鼻，機身角度是由路徑切線的有限差分算的（見 ForumCorePath 的 place()），
+  // 切線一不連續，飛機就在那一兩幀內「啪」地轉向。前半段核心是對稱方塊、藏得住，
+  // 這一段藏不住 —— 故此段的平滑改成由構造保證，不再依賴從稿抽的數字剛好對得起來。
   { id: 'R2', x: 0.59, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top', dy: -110 },
-    join: { relIn: -50.8, relOut: 47.2, hIn: 0.4, hOut: 0.44 } },
+    join: { relIn: 'smooth', relOut: 47.2, hIn: 0.4, hOut: 0.44 } },
   { id: 'R3', x: 0.794, anchor: { event: '論壇四', sel: '.forum-event__cta', edge: 'top' },
-    join: { relIn: -25.3, relOut: -5.8, hIn: 0.39, hOut: 0.29 } },
+    join: { relIn: 'smooth', relOut: -5.8, hIn: 0.39, hOut: 0.29 } },
   { id: 'R4', x: 0.349, anchor: { event: '論壇四', sel: '.forum-event__speakers', edge: 'top', dy: 140 },
-    join: { relIn: 31.2, relOut: -21.6, hIn: 0.27, hOut: 0.45 } },
+    join: { relIn: 'smooth', relOut: -21.6, hIn: 0.27, hOut: 0.45 } },
   { id: 'R5', x: 0.23, anchor: HL_ITEM, optional: true,
-    join: { relIn: -8, relOut: 20.7, hIn: 0.53, hOut: 0.22 } },
+    join: { relIn: 'smooth', relOut: 20.7, hIn: 0.53, hOut: 0.22 } },
   // x 對齊「逐格臉的第 01 格」—— 白方塊就從飛機沒入的位置長出來（FACE_FRAMES[0] =
   // [7,0,2,2]，網格 x 7..9 of 16 → 那一格水平居中於臉框）。
   // pc：臉框中心 ＝ 視窗中心 − 343.5（內容塊 280 + gap 180 + intro 507 置中於視窗），
@@ -630,14 +857,16 @@ const PAD_TAIL_NODES: ForumPathNode[] = [
   { id: 'S0', x: AGENDA_ARROW_X, anchor: AGENDA_END, join: 'line' },
   { id: 'S1', x: AGENDA_ARROW_X, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top' },
     join: { relIn: -46, relOut: 38.9, hIn: 0.2, hOut: 0.6 } },
+  // 紙飛機段（`FORUM_PLANE.node` ＝ S1 之後）：relIn 一律 'smooth'，理由同 PC_TAIL_NODES 的 R2。
+  // S1 本身不標 —— 它是 136° 的回頭彎，強迫切線接續會打一個圈。
   { id: 'S2', x: 0.764, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top', dy: -3 },
-    join: { relIn: -68.5, relOut: 31.8, hIn: 0.39, hOut: 0.38 } },
+    join: { relIn: 'smooth', relOut: 31.8, hIn: 0.39, hOut: 0.38 } },
   { id: 'S3', x: 0.461, anchor: { event: '論壇四', sel: '.forum-event__cta', edge: 'top' },
-    join: { relIn: 48.3, relOut: -55.4, hIn: 0.33, hOut: 0.51 } },
+    join: { relIn: 'smooth', relOut: -55.4, hIn: 0.33, hOut: 0.51 } },
   { id: 'S4', x: 0.401, anchor: { event: '論壇四', sel: '.forum-event__speakers', edge: 'top', dy: 120 },
-    join: { relIn: -44.8, relOut: 52.3, hIn: 0.43, hOut: 0.4 } },
+    join: { relIn: 'smooth', relOut: 52.3, hIn: 0.43, hOut: 0.4 } },
   { id: 'S5', x: 0.593, anchor: HL_ITEM, optional: true,
-    join: { relIn: 40.4, relOut: -6.1, hIn: 0.46, hOut: 0.38 } },
+    join: { relIn: 'smooth', relOut: -6.1, hIn: 0.46, hOut: 0.38 } },
   // pad 的臉框水平置中於視窗，而第 01 格居中於臉框 → 就是視窗中心（見 R6 的註解）。
   { id: 'S6', x: 'center', anchor: SEAM_END },
 ];
@@ -646,16 +875,21 @@ const MOB_TAIL_NODES: ForumPathNode[] = [
   { id: 'T0', x: 'center', anchor: AGENDA_END, join: 'line' },
   { id: 'T1', x: 'center', anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top' },
     join: { relIn: -42.6, relOut: 54.4, hIn: 0.59, hOut: 0.21 } },
+  // 紙飛機段（`FORUM_PLANE.node` ＝ T1 之後）：relIn 一律 'smooth'，理由同 PC_TAIL_NODES 的 R2。
+  // 使用者 2026-08-23 在 88% / 93% / 95% 三處目擊「非弧形轉彎」，實測正是
+  // T3 44.3°／T5 36.1°／T4 27.5° 的切線不連續 —— 三個都低於 forum-path-turns 的 90° 門檻，
+  // 所以不算「轉折」、面板上看不到，畫面上卻是折角。
+  // T1 本身不標 —— 它是 157° 的回頭彎，強迫切線接續會打一個圈。
   { id: 'T2', x: 0.814, anchor: { event: '論壇四', sel: '.forum-event__tag', edge: 'top', dy: -59 },
-    join: { relIn: -72, relOut: 43.3, hIn: 0.41, hOut: 0.39 } },
+    join: { relIn: 'smooth', relOut: 43.3, hIn: 0.41, hOut: 0.39 } },
   { id: 'T3', x: 0.655, anchor: { event: '論壇四', sel: '.forum-event__body', edge: 'top' },
-    join: { relIn: 44.1, relOut: -37.3, hIn: 0.25, hOut: 0.51 } },
+    join: { relIn: 'smooth', relOut: -37.3, hIn: 0.25, hOut: 0.51 } },
   { id: 'T4', x: 0.337, anchor: { event: '論壇四', sel: '.forum-event__speakers', edge: 'top' },
-    join: { relIn: -6.2, relOut: 29.6, hIn: 0.36, hOut: 0.48 } },
+    join: { relIn: 'smooth', relOut: 29.6, hIn: 0.36, hOut: 0.48 } },
   { id: 'T5', x: 0.772, anchor: { event: '論壇四', sel: '.forum-event__speakers', edge: 'bottom' },
-    join: { relIn: 9.3, relOut: -33.3, hIn: 0.29, hOut: 0.49 } },
+    join: { relIn: 'smooth', relOut: -33.3, hIn: 0.29, hOut: 0.49 } },
   { id: 'T6', x: 0.413, anchor: HL_ITEM, optional: true,
-    join: { relIn: -24, relOut: 4.9, hIn: 0.64, hOut: 0.22 } },
+    join: { relIn: 'smooth', relOut: 4.9, hIn: 0.64, hOut: 0.22 } },
   // 同 S6。⚠️ mob 的末節點是 T7，T6 是精彩活動那一點。
   { id: 'T7', x: 'center', anchor: SEAM_END },
 ];
@@ -813,6 +1047,9 @@ export function buildNodePathD(
   const segs: { id: string; d: string }[] = [
     { id: live[0]!.node.id, d: `M${r2(live[0]!.pt[0])} ${r2(live[0]!.pt[1])}` },
   ];
+  // 上一段在「本節點」的到達切線（絕對角度，度）。`relIn: 'smooth'` 讀它來接續。
+  // null ＝ 沒有上一段（第一個節點）→ 退回 0（＝順著 chord 出發，本來就沒有折角可言）。
+  let prevExitDeg: number | null = null;
   for (let i = 0; i < live.length - 1; i++) {
     const [x0, y0] = live[i]!.pt;
     const [x1, y1] = live[i + 1]!.pt;
@@ -820,17 +1057,31 @@ export function buildNodePathD(
     const id = live[i + 1]!.node.id;
     if (join === 'line') {
       segs.push({ id, d: `L${r2(x1)} ${r2(y1)}` });
+      // 直線的到達切線就是它自己的方向。
+      prevExitDeg = Math.atan2(y1 - y0, x1 - x0) / RAD;
       continue;
     }
     const len = Math.hypot(x1 - x0, y1 - y0);
     const chord = Math.atan2(y1 - y0, x1 - x0) / RAD;
 
+    // 'smooth'：出發切線 ＝ 上一段的到達切線 → 換算回「相對本段 chord」的角度。
+    // 這樣平滑是由構造保證的，不隨視窗寬變動（見 ForumPathJoin 的 relIn 說明）。
+    const relInRaw =
+      join.relIn === 'smooth'
+        ? prevExitDeg == null
+          ? 0
+          : normDeg(prevExitDeg - chord)
+        : join.relIn;
+
     // 楔形夾角保護：把切線夾進「相鄰兩條 chord 圍出的角度範圍」內，見 clampToWedge。
     // 出發側看前一點、到達側看後一點；沒有鄰居（首尾）就不夾。
+    // ⚠ 'smooth' 也照夾：極端版面下「不相交」比「完全平滑」優先 —— 相交是壞掉，
+    //   被夾一點只是那個彎沒有百分之百接上（實測稿寬附近完全不作用）。
     const prev = live[i - 1]?.pt;
     const after = live[i + 2]?.pt;
-    const relIn = clampToWedge(join.relIn, chord, [x0, y0], prev);
+    const relIn = clampToWedge(relInRaw, chord, [x0, y0], prev);
     const relOut = clampToWedge(join.relOut, chord, [x1, y1], after);
+    prevExitDeg = chord + relOut;
 
     const aIn = (chord + relIn) * RAD;
     const aOut = (chord + relOut) * RAD;

@@ -85,6 +85,36 @@ export function slashCoreScaleAt(
   return 1 + (tipScale - 1) * k;
 }
 
+/** 對齊容差：px 是絕對下限，ratio 乘在撇的對角線上（隨字級縮放）。取兩者較大者。 */
+export type SlashAlignTol = { px: number; ratio: number };
+
+/**
+ * 那一撇與驅動線到底是不是同一條線。
+ *
+ * 為什麼要驗：撇的位置由 CSS（--coreslash-x/y）決定、核心的位置由驅動線決定 ——
+ * pad／mob 的線把節點錨在撇本身（見 forum-node-path 的 SLASH_SEL），兩者由程式綁死；
+ * **pc 的線是手貼的 Figma d**，沒有任何機制保證它經過撇。誰動了其中一邊，畫面上就是
+ * 「撇畫在 A、核心在 B」，而兩邊都不會報錯。這支就是那個報錯。
+ *
+ * 差太多時呼叫端**不畫**那一撇（少一個裝飾 ≫ 畫在錯的地方），並在 dev 吼一聲。
+ *
+ * 容差用「絕對值 or 對角線比例」取大：對角線隨 --date-size 逐斷點縮放，比例項讓三個
+ * 斷點共用一組數字；px 下限則避免 mob（對角線 109）被夾得比稿本身的誤差還嚴。
+ * 實測 2026-08-22：pc 3.4 / 12.1，pad 7.0 / 5.4，mob 修好前 167.9 / 126.0。
+ *
+ * 退化：對角線 ≤ 0（撇塌了）只看 px 下限；距離不是有限數 → 一律不通過。
+ */
+export function slashAlignment(
+  distEnter: number,
+  distExit: number,
+  diagonal: number,
+  tol: SlashAlignTol,
+): { ok: boolean; worst: number; limit: number } {
+  const limit = Math.max(tol.px, diagonal > 0 ? diagonal * tol.ratio : 0);
+  const worst = Math.max(distEnter, distExit);
+  return { ok: Number.isFinite(worst) && worst <= limit, worst, limit };
+}
+
 /**
  * 在弧長 0..totalLen 上找出離 target 最近的弧長。
  *

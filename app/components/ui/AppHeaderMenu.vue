@@ -3,9 +3,12 @@
  * <1280 的全螢幕選單。首頁與子頁列同一份三錨點；子頁點擊改用路由跳回首頁對應段落。
  * 開啟時 header 一律切白底（設計稿只有白面板一版），由 AppHeader 控制。
  */
+import type { HeaderAnchor } from '~/types/header';
+import { gaClickMenu } from '~/utils/tracking-event';
+
 const props = defineProps<{
   open: boolean;
-  anchors: { title: string; target: string }[];
+  anchors: HeaderAnchor[];
   activeTarget: string;
 }>();
 
@@ -13,22 +16,35 @@ const emit = defineEmits<{ close: []; select: [target: string] }>();
 
 const route = useRoute();
 const panelRef = ref<HTMLElement | null>(null);
+const { play } = useSfx();
+
+// 錨點文字在稿上是 outline 過的 vector（Figma 2065:122211 的三個群組）。
+// 面板恆為白底、文字色不隨 active 變（稿上只有底線在變），用 <img> 也畫得出來 ——
+// 仍走 mask 是為了與 ≥1280 的錨點列同一套機制（見 useArtMask）。
+const artStyle = useArtMask();
 
 const isHome = computed(() => route.path === '/');
 
 // 首頁：攔下路由、就地捲動。
-function onHomeSelect(target: string, e: MouseEvent) {
+//
+// GA 的 term 走 anchor.ga（symposium／benediction／newmedia）而不是 target
+// （forum／blessing／media）—— 事件表與段落 id 不同名，見 types/header.ts 的說明。
+function onHomeSelect(anchor: HeaderAnchor, e: MouseEvent) {
   // 修飾鍵點擊＝開新分頁的意圖，放行給瀏覽器，面板也不收（使用者還留在本頁）。
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
   emit('close');
-  emit('select', target);
+  emit('select', anchor.target);
+  play('sfx01');
+  gaClickMenu(anchor.ga);
 }
 
 // 子頁：導航交給 NuxtLink，本函式只負責把面板收起來。
-function onAwaySelect(e: MouseEvent) {
+function onAwaySelect(anchor: HeaderAnchor, e: MouseEvent) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   emit('close');
+  play('sfx01');
+  gaClickMenu(anchor.ga);
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -124,7 +140,7 @@ onBeforeUnmount(() => {
     :class="{ 'app-header-menu--open': open }"
     :aria-hidden="!open"
   >
-    <div class="app-header-menu__scrim" @click="emit('close')" />
+    <div class="app-header-menu__scrim" @click="emit('close'); play('sfx01')" />
 
     <div ref="panelRef" class="app-header-menu__panel">
       <nav class="app-header-menu__nav">
@@ -138,9 +154,12 @@ onBeforeUnmount(() => {
             }"
             :href="`#${anchor.target}`"
             :tabindex="open ? 0 : -1"
-            @click="onHomeSelect(anchor.target, $event)"
+            @mouseenter="play('sfx01')"
+            @click="onHomeSelect(anchor, $event)"
           >
-            {{ anchor.title }}
+            <span class="app-header-menu__art" :style="artStyle(anchor.art.menu)" />
+            <!-- 真文字只有這一份（SR／SEO 的唯一來源），不做第二份複本 -->
+            <span class="visually-hidden">{{ anchor.title }}</span>
           </a>
         </template>
 
@@ -154,9 +173,11 @@ onBeforeUnmount(() => {
             }"
             :to="`/#${anchor.target}`"
             :tabindex="open ? 0 : -1"
-            @click="onAwaySelect"
+            @mouseenter="play('sfx01')"
+            @click="onAwaySelect(anchor, $event)"
           >
-            {{ anchor.title }}
+            <span class="app-header-menu__art" :style="artStyle(anchor.art.menu)" />
+            <span class="visually-hidden">{{ anchor.title }}</span>
           </NuxtLink>
         </template>
       </nav>
@@ -237,11 +258,13 @@ onBeforeUnmount(() => {
   }
 }
 
+// 稿上的量（Figma 2065:122211）：三個群組各 53 高、節距 89 → 間距 36（故 __nav 的 gap 不動）。
+// 底線是群組底緣往上的 4px（稿的 line y 51、stroke-width 4），且橫跨整個群組寬。
+// 素材**保留了底線那段佔位**（匯出時只拆掉 line 本體 —— 底線是功能，由 --active 畫），
+// 故 ::after 貼 bottom: 0 就與稿對齊；文字則是素材自己的墨跡，不再有行盒可調。
 .app-header-menu__link {
   position: relative;
   align-self: flex-start;
-  font-size: 46px;
-  line-height: 1.15;
   color: var(--color-gray);
   text-decoration: none;
 
@@ -249,7 +272,7 @@ onBeforeUnmount(() => {
     content: '';
     position: absolute;
     right: 0;
-    bottom: -12px;
+    bottom: 0;
     left: 0;
     height: 4px;
     background-color: var(--color-orange);
@@ -260,6 +283,15 @@ onBeforeUnmount(() => {
   &--active::after {
     transform: scaleX(1);
   }
+}
+
+// 錨點文字（稿字形素材）。同錨點列：素材當形狀、顏色吃 currentColor（面板恆為
+// --color-gray），寬高逐顆掛在 inline style（稿寬 89／183／231），見 useArtMask。
+.app-header-menu__art {
+  display: block;
+  background-color: currentColor;
+  mask: var(--art) no-repeat center / 100% 100%;
+  -webkit-mask: var(--art) no-repeat center / 100% 100%;
 }
 
 // 分享列貼面板下緣（padding-bottom 之上）。不寫死與錨點列的間距，

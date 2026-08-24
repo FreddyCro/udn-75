@@ -5,11 +5,14 @@
  * 獨立元件，供頁面以預設 slot 排版時直接使用（原為 JSON 驅動版型的一部分）。
  */
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { gaClickButton } from '~/utils/tracking-event';
 
 export interface SubpageWorkItem {
   title?: string;
   desc?: string;
   url?: string;
+  /** GA term（click_button / area=works），如 visual_etomidate。無 url 的列不需要 */
+  gaTerm?: string;
   /** 懸浮縮圖（單張；與 thumbs 擇一，thumbs 優先） */
   thumb?: string;
   /** 懸浮縮圖多重疊圖（最多 3 張，依序對應 thumbLayout 的 slot）。
@@ -152,7 +155,11 @@ function setupMobile() {
     let bestD = Infinity;
     items.forEach((el, i) => {
       const r = el.getBoundingClientRect();
-      const d = Math.abs(r.top + r.height / 2 - cy);
+      const center = r.top + r.height / 2;
+      // 列中心不在視窗內就不觸發：連續閱讀頁（/subpage）落地 #service 時，
+      // 上方 visual 的末列雖在視窗外，離觸發線仍可在 0.5vh 內 → 誤浮縮圖蓋到 service
+      if (center <= 0 || center >= window.innerHeight) return;
+      const d = Math.abs(center - cy);
       if (d < bestD) {
         bestD = d;
         best = i;
@@ -234,7 +241,7 @@ onBeforeUnmount(() => {
         :active="activeIdx === i"
         :dimmed="activeIdx !== -1 && activeIdx !== i"
         @mouseenter="onEnter(i, $event)"
-        @click="play('sfx01')"
+        @click="play('sfx01'); w.gaTerm && gaClickButton('works', w.gaTerm)"
       />
     </div>
   </div>

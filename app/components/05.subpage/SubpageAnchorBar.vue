@@ -1,12 +1,15 @@
 <script lang="ts" setup>
 /**
- * SubpageAnchorBar — <1280 的子頁錨點列（固定在視窗下緣，捲過 hero 才滑入）；
- * pc 改用右側 rail（SubpageAnchor）。
- * 由 layouts/subpage.vue 渲染一次；顯隱旗子由 Subpage.vue 的舞台 ScrollTrigger 寫進
- * useSubpageAnchor，本元件只負責呈現與兩種點擊語意（route／scroll，見下方 mode）。
+ * SubpageAnchorBar — <1280 的子頁錨點列（固定在視窗下緣）；pc 改用右側 rail（SubpageAnchor）。
+ * 由 layouts/subpage.vue 渲染一次。
+ * 顯隱：**全程顯示**（layout 直接傳 visible），與 rail 一致 —— 一進入子頁就在。
+ * ⚠️ 原本是「舞台演完才滑入」（由 Subpage.vue 的舞台 ScrollTrigger 寫旗子），那面旗子已移除；
+ *    --visible 的滑入 transition 留著，是為了未來若要再接條件時不必重寫 CSS。
+ * 本元件只負責呈現與兩種點擊語意（route／scroll，見下方 mode）。
  */
 import str from '~/locales/common.json';
 import { anchorSlug } from '~/utils/subpage-stream';
+import { gaClickAnchor } from '~/utils/tracking-event';
 
 defineProps<{
   /** true 時滑入；預設隱藏在視窗下緣之外 */
@@ -29,6 +32,10 @@ const isActive = (url: string) =>
 const linkTo = (url: string) => (mode.value === 'scroll' ? `#${anchorSlug(url)}` : url);
 
 function onClick(e: MouseEvent, url: string) {
+  // ⚠️ GA 必須排在下面那道 return **之前**（同 SubpageAnchor 的理由）：route 模式會早退
+  //    把導航交給 NuxtLink，埋在後面就只有連續閱讀頁的點擊會被記到。
+  gaClickAnchor(anchorSlug(url));
+
   if (mode.value !== 'scroll') return; // route 模式：交給 NuxtLink 換頁
   e.preventDefault();
   const slug = anchorSlug(url);
@@ -119,13 +126,15 @@ watch(activeSlug, () => nextTick(centerActive));
 }
 
 // 六欄固定寬（6 欄各 70 + 欄距 22 = 530）超出 mob 視窗 → 列本身為橫向捲動容器
-// （左右排列可滑動、藏捲軸）；pad 以上容得下時由外層 flex 置中。
-// 邊距留在捲動容器內，滑到端點時項目不被裁切。
+// （左右排列可滑動、藏捲軸）。邊距留在捲動容器內，滑到端點時項目不被裁切。
+//
+// ⚠️ 寬度必須寫死 100%：iOS/WebKit 對巢狀 flex 裡捲動容器的 intrinsic size 會算錯
+//    （實測只剩 162px，六項被裁到剩中間兩項）。置中改由首尾 item 的 auto margin 實現（見 __item）。
 .subpage-anchor-bar__list {
   display: flex;
   align-items: center;
   gap: 22px;
-  max-width: 100%;
+  width: 100%;
   margin: 0;
   padding: 0 26px;
   overflow-x: auto;
@@ -140,6 +149,16 @@ watch(activeSlug, () => nextTick(centerActive));
 
 .subpage-anchor-bar__item {
   flex: 0 0 70px;
+
+  // 容得下時 auto margin 置中、overflow 時歸零回到靠左可捲動；
+  // 不能用 justify-content: center —— overflow 時列首會滑不到。
+  &:first-child {
+    margin-left: auto;
+  }
+
+  &:last-child {
+    margin-right: auto;
+  }
 }
 
 .subpage-anchor-bar__link {

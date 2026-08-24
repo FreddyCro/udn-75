@@ -27,7 +27,7 @@ const c = raw as VisualContent;
     </div>
 
     <!-- 哪一張是AI生成圖?：小標 + 滿版二選一測驗 -->
-    <div class="sp-col mt-16">
+    <div v-ga-view="'visual_ai_image'" class="sp-col mt-16">
       <h2 class="ai-title">{{ c.quiz.title }}</h2>
     </div>
     <div class="mt-4">
@@ -52,10 +52,10 @@ const c = raw as VisualContent;
     </div>
 
     <!-- 近年得獎獎項：寬欄；小標 mob 靠左、pad 以上置中 -->
-    <div class="sp-col sp-col--wide mt-16 mb-16">
+    <div v-ga-view="'visual_award'" class="sp-col sp-col--wide mt-16 mb-16">
       <h2 class="sp-subtitle text-center">{{ c.awards.title }}</h2>
       <!-- 桂冠圖表 svg 自帶上下留白 32 → pad 以上貼著小標排即為對稿間距；mob 版 svg 無留白，補 32 -->
-      <figure class="mx-auto mt-8 max-w-(--subpage-content-w) sm:mt-0">
+      <figure class="award-chart mx-auto mt-8 max-w-(--subpage-content-w) sm:mt-0">
         <UPic
           :src="c.awards.chart"
           ext="svg"
@@ -75,6 +75,23 @@ const c = raw as VisualContent;
 </template>
 
 <style lang="scss" scoped>
+// 桂冠圖表的版位保留。
+//
+// ⚠️ 為什麼是 CSS 而不是 <img> 的 width/height：這張圖走 UPic 的 pcpad / mob 兩檔，
+//    兩檔**比例不同**（mob 直式 362×360、pcpad 橫式 630×309），
+//    而 width/height 屬性只能宣告一組。斷點與 UPic 的 pcpad media 對齊（都是 768）。
+// ⚠️ 為什麼非保留不可：圖是 lazy 載入的，沒保留就是載入前 0 高、載入後撐開 ——
+//    那一撐把下面所有 ScrollTrigger pin 的實際位置推走，而 pin 的起訖是量完就固定的
+//    絕對捲動座標（脈絡見 utils/scroll-trigger 的 refreshOnContentResize）。
+// 數字＝素材 viewBox，對帳見 test/subpage-image-space-reservation.spec.ts。
+.award-chart :deep(.u-pic-img) {
+  aspect-ratio: 362 / 360;
+
+  @include rwd-min('tablet') {
+    aspect-ratio: 630 / 309;
+  }
+}
+
 .ai-title {
   font-size: 22px;
   line-height: 36px;

@@ -6,14 +6,46 @@ import {
 } from '@udn-digital-center/common-components';
 import { shareURL_fb, shareURL_twitter, useLineShareUrl } from '@/utils/share';
 import strFooter from '@/locales/footer.json';
+import common from '@/locales/common.json';
+import { anchorSlug } from '~/utils/subpage-stream';
 
 const lineHref = useLineShareUrl();
 
 const CURRENT_YEAR = new Date().getFullYear();
+
+const route = useRoute();
+
+// 連續閱讀頁的最後一篇（＝ health）。從資料推而不寫死，清單順序一改就自己跟著走。
+const LAST_SLUG = anchorSlug(
+  common.subpageAnchors[common.subpageAnchors.length - 1]?.url ?? '',
+);
+
+/**
+ * 頁尾的 section_view term：首頁是 `editor`，子頁是 `{page}_editor`（事件表 §3.11／§3.12）。
+ *
+ * ⚠️ 必須是 computed —— 這個元件掛在 layout 上，跨子頁導航（news → visual）時**元素不會
+ *    重建**，只有 term 變。`v-ga-view` 的 updated 會把新值寫回屬性，且去重是按 term 記的
+ *    （見 plugins/ga-section-view.client.ts 與 utils/tracking-event.ts），所以同一顆 DOM
+ *    可以先回報 news_editor、再回報 visual_editor。
+ *
+ * ⚠️ 連續閱讀頁（<768 的 /subpage）六篇在同一份文件、頁尾只有一份，且它排在最後一篇
+ *    之後 —— 看得到它就必然已經讀完最後那一篇，故固定回報 LAST_SLUG。
+ *    不用當下的 hash：/subpage 的 hash 會隨捲動被改寫（見 pages/subpage.vue 的
+ *    resolveLanding 說明），拿它當 term 會變成「捲到哪就報哪」的隨機值。
+ */
+const gaViewTerm = computed(() => {
+  const path = route.path;
+  if (path === '/') return 'editor';
+  if (path === '/subpage') return `${LAST_SLUG}_editor`;
+  const slug = anchorSlug(path);
+  return slug ? `${slug}_editor` : 'editor';
+});
 </script>
 
 <template>
-  <div id="editor" class="app-footer">
+  <!-- v-ga-view：正常流段落的 section_view（見 plugins/ga-section-view.client.ts）。
+       掛在既有的 #editor 上，不另插 marker 元素。 -->
+  <div v-ga-view="gaViewTerm" id="editor" class="app-footer">
     <div class="app-footer__info">
       <!--
         names 裡的「、」與半形空白都是 NmdAuthor 的斷行點：它會把每個名字包成

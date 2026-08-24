@@ -41,7 +41,7 @@ const c = raw as NewsContent;
     </div>
 
     <!-- 衝流量到拚訂閱 -->
-    <div class="sp-col mt-16">
+    <div v-ga-view="'news_digitization'" class="sp-col mt-16">
       <h2 class="sp-h3 mb-4" v-html="c.growth.title" />
       <p class="sp-p" v-html="c.growth.body" />
     </div>
@@ -65,13 +65,13 @@ const c = raw as NewsContent;
     </div>
 
     <!-- AI革命全面進化 -->
-    <div class="sp-col mt-16">
+    <div v-ga-view="'news_ai_revolution'" class="sp-col mt-16">
       <h2 class="sp-h3 mb-4" v-html="c.aiRevolution.title" />
       <p class="sp-p" v-html="c.aiRevolution.body" />
     </div>
 
     <!-- 獲獎歷程時間軸 -->
-    <div class="sp-full mt-16">
+    <div v-ga-view="'news_award'" class="sp-full mt-16">
       <AwardTimeline :items="c.awards.timeline">
         <template #title>
           <div class="sp-col">

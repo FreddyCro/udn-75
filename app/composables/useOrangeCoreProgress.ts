@@ -18,12 +18,13 @@
 import {
   SYMBOL_STOPS,
   FORUM_HANDOFF,
-  BLESSING_HOLD,
+  blessingFrameAt,
   COVER_CONTACT,
   COVER_HANDOFF_SPAN,
   convergeAmountAt,
   convergeLightAt,
   coreWarmAt,
+  headerTintAt,
   symbolBgLightAt,
   coverHandoffAt,
   coverOrangeAt,
@@ -135,7 +136,7 @@ function buildOrangeCoreProgress() {
   // 02 → 03 覆蓋過場的捲動進度（0..1）：由 Blessing.vue 的 cover ScrollTrigger
   // （`.section3` 的 top bottom → top top，幾何上恆為一個視窗高）每次 update 寫入，
   // 故往回捲會自動倒帶。與 blessingProgress 首尾相接不重疊：那條的 start 是
-  // `.section3__face-track` 的 top top，也就是本條的 end。
+  // `.section3__ruler` 的 top top，也就是本條的 end。
   const coverProgress = useState<number>('blessing-cover-progress', () => 0);
   const setCoverProgress = (p: number) => (coverProgress.value = clamp01(p));
 
@@ -191,25 +192,28 @@ function buildOrangeCoreProgress() {
   const symbolCoreWarm = computed(() => coreWarmAt(symbolProgress.value));
   const symbolBgLight = computed(() => symbolBgLightAt(symbolProgress.value));
 
-  // 底色／header 主題該不該翻成淺色（＝ 底色過黑白中點，見 convergeLightAt）。
-  // 收成 boolean：它是 class 與 data-attribute 的條件，整拍只翻一次，不該逐幀 re-render。
+  // 段落底色（`.sec-symbol--light`）該不該翻成淺色（＝ 底色過黑白中點，見 convergeLightAt）。
+  // 收成 boolean：它是 class 的條件，整拍只翻一次，不該逐幀 re-render。
+  // ⚠ 2026-08-22 起 header **不再吃這個**，改吃下面的 symbolHeaderTint（逐幀插值）。
+  //   `.sec-symbol` 的底色留著硬翻：那一刻它一定被不透明的轉場層蓋著，看不到（見該元件）。
   const symbolConvergeLight = computed(() => convergeLightAt(symbolProgress.value));
 
-  // forum 接棒視窗：symbolProgress ∈ [coreIn, coreOut) → 橘核心（ForumCore）現身。
-  //   進入（≥coreIn）→ SymbolFace 收斂點交棒給橘核心（硬切，兩顆已同色同尺寸，見 FORUM_HANDOFF）；
-  //   離開（≥coreOut）→ 滿版底色淡出、露出議程。捲回會自動反向。
-  // 越過整段 pin（onLeave → symbolProgress=1）時 ≥coreOut，故 forum 之後橘核心不會殘留蓋住畫面。
-  const forumCoreActive = computed(
-    () =>
-      symbolProgress.value >= FORUM_HANDOFF.coreIn &&
-      symbolProgress.value < FORUM_HANDOFF.coreOut,
-  );
+  // header 三顆色票在同一段窗口內的逐幀漸變量；null ＝ 窗口外，交還給 data-header-theme
+  // 的離散三檔（見 headerTintAt 的註解）。消費端是 SymbolScene → useHeaderTint。
+  //
+  // ⚠ 這裡**不**收成 boolean（與上面那個相反）：它就是要逐幀的那個數字。也因此消費端
+  //   不能直接 render 它 —— 它最後是被寫成 CSS 變數，不進 Vue 的 render 路徑，
+  //   理由見 useHeaderTint 的檔頭。
+  const symbolHeaderTint = computed(() => headerTintAt(symbolProgress.value));
 
-  // forum 議程揭露：越過 agendaIn 才顯示議程。之前一律藏著，確保 SymbolFace↔橘核心
-  // crossfade 期間（兩層滿版底色皆未達全滿）下方議程不會短暫露餡。
-  // agendaIn 刻意早於 coreOut，讓這 0.4s 的淡入發生在畫面外（此時符號段底緣還在視窗底
-  // 下方 32vh）；若跟著 coreOut（＝符號段捲完那一刻）才淡入，會在畫面底緣看得到。
-  // 捲回會自動反向。
+  // forum 內容揭露：越過 agendaIn 才顯示 `.sec2__path`（論壇主標／論壇一~三）與議程整組。
+  // 之前一律藏著，確保那 0.4s 的淡入不會被人看到淡的過程。捲回會自動反向。
+  //
+  // ⚠ 2026-08-22 起「看不到」的理由換了：改版前是**畫面外**（符號段底緣還在視窗底下方
+  //   32vh），而現在接縫在交棒之前就升進畫面了（見 SYMBOL_HOVER_VH），那條理由已不成立。
+  //   現在靠的是**轉場層**（fixed 滿版、不透明，交棒點才開始淡出）—— agendaIn 早於 coreIn
+  //   恰好 AGENDA_IN_LEAD_VH ＝ 20vh，夠那 0.4s 在它底下跑完，判準見該常數。
+  //   於是交棒那一刻轉場層一掀開，論壇主標就是**已經淡入完成**的狀態直接在畫面上。
   const agendaRevealed = computed(
     () => symbolProgress.value >= FORUM_HANDOFF.agendaIn,
   );
@@ -251,11 +255,11 @@ function buildOrangeCoreProgress() {
     slashDrawAt(forumPathProgress.value, forumSlashWindow.value),
   );
 
-  // 橘核心那顆方塊的顯隱（與 ForumCore 的滿版底色分開）。
-  // 底色只在 [coreIn, coreOut) 現身，但橘點必須從 coreIn 一路撐到論壇段路徑接手為止 ——
-  // coreOut 到交棒點之間還有約 82vh，若跟著底色淡出，畫面上會有一段沒有核心、
-  // 然後又在設計線頂端冒出一顆（就是這次要修掉的斷點）。
-  // forumPathActive 為 false（該斷點無線稿）時退化成原本的 [coreIn, coreOut)。
+  // 橘核心那顆方塊的顯隱：coreIn 起，撐到論壇段路徑接手為止。
+  // ⚠ 2026-08-22 起這是 <ForumCore> 唯一的條件 —— 那層滿版白底已移除（理由見
+  //   orange-core-config 的 FORUM_HANDOFF），故不再有「與底色分開的另一個窗口」。
+  // forumPathActive 為 false（該斷點無線稿）時退化成 [coreIn, coreOut)：coreOut ＝ 1.0
+  // ＝ 接縫抵達視窗中央，與有線稿時路徑接手的那一刻同時，兩條路徑因此同時收。
   const forumCoreDotVisible = computed(() => {
     if (symbolProgress.value < FORUM_HANDOFF.coreIn) return false;
     return forumPathActive.value
@@ -284,15 +288,14 @@ function buildOrangeCoreProgress() {
   }
 
   // blessingProgress → 逐格臉的格號（0-based，整數；逐格＝不做補間）。
-  // 尾端 BLESSING_HOLD 這段停在最後一格；因 blessingProgress 每次 update 都重讀
-  // self.progress 寫入，往回捲會自動倒帶。
-  const blessingFrame = computed(() => {
-    if (reduceMotion.value) return FACE_FRAME_COUNT - 1;
-    const span = 1 - BLESSING_HOLD;
-    const local = span > 0 ? blessingProgress.value / span : 1;
-    const i = Math.floor(clamp01(local) * FACE_FRAME_COUNT);
-    return Math.min(FACE_FRAME_COUNT - 1, i);
-  });
+  // 映射本體在 blessingFrameAt（純函式，見 orange-core-config）—— header 的 `#blessing`
+  // 落點是用同一份算式定義的，兩邊不可各寫一份。本層只多做 reduce-motion 這一件事。
+  // 因 blessingProgress 每次 update 都重讀 self.progress 寫入，往回捲會自動倒帶。
+  const blessingFrame = computed(() =>
+    reduceMotion.value
+      ? FACE_FRAME_COUNT - 1
+      : blessingFrameAt(blessingProgress.value),
+  );
 
   // blessingOutProgress → 夥伴清單的 opacity（曲線見 partnersFadeAt）。
   // 與 blessingFrame 同一個角色：軌是原始值，這個是給模板消費的衍生值。
@@ -382,7 +385,7 @@ function buildOrangeCoreProgress() {
     symbolCoreWarm,
     symbolBgLight,
     symbolConvergeLight,
-    forumCoreActive,
+    symbolHeaderTint,
     forumCoreDotVisible,
     agendaRevealed,
     forumPathProgress,

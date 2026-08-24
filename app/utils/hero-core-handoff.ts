@@ -92,3 +92,41 @@ export function unrotateDelta(
   const sin = Math.sin(rad);
   return { x: dx * cos + dy * sin, y: -dx * sin + dy * cos };
 }
+
+/**
+ * core 沿驅動線的 y —— 但「進度 clamp 在 0」那一段改成**螢幕鎖定**。
+ *
+ * 為什麼需要：OrangeCorePath 的驅動線起點 `sy` 是**文件座標**（vh($exit) + 50vh），
+ * 「進度 0 ⇔ core 在畫面正中央」只在 scrollY 恰為 vh($exit) 那一刻成立（2026-08-21 的
+ * 修正就是把 ST 起點與 `sy` 一起平移到那裡）。捲動位置再往上（回捲到退場區間）之後
+ * ScrollTrigger 的 progress 被 clamp 在 0，路徑點於是凍在那個文件座標，core 改以
+ * **1:1 隨文件往下漂**：實測 868 高的視窗上 scrollY 1000 → 螢幕 463、scrollY 0 → 1463
+ * （早就掉出視窗下緣）—— 也就是「core 停在引言、不回到影片那顆 core 的位置」。
+ *
+ * 影片那顆 core 在退場尾幀是收在畫面正中心的（見 HERO_OUTRO_CORE_ANCHOR），而舞台被
+ * sticky 釘在螢幕上緣、與視窗同尺寸 ⇒ 「回到影片那顆 core 的位置」＝ 螢幕 50vh。
+ * 故這一段直接由捲動位置推回去，接縫必然連續（scrollY = vh($exit) 時本函式回傳 `sy`）。
+ *
+ * @param rawP  ScrollTrigger 的 progress（已 clamp 在 0..1），**不是**套過 ease 的值
+ * @param pathY 驅動線上算出來的 y（section 座標）
+ * @param scrolledWithinSection 目前捲動位置在 section 座標系裡的值（＝ −section.top）。
+ *   可以傳 **thunk**：本函式只在 `rawP <= 0` 時需要這個值，而它的來源
+ *   （`-section.getBoundingClientRect().top`）是一次 forced reflow。傳函式進來，
+ *   整段 path 巡航（`rawP > 0`，正常捲動的每一幀）就完全不會去量 layout。
+ *   ⚠️ 這是本函式唯一存在惰性求值的理由 —— 呼叫端緊接著就 `gsap.set` 寫入，
+ *      無條件先讀 rect 等於每幀一次 read-then-write layout thrash。
+ * @param halfViewport 半個視窗高（vhPx(0.5)，與驅動線的 runway 同一把尺）
+ */
+export function coreHandoffBackY(
+  rawP: number,
+  pathY: number,
+  scrolledWithinSection: number | (() => number),
+  halfViewport: number,
+): number {
+  if (rawP > 0) return pathY;
+  const scrolled =
+    typeof scrolledWithinSection === 'function'
+      ? scrolledWithinSection()
+      : scrolledWithinSection;
+  return scrolled + halfViewport;
+}

@@ -4,9 +4,17 @@
 //   → transition pin hold 住畫面：橘方塊上下拉長 → 左右展開成滿版（見 HeroSymbolTransition）。
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+// 退場播完後把畫面帶到引言的自動捲動（見 scrollToIntroReading）。用 ScrollToPlugin 而非
+// window.scrollTo({ behavior: 'smooth' })：需要自訂時長／曲線，更重要的是 autoKill ——
+// 使用者在動畫途中一捲，動畫就當場中止，不會跟他搶捲軸。
+import { ScrollToPlugin } from 'gsap/ScrollToPlugin';
 import str from '@/locales/section1.json';
+import { anchorLanding, anchorOffsetVh } from '@/utils/anchor-landing';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
-import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  killScrollTriggers,
+  refreshScrollTriggers,
+} from '@/utils/scroll-trigger';
 import {
   coverAnchorToScreen,
   isVerticallyOnScreen,
@@ -15,9 +23,14 @@ import {
 import {
   HERO_CORE_DROP_IN,
   HERO_CORE_HANDOFF,
+  HERO_DISSOLVE_VH,
+  HERO_INTRO_AUTO_SCROLL,
+  HERO_INTRO_READ_AT,
+  HERO_INTRO_REVEAL,
   HERO_OUTRO_CORE_ANCHOR,
 } from '@/utils/hero-video-config';
-import { HERO_RETURN_HASH } from '@/utils/home-intent';
+import { consumeHomeRestart } from '@/utils/home-intent';
+import { gaSectionViewOnce } from '@/utils/tracking-event';
 
 // ── <SymbolFace> 的常數 props ────────────────────────────────────────────
 // 提到模組層而不是寫成 template 裡的字面值：本元件的 render effect 會被捲動打到
@@ -25,15 +38,34 @@ import { HERO_RETURN_HASH } from '@/utils/home-intent';
 // 於是每一個 scrub tick 都會重建這四個陣列與兩個物件。更貴的是**識別性**：新物件
 // 每幀都與上一幀不等，SymbolFace 的 props 因此永遠比對不相等 → 它的 template
 // （彩蛋、hint、hint-mob）也跟著逐幀重新 diff，全為了幾個從頭到尾沒變過的值。
+//
+// ⚠️ 下面四組值＋模板裡那幾個數字是 2026-08-20 設計師 preset 的移植結果
+//    （來源 temp/matrix_preset_.json，由他的 Matrix Image Generator 匯出）。
+//    改動前先看 SymbolFace 對應 prop 的註解 —— 那裡記著每個值是怎麼從他的 px / % 換算來的。
+//
+// 字元集：他的 customChars 去空白後的 24 個唯一字元。順序無意義（sortCharsByInk 會依
+// 墨水量重排），拼字也不影響輸出 —— 詳見 SymbolFace 的 chars 註解。
 const SYMBOL_CHARS = [
-  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  'A', 'B', 'C', 'D', 'E', 'F',
+  'U', 'D', 'N', '7', '5',
+  'A', 'I', 'V', 'E', 'R', 'S', 'Y',
+  '/', ':', '_', '+', '.', '=', ')', '(', '#', '"', '>', '<',
 ];
+// c1..c4：與 preset 完全一致，這組從一開始就沒變過
 const SYMBOL_COLOR_RAMP = ['#000000', '#77c6e0', '#d1f4ff', '#ffffff'];
-const SYMBOL_COLOR_STOPS = [0, 0.4, 0.75, 1];
+// pos2 55% / pos3 81%（原本是 40 / 75）
+const SYMBOL_COLOR_STOPS = [0, 0.55, 0.81, 1];
+// 六組跳色（原本兩組）。組數上限由 SYMBOL_MAX_GLITCH_ITEMS 控制，2026-08-20 為此從 4 放到 6。
+// ⚠️ 密度總和 22% → 命中率 1-Π(1-d) ≈ 20%（原本約 5%），每 5 顆就有 1 顆是非漸層色。
+//    這是畫面調性的大改而非微調；且他的產生器 hash 在 frame 大時會退化成非均勻分佈
+//    （我們的 shader 已修掉，見該處註解），所以他調 density 時對著的很可能不是名目值
+//    —— 最終要以他看我們這版的結果為準。
 const SYMBOL_GLITCH_ITEMS = [
-  { color: '#ff0055', density: 3, fps: 12 },
-  { color: '#00ffcc', density: 2, fps: 8 },
+  { color: '#ffe357', density: 2, fps: 2 },
+  { color: '#33ffd6', density: 3, fps: 5 },
+  { color: '#ff8800', density: 4, fps: 2 },
+  { color: '#54dd22', density: 2, fps: 4 },
+  { color: '#ffa3d9', density: 3, fps: 2 },
+  { color: '#57beff', density: 8, fps: 4 },
 ];
 
 // ref：
@@ -93,15 +125,34 @@ const symbolWorldScale = computed(() =>
 // 刻意不掛在 pathProgress 的門檻上 —— 那條軌的進度換算成「文字還剩幾行沒被穿過」會隨
 // 視窗高與文字行數浮動，門檻寫死就會像先前那樣在方塊還在字裡時就開始淡。
 const introFade = ref(0);
-const introOpacity = computed(() => String(1 - introFade.value));
+
+// 引言的「原地淡入」進度（0 → 1）：B 階段，由影片硬切消失的那一刻起跑
+// （見下方 runIntroReveal 與 architecture/2026-08-21-hero-two-phase-exit-design.md）。
+// 與淡出相乘而不是二選一：兩者管的是不同時期（進場 / 讓位給轉場），
+// 而使用者可以在淡入還沒走完時就繼續往下捲，兩段會短暫重疊。
+const introReveal = ref(0);
+const introOpacity = computed(() =>
+  String((1 - introFade.value) * introReveal.value),
+);
+
+// GA section_view：keyvisual_lower ＝ 引言屏。
+//
+// ⚠️ 這一段不能用 IntersectionObserver（不掛 v-ga-view）：它住在被 transitionST 釘住的
+//    .sec1__inner 裡，pin 期間整塊是 fixed、恆在視窗內 —— IO 會在 pin 一開始就成立。
+//    而且它「被看到」的定義本來就不是 DOM 位置，是這裡這個淡入進度（影片硬切消失後才起跑）。
+//    門檻取 0.6：稿上引言在 60% 不透明度就已經清楚可讀，等到 1 會漏掉「淡入還沒走完就
+//    繼續往下捲」的使用者（introReveal 與 introFade 會短暫重疊，見上方註解）。
+watch(introOpacity, (v) => {
+  if (Number(v) >= 0.6) gaSectionViewOnce('keyvisual_lower');
+});
 
 // 引言的 runway：50vh（core 從文字底緣走到視窗中央所需）＋ 淡出窗口，兩者都由
 // INTRO_FADE_VH 推出 → 淡出必然剛好在 pin 接手的同一刻結束（見 orange-core-config）。
 const introRunway = vhLength(0.5 + INTRO_FADE_VH);
 
-// hero 影片四階段（main/loop/outro/gone）全域共享，定義見 composables/useHeroVideo。
-// 此處只讀狀態驅動畫面與捲動鎖：2026-08-16 起真值表縮成一條 ——
-// 只有 main 且未離開過 loop（!hasLeftLoop）才鎖，其餘（含 outro）皆不鎖，
+// hero 影片三階段（main/outro/gone）全域共享，定義見 composables/useHeroVideo。
+// 此處只讀狀態驅動畫面與捲動鎖：2026-08-22 起真值表就是一句話 ——
+// **正片 ＋ 還沒播完的退場段都鎖**（含 restart 重播那一趟），退場播完才解鎖，
 // 詳見下方 applyScrollLock 與 ~/utils/hero-scroll-lock 的 shouldLockHeroScroll。
 //
 // 載入層與影片的握手也走同一份全域狀態：
@@ -115,18 +166,21 @@ const {
   videoReady,
   loaderDone,
   heroStarted,
-  returnToLoop,
-  hasLeftLoop,
+  restartOpening,
   skipOpening,
   scrubArmed,
+  outroWatched,
+  restartIntent,
 } = useHeroVideo();
 
 // 視窗高的單一來源（--vh）：轉場與引言淡出的尺長都吃它，不吃 window.innerHeight。
 const { vhPx } = useViewportHeight();
 
-// ── 帶 hash 進站：略過開場閘門 ────────────────────────────────────────
-// （子頁漢堡選單的錨點會導到 /#forum 等；子頁的「返回」也是 /#media 這類連結。）
-// 走既有的 gone 路徑而非新增旗標 —— setState('gone') 令 hasLeftLoop 為 true，
+// ── 進站處理：帶 hash 略過開場閘門／帶 restartIntent 從頭重播 ──────────
+// （子頁漢堡選單的錨點會導到 /#forum 等；子頁的「返回」也是 /#media 這類連結。
+//  子頁 logo 則是**不帶 hash** 導航回 `/`，靠 restartIntent 這面旗子表達意圖，
+//  見 ~/utils/home-intent 的說明。）
+// 走既有的 gone 路徑而非新增旗標 —— gone 不在鎖的真值表內（見 ~/utils/hero-scroll-lock），
 // shouldLockScroll 隨即 false，onMounted 的 applyScrollLock() 那一輪就不會上鎖
 // （必須搶在它之前，否則會先上鎖再解鎖、中間閃一下並被 scrollTo(0,0) 拉回頂端）。
 //
@@ -137,21 +191,26 @@ const { vhPx } = useViewportHeight();
 //      首次載入（hydration）：SSR 必然已經吐出載入層，此刻改值會 hydration mismatch →
 //        留到 onMounted，改以 loaderBypass 把淡出換成瞬間移除（見 template 的 :name）。
 const initialHash = import.meta.client ? window.location.hash.slice(1) : '';
-// 只管**轉場樣式**：true → loader-cut（零時長、瞬間移除）。#loop 不設它，因為那條要走
+// 這一趟進站要不要從頭重播。**在 setup 內就消耗掉**（一次性，見 ~/utils/home-intent）：
+// 留著的話下一次進首頁會憑空重播。旗子活不過整頁載入，故 hydration 那一輪必然是 false ——
+// reload / 新分頁 / 直接貼網址一律走首訪流程（這正是不用 hash 的理由）。
+const wantsRestart = import.meta.client && consumeHomeRestart(restartIntent);
+// 只管**轉場樣式**：true → loader-cut（零時長、瞬間移除）。restart 不設它，因為那條要走
 // 正常的 loader-fade 淡出（載入層是跑完的，不是被抽掉的）。
 const loaderBypass = ref(false);
-// 只管**這個 hash 的進站處理跑過了沒**。原本是拿 loaderBypass 兼任，但 #loop 已經不設
-// 那面旗子了 —— 不拆開的話 onMounted 會再跑一次 bypassForInitialHash()。
-let hashHandled = false;
+// 只管**這次進站處理跑過了沒**。原本是拿 loaderBypass 兼任，但 restart 已經不設
+// 那面旗子了 —— 不拆開的話 onMounted 會再跑一次 bypassForEntry()。
+let entryHandled = false;
 
-// 載入層的自走秒數。帶 #loop 回來時它的職責只是「等影片可播放」，不是首次進站的品牌開場，
+// 載入層的自走秒數。restart 進站時它的職責只是「等影片可播放」，不是首次進站的品牌開場，
 // 故比較短 —— 影片已在 disk cache 時（從首頁進子頁再點 logo，最常見）這就是全部的等待時間。
 // 影片還沒下載完則不受此值限制：進度封頂在 99% 等 videoReady（見 HeroLoader 的 ready）。
-const LOADER_DURATION = { first: 2, returnToLoop: 1.2 };
-const loaderDuration =
-  initialHash === HERO_RETURN_HASH
-    ? LOADER_DURATION.returnToLoop
-    : LOADER_DURATION.first;
+// ⚠️ restart 是**從頭重播整支影片**，但這個值刻意不跟著調回 first：使用者已經看過品牌開場
+//    的載入動畫，重播時要的是「快點讓我看到影片」。
+const LOADER_DURATION = { first: 2, restart: 1.2 };
+const loaderDuration = wantsRestart
+  ? LOADER_DURATION.restart
+  : LOADER_DURATION.first;
 
 function bypassLoader() {
   loaderBypass.value = true;
@@ -163,29 +222,29 @@ function bypassLoader() {
   skipOpening();
 }
 
-// 帶 #loop 進站（子頁 header logo 點回來、或直接開 /#loop）：略過 start 閘門，落在 loop
-// 而非 gone —— 使用者按 logo 要的是「回到最開始」，不是回到已經看完的狀態。
+// 子頁 header logo 點回來（restartIntent）：略過 start 閘門，**從頭重播整支影片** ——
+// 使用者按 logo 要的是「回到最開始」，而設計師要的是「回到 page top 就重看影片」。
 //
-// ⚠️ 與其他 hash 不同，**載入層要留著跑完 0%→100%**，故不設 loaderBypass、
-//    也不開 loaderDone 的閘（skipLoader: false，理由見 useHeroVideo 的 returnToLoop）。
-//    原本這裡是瞬間開閘，於是：
-//      client-side 導航 → 載入層完全不出現，影片沒快取時就是一片白等 10 秒以上；
-//      直接開 /#loop → SSR 已吐出載入層，onMounted 才開閘 → 0% 閃現約 90ms 再跳掉。
-//    兩種都是「進度停在 0% 就跳走」的觀感。留著跑完才有可讀的等待。
-function bypassToLoop() {
-  returnToLoop({ skipLoader: false });
+// ⚠️ 與帶 hash 進站不同，**載入層要留著跑完 0%→100%**，故不設 loaderBypass、
+//    也不開 loaderDone 的閘（skipLoader: false，理由見 useHeroVideo 的 restartOpening）。
+//    原本這裡是瞬間開閘，於是載入層完全不出現，影片沒快取時就是一片白等 10 秒以上
+//    ——「進度停在 0% 就跳走」的觀感。留著跑完才有可讀的等待。
+function bypassToRestart() {
+  restartOpening({ skipLoader: false });
 }
 
-// #loop 走倒帶、其餘 hash（子頁選單的 /#forum 這類）維持既有的「直接進 gone」。
-function bypassForInitialHash() {
-  if (hashHandled) return;
-  hashHandled = true;
-  if (initialHash === HERO_RETURN_HASH) bypassToLoop();
+// restartIntent 走 restart、帶 hash 進站（子頁選單的 /#forum 這類）維持既有的「直接進 gone」
+// —— 後者落在段落中間、畫面上沒有 hero，重播無從發生；他們要重看影片得捲回 page top
+// （那條由 scrub 接手，見 ~/utils/hero-dissolve 的 dissolveState）。
+function bypassForEntry() {
+  if (entryHandled) return;
+  entryHandled = true;
+  if (wantsRestart) bypassToRestart();
   else bypassLoader();
 }
 
 // ⚠️ 這一行**必須排在下面兩個 watch(heroState) 之後**（原本在它們之前）。
-//    bypassToLoop() / bypassLoader() 會呼叫 setState()，而清理工作（resetCoreEntrance、
+//    bypassToRestart() / bypassLoader() 會呼叫 setState()，而清理工作（resetCoreEntrance、
 //    setTransitionProgress(0)）掛在 watch 裡 —— 監聽器還沒註冊，那次狀態改變就沒人接，
 //    core 與轉場層會帶著上一輪的殘留狀態進場。搬到 watch 之後仍在 setup 內，
 //    依舊搶在首次 render 之前，故上方「判定必須在 render 之前」的前提不受影響。
@@ -204,28 +263,47 @@ function bypassForInitialHash() {
 // 直接操作的 .is-scroll-locked 與 data-scroll-lock）。
 useHead({ htmlAttrs: { class: 'is-boot-locked' } });
 
-// 綁 shouldLockScroll 而非 heroState：鎖不鎖的真值表吃兩個輸入（state、hasLeftLoop，
-// 見 ~/utils/hero-scroll-lock），只看 state 會漏掉 hasLeftLoop 單獨翻面的情形。
+// 綁 shouldLockScroll 而非 heroState：真值表雖然 2026-08-22 起只吃 state 一個輸入
+// （見 ~/utils/hero-scroll-lock），但綁在那個 computed 上才不會在真值表下次變動時漏掉。
 watch(shouldLockScroll, applyScrollLock);
+
+// ── 退場播完 → 自動捲到引言的可讀位置 ─────────────────────────────────
+// 2026-08-22 使用者要求：不要讓使用者自己滑那段退場行程，播完就把畫面帶過去。
+// 綁 outroWatched 而非 heroState：那面旗標**就是**「解鎖」的定義（見 ~/utils/hero-scroll-lock），
+// 於是三條解鎖路徑自動共用同一個行為 —— 退場自然播完、按下 SKIP、以及退場卡住時的保險絲。
+// 觸發當下 scrollY 必為 0（在此之前頁面一直鎖著），故不必判斷方向。
+watch(outroWatched, (on) => {
+  if (on) scrollToIntroReading();
+});
 
 // gone ＝ core 的進場時機。fromOutro 只用來回答「影片畫面裡有沒有一顆 core 可以交棒」——
 // 不是所有 gone 都經過退場段（SKIP、hero 捲出視窗的強制收尾都會直接跳過來）。
 watch(heroState, (s, prev) => {
   if (s !== 'gone') {
-    resetCoreEntrance(); // 倒帶回 loop：收掉動畫、dot 歸位
+    resetCoreEntrance(); // 影片又回到畫面上（restart／回捲）：收掉動畫、dot 歸位
+    resetIntroReveal(); // 影片又蓋回來了 → 引言收回不可見，下一趟重新淡入
+    // 進 main ＝ 重播：把「捲到引言」那支自動捲動收掉，否則它會與 restart 的
+    // scrollTo(0, 0)（見 applyScrollLock／scrollToTopForRestart）搶捲軸。
+    if (s === 'main') {
+      introScrollTween?.kill();
+      introScrollTween = null;
+    }
     // 轉場進度一併歸零。header 在轉場期間刻意保持可點（見 AppHeader 的 z-index 註解），
-    // 使用者真的會在轉場進行到一半時按 logo 回 loop —— 不歸零的話 HeroSymbolTransition
+    // 使用者真的會在轉場進行到一半時按 logo 重播 —— 不歸零的話 HeroSymbolTransition
     // 會留在 active，在剛倒帶回來的影片上蓋一層近乎滿版的黑色 clip。
     // onBeforeUnmount 有同一行清理，但那條只在換頁時跑得到；就地倒帶不 unmount。
     setTransitionProgress(0);
     return;
   }
+  // core 與引言**同時**淡入（使用者裁決）：兩者都掛在這一刻，不排先後。
   runCoreEntrance(prev === 'outro');
+  runIntroReveal();
 });
 
-// 帶 hash 進站的處理（見上方 bypassForInitialHash 的 ⚠）：排在兩個 watch 之後，
-// 才接得到它自己觸發的那次 setState()。
-if (initialHash && !useNuxtApp().isHydrating) bypassForInitialHash();
+// 進站處理（見上方 bypassForEntry 的 ⚠）：排在兩個 watch 之後，才接得到它自己觸發的
+// 那次 setState()。wantsRestart 為真時必然不在 hydration（旗子只由 client-side 導航帶進來），
+// 那道判斷是給帶 hash 的首次載入用的。
+if ((wantsRestart || initialHash) && !useNuxtApp().isHydrating) bypassForEntry();
 
 // core 於轉場開始後隱去：其後畫面上那個方塊由 HeroSymbolTransition 接手畫
 // （避免兩層各畫一次而 drift）。以 opacity 隱藏而非 display:none —— 轉場層仍要讀它的螢幕矩形。
@@ -246,12 +324,41 @@ let transitionST: ScrollTrigger | null = null;
 // 故這一刻正是「方塊剛穿出內容的最後一個元素」。其後吃掉 INTRO_FADE_VH 的捲動距離淡完。
 // trigger 取內容 group（不含 runway）；scrub → 往回捲自動復原。
 let introFadeST: ScrollTrigger | null = null;
-// core 的進場動畫（見 runCoreEntrance）：留著才能在倒帶回 loop 時中途收掉。
+// core 的進場動畫（見 runCoreEntrance）：留著才能在影片重新回到畫面上時中途收掉。
 let entranceTween: gsap.core.Tween | null = null;
+// 引言原地淡入的 tween（見 runIntroReveal）：同樣要能中途收掉。
+let introRevealTween: gsap.core.Tween | null = null;
+
+// ── B 階段：引言原地淡入 ──────────────────────────────────────────────
+// 時間驅動（不吃捲動距離，見 HERO_INTRO_REVEAL 的註解）。「原地」由 A 階段的幾何
+// 保證：影片硬切消失的那一刻，引言上緣已經停在 $intro-at 上，淡入就發生在那個位置。
+//
+// tween 一個中介物件再寫回 ref，而不是直接 gsap.to(ref)：GSAP 對 Vue ref 的
+// `.value` 賦值雖然會觸發反應性，但那是依賴實作細節；寫成兩步意圖明確、也好除錯。
+const revealProxy = { v: 0 };
+
+function runIntroReveal() {
+  introRevealTween?.kill();
+  revealProxy.v = 0;
+  introReveal.value = 0;
+  introRevealTween = gsap.to(revealProxy, {
+    v: 1,
+    duration: HERO_INTRO_REVEAL.duration,
+    ease: HERO_INTRO_REVEAL.ease,
+    onUpdate: () => (introReveal.value = revealProxy.v),
+  });
+}
+
+function resetIntroReveal() {
+  introRevealTween?.kill();
+  introRevealTween = null;
+  revealProxy.v = 0;
+  introReveal.value = 0;
+}
 
 onMounted(() => {
   // hero 影片體驗一律從頂端開始：停用瀏覽器捲動位置還原，
-  // 避免重整後還原到內容區、卻因 main 狀態（!hasLeftLoop）把 body 鎖死在中途。
+  // 避免重整後還原到內容區、卻因身處 main 而把 body 鎖死在中途。
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
   // 轉向／拉視窗跨過 768 時換一組 worldScale（見上方 SYMBOL_WORLD_SCALE）。
@@ -262,18 +369,30 @@ onMounted(() => {
   onBeforeUnmount(() => mq.removeEventListener('change', onMqChange));
 
   // hydration 那一輪擋不掉（理由見上方 bypassLoader）：補在這裡，仍搶在 applyScrollLock 之前。
-  // 重入由 bypassForInitialHash() 自己的 hashHandled 擋掉（client-side 導航時 setup 已經跑過）。
-  if (initialHash) bypassForInitialHash();
+  // 重入由 bypassForEntry() 自己的 entryHandled 擋掉（client-side 導航時 setup 已經跑過）。
+  if (initialHash) bypassForEntry();
 
-  // 捲動鎖由本元件「單一擁有」：載入層一掛上就上鎖（此時為 main），直到狀態離開 main
-  // （進 loop）才解鎖 —— outro／gone 都不鎖，捲動本身就是驅動 scrub 退場的動作，
-  // 鎖住會讓 loop 之後的一切死結（真值表見 ~/utils/hero-scroll-lock 的
-  // shouldLockHeroScroll）。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
+  // 捲動鎖由本元件「單一擁有」：載入層一掛上就上鎖（此時為 main），一路鎖到**退場段
+  // 播完**（2026-08-22 起正片順播進退場、整段都鎖著；真值表見 ~/utils/hero-scroll-lock
+  // 的 shouldLockHeroScroll）。解鎖之後捲動才是驅動 scrub 溶解的動作 —— 那一段不能鎖，
+  // 鎖住會死結。HeroLoader 不再自行改 body.overflow —— 否則它卸載時
   // 先解鎖、本元件下一 tick 才重新上鎖，中間會出現「瞬間可捲動」的破口。
   applyScrollLock();
 
+  // 掛載時就已經是 gone（帶其他 hash 進站、影片載入失敗、hydration 期間 bypass 被跳過
+  // 而由別處補的路徑）：watch(heroState) 接不到那次改變，引言會停在 opacity 0 看不見。
+  // 這些使用者沒看過影片，沒有「接上」可言 → 直接給 1，不做淡入。
+  if (isGone.value && !introRevealTween) introReveal.value = 1;
+
+  // GA section_view：keyvisual_upper ＝ 開場影片那一屏。
+  //
+  // 它就是進站的第一屏，故不需要任何觀測 —— 只要影片還沒被跳過就代表使用者看到了。
+  // ⚠️ 一定要排在上面 bypassForEntry() 之後：帶 hash 進站（/#forum、從子頁按錨點回來）
+  //    的人會被直接推到 gone，那條路徑根本沒渲染過開場 KV，不該送。
+  if (!isGone.value) gaSectionViewOnce('keyvisual_upper');
+
   if (!introRef.value || !innerRef.value) return;
-  gsap.registerPlugin(ScrollTrigger);
+  gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
   transitionST = ScrollTrigger.create({
     trigger: introRef.value,
     start: 'bottom bottom', // 引言整段（含 runway）底緣抵達視窗底 ＝ core 剛好停在視窗正中央
@@ -298,7 +417,18 @@ onMounted(() => {
       trigger: introBodyRef.value,
       start: 'bottom center',
       end: () => `+=${vhPx(INTRO_FADE_VH)}`, // 同上，且必須與 introRunway 同一把尺
-      scrub: true,
+      // ⚠️ trigger 住在被本元件的 pin 釘住的 .sec1__inner 裡 —— 不宣告 pinnedContainer 的話，
+      //    GSAP 量它時可能量到帶著 pin 位移的位置。實測 1527×868：捲到 pin 之後（或 pin 進行中）
+      //    做一次 refresh，本尺的區間從 1833/2181 變成 2874/3222（＋一整段 pin 距離），
+      //    pin 進行中甚至是 −348/0 ⇒ 引言淡出的時機整段跑掉。宣告之後 GSAP 會在量測前
+      //    先把那個 pin 拆掉（ScrollTrigger.js L1370）。
+      //    ⚠️ 為什麼不是「順序對就沒事」：refresh 期間 pin 會被 transitionST 自己重新套上，
+      //       誰先量只由 _triggers 的排序決定（ScrollTrigger.sort() 的 _sortY 又正好是
+      //       **帶著 pin 位移**量的）—— 那不是可以倚賴的東西。
+      //    同一個坑的另一半在 OrangeCorePath（那邊 core 會掉出視窗）。
+      pinnedContainer: innerRef.value,
+      // scrub 已移除：它只對「掛在 ST 上的 animation」有意義，本 ST 沒有動畫、只讀 progress
+      // （同 HeroVideo 的 buildDissolveST）。留著不會讓誰變慢，但會讓人以為這裡有補間。
       invalidateOnRefresh: true,
       onUpdate: (self) => (introFade.value = self.progress),
       // 捲過整段後 ScrollTrigger 不再 update：明確補到 0 / 1，否則快速捲動會留下殘影透明度。
@@ -310,7 +440,7 @@ onMounted(() => {
   // ⚠️ arm 一定要排在落點確定之後（兩支函式都在 nextTick 內先 refreshScrollTriggers()
   //    再 scrollTo）。提早 arm 的話，子頁帶過來的捲動位置會讓 scrub 先判 gone、
   //    把影片 seek 到退場段，下一 tick 又被拉回 —— 使用者看到影片抽搐一下。
-  if (initialHash === HERO_RETURN_HASH) scrollToTopForLoop().then(armScrub);
+  if (wantsRestart) scrollToTopForRestart().then(armScrub);
   else if (initialHash) scrollToInitialHash(initialHash).then(armScrub);
   else nextTick(armScrub);
 });
@@ -319,17 +449,58 @@ function armScrub() {
   scrubArmed.value = true;
 }
 
-// 帶 #loop 進站：目標不是某個段落，而是「回到最開始」，所以要捲回頂端。
-// 不能倚賴既有的兩條路：
-//   ① #loop 對不到元素，vue-router 的 scrollToPosition 會警告後放棄；
-//   ② applyScrollLock() 的 scrollTo(0,0) 只在 hasLeftLoop === false（首次體驗）時才跑。
-// 已經捲過首頁的人 hasLeftLoop 為 true → 沿用子頁的捲動位置 → #app-hero 不在畫面上
-// → HeroVideo 的 heroIO 立刻 setState('gone')，功能在被看見之前就被撤銷。
+// restartIntent 進站：目標不是某個段落，而是「回到最開始」，所以要捲回頂端。
+// 仍要自己捲一次而不是倚賴既有的兩條路：
+//   ① Nuxt 預設 scrollBehavior 對無 hash 的 push 導航雖然會給 (0, 0)，但那是 router 的
+//      時序，與下面 refreshScrollTriggers() → arm 的順序無法保證（pin spacer 會改文件高度）；
+//   ② applyScrollLock() 的 scrollTo(0, 0) 雖然 2026-08-22 起在 restart 這條也會跑
+//      （鎖的真值表只看 state，見下方 applyScrollLock），但它是 watch 觸發的、時序上
+//      晚於本函式；落點要在 arm 之前確定，否則 scrub 會先用子頁帶過來的 scrollY 判狀態。
+// 不捲的後果：沿用子頁的捲動位置 → #app-hero 不在畫面上 → HeroVideo 的 heroIO 立刻
+// setState('gone')，功能在被看見之前就被撤銷。
 // nextTick + refreshScrollTriggers 的理由同 scrollToInitialHash：pin spacer 會改變文件高度。
-function scrollToTopForLoop() {
+function scrollToTopForRestart() {
   return nextTick(() => {
     refreshScrollTriggers();
     window.scrollTo({ top: 0, behavior: 'auto' });
+  });
+}
+
+// ── 退場播完 → 自動捲到引言的可讀位置（2026-08-22 新增）──────────────────
+// 落點語意：**引言上緣落在畫面 HERO_INTRO_READ_AT（0.6）的高度**。量引言的文件位置而不是
+// 拿 vh 湊算式 —— 引言上緣的文件位置就是 hero 的佔位高（vh($exit + $intro-at)），而 $intro-at
+// 只存在於 SCSS，JS 側湊會變成第三份雙寫。量測是單一來源，改 $exit 也不必跟著調。
+//
+// 這段自動捲動同時把「退場溶解」走完（落點必然在 vh(HERO_DISSOLVE_VH) 之後，見下方
+// clamp）：影片的按住縮放、p ≥ 1 的硬切、core 交棒、引言淡入全都照原本的順序發生，
+// 只是驅動它們的是這個 tween 而不是使用者的滾輪。
+//
+// ⚠️ autoKill: true —— 使用者在動畫途中一捲就中止，不跟他搶捲軸。
+// ⚠️ 減少動態偏好：直接跳過去，不做 1.1 秒的滑行。
+let introScrollTween: gsap.core.Tween | null = null;
+
+function scrollToIntroReading() {
+  const intro = introRef.value;
+  if (!intro) return;
+  introScrollTween?.kill();
+
+  const introDocTop = intro.getBoundingClientRect().top + window.scrollY;
+  // clamp：落點不得早於退場終點，否則溶解走不完、影片會留在畫面上（p 永遠到不了 1）。
+  // 正常情況下 HERO_INTRO_READ_AT(0.6) < $intro-at(0.85) 就自然成立，這行是防呆。
+  const target = Math.max(
+    introDocTop - vhPx(HERO_INTRO_READ_AT),
+    vhPx(HERO_DISSOLVE_VH),
+  );
+
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    window.scrollTo({ top: target, behavior: 'auto' });
+    return;
+  }
+  introScrollTween = gsap.to(window, {
+    scrollTo: { y: target, autoKill: true },
+    duration: HERO_INTRO_AUTO_SCROLL.duration,
+    ease: HERO_INTRO_AUTO_SCROLL.ease,
+    overwrite: 'auto',
   });
 }
 
@@ -353,17 +524,25 @@ function scrollToInitialHash(hash: string) {
         ),
       ) || 0;
 
+    // 落點的算式與 header 錨點列共用一份（見 ~/utils/anchor-landing）：段落可以宣告
+    // data-anchor-offset-vh 把落點推進段落內某一刻，`#blessing` 就是這樣落在「笑臉
+    // 逐格走完」那一格 —— 深連結與就地捲動落在不同位置的話，是那種沒人會發現的不一致。
+    const landing = anchorLanding({
+      elementTop: target.getBoundingClientRect().top + window.scrollY,
+      headerOffset: headerHeight,
+      offsetVh: anchorOffsetVh(target.dataset.anchorOffsetVh),
+      vh: vhPx(),
+    });
+
     // ⚠️ 跨頁導航（子頁選單 → /#forum）時 Nuxt 的 scrollBehavior 會等頁面轉場結束後
     //    「再捲一次」到 hash 元素，蓋掉下面這次捲動。它的偏移量取自元素的 scroll-margin-top
     //    （見 nuxt/dist/pages/runtime/router.options 的 _getHashElementScrollMarginTop），
     //    故一併寫上去讓兩邊落在同一點 —— 比賽誰後捲更可靠。
-    target.style.scrollMarginTop = `${headerHeight}px`;
+    //    宣告了深度的錨點這個值是**負的**（往段落內走），那是對的。
+    target.style.scrollMarginTop = `${landing.scrollMarginTop}px`;
 
     // auto 而非 smooth：從別頁導進來時使用者預期「已經在那裡」，不是看著頁面自己捲。
-    window.scrollTo({
-      top: target.getBoundingClientRect().top + window.scrollY - headerHeight,
-      behavior: 'auto',
-    });
+    window.scrollTo({ top: landing.top, behavior: 'auto' });
   });
 }
 
@@ -373,13 +552,13 @@ onBeforeUnmount(() => {
   // data-scroll-lock 刻意留著（理由見 assets/styles/base.scss 的 .is-boot-locked 那段）
   //
   // scrubArmed 是 useState，跨導航存活，不會自己歸零：不在這裡關掉的話，第二次進站
-  // （首頁 → 子頁 → 點 logo 回 /#loop）時它已經是 true，而子元件（HeroVideo）先於本
+  // （首頁 → 子頁 → 點 logo 回 `/`）時它已經是 true，而子元件（HeroVideo）先於本
   // 元件 mounted —— dissolveST 建立時的 onRefresh 會用子頁帶過來的 scrollY 立刻算出
-  // 一個很大的 p、直接寫狀態（很可能誤判 gone），之後才被 scrollToTopForLoop() 拉回，
+  // 一個很大的 p、直接寫狀態（很可能誤判 gone），之後才被 scrollToTopForRestart() 拉回，
   // 正是 scrubArmed 當初要防的抽搐（見上方 arm 時序的註解）。關掉後每次重新掛載都要
   // 重跑一次 arm 流程，落點確定後才重新武裝。
-  // ⚠️ 首頁就地倒帶（returnToLoop()）不會走到這裡（不 unmount），維持 armed 是對的，
-  //    不要把這行搬去 returnToLoop 或其他地方。
+  // ⚠️ 首頁就地重播（restartOpening()）不會走到這裡（不 unmount），維持 armed 是對的，
+  //    不要把這行搬去 restartOpening 或其他地方。
   scrubArmed.value = false;
   //
   // 轉場進度是全域共享的，必須歸零：header 在轉場期間刻意保持可點（疊在 z-10 的轉場層
@@ -387,12 +566,20 @@ onBeforeUnmount(() => {
   // 就會讓 HeroSymbolTransition 處於 active —— 在 ScrollTrigger refresh 之前蓋一層近乎
   // 滿版的黑色 clip。
   setTransitionProgress(0);
-  transitionST?.kill();
+  // killScrollTriggers ＝ kill(false)，**不可**改回裸 kill()：transitionST 帶 pin，
+  // revert 會拆掉 pin-spacer 讓文件瞬間短一截（實測 1041px），瀏覽器 clamp 捲軸後
+  // 首頁其餘 scrub 尺跟著倒帶 —— 而此刻舊頁還在畫面上淡出，倒帶出來的滿版橘看得見。
+  // 完整機制見 utils/scroll-trigger 的 killScrollTriggers。
+  killScrollTriggers(transitionST, introFadeST);
   transitionST = null;
-  introFadeST?.kill();
   introFadeST = null;
   entranceTween?.kill();
   entranceTween = null;
+  introRevealTween?.kill();
+  introRevealTween = null;
+  // 換頁時一定要收：這支 tween 寫的是 window 的捲動位置，殘留下去會在新頁面上繼續捲。
+  introScrollTween?.kill();
+  introScrollTween = null;
 });
 
 // ── core 的進場（gone 的那一刻）────────────────────────────────────────
@@ -479,7 +666,7 @@ function resetCoreEntrance() {
   if (dot) gsap.set(dot, { clearProps: 'x,y,scale' });
 }
 
-// 只有 main 期間鎖住頁面捲動；loop 起解鎖 —— 不解鎖就沒有捲動可以驅動 scrub，會死結
+// 正片與「還沒播完的退場段」鎖住頁面捲動；退場播完才解鎖 —— 不解鎖就沒有捲動可以驅動 scrub，會死結
 // （真值表見 ~/utils/hero-scroll-lock 的 shouldLockHeroScroll，2026-08-16 起只剩這一條）。
 // 樣式集中在 base.scss 的 .is-scroll-locked：overflow:hidden ＋ padding-right
 // 補回捲軸寬（--scrollbar-width，由 plugins/scrollbar-width.client.ts 量測）——
@@ -499,12 +686,13 @@ function applyScrollLock() {
     // 上鎖前先回頂端：否則重整後瀏覽器把位置還原到內容區、又處於 main，
     // 會被 overflow:hidden 永久鎖死在中途。
     //
-    // ⚠️ hasLeftLoop 這條判斷式在目前規則下進到這裡時恆為 false —— shouldLockScroll
-    //    只在 state === 'main' && !hasLeftLoop 時為 true（見 ~/utils/hero-scroll-lock），
-    //    故能走進上面 if (shouldLockScroll.value) 分支，hasLeftLoop 必為 false。
-    //    保留這行判斷式是防禦性寫法：萬一日後真值表再改（例如恢復某個狀態也鎖），
-    //    這裡不必跟著改，也留下「這是有意的重新回頂端」這個語意。
-    if (!hasLeftLoop.value) window.scrollTo(0, 0);
+    // 2026-08-22（restart 規則）起這行是**無條件**的（原本被 `!hasLeftLoop` 擋著，
+    // 而那面旗標已隨真值表一起移除）。它同時承擔兩件事：
+    //   ① 上述的「重整還原到中途」保險；
+    //   ② restart 由 scrub 觸發時（使用者往上捲回 page top，見 hero-dissolve）把位置
+    //      收斂到 0 —— 那一刻捲動可能還帶著慣性／iOS 橡皮筋還在回彈，先歸零再上鎖，
+    //      畫面才不會凍在彈起的位置（那正是 2026-08-04「不重新上鎖」的原始顧慮）。
+    window.scrollTo(0, 0);
     root.classList.add('is-scroll-locked');
     document.body.classList.add('is-scroll-locked');
   } else {
@@ -574,6 +762,7 @@ function applyScrollLock() {
         :section-el="sec1Ref"
         :orange-core-el="orangeCoreEl"
         :end-el="introRef"
+        :pinned-el="innerRef"
       />
 
       <div class="sec1__scene">
@@ -655,7 +844,9 @@ function applyScrollLock() {
           :bg-light-amount="symbolBgLight"
           :phrases="str.symbol.phrases"
           :hint="str.symbol.hint"
+          :hint-pad="str.symbol.hintPad"
           :hint-mob="str.symbol.hintMob"
+          :scroll-hint="str.symbol.scrollHint"
           :hole-radius="25"
           :hole-spread="50"
           :return-ease="1.5"
@@ -671,15 +862,15 @@ function applyScrollLock() {
           :color-stops="SYMBOL_COLOR_STOPS"
           bg-color="#000"
           :world-scale="symbolWorldScale"
-          :cols="85"
+          :cols="89"
           :char-aspect="0.65"
-          :contrast="1.2"
+          :contrast="1.4"
           :invert="false"
-          :size-min="0.43"
-          :size-max="1.0"
+          :size-min="0.4"
+          :size-max="0.8"
           :weight-steps="5"
           :weight-min="100"
-          :weight-max="900"
+          :weight-max="500"
           :glitch-items="SYMBOL_GLITCH_ITEMS"
           :float-amp="18"
           :float-micro="0.5"

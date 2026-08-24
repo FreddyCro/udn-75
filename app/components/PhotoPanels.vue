@@ -5,7 +5,10 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  killScrollTriggers,
+  refreshScrollTriggers,
+} from '@/utils/scroll-trigger';
 
 export interface PanelPhoto {
   /** UPic 圖片路徑（不含副檔名與裝置後綴，如 /img/news/udn75_pic04_01） */
@@ -50,7 +53,8 @@ function build() {
         root.clientHeight >= window.innerHeight ? 'top top' : 'center center',
       end: () => `+=${shift() * 0.7}`,
       pin: true,
-      anticipatePin: 1,
+      // 不設 anticipatePin：center center 起點的 pin 提早釘住＝可見的跳位，
+      // 理由與量測見 AwardTimeline 的同一條註解
       scrub: 1,
       invalidateOnRefresh: true,
     },
@@ -58,7 +62,18 @@ function build() {
   tl.fromTo(track, { x: 0 }, { x: () => -shift(), ease: 'none', duration: 1 });
 }
 
-function teardown() {
+/**
+ * @param quiet 卸載路徑傳 true ＝ 不 revert、不 clearProps（同 FormulaBlocks 的 teardown）。
+ *   跨斷點重建**要** revert（緊接著重新量測，殘留 inline 樣式會失準）；換頁卸載**不要**
+ *   —— 舊頁還在畫面上淡出，拔掉 pin-spacer 會讓下方版面跳一段而被看見。
+ */
+function teardown(quiet = false) {
+  if (quiet) {
+    killScrollTriggers(tl?.scrollTrigger);
+    tl?.kill();
+    tl = null;
+    return;
+  }
   tl?.scrollTrigger?.kill();
   tl?.kill();
   tl = null;
@@ -96,7 +111,7 @@ onBeforeUnmount(() => {
   if (resizeTimer) clearTimeout(resizeTimer);
   window.removeEventListener('resize', onResize);
   mq?.removeEventListener('change', onMqChange);
-  teardown();
+  teardown(true);
 });
 </script>
 

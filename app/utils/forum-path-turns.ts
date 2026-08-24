@@ -19,7 +19,8 @@ export type ForumTurn = {
   id: string;
   /** 折線轉角（度，見 turnAngleDeg） */
   angle: number;
-  /** 在驅動線上的弧長（px）。出聲的判定比的是這個值，見 ForumCorePath 的 playTurnsCrossed。 */
+  /** 在驅動線上的弧長（px）。撞擊（出聲＋擠壓）的判定比的是這個值，
+   *  見 ForumCorePath 的 hitTurnsCrossed。 */
   len: number;
   /** len / pathLen（forumPath 軌的 0..1）。**只給 dashboard 顯示用** ——
    *  與路徑事件的門檻同一個座標系，兩區的 % 才對得起來。 */
@@ -83,6 +84,32 @@ export const FORUM_TURN_MIN_GAP_LEN = 300;
  *  型別綁 SoundKey → 打錯字或音效檔被移出清單時編譯期就報錯，不會變成靜默的 no-op
  *  （useSfx 的 play() 對不認識的 key 直接 return）。 */
 export const FORUM_TURN_SFX: SoundKey = 'sfx01';
+
+/**
+ * 撞擊擠壓的倍率：把「壓了多少」（amount）換算成方塊的 [scaleX, scaleY]。
+ *
+ * amount 0 ＝ 原尺寸、1 ＝ 稿上的撞擊形狀（size，見 FORUM_TURN_SQUASH）。
+ * 兩軸各自線性內插，故 amount 是 gsap 補間的唯一一個數 —— 形狀由稿決定、節奏由 ease 決定，
+ * 兩件事不互相污染。
+ *
+ * ⚠ **不 clamp**：回彈的 ease（back.out）會讓 amount 越過 0 變負，那是刻意的
+ *   「壓扁 → 彈過頭拉長一下 → 回正」，夾掉就沒有彈性了（見 FORUM_TURN_SQUASH 的註解）。
+ *   amount 由補間產生、範圍受 ease 保證，不是外部輸入。
+ *
+ * 退化：base ≤ 0（量不到原尺寸）→ 回 [1, 1]。**不可能讓方塊塌成 0** ——
+ * 同 slashCoreScaleAt 的 fail-soft：形變壞掉時該看到的是「沒有形變」，不是核心消失。
+ */
+export function squashScaleAt(
+  amount: number,
+  size: readonly [number, number],
+  base: number,
+): [number, number] {
+  if (!(base > 0)) return [1, 1];
+  return [
+    1 + amount * (size[0] / base - 1),
+    1 + amount * (size[1] / base - 1),
+  ];
+}
 
 /**
  * 挑出轉折。

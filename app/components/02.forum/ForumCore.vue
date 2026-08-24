@@ -9,17 +9,17 @@
        SymbolFace 因此改用 ResizeObserver，否則收斂點會偏右半個捲軸寬（見該元件的說明）。
   - 交棒是**硬切**、不是 crossfade：收斂點在收攏末段已由白轉橘（SymbolFace 的 convergeColor
     ＝ CORE.orange），到 coreIn 時兩顆同色同尺寸同位置，直接換人畫看不出接縫。
-  - 底色與橘點是兩層、吃兩個條件：底色只在 [coreIn, coreOut) 現身，走 0.4s 淡入；
-    橘點要撐到論壇段路徑接手，故用 dotVisible（見 useOrangeCoreProgress 的 forumCoreDotVisible）。
-    ⚠️ 這層底色是**白的**，理由見下方 .forum-core__bg —— 它現在的任務是「保證這段是白的」，
-       不是「遮黑」。往下捲的全程（converge → forum）維持白底是刻意的規則。
+  - 只有橘點一層，吃一個條件（dotVisible，見 useOrangeCoreProgress 的 forumCoreDotVisible）。
+    ⚠️ 2026-08-22 拿掉了原本的「滿版白底」那一層（.forum-core__bg，吃 [coreIn, coreOut)）。
+       它的任務是「保證交棒這段是白的」，但交棒點之後畫面上半是 `.sec-symbol--light`（白）、
+       下半是 `.sec2`（白）—— 本來就白，這層只是把剛升上來的論壇主標整片蓋掉 90vh。
+       「往下捲的全程（converge → forum）維持白底」這條規則不變，只是改由那兩層自己成立。
+       取回：git log 這支元件。
   - 往回捲自動反向（boolean 觸發的 CSS 轉場可逆）。
-  - z-index 20：低於 AppHeader（1000），故 header 全程可見。
+  - z-index 20：高於轉場層（10，交棒時它正在淡出）、低於 AppHeader（1000），故 header 全程可見。
 -->
 <script setup lang="ts">
 defineProps<{
-  /** forum 接棒視窗內（[coreIn, coreOut)）為 true → 底色淡入 */
-  active?: boolean;
   /** 橘點是否可見：coreIn 起一路撐到論壇段路徑接手 */
   dotVisible?: boolean;
   /** 橘點的消失要瞬間完成（＝路徑核心已接手，見下方 SCSS 的理由） */
@@ -38,19 +38,17 @@ const dotStyle = {
   <div
     class="forum-core"
     :class="{
-      'is-active': active,
       'is-dot-visible': dotVisible,
       'is-instant-hide': instantHide,
     }"
     aria-hidden="true"
   >
-    <span class="forum-core__bg" />
     <span class="forum-core__dot" :style="dotStyle" />
   </div>
 </template>
 
 <style lang="scss" scoped>
-// 容器本身不再帶 opacity：底色與橘點的淡出時機不同，共用一個 opacity 就沒辦法讓橘點活過 coreOut。
+// 容器本身不帶 opacity：顯隱一律由橘點自己吃（時機與 CSS transition 都在它身上）。
 .forum-core {
   position: fixed;
   inset: 0;
@@ -60,35 +58,12 @@ const dotStyle = {
   pointer-events: none;
 }
 
-// 交棒期間的滿版底色。**白色**：規則是「往下捲的全程維持白底，只有往回捲變回人臉才轉黑」
-// —— SymbolFace 在 converge 已把 scene.background 補間成白（見該元件的 convergeBgColor），
-// 其下方 .sec2 也是白底，這層白正好把中間那段接起來，全程沒有一次亮度跳動。
-// ⚠️ 這裡原本是 #000。當時符號段收在黑畫面，這層黑是用來「遮住下方白底、避免白階跳動」；
-//    改成白底規則之後，那個黑反而成了唯一製造黑閃的東西（白 → 黑 → 白）。
-// ⚠️ 保留這一層而不是整組拿掉：它是滿版 fixed，能**保證**這段一定是白的，
-//    不必去假設此刻捲到哪、露出來的是 .sec2 還是 hero 那層。
-.forum-core__bg {
-  position: absolute;
-  inset: 0;
-  background: #fff;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-
-  .forum-core.is-active & {
-    opacity: 1;
-  }
-}
-
-// position: relative 是必要的 —— 底色是 absolute（已定位），未定位的元素會先繪製，
-// 橘點若維持 static 就會被底色蓋住。兩者都定位後由 DOM 順序決定，橘點在上。
-//
 // 出現是**瞬間**的（見 is-dot-visible 內的 transition: none）：coreIn 那一刻 SymbolFace 的
 // 收斂點已經是同色（convergeColor ＝ CORE.orange）、同尺寸（convergeSize ＝ CORE.dotSize）、
 // 同位置的橘方塊，硬切上來看不出接縫，比 crossfade 期間兩層都半透明乾淨。
 // 這裡的 transition 只給「消失」用 —— transition 取的是**變化後**那組計算樣式，
 // 加上 is-dot-visible 時吃到 none（瞬間出現），移除時吃到本規則的 0.4s（淡出）。
 .forum-core__dot {
-  position: relative;
   display: block;
   opacity: 0;
   transition: opacity 0.4s ease;
@@ -107,7 +82,6 @@ const dotStyle = {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .forum-core__bg,
   .forum-core__dot {
     transition: none;
   }

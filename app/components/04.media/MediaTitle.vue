@@ -50,8 +50,8 @@ defineExpose({ getEls });
       ref="titleFinalRef"
       class="media__title-final"
       src="/img/media/media_title.svg"
-      width="502"
-      height="64"
+      width="518"
+      height="66"
       alt=""
     />
     <!-- 開場 motion 分件層：預設隱藏，起播時疊在完成態上組字。
@@ -137,7 +137,7 @@ defineExpose({ getEls });
 // 完成態完整標題（502×64）
 .media__title-final {
   display: block;
-  width: 7.8438em; // 753 / 96
+  width: 8.0938em; // 518 / 64
   height: auto;
 }
 
@@ -148,15 +148,6 @@ defineExpose({ getEls });
   visibility: hidden;
 }
 
-// 分件：智慧／媒體素材為「裁齊字形」的畫布（無留白，框中心＝字形中心）；
-// left / width 依 media_title.svg 內的字形實際邊界換算，垂直置中
-//
-// ⚠️ 本區塊（含 .media__quote、.media__newchar）刻意**不寫** will-change: transform：
-//    這六個元素都住在 .media__title-motion 裡，而那層在 settle 尾端就被 timeline
-//    設成 autoAlpha: 0 並且再也不回來（見 useMediaIntroMotion 的交棒那拍）。常駐
-//    宣告等於為一段約 2500px 的 scrub 換來六個「整個 page lifetime 都掛著」的
-//    compositing layer。位移全部是 GSAP 的 transform tween，force3D 預設 'auto'
-//    會在補間期間自己套上 translate3d 促成圖層、結束後撤掉 —— 該有的提升本來就有。
 .media__title-part {
   position: absolute;
   top: 50%;

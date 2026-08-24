@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AGENDA_IN_LEAD_VH,
   ASSUMED_READING_VH_PER_S,
   CORE_WARM_START,
   CORE_WARM_VH,
@@ -7,14 +8,18 @@ import {
   INTRO_LINE_SHIFT,
   INTRO_REVEAL_SPAN,
   INTRO_TIMELINE,
+  SEAM_AT_HANDOFF_VH,
   SYMBOL_BEAT_VH,
+  SYMBOL_HOVER_VH,
   SYMBOL_INTRO,
   SYMBOL_INTRO_IDLE,
+  SYMBOL_RAIL_VH,
   SYMBOL_STOPS,
   SYMBOL_VH,
   convergeAmountAt,
   convergeLightAt,
   coreWarmAt,
+  headerTintAt,
   symbolBgLightAt,
   symbolIntroClear,
   symbolIntroGate,
@@ -46,7 +51,7 @@ describe('符號段序列門檻', () => {
   // 2026-08-13 起門檻由 SYMBOL_BEAT_VH（四拍各吃多少 vh）累加推導，不再手寫小數。
   // 這支守的是那條**反算關係**：從門檻反推回每一拍的 vh，要對得上宣告的值。
   //
-  // 它抓的是本檔最容易犯、最靜默的錯 —— 有人調了 SYMBOL_VH 卻沒同步門檻（或反之）。
+  // 它抓的是本檔最容易犯、最靜默的錯 —— 有人調了尺長卻沒同步門檻（或反之）。
   // 那種錯不會壞掉任何東西，只會讓四拍的絕對距離全部偏掉，畫面上僅表現為「節奏怪怪的」。
   // 上面那支「until 嚴格遞增」在那種情況下還是綠的，正是它給假保證的地方。
   it('門檻反推回來的每拍距離 ＝ SYMBOL_BEAT_VH 宣告的值', () => {
@@ -56,7 +61,7 @@ describe('符號段序列門檻', () => {
 
     let prev = 0;
     for (const stop of SYMBOL_STOPS) {
-      const vh = (stop.until - prev) * SYMBOL_VH;
+      const vh = (stop.until - prev) * SYMBOL_RAIL_VH;
       // 容差 1e-9 吸收「相加再相除再相減」的 IEEE754 誤差，不是放寬門檻本身：
       // 真的錯位會差好幾個 0.01（＝ 幾個 vh），不會被這個容差蓋過去。
       expect(vh).toBeCloseTo(SYMBOL_BEAT_VH[beatOf[stop.mode]], 9);
@@ -64,11 +69,14 @@ describe('符號段序列門檻', () => {
     }
   });
 
-  // 總長是四拍的總和 —— 不是另外手寫的數字。這條翻掉的話上面那支會整批壞掉，
+  // 尺長是四拍的總和 —— 不是另外手寫的數字。這條翻掉的話上面那支會整批壞掉，
   // 但錯誤訊息會指向「某一拍不對」而非真正的原因，故單獨守一條。
-  it('SYMBOL_VH ＝ 四拍 vh 的總和', () => {
+  //
+  // ⚠️ 2026-08-22 起「尺長」與「段落高度」是兩個值（見 SYMBOL_HOVER_VH）：
+  //    四拍的總和是**尺長**，段高比它短半個視窗。所有 progress 門檻的分母都是尺長。
+  it('SYMBOL_RAIL_VH ＝ 四拍 vh 的總和', () => {
     const sum = Object.values(SYMBOL_BEAT_VH).reduce((a, b) => a + b, 0);
-    expect(SYMBOL_VH).toBeCloseTo(sum, 9);
+    expect(SYMBOL_RAIL_VH).toBeCloseTo(sum, 9);
   });
 
   // 改吃時間軸後，「文字在粒子集合前淡乾淨」不再由 progress 自動保證
@@ -86,7 +94,7 @@ describe('符號段序列門檻', () => {
   // 這條會在有人「把 clearDur 調長」或「把 out 往後推 / 把 until 往前拉」時大聲壞掉，
   // 而 `out < until` 在那兩種情況下都還是綠的 —— 那正是它給假保證的地方。
   it('out 到人像集合的距離，換算成閱讀捲速下的秒數要夠跑完清場', () => {
-    const marginVh = (SYMBOL_STOPS[0]!.until - SYMBOL_INTRO.out) * SYMBOL_VH * 100;
+    const marginVh = (SYMBOL_STOPS[0]!.until - SYMBOL_INTRO.out) * SYMBOL_RAIL_VH * 100;
     const marginSec = marginVh / ASSUMED_READING_VH_PER_S;
     // 容差 1e-9：吸收 0.28 − 0.26 的 IEEE754 誤差，不是放寬門檻。
     expect(marginSec).toBeGreaterThanOrEqual(INTRO_TIMELINE.clearDur / 1000 - 1e-9);
@@ -98,18 +106,69 @@ describe('符號段序列門檻', () => {
     expect(INTRO_TIMELINE.clearDur).toBeLessThan(INTRO_TIMELINE.outDur);
   });
 
-  // agendaIn 的作用是讓議程那 0.4s 的淡入發生在畫面外，判準是「符號段底緣還在
-  // 視窗底下方多遠」。現況 32vh 是已驗證可行的距離，不得因為等比縮放而變小。
-  it('議程淡入距段尾至少 32vh（發生在畫面外）', () => {
-    const gapVh = (FORUM_HANDOFF.coreOut - FORUM_HANDOFF.agendaIn) * SYMBOL_VH * 100;
-    // 容差 1e-9：純粹吸收 IEEE754 浮點數表示 0.92 / 1.0 的誤差（實測差 ≈1.4e-14 vh），
-    // 不是放寬門檻本身 —— 真的退步到 32vh 以下會差好幾個 vh，不會被這個容差蓋過去。
-    expect(gapVh).toBeGreaterThanOrEqual(32 - 1e-9);
+  // 論壇主標與議程那 0.4s 的淡入要在**轉場層還蓋著**的時候跑完。
+  //
+  // ⚠️ 2026-08-22 判準換了。改版前守的是「距段尾至少 32vh ＝ 發生在畫面外」，
+  //    而接縫現在在交棒**之前**就升進畫面了（見 SYMBOL_HOVER_VH），那條已不成立 ——
+  //    改守「前置距離換算成秒數蓋得住那 0.4s」，遮蔽物換成轉場層。
+  // ⚠️ 硬寫 0.4 是刻意的：那是 `.sec2__path` 的 CSS transition，程式讀不到。
+  //    改 SCSS 的那個值要回來改這裡（同 ASSUMED_READING_VH_PER_S 的用法）。
+  it('議程淡入的前置距離，換算成閱讀捲速下的秒數要蓋得住那 0.4s', () => {
+    const leadVh = (FORUM_HANDOFF.coreIn - FORUM_HANDOFF.agendaIn) * SYMBOL_RAIL_VH * 100;
+    // 容差 1e-9：吸收「相減再相乘」的 IEEE754 誤差，不是放寬門檻本身。
+    expect(leadVh).toBeCloseTo(AGENDA_IN_LEAD_VH * 100, 9);
+    expect(leadVh / ASSUMED_READING_VH_PER_S).toBeGreaterThanOrEqual(0.4 - 1e-9);
   });
 
-  it('agendaIn 早於 coreOut，coreOut 收在段尾', () => {
-    expect(FORUM_HANDOFF.agendaIn).toBeLessThan(FORUM_HANDOFF.coreOut);
+  it('agendaIn 早於交棒點；coreOut 收在尺尾（＝接縫抵達視窗中央）', () => {
+    expect(FORUM_HANDOFF.agendaIn).toBeLessThan(FORUM_HANDOFF.coreIn);
     expect(FORUM_HANDOFF.coreOut).toBe(1.0);
+  });
+});
+
+// 2026-08-22：捲動尺的 end 從「段落底緣抵達視窗底緣」改成「抵達視窗中央」，把原本
+// drive: 'none' 的 50vh 懸停期併進尺內，好讓交棒那一刻論壇主標已經在畫面上
+// （需求：「symbol face 聚合 orange core 後，視窗內要看到下方論壇的文字資訊」）。
+// 這一組守的是那個改動的**幾何**，不是它的數值。
+describe('交棒那一刻的接縫位置（聚合完成就看得到論壇文字）', () => {
+  // 尺比段落長出的那半個視窗就是舊的懸停期。這條翻掉就代表 SymbolScene 的
+  // end: 'bottom center' 與段落高度的關係被拆開了。
+  it('段落高度 ＝ 尺長 − 懸停期', () => {
+    expect(SYMBOL_VH).toBeCloseTo(SYMBOL_RAIL_VH - SYMBOL_HOVER_VH, 9);
+  });
+
+  // **這條是整個改動的推導。** 接縫（`.sec2` 頂端）在螢幕上的高度
+  // ＝ SYMBOL_VH + 1 − p × 尺長；代入交棒點之後總長全部約掉，只剩 懸停期 ＋ handoff。
+  // ⚠️ 它同時證明了「調段落總長修不掉這件事」—— 右邊那個式子裡根本沒有總長。
+  it('接縫高度由 懸停期 ＋ handoff 決定，與尺的總長無關', () => {
+    const seamAtCoreIn = SYMBOL_VH + 1 - FORUM_HANDOFF.coreIn * SYMBOL_RAIL_VH;
+    expect(seamAtCoreIn).toBeCloseTo(SEAM_AT_HANDOFF_VH, 9);
+    expect(SEAM_AT_HANDOFF_VH).toBeCloseTo(SYMBOL_HOVER_VH + SYMBOL_BEAT_VH.handoff, 9);
+  });
+
+  // 需求本體：交棒那一刻論壇主標要完整落在畫面內。
+  // ⚠️ 硬寫 38（vh）是刻意的：那是主標吃掉的空間在**最矮的實測尺寸 1440×700** 上的換算
+  //    （`.sec2__path` 的 padding-top 140px ＋ 兩行主標到字形底緣 265.7px，÷ 700）。
+  //    CSS 與字形素材的尺寸程式讀不到 —— 改 padding-top、主標行數或字級要回來改這裡。
+  it('接縫距視窗底留得下論壇主標（1440×700 需要 38vh）', () => {
+    expect((1 - SEAM_AT_HANDOFF_VH) * 100).toBeGreaterThanOrEqual(38);
+  });
+
+  // 接縫必須在交棒**之前**就升進畫面 —— 那是「轉場層一掀開就看得到字」的前提。
+  // 等價於 SEAM_AT_HANDOFF_VH < 1，但寫成「接縫穿越視窗底緣的位置」更看得懂在講什麼。
+  it('接縫在交棒之前就已越過視窗底緣', () => {
+    const seamCrossesFoldAtVh = SYMBOL_VH * 100;
+    const coreInAtVh = FORUM_HANDOFF.coreIn * SYMBOL_RAIL_VH * 100;
+    expect(seamCrossesFoldAtVh).toBeLessThan(coreInAtVh);
+  });
+
+  // handoff 的下限：交棒到路徑接手之間，轉場層那 0.35s 的淡出要跑得完，否則畫面中央
+  // 會同時有「正在淡出的收斂點」與「已經開始沿線移動的路徑核心」——那正是
+  // forumCoreDotVisible 的 instantHide 在防的「全程只看到一顆」。
+  // ⚠️ 硬寫 0.35 同上：那是 HeroSymbolTransition 的 CSS transition，程式讀不到。
+  it('交棒後的停留蓋得住轉場層那 0.35s 的淡出', () => {
+    const holdVh = SYMBOL_BEAT_VH.handoff * 100;
+    expect(holdVh / ASSUMED_READING_VH_PER_S).toBeGreaterThanOrEqual(0.35 - 1e-9);
   });
 });
 
@@ -181,7 +240,7 @@ describe('coreWarmAt / symbolBgLightAt（白 core → 橘 ＋ 底色翻白的窗
   const at = (t: number) => start + (end - start) * t; // 窗口內的相對位置 → progress
 
   it('窗口的長度就是 CORE_WARM_VH（不是另外手寫的門檻）', () => {
-    expect((end - start) * SYMBOL_VH).toBeCloseTo(CORE_WARM_VH, 9);
+    expect((end - start) * SYMBOL_RAIL_VH).toBeCloseTo(CORE_WARM_VH, 9);
   });
 
   // 這是整個改動的用意：白 core 要出現在**黑**底上。底色若在收攏期間就開始泛灰，
@@ -254,6 +313,61 @@ describe('coreWarmAt / symbolBgLightAt（白 core → 橘 ＋ 底色翻白的窗
     expect(convergeLightAt(end)).toBe(true);
     expect(convergeLightAt(at(0.4))).toBe(false);
     expect(convergeLightAt(at(0.6))).toBe(true);
+  });
+
+  // headerTintAt 是 header 配色在這個窗口內的**逐幀**驅動量（取代 convergeLightAt 那一下
+  // 硬翻，見該函式的註解）。這一組守的是它與離散三檔之間的**交界**：窗口外必須放手，
+  // 窗口的兩端必須與放手後接到的那一檔同色，否則掛上／脫手那一幀會看到跳色。
+  describe('headerTintAt（header 配色的逐幀漸變量）', () => {
+    // 放手的判準是「symbolBgLightAt 已被夾成 0 或 1」，不是另外手寫的門檻 ——
+    // 兩端各自恆等於離散主題，tint 在那裡沒有事情可做。
+    it('窗口外一律回 null（交還給 data-header-theme 的離散三檔）', () => {
+      for (const p of [-10, 0, SYMBOL_STOPS[1]!.until, start / 2, start, end, 1, 10]) {
+        expect(headerTintAt(p)).toBeNull();
+      }
+    });
+
+    it('窗口內恆為非 null，且嚴格落在 0 與 1 之間', () => {
+      for (let i = 1; i < 20; i++) {
+        const t = headerTintAt(at(i / 20));
+        expect(t).not.toBeNull();
+        expect(t!).toBeGreaterThan(0);
+        expect(t!).toBeLessThan(1);
+      }
+    });
+
+    // **無接縫的守則。** 放手的那一刻，插值算出來的顏色必須與離散主題**完全相同**：
+    // 窗口起點還是 dark（底色全黑）、終點已是 light（底色全白）。這靠的是
+    // symbolBgLightAt 的端點精確為 0 / 1，故兩者其實是同一條曲線的兩種讀法。
+    it('兩端與離散主題對得上（掛上／脫手那一幀不跳色）', () => {
+      expect(symbolBgLightAt(start)).toBe(0); //     起點插值 ＝ 0 ＝ dark 端
+      expect(convergeLightAt(start)).toBe(false); // 放手後接到的正是 dark
+      expect(symbolBgLightAt(end)).toBe(1); //       終點插值 ＝ 1 ＝ light 端
+      expect(convergeLightAt(end)).toBe(true); //    放手後接到的正是 light
+    });
+
+    // 與底色同一條曲線 —— 不是「另一條長得很像的曲線」。header 要是自己有一份曲線，
+    // 調 CORE_WARM_VH 之後兩者就會分家，header 與畫面各走各的。
+    it('值就是 symbolBgLightAt（與整片底色同一條曲線）', () => {
+      for (let i = 1; i < 20; i++) {
+        const p = at(i / 20);
+        expect(headerTintAt(p)).toBe(symbolBgLightAt(p));
+      }
+    });
+
+    it('純函式：同一個位置恆得同值（往回捲自動沿原路退回）', () => {
+      const fwd: (number | null)[] = [];
+      for (let i = 0; i <= 20; i++) fwd.push(headerTintAt(at(i / 20)));
+      const back: (number | null)[] = [];
+      for (let i = 20; i >= 0; i--) back.unshift(headerTintAt(at(i / 20)));
+      expect(back).toEqual(fwd);
+    });
+
+    it('超出範圍的輸入不會回傳 NaN（一律夾成 null）', () => {
+      for (const p of [-10, 10, Number.MAX_SAFE_INTEGER]) {
+        expect(headerTintAt(p)).toBeNull();
+      }
+    });
   });
 });
 

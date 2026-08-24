@@ -16,7 +16,10 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  killScrollTriggers,
+  refreshScrollTriggers,
+} from '@/utils/scroll-trigger';
 
 export interface FormulaItem {
   /** 藝術字標題圖（SVG 路徑；無圖時 fallback 為 title 文字） */
@@ -274,8 +277,18 @@ function build() {
   progress.value = st.progress; // 中途載入（已捲過部分區段）時先對齊實際位置
 }
 
-function teardown() {
-  st?.kill();
+/**
+ * @param quiet 卸載路徑傳 true ＝ `kill(false)`，不 revert。
+ *
+ * 兩個呼叫端要的相反，所以不能一律：
+ *   ・跨斷點重建（下方 watch(isMob)）—— **要** revert：緊接著就 onResize()／build()
+ *     重新量測，殘留的 inline 樣式會讓量測失準。
+ *   ・onBeforeUnmount —— **不要** revert：換頁時舊頁還在畫面上淡出，revert 會把畫面
+ *     打回起始態而被看見（見 utils/scroll-trigger 的 killScrollTriggers）。
+ */
+function teardown(quiet = false) {
+  if (quiet) killScrollTriggers(st);
+  else st?.kill();
   st = null;
 }
 
@@ -311,7 +324,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (resizeTimer) clearTimeout(resizeTimer);
   window.removeEventListener('resize', onWindowResize);
-  teardown();
+  teardown(true); // quiet：卸載路徑不 revert，見 teardown 的說明
 });
 </script>
 
@@ -538,6 +551,11 @@ onBeforeUnmount(() => {
   display: block;
   width: 257px;
   height: auto;
+  // 保留版位：沒有這行的話高度由載入後的 SVG 決定，載入前是 0 高。撐開的那一刻
+  // 它下面所有 ScrollTrigger pin 的實際位置就被推走，而 pin 的起訖是量完就固定的
+  // 絕對座標（脈絡見 utils/scroll-trigger 的 refreshOnContentResize）。
+  // 數字＝素材 viewBox，對帳見 test/subpage-image-space-reservation.spec.ts。
+  aspect-ratio: 257.001 / 44.623;
 
   @include rwd-min('tablet') {
     width: 275px;

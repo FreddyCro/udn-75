@@ -17,15 +17,21 @@ import { refreshOnFontsReady } from '~/utils/scroll-trigger';
 import { stepToward, targetSlotAt } from '~/utils/agenda-active';
 import { CORE } from '~/utils/orange-core-config';
 import type { UBtnVariant } from '~/types/ui';
+import { gaClickButton } from '~/utils/tracking-event';
 
 const { groups } = str.agenda;
 
 // CTA 資料。download 欄位只掛在「要當附件存下來」的那顆（目前是下載完整議程），
-// 有它才把 href 前綴 APP_ASSETS_PATH —— 另一顆是 "#" 錨點，前綴上去會變成跨站絕對網址。
+// 有它才把 href 前綴 APP_ASSETS_PATH —— 另一顆（立即報名）是 udn.com 的絕對網址，
+// 前綴上去會變成 https 疊 https 的壞網址。
 // ⚠️ 暫時性：真的議程 PDF 還沒有，先指向 public/meta.jpg 代打，
 //    檔案到位後只要改 JSON 的 href／download，本檔不用動。
 // ⚠️ download 只在同源時有效；APP_ASSETS_PATH 若指到別的 origin，瀏覽器會改成直接開圖。
 type AgendaAction = {
+  /** DOM id（GTM 點擊事件用） */
+  id: string;
+  /** GA term（click_button / area=signup）：agenda_download ／ agenda_signup */
+  gaTerm: string;
   label: string;
   href: string;
   variant: string;
@@ -61,6 +67,26 @@ const rootEl = ref<HTMLElement | null>(null);
 // 區域 state：沒有跨元件消費者，故不進 useOrangeCoreProgress。
 // 界外的兩個值不等於任何一組的索引，故模板直接比 `activeSlot === i` 就等於「沒有作用中的組」。
 const activeSlot = ref(-1);
+
+// 箭頭每移動一組就響一聲（設計標註「每個箭頭的音效」）。
+//
+// 不用 useSfxCue 的 cueOn：那支判的是布林上升緣，而這裡要的是「值變了就響」。
+// 也刻意**不節流** —— activeSlot 以 STEP_MS 一次走一格去追目標，快速捲動時
+// 會連發，但那個逐格追趕本來就是刻意設計成看得見的（見 STEP_MS 的說明）。
+//
+// 方向守衛（next <= prev 不響）：捲動音效一律前進觸發、倒退靜音（同 risingEdge
+// 的規則，見 ~/utils/sfx-cue 檔頭）。這支不是用 cueOn，得自己補這道閘門 ——
+// 少了它，往回捲會讓箭頭倒著走過去的每一組都響一聲（實測：往回捲 7 次觸發，
+// 與議程 7 組精確吻合）。這行同時吸收了「值沒變就不響」：Vue 的 ref watcher
+// 本來就只在值不同時觸發，不必再另外判 next === prev。
+//
+// 界外不出聲：-1 ＝ 議程之上、groups.length ＝ 議程之下，那兩個值沒有對應的箭頭
+// （見 ~/utils/agenda-active）。少了這道閘門，進出議程段的頭尾會各多響一聲。
+watch(activeSlot, (next, prev) => {
+  if (next <= prev) return;
+  if (next < 0 || next >= groups.length) return;
+  play('sfx01');
+});
 
 // 各組的累積邊界（相對議程頂端）與議程頂端抵達視窗中央時的 scrollY。
 // ⚠ 刻意不逐幀量測：這些值只隨版面（字體／斷點）變化，不隨捲動變化。
@@ -176,7 +202,11 @@ onBeforeUnmount(() => {
 
       <div class="agenda__rows">
         <span class="agenda__arrow" aria-hidden="true">
-          <svg class="agenda__arrow-head" viewBox="0 0 5 2" xmlns="http://www.w3.org/2000/svg">
+          <svg
+            class="agenda__arrow-head"
+            viewBox="0 0 5 2"
+            xmlns="http://www.w3.org/2000/svg"
+          >
             <rect x="0" y="0" width="1" height="1" />
             <rect x="4" y="0" width="1" height="1" />
             <rect x="1" y="1" width="1" height="1" />
@@ -202,11 +232,13 @@ onBeforeUnmount(() => {
       <UBtn
         v-for="(action, i) in actions"
         :key="i"
+        :id="action.id"
         class="agenda__action"
         :variant="action.variant as UBtnVariant"
         :href="action.href"
         :download="action.download"
-        @click="play('sfx01')"
+        @mouseenter="play('sfx01')"
+        @click="play('sfx01'); gaClickButton('signup', action.gaTerm)"
       >
         {{ action.label }}
       </UBtn>
@@ -221,16 +253,25 @@ onBeforeUnmount(() => {
   --agenda-line: var(--color-gray-light);
 
   position: relative;
-  max-width: 1064px;
-  margin: 0 auto;
+  padding: 0 26px;
+  // mob 稿：議程與論壇三之間的 32 留白（pc / pad 稿沒有，故 ≥768 歸零）。
+  // ⚠️ 一定要用 margin，**不可以改成 padding-top** —— measure() 的 bounds 以 .agenda 的
+  //    border box 頂端為 0 起算，而它假設那裡就是第一組的上緣。padding 會把兩者拉開 32px，
+  //    第一個箭頭就在核心還沒被群組遮住（＝還看得見）時提前亮起，破壞「箭頭不可以在核心
+  //    還看得見的時候出現或消失」這條設計要求（見上方 CORE_HALF 的說明）。
+  // 這個 margin 會與 .sec2__pin 的上緣 collapse（那層無 padding-top／border-top）→ 留白
+  // 落在 .sec2__path 與 .sec2__pin 之間，兩邊都是白底故看不出差別，而 --sec2-pin-h
+  // （sticky 夾點）不含它、仍與自己的塊高一致。
+  margin: 32px auto 0;
 
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     max-width: 608px;
+    padding: 0;
+    margin-top: 0;
   }
 
-  @include rwd-max('tablet') {
-    max-width: none;
-    padding: 0 26px;
+  @include rwd-min('pc') {
+    max-width: 1064px;
   }
 }
 
@@ -296,7 +337,7 @@ onBeforeUnmount(() => {
 .agenda__category {
   flex: 0 0 192px;
   margin: 0;
-  padding: 10px;
+  padding: 4px;
   font-size: 42px;
   font-weight: 300;
   line-height: 56px;
@@ -471,17 +512,17 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: center;
   gap: 14px;
-  margin: 48px 0 32px;
+  margin: 32px 0 80px;
 
   // pad：兩顆各 296 剛好併滿 608 的內容寬；mob 轉直排滿版。
   @include rwd-max('pc') {
     gap: 16px;
-    margin: 40px 0 80px;
+    margin: 60px 0 60px;
   }
 
   @include rwd-max('tablet') {
     flex-direction: column;
-    margin-top: 32px;
+    margin: 40px 0 80px;
   }
 }
 

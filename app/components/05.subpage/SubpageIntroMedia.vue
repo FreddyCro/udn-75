@@ -7,6 +7,10 @@
  *    全程不露底色），每張各自帶 Ken Burns 位移；圖說隨張數切換。
  * 2. 影片：單支 UVid 填滿同一個 16:9 框，共用同一套圖說遮罩。
  *
+ * 兩種模式共用同一組播放閘（見 isInPlay）：IntersectionObserver 判「在視窗內」、
+ * 外部 active prop 判「輪到它演」。沒過閘就不跑輪播計時器、不跑 Ken Burns、影片也不播
+ * —— 免得使用者還沒捲到，第一張的位移就已經演完、影片也跑掉一段。
+ *
  * 圖說固定疊在框底的漸層遮罩上（設計稿：白字 15/24、寬 636、距底 26），
  * 輪播時遮罩不動，只有文字先淡出舊句、再淡入新句（避免兩句字疊在一起）。
  *
@@ -149,10 +153,14 @@ const inView = ref(false);
 let timer: ReturnType<typeof setInterval> | null = null;
 let observer: IntersectionObserver | null = null;
 
-/** 只有「輪播模式 + 兩張以上 + 在畫面內 + 外部開關開著」才跑計時器 */
-const shouldPlay = computed(
-  () => !isVideo.value && slides.value.length > 1 && inView.value && props.active,
-);
+/**
+ * 播放閘：在視窗內（IO）且輪到它演（外部 active）。圖片與影片共吃這一個判斷 ——
+ * 影片交給 UVid 的反應式 autoplay，Ken Burns 交給 .intro-media--playing。
+ */
+const isInPlay = computed(() => inView.value && props.active);
+
+/** 輪播計時器另外要求「輪播模式 + 兩張以上」 */
+const shouldPlay = computed(() => !isVideo.value && slides.value.length > 1 && isInPlay.value);
 
 function next() {
   prevIndex.value = activeIndex.value;
@@ -201,7 +209,7 @@ onBeforeUnmount(() => {
   <figure
     ref="rootRef"
     class="intro-media"
-    :class="{ 'intro-media--fill': fill }"
+    :class="{ 'intro-media--fill': fill, 'intro-media--playing': isInPlay }"
     :style="timingVars"
   >
     <div class="intro-media__viewport">
@@ -212,6 +220,7 @@ onBeforeUnmount(() => {
         :poster="video.poster"
         classname="intro-media__video"
         :aria-label="video.ariaLabel"
+        :autoplay="isInPlay"
         preload="metadata"
       />
 
@@ -332,8 +341,11 @@ onBeforeUnmount(() => {
   will-change: transform;
 }
 
-.intro-media__slide--active,
-.intro-media__slide--prev {
+// Ken Burns 上播放閘：animation 是 forwards 的一次性動畫，不擋的話第一張在 mount 當下
+// 就把 interval+fade 演完並停在終點 —— 使用者捲到時圖已經不動了。
+// 出閘會抽掉 animation 讓 transform 彈回原點，那一刻媒體已淡光（見 Subpage 的 mediaActive）。
+.intro-media--playing .intro-media__slide--active,
+.intro-media--playing .intro-media__slide--prev {
   :deep(.intro-media__img--zoom-in) {
     animation: intro-media-zoom-in var(--intro-media-anim) cubic-bezier(0.25, 1, 0.5, 1) forwards;
   }

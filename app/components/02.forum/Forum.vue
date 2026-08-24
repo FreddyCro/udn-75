@@ -8,13 +8,11 @@ import type { ForumEvent } from '~/types/forum';
 
 // SymbolFace 序列（disperse→face→converge→enter）已搬到獨立的 <SymbolScene>（01a.symbol）：
 // symbolProgress 寫入與 mode 指派都由該元件擁有，本區只「讀」它解出的結果：
-//   forumCoreActive     — symbolProgress ∈ [coreIn, coreOut) → ForumCore 的滿版底色現身（接棒）。
-//   forumCoreDotVisible — 橘點的顯隱：coreIn 起撐到論壇段路徑接手為止（比底色晚很多）。
+//   forumCoreDotVisible — 橘點的顯隱：coreIn 起撐到論壇段路徑接手為止。
 //   forumPathRiding     — 路徑已接手 → 橘點的消失改為瞬間（見 ForumCore 的 SCSS）。
-//   agendaRevealed      — 越過 coreOut → 議程揭露。
+//   agendaRevealed      — 越過 agendaIn → 論壇主標與議程揭露（在轉場層底下淡入）。
 // 門檻見 ~/utils/orange-core-config 的 SYMBOL_STOPS / FORUM_HANDOFF。
 const {
-  forumCoreActive,
   forumCoreDotVisible,
   forumPathRiding,
   agendaRevealed,
@@ -87,9 +85,18 @@ onMounted(() => {
     pinRO = new ResizeObserver(syncPinHeight);
     pinRO.observe(pinRef.value);
   }
+  // 兩個訊號都要聽，理由同 Blessing.vue 的 syncPartnersHeld：
+  // ResizeObserver 是預設的 **content-box** 模式，而本塊的 padding-bottom 吃視窗高
+  // （見 SCSS 的 min(vh(0.2), 200px)）—— 純粹的視窗變高只改 padding、不改內容高，
+  // RO 因此完全不會發火，夾點就停在舊的塊高上（覆蓋過場的定住會歪掉那個差值）。
+  // 不改用 { box: 'border-box' }：那個選項要 Safari 15.4+，而本專案受眾的舊裝置比例高
+  // （同 architecture/viewport-height.md 不用 dvh 的理由），退化時又是靜默的。
+  // 網址列收合造成的 resize 不會有副作用：--vh 刻意凍結 → padding 不變 → 寫回同一個值。
+  window.addEventListener('resize', syncPinHeight, { passive: true });
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncPinHeight);
   pinRO?.disconnect();
   pinRO = null;
 });
@@ -117,9 +124,14 @@ onBeforeUnmount(() => {
       <!-- photo-reveal ＝ 講者照的藍塊狀態（三態，見 <ForumEvent> 的 prop 說明）。
            對照用場次名而非 v-for 索引：論壇三查不到 key ⇒ undefined ⇒ 不渲染遮罩，
            與它沒有講者的事實自然一致。 -->
+      <!-- v-ga-view：section_view（見 plugins/ga-section-view.client.ts）。
+           掛在 Forum 而不是 ForumEvent 內部：本區的三場在正常流、恆可見，而論壇四與議程
+           那一組還要吃 agendaRevealed 這道可見度閘門（見下方）—— 兩種條件都只有這裡知道。
+           指令掛在元件上會落到它的根節點（.forum-event），與 ForumCorePath 的量測錨點無關。 -->
       <ForumEvent
         v-for="(e, i) in forum.events"
         :key="i"
+        v-ga-view="`symposium_${e.gaTerm}`"
         :event="e"
         :photo-reveal="photoRevealOf(e.no)"
       />
@@ -138,8 +150,14 @@ onBeforeUnmount(() => {
         'sec2__pin--held': coverHoldArmed,
       }"
     >
-      <Agenda />
-      <AgendaReport />
+      <!-- ⚠️ 本組（議程／報告／論壇四／精彩活動）的 section_view 一律要串上 agendaRevealed：
+           .sec2__pin 在揭露前是 opacity 0 但**照樣佔版位**，只靠 IntersectionObserver 會在
+           使用者還看不到任何東西時就回報。term 綁成 '' 時指令不送，揭露後才換成真值
+           （指令會重新註冊觀測，讓「已在視窗內」的元素也補得到回呼 —— 見該 plugin 的說明）。
+           ⚠️ 這裡**不需要**顧慮 --held 的 sticky：本塊平時是 relative，只有覆蓋過場那 100vh
+           才掛 sticky，那時整組早就回報完了（見下方 .sec2__pin 的註解）。 -->
+      <Agenda v-ga-view="agendaRevealed ? 'symposium_agenda' : ''" />
+      <AgendaReport v-ga-view="agendaRevealed ? 'symposium_report' : ''" />
 
       <!-- 論壇四（青年永續築夢論壇）：結構與前三場相同，故直接用 <ForumEvent>，
            版式是它專屬的 layout: 'youth'（見 types/forum.ts）。
@@ -147,11 +165,20 @@ onBeforeUnmount(() => {
            1280 設計稿座標 —— .sec2__pin 沒有 max-width，故外面補一層同寬的容器。
            ⚠️ 也因為不在 .sec2__path 內，<ForumCorePath> 的錨點查找範圍必須涵蓋這一塊
            （後半段路徑會掛在它身上）。 -->
-      <div class="sec2__forum4">
+      <div
+        v-ga-view="agendaRevealed ? `symposium_${forum.event4.gaTerm}` : ''"
+        class="sec2__forum4"
+      >
         <ForumEvent :event="forum.event4" />
       </div>
 
-      <ForumHighlights v-if="highlightsVisible" />
+      <!-- ⚠️ 精彩活動目前藏在 ?highlights=1 之後（見上方 highlightsVisible）。
+           埋著沒有壞處：旗子一開 GA 就跟著生效；沒開時這個 term 不會有任何資料，
+           那與「區塊還沒上線」的事實一致。 -->
+      <ForumHighlights
+        v-if="highlightsVisible"
+        v-ga-view="agendaRevealed ? 'symposium_review' : ''"
+      />
     </div>
 
     <!-- 接縫標記：零高度、**不** sticky，位置恆等於 .sec2__pin 的自然下緣。
@@ -168,21 +195,17 @@ onBeforeUnmount(() => {
       aria-hidden="true"
     />
 
-    <!-- forum 接棒的橘核心（converge → crossfade → 橘方塊）。fixed 滿版、由 SymbolScene 寫入的
-         symbolProgress 隔空驅動，故放在議程整組之外。底色在 coreOut 淡出，橘點則撐到論壇段
-         路徑接手（見 ForumCore 與 useOrangeCoreProgress 的 forumCoreDotVisible）。
+    <!-- forum 接棒的橘核心（收斂點 → 硬切 → 橘方塊）。fixed 置中、由 SymbolScene 寫入的
+         symbolProgress 隔空驅動，故放在議程整組之外。coreIn 起現身、撐到論壇段路徑接手
+         （見 ForumCore 與 useOrangeCoreProgress 的 forumCoreDotVisible）。
          （進度除錯已整合成跨章節的 <DevCoreProgress>，掛在 pages/index.vue，?pathdebug 開啟 ——
            就是本檔下方 pathDebug 用的同一個參數。） -->
-    <ForumCore
-      :active="forumCoreActive"
-      :dot-visible="forumCoreDotVisible"
-      :instant-hide="forumPathRiding"
-    />
+    <ForumCore :dot-visible="forumCoreDotVisible" :instant-hide="forumPathRiding" />
   </section>
 </template>
 
 <style lang="scss" scoped>
-// 交棒期間由 ForumCore（fixed 滿版底色，現為白）遮住，故本區白底不影響 crossfade。
+// 交棒期間由轉場層（fixed 滿版、不透明）遮住，故本區白底不影響交棒。
 // 白底：新版議程段為淺色稿；水平 padding 收掉，讓 <AgendaReport> 的灰底能滿版。
 // 段落頂端的 140 留白掛在 .sec2__path 而非這裡：核心的設計線要從「黑白接縫」進場，
 // 而它的座標原點是 .sec2__path 的 padding box —— 留白掛在 .sec2 會讓原點下沉 140，
@@ -197,7 +220,9 @@ onBeforeUnmount(() => {
 
 // 路徑段：pc 稿 1280 基準，線與內容共用同一像素座標系（線不縮放，故尾端永遠咬住錨點）；
 // 超寬視窗只是左右留白，不會讓線與內容產生相對位移。高度已改由三場內容自然撐開。
-// 露出時機同議程（coreOut 後），避免 crossfade 期間從縫隙露餡。
+// 露出時機同議程（agendaIn 後，在轉場層底下淡完）。
+// ⚠️ padding-top 那 140px 同時是「交棒時看得到多少主標」的一部分：接縫落在螢幕
+//    SEAM_AT_HANDOFF_VH（60vh），主標從它下方 140px 起 —— 動這個值要回頭驗那一屏。
 .sec2__path {
   position: relative;
   max-width: 1280px;
@@ -273,9 +298,8 @@ onBeforeUnmount(() => {
   }
 }
 
-// 議程＋recap 整組：coreOut 前一律藏著，避免 SymbolFace↔橘核心 crossfade 期間
-// （淡出的 SymbolFace 那層與淡入的橘核心底色皆未達全滿）從縫隙短暫露餡；
-// --revealed（agendaRevealed）時隨橘核心淡出而淡入，剛好接上。捲回自動反向。
+// 議程＋recap 整組：agendaIn 前一律藏著，那 0.4s 的淡入在轉場層還蓋著的時候跑完
+// （見 useOrangeCoreProgress 的 agendaRevealed）。捲回自動反向。
 //
 // 白底是本層自身的遮蔽（原本靠 .sec2 的白底，那是祖先遮不到），crossfade 期間也靠它
 // 避免從縫隙露餡。AgendaReport 的灰底是子層，不受影響。
@@ -287,6 +311,28 @@ onBeforeUnmount(() => {
   // 會把 .agenda__group 的 z-index: 2 關進來，讓「核心從議程群組背後穿過」失效。
   // 只有 cover 期間才掛 sticky（--held，由 coverHoldArmed 決定），那時核心早已走完設計線。
   position: relative;
+  // forum 尾段與 blessing 色塊之間的留白：視窗高的 20%，上限 200px（三個斷點同式）。
+  // 隨視窗高走是因為它是「最後一屏底部的呼吸空間」——矮視窗給固定值會吃掉太多內容；
+  // 200px 的上限則是不讓高螢幕把接縫推得太遠（1080 起就卡在 200）。
+  // 用 vh() 而非字面 20vh：視窗高在本專案是單一來源（--vh），見 architecture/viewport-height.md。
+  //
+  // 加在**本塊內部**是唯一正確的放法：接縫（.sec2__seam，本塊的下一個零高度兄弟）是
+  // 三件事共用的同一個位置 —— 設計線末節點的錨點、色塊上緣（.sec2__cover-hold 100vh
+  // 被 .section3 的負 margin 抵銷後恰好落在此）、以及路徑 ScrollTrigger 的 end
+  // （吃 tailEndY）。padding 加在這裡，三者一起下移，耦合不斷；把這段留白塞在接縫
+  // **之後**（spacer 前後）則只推色塊、不推末節點，飛機會在接縫上方鑽進一片空白。
+  //
+  // ⚠️ 本值隨視窗高變 → --sec2-pin-h 必須跟著重量，而 syncPinHeight 的 ResizeObserver
+  //    是預設的 content-box 模式、**padding 的變化不會觸發它**（本塊的內容高只隨寬度變）。
+  //    所以 script 那邊另外掛了 resize —— 少了它，>25% 的高度變動（分割畫面、轉螢幕）
+  //    會讓夾點停在舊的塊高上，症狀是覆蓋過場期間 forum 最後一屏沒有精準定住。
+  //
+  // 代價（2026-08-20 以 100px 實測，三斷點交棒精準度與定住誤差皆不變）：設計線末段被拉長
+  // 同樣的距離，而 join 的控制點是弦相對的 → 末端切線隨弦轉（100px 時 pc 98.6→91.2、
+  // pad 120.4→127.6、mob 78.1→72.7，約 5–7°；本值放大則角度差跟著放大），飛機下潛距離
+  // 差幾 px。那個角度本來就隨版面浮動（?highlights 一開就會動），故**不**去補償
+  // R4/S4/T5 的 join.relOut —— 針對單一視窗尺寸硬調反而讓原本自適應的東西變脆。
+  padding-bottom: min(#{vh(0.2)}, 200px);
   background: #fff;
   opacity: 0;
   transition: opacity 0.4s ease;
@@ -337,8 +383,7 @@ onBeforeUnmount(() => {
 }
 
 // 覆蓋過場的 sticky 活動範圍：高度由 inline style 給（vhLength(1)），這裡不定高 ——
-// 與 .section3__partners-hold 同一個作法（sticky 的活動範圍必須是**子元素**撐出來的，
-// 用 .sec2 的 padding 撐不出來）。
+// sticky 的活動範圍必須是**子元素**撐出來的，用 .sec2 的 padding 撐不出來。
 
 // 論壇四的容器：<ForumEvent> 的 pc 版位是絕對定位到 1280 設計稿座標，
 // 而 .sec2__pin 沒有限寬（它要讓 <AgendaReport> 的灰底滿版）→ 這層補上與

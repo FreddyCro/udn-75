@@ -4,7 +4,7 @@
 //   ・純函式（rankCharsByInk / atlasGridSize / glyphIndex / buildWeightLadder）——
 //     無 DOM、無 three.js 相依，由 test/symbol-atlas.spec.ts 覆蓋。
 //   ・DOM 函式（measureInkWithCanvas / sortCharsByInk / buildGlyphAtlas / buildColorRamp）——
-//     需要 canvas 與 THREE，不進測試，靠 demo 頁目視驗證。
+//     需要 canvas 與 THREE，不進測試，靠正式站目視驗證。
 // 這樣切是因為專案 vitest 跑 node 環境（見 vitest.config.ts），碰 document 會直接爆。
 
 import * as THREE from 'three';

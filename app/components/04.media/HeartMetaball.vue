@@ -4,7 +4,7 @@
   ============================================================================
 
   【與前一版的差異】（前一版是 legacy/HeartMetaballBlock.vue＝<LegacyHeartMetaballBlock>，
-   已退役、只留在 demo page 對照，勿混用）
+   已退役、只留作對照，勿混用）
   同樣以「蓋章式 metaball 場 + 逐格隨機閾值」收邊，差別在**場內畫什麼**：
 
     面向        前一版 Block                    本檔（現役）
@@ -153,7 +153,8 @@ const props = withDefaults(
     idleRoamRange?: number;
     /** 閒置遊走活動範圍（相對畫布的正規化矩形 0~1）：未提供＝整畫布置中、幅度
      *  idleRoamRange；提供時 patch 叢集「含羽化外緣」被限制在矩形內（幅度內縮
-     *  叢集半徑；帶塞不下時整體等比縮小），不會壓到範圍外的內容 */
+     *  **可見**半徑 1.1×headR，不是叢集名目半徑；帶塞不下時整體等比縮小），
+     *  不會壓到範圍外的內容 —— 但矩形**內**的內容會被壓到，由呼叫端決定範圍 */
     roamArea?: { x: number; y: number; width: number; height: number };
     /** 閒置遊走速度倍率 */
     idleRoamSpeed?: number;
@@ -220,7 +221,7 @@ const props = withDefaults(
     tailBlobMin: 0.1,
     tailBlobMax: 0.5,
     autoRoam: false,
-    // 預設不暫停：降級路徑（reduced-motion、/#media）不建 timeline，底紋從一開始
+    // 預設不暫停：降級路徑（reduced-motion）不建 timeline，底紋從一開始
     // 就是可見的，父層不會、也不該去翻這個旗標
     paused: false,
   },
@@ -413,6 +414,27 @@ onMounted(() => {
     rectDirty = false;
   };
 
+  // ---------- 橘格延後繪製：把每幀數千次 fillStyle 換成 2 次 ----------
+  //
+  // 原本是逐格 `ctx.fillStyle = accent ? ACCENT : COLOR` 再 fillRect。實測 390×844 手機
+  // 每幀約 3,000–5,000 格，也就是每幀數千次 fillStyle setter —— 每一次瀏覽器都得重新
+  // 解析並驗證那個色彩字串，即使值跟上一格一模一樣。
+  //
+  // 全場只有兩種顏色，而每格 fillRect 是 CELL 見方的整數對齊格、彼此不重疊
+  // （gx/gy 為整數、CELL=4、DPR 上限 2 ⇒ device px 也是整數），所以**繪製順序無關**：
+  // 掃描時藍格照樣即畫，橘格只記下座標，掃完再一次切成 ACCENT 補畫。
+  // 兩次 fillStyle，畫面逐像素相同。
+  //
+  // 座標存進預配置的 Int32Array（不是物件陣列）—— 這支元件的內圈本來就刻意零配置，
+  // 為了省 fillStyle 而每幀生出幾千個短命物件是本末倒置。
+  let accentBuf = new Int32Array(0);
+  let accentCount = 0;
+  const ensureAccentBuf = (cells: number) => {
+    // 最壞情況是整個 bbox 都是橘格；(gx, gy) 成對存放故 ×2。
+    const need = Math.max(1, cells) * 2;
+    if (accentBuf.length < need) accentBuf = new Int32Array(need);
+  };
+
   const setSize = () => {
     width = wrap.clientWidth;
     height = wrap.clientHeight;
@@ -422,6 +444,7 @@ onMounted(() => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cols = Math.ceil(width / CELL);
     rows = Math.ceil(height / CELL);
+    ensureAccentBuf(cols * rows);
     rectDirty = true;
     // 改過 canvas.width/height 的畫布是空的 → 沒有殘影要清
     lastGx1 = lastGx0;
@@ -580,16 +603,25 @@ onMounted(() => {
         const halfW = (width * area.width) / 2;
         const halfH = (height * area.height) / 2;
         clusterScale = Math.min(1, halfW / CLUSTER_PX, halfH / CLUSTER_PX);
-        // 章半徑現在綁 headR，會跟著 clusterScale 一起縮，故兩者同基準比較。
-        // 尾巴可及 ≈ headR × (STAMP_SPREAD + 0.84 × tailBlobMax)，恆小於
-        // CLUSTER_PX × clusterScale（0.68 × 1.01 ≈ 0.69），實際不再是限制因素，
-        // 但保留 max() 以防之後把 tailBlobMax 調到很大。
+        // 內縮量＝團塊**看得見**的半徑，不是叢集名目半徑（＝patch 聯集的外接
+        // 矩形 CLUSTER_PX）。兩者差 1/0.748 ≈ 1.34 倍：遮罩是場的等值線
+        // d = headR/√(th+0.16)，th ∈ [0.6,1.6]（見下方逐格迴圈）→ 外緣落在
+        // 0.75~1.15 × headR，而 headR 本身只有 0.68 × CLUSTER_PX。
+        //
+        // ⚠️ 用名目半徑會讓振幅在窄軸上恆為 0，不是「調小了」而是「數學上歸零」：
+        //    clusterScale 由窄軸決定 ⇒ clusterScale = halfH/CLUSTER_PX
+        //    ⇒ ext = CLUSTER_PX × clusterScale ≡ halfH ⇒ ampY ≡ 0。
+        //    改用可見半徑後 ext = 0.748 × halfH，窄軸也留得下 25% 的振幅。
         const headRNominal = CLUSTER_PX * 0.68 * props.coreScale * clusterScale;
+        // 尾巴可及 ≈ headR × (STAMP_SPREAD + 0.84 × tailBlobMax) ≈ 0.72 × headR，
+        // 小於本體的 1.1 × headR，實際不是限制因素；保留 max() 以防 tailBlobMax
+        // 之後被調很大。
         const tailR =
           TAIL > 0
             ? headRNominal * (STAMP_SPREAD + 0.84 * props.tailBlobMax)
             : 0;
-        const ext = Math.max(CLUSTER_PX * clusterScale, tailR);
+        // 1.1＝移動中的可見外緣（靜止約 0.89，最外圈毛邊 1.15）
+        const ext = Math.max(headRNominal * 1.1, tailR);
         cx0 = width * (area.x + area.width / 2);
         cy0 = height * (area.y + area.height / 2);
         ampX = Math.max(0, halfW - ext);
@@ -747,6 +779,10 @@ onMounted(() => {
 
     // 逐格：先查 patch（便宜的矩形/紋理測試），命中才算 metaball 場（貴），
     // 場強 ≥ 該格隨機閾值才畫 → patch 拼貼被場遮罩收邊、外緣有機溶解
+    //
+    // fillStyle 在這裡設定一次，整趟掃描都不再動它；橘格改記進 accentBuf，掃完補畫。
+    ctx.fillStyle = COLOR;
+    accentCount = 0;
     for (let gy = gy0; gy < gy1; gy++) {
       for (let gx = gx0; gx < gx1; gx++) {
         const cx = (gx + 0.5) * CELL;
@@ -879,8 +915,21 @@ onMounted(() => {
           if (hash3(gx * 0.7 + 3.1, gy * 1.3 + 9.7, hEpoch + 4.2) < holeP)
             accent = false;
         }
-        ctx.fillStyle = accent ? ACCENT : COLOR;
-        ctx.fillRect(gx * CELL, gy * CELL, CELL, CELL);
+        if (accent) {
+          // 延後：等這趟掃描結束、切一次 fillStyle 再補畫（見 accentBuf 宣告處）
+          accentBuf[accentCount++] = gx;
+          accentBuf[accentCount++] = gy;
+        } else {
+          ctx.fillRect(gx * CELL, gy * CELL, CELL, CELL);
+        }
+      }
+    }
+
+    // 橘格補畫：整幀第二次、也是最後一次 fillStyle
+    if (accentCount) {
+      ctx.fillStyle = ACCENT;
+      for (let i = 0; i < accentCount; i += 2) {
+        ctx.fillRect(accentBuf[i]! * CELL, accentBuf[i + 1]! * CELL, CELL, CELL);
       }
     }
 
@@ -937,7 +986,9 @@ onMounted(() => {
 .metaballs {
   position: relative;
   width: 100%;
-  height: 100vh;
+  /* 一個視窗高（media 用法會被 .media__bg 覆寫）。本檔非 scss、vh() 不可用，
+     手寫 --vh 展開式（見 architecture/viewport-height.md 例外） */
+  height: calc(var(--vh, 1vh) * 100);
   overflow: hidden;
   pointer-events: none;
 }

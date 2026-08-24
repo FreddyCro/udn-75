@@ -6,7 +6,10 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  killScrollTriggers,
+  refreshScrollTriggers,
+} from '@/utils/scroll-trigger';
 import {
   HIDE_Y,
   blockState,
@@ -16,6 +19,7 @@ import {
   stageLines,
   type StageBlockState,
 } from '@/utils/subpage-stage-beats';
+import { gaSectionViewOnce } from '@/utils/tracking-event';
 import type { IntroMediaImage, IntroMediaVideo } from './SubpageIntroMedia.vue';
 
 export interface SubpageNavData {
@@ -34,6 +38,13 @@ export interface SubpageIntroMediaData {
   video?: IntroMediaVideo;
 }
 export interface SubpageContent {
+  /**
+   * 這一篇的識別代號（news／visual／…），＝ 路由 path 也＝ GA term 的前綴。
+   *
+   * ⚠️ 必須是資料欄位，不能從 useRoute() 推：連續閱讀頁（<768 的 /subpage）把六篇串在
+   *    同一份文件裡，六個 <Subpage> 實例的 route.path 全都是 /subpage，推不出誰是誰。
+   */
+  slug: string;
   hero: {
     title: string;
     subtitle: string;
@@ -71,8 +82,46 @@ const introMedia = computed(() => {
   return images.length ? { images } : null;
 });
 
-// 藝術字路徑來自 locales/*.json，需補上資產前綴才吃得到子路徑／CDN 部署（bg 走 UPic，內部已前綴）
-const assetUrl = useAssetUrl();
+// hero 主／副標藝術字走 build-time 內嵌（?raw）而非 <img> request：
+// SVG 與 DOM 同時渲染（SSR 直接進 payload），進場動畫播放時素材保證已在場，
+// 不會再有「淡入播完、字才蹦出來」的載入時間差。
+const heroArtRaw = import.meta.glob('~~/public/img/*/udn75_*_hero_*.svg', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>;
+
+/**
+ * 取出內嵌 SVG 並做兩件整形：
+ * 1. 命名空間化被 url(#…) 引用的 id（clipPath 等）—— 連續閱讀頁會把六篇共 12 個
+ *    SVG inline 進同一份文件，Figma 匯出的 id 會撞名（education 的主副標都叫
+ *    clip0_0_4），後者的 clip 會誤指到前者的定義。
+ * 2. 補 preserveAspectRatio="xMinYMid"，等價原本 <img> 的
+ *    object-fit: contain + object-position: left center（窄幅縮小時字形靠左）。
+ *    aria-hidden：無障礙文字由外層 wrapper 的 aria-label 提供。
+ */
+function inlineHeroArt(path: string): string {
+  const raw = Object.entries(heroArtRaw).find(([k]) => k.endsWith(path))?.[1];
+  if (!raw) return '';
+  const ns = path.replace(/^.*\//, '').replace(/\.svg$/, '');
+  let svg = raw;
+  for (const id of new Set(
+    [...raw.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]),
+  )) {
+    svg = svg
+      .replaceAll(`id="${id}"`, `id="${ns}-${id}"`)
+      .replaceAll(`url(#${id})`, `url(#${ns}-${id})`);
+  }
+  return svg.replace(
+    '<svg ',
+    '<svg aria-hidden="true" preserveAspectRatio="xMinYMid" ',
+  );
+}
+
+const titleSvg = computed(() => inlineHeroArt(props.content.hero.titleImg));
+const subtitleSvg = computed(() =>
+  inlineHeroArt(props.content.hero.subtitleImg),
+);
 
 const stageRef = ref<HTMLElement | null>(null);
 const heroRef = ref<HTMLElement | null>(null);
@@ -80,24 +129,11 @@ const heroInnerRef = ref<HTMLElement | null>(null);
 const introInnerRef = ref<HTMLElement | null>(null);
 const mediaRef = ref<HTMLElement | null>(null);
 
-/** <1280 底部錨點列是否出現：捲過 hero/引言舞台後才滑入。
- *  ⚠️ pc 右側 rail **不吃這面旗子**（全程顯示，理由見 useSubpageAnchor），別再接回去。
- *  狀態放在 useSubpageAnchor：錨點元件由 layouts/subpage.vue 渲染一次，不在本元件子樹內。 */
-const { visible: anchorVisible, mode: anchorMode } = useSubpageAnchor();
-
-/**
- * 寫入錨點列的顯隱旗子。
- *
- * route 模式（獨立子頁）：舞台演完滑入、回捲進舞台收回 —— 維持原本行為。
- * scroll 模式（連續閱讀頁）：**只進不退**。六篇各有自己的舞台，照 route 模式的規則走的話
- *   捲進第二篇的 hero 舞台時錨點列會縮回視窗外 —— 而那時使用者早就在連續閱讀、正需要導覽。
- *   閂鎖寫在這裡而不是給各篇一個 prop：六個 article 元件就不必為此轉發一個 prop，
- *   規則也只有一份。
- */
-function setAnchorVisible(v: boolean) {
-  if (!v && anchorMode.value === 'scroll') return;
-  anchorVisible.value = v;
-}
+// ⚠️ 舞台**不再驅動錨點的顯隱**：pc rail 與 <1280 底部列都改成全程顯示（一進入子頁就在），
+//    由 layouts/subpage.vue 直接傳 visible。原本這裡有一面 useSubpageAnchor 的 visible 旗子，
+//    由 pin 的 onLeave／onEnterBack 寫入（「舞台演完才滑入」），連同它的 scroll 模式閂鎖
+//    與 reduced-motion 專用 trigger 一起移除了 —— 恆真的旗子不必留著。
+//    只有 mode／activeSlug 還留在 useSubpageAnchor（active 判定與點擊語意仍要分兩種）。
 
 /**
  * 舞台是否啟用 pin 模式（hero／引言／媒體疊在同一屏）。
@@ -112,8 +148,8 @@ const stagePinned = ref(false);
  */
 const mediaActive = ref(true);
 
-// hero 進場：由下往上、透明度 0→100%，0.4s
-const REVEAL = { autoAlpha: 0, y: 200, duration: 0.4, ease: 'power2.out' };
+// hero 進場：由下往上、透明度 0→100%，0.8s（藝術字已內嵌，可放心拉長不怕素材遲到）
+const REVEAL = { autoAlpha: 0, y: 200, duration: 0.8, ease: 'power2.out' };
 
 let tweens: gsap.core.Tween[] = [];
 let triggers: ScrollTrigger[] = [];
@@ -131,7 +167,13 @@ function makeFade(targets: HTMLElement[], { shift = true } = {}) {
     instant
       ? gsap.set(targets, { autoAlpha: 1, ...dy(0), overwrite: 'auto' })
       : tweens.push(
-          gsap.to(targets, { autoAlpha: 1, ...dy(0), duration: 0.4, ease: 'power2.out', overwrite: 'auto' }),
+          gsap.to(targets, {
+            autoAlpha: 1,
+            ...dy(0),
+            duration: 0.4,
+            ease: 'power2.out',
+            overwrite: 'auto',
+          }),
         );
   /** onComplete 在淡出真的播完才呼叫（instant 則立即）：給「等看不見了再收拾」的副作用用。
    *  被 overwrite 接手而中止的 tween 不會觸發，所以淡出中途改回淡入不會誤收。 */
@@ -158,7 +200,13 @@ function makeFade(targets: HTMLElement[], { shift = true } = {}) {
       gsap.fromTo(
         targets,
         { autoAlpha: 0, ...dy(REVEAL.y) },
-        { autoAlpha: 1, ...dy(0), duration: REVEAL.duration, ease: REVEAL.ease, overwrite: 'auto' },
+        {
+          autoAlpha: 1,
+          ...dy(0),
+          duration: REVEAL.duration,
+          ease: REVEAL.ease,
+          overwrite: 'auto',
+        },
       ),
     );
   return { show, hide, reveal };
@@ -167,20 +215,9 @@ function makeFade(targets: HTMLElement[], { shift = true } = {}) {
 onMounted(async () => {
   gsap.registerPlugin(ScrollTrigger);
 
-  // 降級：不 pin、不藏內容，只補一個錨點列的顯隱 trigger（純換 class）
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    if (stageRef.value) {
-      triggers.push(
-        ScrollTrigger.create({
-          trigger: stageRef.value,
-          start: 'bottom top',
-          onEnter: () => setAnchorVisible(true),
-          onLeaveBack: () => setAnchorVisible(false),
-        }),
-      );
-    }
-    return;
-  }
+  // 降級：不 pin、不藏內容，三塊照文件流各佔一屏全程可見 —— 什麼都不用接。
+  // （原本這裡有一條只為錨點顯隱而存在的 trigger，錨點改成全程顯示後就不需要了。）
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   // 切到 pin 版型（引言改為疊在 hero 上的同屏 overlay），等 DOM 套完再量測
   stagePinned.value = true;
@@ -213,6 +250,13 @@ onMounted(async () => {
   //
   // start 取 'top bottom'（舞台頂端碰到視窗底）而非更晚的線：晚於此的話 hero 會先以完整
   // 樣貌露臉、再倒回透明重播一次，那是明顯的破格。
+  //
+  // ⚠️ 這面旗子是 applyStage 的守衛：pin 的 onRefresh 會**強制**把三塊同步到當下進度
+  //    （force: true），而 hero 在進度 0 的狀態就是「顯示」—— 沒有守衛的話，任何一次
+  //    refresh 都等於把還沒輪到的 hero 直接設成 autoAlpha 1、y 0。連續閱讀頁載入時
+  //    refreshScrollTriggers() 至少跑六次（六篇各一次，見下方 onMounted 末尾），
+  //    第 2～6 篇的 hero 於是在讀者捲到之前就被點亮，once 的進場動畫成了空砲。
+  let heroRevealed = !(heroTargets.length && stageRef.value);
   if (heroTargets.length && stageRef.value) {
     gsap.set(heroTargets, { autoAlpha: 0, y: REVEAL.y });
     triggers.push(
@@ -220,7 +264,8 @@ onMounted(async () => {
         trigger: stageRef.value,
         start: 'top bottom',
         once: true,
-        onEnter: () =>
+        onEnter: () => {
+          heroRevealed = true;
           tweens.push(
             gsap.to(heroTargets, {
               autoAlpha: 1,
@@ -229,7 +274,8 @@ onMounted(async () => {
               ease: REVEAL.ease,
               overwrite: 'auto',
             }),
-          ),
+          );
+        },
       }),
     );
   }
@@ -273,15 +319,38 @@ onMounted(async () => {
     { instant = false, replayHero = false, force = false } = {},
   ) {
     const wantHero = p < lines.heroOut;
+
+    // GA section_view：{slug}_keyvisual_upper／_lower。
+    //
+    // ⚠️ 這兩拍**不能**用 IntersectionObserver（故不掛 v-ga-view）：hero 與引言都住在
+    //    .subpage__stage 裡，而那一塊是 GSAP 的 pin: true —— 釘住期間整塊是 fixed、
+    //    恆在視窗內，IO 會在舞台一接手時就同時判定兩者都看到了。
+    //    真正的語意在這條尺的進度上：hero 與引言是同一個 pin 內先後兩拍，靠 p 切換。
+    // 用 wantHero（本幀算出來的期望值）而不是 heroShown：後者是「已套用的狀態」，
+    // 相同時這個函式的下游會整段跳過。heroRevealed 是進場動畫的閘門 ——
+    // 還沒播過時 hero 是藏著的，不能算看到。
+    if (wantHero && heroRevealed) {
+      gaSectionViewOnce(`${props.content.slug}_keyvisual_upper`);
+    }
+
     if (force || wantHero !== heroShown) {
-      heroShown = wantHero;
-      if (!wantHero) heroFade.hide(HIDE_Y.after, instant);
-      else if (replayHero) heroFade.reveal();
-      else heroFade.show(instant);
+      if (!wantHero) {
+        heroShown = false;
+        heroFade.hide(HIDE_Y.after, instant);
+      } else if (heroRevealed) {
+        heroShown = true;
+        if (replayHero) heroFade.reveal();
+        else heroFade.show(instant);
+      }
+      // else：進場還沒播過 —— 維持藏著（heroShown 留 false），顯示交給 once 那條線。
+      // 這裡搶著顯示等於把進場動畫吃掉，理由見 heroRevealed 的宣告處。
     }
 
     // 沒有第三拍時 introOut 落在 1 之後，永遠進不了 after，行為與加入媒體前相同
     const wantIntro = blockState(p, lines.introIn, lines.introOut);
+    if (wantIntro === 'shown') {
+      gaSectionViewOnce(`${props.content.slug}_keyvisual_lower`);
+    }
     if (force || wantIntro !== introState) {
       introState = wantIntro;
       if (wantIntro === 'shown') introFade.show(instant);
@@ -337,7 +406,8 @@ onMounted(async () => {
         onUpdate: (self) => {
           const sc = self.scroll();
           const jumped =
-            lastScroll === null || Math.abs(sc - lastScroll) > window.innerHeight;
+            lastScroll === null ||
+            Math.abs(sc - lastScroll) > window.innerHeight;
           lastScroll = sc;
           applyStage(self.progress, { instant: jumped, replayHero: jumped });
         },
@@ -357,12 +427,11 @@ onMounted(async () => {
           //    的更新不保證在這個 callback 之前完成）。start／end 這時已是新值，故自己算 ——
           //    這也是「以新版面為準」語意上唯一正確的算法。
           const span = self.end - self.start;
-          const p = span > 0 ? Math.min(1, Math.max(0, (sc - self.start) / span)) : 0;
+          const p =
+            span > 0 ? Math.min(1, Math.max(0, (sc - self.start) / span)) : 0;
           applyStage(p, { instant: true, force: true });
         },
-        // pin 結束＝舞台演完 → 錨點出現（pc rail 淡入、<1280 底部列滑入）；回捲進 pin 段則收回
         onLeave: () => {
-          setAnchorVisible(true);
           // 退場的收尾保險：scrub 要 progress 剛好等於 1 才會把 alpha 帶到 0，而 onUpdate
           // 不保證收得到那一格。漏收的話照片會留在畫面上，舞台的 z-index 1100 還會壓著
           // 內文擋掉點擊 —— 而且是靜默的。onLeave 一定會在越過 end 時觸發，補一刀。
@@ -372,7 +441,6 @@ onMounted(async () => {
             mediaActive.value = false;
           }
         },
-        onEnterBack: () => setAnchorVisible(false),
       }),
     );
 
@@ -384,7 +452,12 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  triggers.forEach((st) => st.kill());
+  // ⚠️ 非 killScrollTriggers（＝ kill(false)）不可：裸 kill() 會 revert，而 revert 會把
+  //    舞台的 pin-spacer 從 DOM 拔掉。此刻舊頁還要在畫面上淡出 220ms（out-in 的 leave
+  //    一開始就呼叫 beforeUnmount），而 `--pinned` 與 `--under-stage` 是 Vue 旗子驅動的、
+  //    不會跟著消失 —— 佔位沒了、`margin-top: vh(-0.65)` 的上拉還在，內文就整段跳到
+  //    0.35 屏處疊在 hero 上（實測 1446×1155：contentTop 3933 → 468，16 幀全程可見）。
+  killScrollTriggers(...triggers);
   triggers = [];
   tweens.forEach((t) => t.kill());
   tweens = [];
@@ -393,8 +466,6 @@ onBeforeUnmount(() => {
 
 <template>
   <article class="subpage">
-    <!-- hero＋引言舞台：pin 模式下兩塊疊同一屏，滾動進度觸發交接；
-         降級（no-JS／reduced-motion）維持文件流各佔一屏 -->
     <div
       ref="stageRef"
       class="subpage__stage"
@@ -405,34 +476,39 @@ onBeforeUnmount(() => {
       }"
     >
       <header ref="heroRef" class="subpage__hero">
-        <UPic
-          :src="content.hero.bg"
-          classname="subpage__hero-bg"
-          :use-prefix="false"
-          :use2x="false"
-          :webp="false"
-          loading="eager"
-          alt=""
-        />
-        <div
-          ref="heroInnerRef"
-          class="subpage__col subpage__col--hero subpage__hero-inner"
-        >
-          <h1 class="subpage__title">
-            <img
-              class="subpage__title-img"
-              :src="assetUrl(content.hero.titleImg)"
-              :alt="content.hero.title"
-            />
-          </h1>
-          <p class="subpage__subtitle">
-            <img
-              class="subpage__subtitle-img"
-              :src="assetUrl(content.hero.subtitleImg)"
-              :alt="content.hero.subtitle"
-            />
-          </p>
-          <!-- <p class="subpage__unit">{{ content.hero.unit }}／{{ content.hero.author }}</p> -->
+        <div ref="heroInnerRef" class="subpage__col--hero subpage__hero-inner">
+          <!-- 文字組與 KV 圖拆成兩個 flex 子項，間距由 gap 直接標稿值（48/80/120）。
+               ⚠️ 六頁要疊得起來（用右側 rail 切頁時 KV 不上下跳）的前提是**文字組總高
+                  六頁一致** —— 而主／副標是 inline SVG，高度得由 CSS 的字帶比例定死，
+                  不能讓各檔 viewBox 反推（六份匯出稿比例不一致，差到 7px）。
+                  見下方 .subpage__title-img 的 aspect-ratio 與 test/subpage-hero-art-band.spec.ts -->
+          <div class="subpage__hero-text">
+            <h1 class="subpage__title">
+              <span
+                class="subpage__title-img"
+                role="img"
+                :aria-label="content.hero.title"
+                v-html="titleSvg"
+              />
+            </h1>
+            <p class="subpage__subtitle">
+              <span
+                class="subpage__subtitle-img"
+                role="img"
+                :aria-label="content.hero.subtitle"
+                v-html="subtitleSvg"
+              />
+            </p>
+          </div>
+          <UPic
+            :src="content.hero.bg"
+            classname="subpage__hero-bg"
+            :use-prefix="false"
+            :use2x="false"
+            :webp="false"
+            loading="eager"
+            alt=""
+          />
         </div>
       </header>
 
@@ -442,8 +518,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- 舞台第三拍：引言之後的滿屏媒體（照片輪播或影片）。
-           內容由各頁 locales 的 content.introMedia 提供，沒填就整塊不存在、舞台回到兩拍 -->
       <div v-if="introMedia" ref="mediaRef" class="subpage__media">
         <SubpageIntroMedia
           fill
@@ -454,23 +528,25 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- 舞台之後的內容：不透明背景。z-index 維持 auto（不建立堆疊脈絡）。
-         --under-stage：上拉一屏墊到舞台後面，媒體淡出就直接見內文（見 SCSS） -->
     <div
       class="subpage__content"
       :class="{ 'subpage__content--under-stage': stagePinned && !!introMedia }"
     >
       <!-- ⚠️ 錨點導覽（SubpageAnchor rail / SubpageAnchorBar 底部列）**不在這裡渲染**，
            改由 layouts/subpage.vue 渲染一次：連續閱讀頁（pages/subpage.vue）把六篇串在
-           同一份文件裡，留在這裡就會疊出六份底部錨點列。顯隱旗子改走 useSubpageAnchor，
-           由本元件的舞台進度線寫入（見上方 setAnchorVisible 與 drivesAnchor）。 -->
+           同一份文件裡，留在這裡就會疊出六份底部錨點列。
+           顯隱也不由本元件管 —— 兩者都全程顯示，layout 直接傳 visible（見上方註解）。 -->
 
       <!-- 內文：各頁以預設 slot 撰寫，間距在頁面上逐塊標 Tailwind mt-*/mb-* -->
       <div class="subpage__body">
         <slot />
       </div>
 
-      <SubpageNav :back-url="content.nav.backUrl" :next="content.nav.next" />
+      <SubpageNav
+        :back-url="content.nav.backUrl"
+        :next="content.nav.next"
+        :slug="content.slug"
+      />
     </div>
   </article>
 </template>
@@ -490,30 +566,97 @@ onBeforeUnmount(() => {
 }
 
 .subpage__col--hero {
-  padding: 0 26px;
+  padding: 0 23px;
 
-  @include rwd-min('tablet') {
-    padding: 0 20px;
-    max-width: min(79vw, 1104px);
+  @include rwd-min('mobile') {
+    padding: 0 37px;
   }
-
-  // pc 稿：1280 − 108×2 = 1064 即**內容寬本身**，所以這裡不留 padding ——
-  // 沿用 tablet 的 `padding: 0 20px` 會把欄再吃掉 40，文案左緣就對不到稿上的 108。
-  // 1064 ＞ 六頁最寬的副標藝術字（education 796），SVG 不會被 max-width 壓縮。
+  @include rwd-min('tablet') {
+    padding: 0 89px;
+  }
   @include rwd-min('pc') {
-    max-width: 1064px;
+    padding-right: 0;
+    padding-left: calc(108 / 1280 * 100vw);
+    max-width: 796px;
+  }
+  @include rwd-min('ultra') {
+    padding-left: calc(162 / 1920 * 100vw);
+    max-width: calc(1194px + calc(162 / 1920 * 100vw));
+  }
+}
+// 文字組與 KV 圖的間距直接標稿值（gap），不再靠 space-between 從「容器高 − 子項高」
+// 長出來 —— 但這也意味著**沒有一段可變空隙可以吸收誤差**了：子項高度只要六頁不一致，
+// 差多少就整段往下推多少。故主／副標的字帶比例必須寫死（見 .subpage__title-img）。
+.subpage__hero-inner {
+  display: flex;
+  flex-direction: column;
+  height: calc(234.05 / 320 * 100vw);
+  gap: 48px;
+
+  @include rwd-min('mobile') {
+    height: calc(285 / 414 * 100vw);
+  }
+  @include rwd-min('tablet') {
+    height: calc(490.71 / 768 * 100vw);
+    gap: 80px;
+  }
+  @include rwd-min('pc') {
+    height: calc(473.66 / 1280 * 100vw);
+    gap: 120px;
+    margin-top: 5vh;
+  }
+  @include rwd-min('ultra') {
+    height: calc(710.49 / 1920 * 100vw);
+  }
+}
+
+// ── pc→ultra 的 clamp ────────────────────────────────────────────────────────
+// hero 的三個寬度（.subpage__hero-bg／.subpage__title／.subpage__subtitle）在 ≥1280
+// 一律寫成 `clamp(pc 稿值, vw 等比, ultra 稿值)`：1280 落在 pc 稿、1280→1920 隨視窗
+// 線性放大、≥1920 凍結在 ultra 稿。與 .subpage__col--wide 的「≥1920 錨定回定寬」同思路。
+//
+// **為什麼一條 clamp 就夠、不必再寫 ultra 覆寫**：三組的 pc／ultra 稿值恰好是同一個
+// vw 比例（1920/1280 = 1.5，而三組 ultra 值都正好是 pc 值 ×1.5）——
+//   bg    480/1280 = 720/1920  = 37.5%
+//   title 350/1280 = 525/1920  = 27.34%
+//   sub   796.08/1280 = 1194.12/1920 = 62.19%
+// 所以中間那項 `calc(pc 稿值 / 1280 * 100vw)` **依建構**就會在 1280 等於下限、在 1920
+// 等於上限，兩端接得起來，中間全程線性。多寫一條 `@include rwd-min('ultra')` 只會
+// 是同一個值的重複（而且日後改稿容易只改到一邊）。
+// ⚠️ 這個等比關係是這三組的性質，不是通則：.subpage__col--hero 的 max-width（796 vs
+//    1356）就**不是**同一比例，故它仍保留 pc／ultra 兩條。
+:deep(.subpage__hero-bg) {
+  padding: 0 12px;
+
+  @include rwd-min('mobile') {
+    padding: 0 10px;
+  }
+  @include rwd-min('tablet') {
+    padding: 0 15px;
+  }
+  @include rwd-min('pc') {
+    width: clamp(480px, calc(480 / 1280 * 100vw), 720px);
     padding: 0;
   }
 }
 
-// 寬欄（hero／引言）：pad 起照 pc 稿比例流體縮放，≥1280 錨定回定寬。
-// min() 取兩者較小 → 1280 以下走 84.375vw（= 1080/1280，與視窗等比），
+// 引言欄：照 subpage__col--hero 的作法對稿全等比 —— mob 兩檔走固定邊距
+//（320 稿 20、414 稿 26），pad 起改 vw 等比欄寬（654/768），pc 與 ultra
+// 稿恰為同一比例（1040/1280 = 1560/1920 = 81.25vw），一條規則吃兩檔，
+// ≥1920 錨定回 1560 定寬（與 hero 的 ultra 錨定同思路）。
 .subpage__col--wide {
-  padding: 0 26px;
-
+  @include rwd-min('mobile') {
+    padding: 0 26px;
+  }
   @include rwd-min('tablet') {
-    padding: 0 20px;
-    max-width: min(85vw, var(--subpage-wide-w));
+    padding: 0;
+    max-width: calc(654 / 768 * 100vw);
+  }
+  @include rwd-min('pc') {
+    max-width: calc(1040 / 1280 * 100vw); // = 1560/1920，pc 與 ultra 同比例
+  }
+  @include rwd-min('ultra') {
+    max-width: 1560px;
   }
 }
 
@@ -522,8 +665,7 @@ onBeforeUnmount(() => {
 // 由 ScrollTrigger pin 住、滾動進度觸發兩者交接（見 script 的 onUpdate）。
 .subpage__stage--pinned {
   position: relative;
-  height: 100vh;
-  height: 100svh;
+  height: vh(1);
   overflow: hidden;
 
   .subpage__hero,
@@ -531,7 +673,7 @@ onBeforeUnmount(() => {
   .subpage__media {
     position: absolute;
     inset: 0;
-    min-height: 0; // 高度由 inset 決定（= 舞台一屏），不再各自撐 100svh
+    min-height: 0; // 高度由 inset 決定（= 舞台一屏），不再各自撐 vh(1)
     height: auto;
   }
 }
@@ -548,6 +690,10 @@ onBeforeUnmount(() => {
 //    直到照片真的蓋上來。不會有「header 先消失一拍」的破綻。
 .subpage__stage--pinned.subpage__stage--media {
   z-index: 1100; // 與 SubpageIntroMedia 的 .intro-media 同值，兩處要一起改
+  // ⚠️ 這裡曾有一條 `overflow: visible`：舞台吃 svh、媒體層吃 dvh，工具列收合後媒體得能
+  //    伸出舞台才不露縫。改吃 --vh（＝ large viewport，收合網址列不變）之後舞台本來就
+  //    比可視範圍高，那個補丁連同它放開的 overflow 一起拿掉 —— 全程維持 hidden，
+  //    hero 進出場的位移才不會超出舞台。
 }
 
 // 舞台佔位（GSAP 插入的 .pin-spacer）不吃指標事件。
@@ -572,33 +718,24 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-// 引言之後的滿屏媒體。降級（no-JS／reduced-motion）時照文件流自佔一屏；
-// pin 模式改為疊在同層（見上方 --pinned）。媒體以 fill 模式撐滿，圖說才貼在視窗底。
 .subpage__media {
-  height: 100vh;
-  height: 100svh;
+  height: vh(1);
 }
 
-// 設計稿 canvas＝裝置視窗且 header 疊在 frame 內 → 首屏滿版 100vh（非 100vh − header）；
-// 文案距視窗頂為固定距離（padding-top），非垂直置中。
 .subpage__hero {
-  position: relative; // hero-bg 的定位基準（%距底要量 hero 高，不是視窗高）
-  min-height: 100vh;
-  min-height: 100svh; // 行動裝置以最小視窗計，避免網址列收合時版面跳動
-  padding-top: 148px;
+  position: relative;
+  min-height: vh(1);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 
-  @include rwd-min('tablet') {
-    padding-top: 180px;
-  }
   @include rwd-min('pc') {
-    padding-top: 163px;
+    align-items: flex-start;
   }
 }
 
-// 舞台之後的內容底。z-index 須維持 auto，否則會建立 stacking context，
-// 把裡面 position: fixed 的 rail／錨點列關進來 —— 它們的 900 就再也跨不出去、
-// 會被外面隨便一個滿版區塊蓋掉（見 SubpageAnchor）。
 .subpage__content {
   position: relative;
   background: #fff;
@@ -610,14 +747,14 @@ onBeforeUnmount(() => {
 // 舞台雖然空了，那一屏仍在文件流裡要整屏捲掉，內文才輪得到 —— 沒有上拉時實測
 // （1440×900）照片消失在 2700、內文到頂要 3664，中間 964px ≒ 一屏全白。
 //
-// **為什麼是 65svh 而不是滿滿一屏**：拉滿（100svh）的話溶解結束時內文上緣已經在 64，
-// 等於「文章早就就定位、照片只是從它身上淡掉」，溶解全程都看得到字。留 35svh 的話
+// **為什麼是 0.65 屏而不是滿滿一屏**：拉滿（vh(-1)）的話溶解結束時內文上緣已經在 64，
+// 等於「文章早就就定位、照片只是從它身上淡掉」，溶解全程都看得到字。留 0.35 屏的話
 // 文章是**從下面進場**的 —— 實測 1440×900：
 //   溶解開始 2475 → 上緣 604（只露下面約三分之一）
 //   溶解結束 2700 → 上緣 379
 //   到頂     3079 → 上緣 0（溶解完再 379px，有進場感但不會空一屏）
 // 這個數字純粹是視覺取捨、可以單獨調（不影響 scrub 的正確性）：
-// 調大越接近「就定位」，調小越接近「空一屏」；上限 100svh、拿掉就是空一屏的原樣。
+// 調大越接近「就定位」，調小越接近「空一屏」；上限 vh(-1)、拿掉就是空一屏的原樣。
 //
 // ⚠️ 綁 `stagePinned && introMedia`，兩個條件都不能少：
 //    ① 沒有 pin（no-JS／reduced-motion）時三塊各佔一屏走文件流，上拉會吃掉媒體那屏。
@@ -627,86 +764,83 @@ onBeforeUnmount(() => {
 //    內文 z-index: auto 在它下面 → 照片淡掉就露出內文。其餘拍舞台雖然只有 auto，
 //    但那時內文上緣還在視窗外（實測引言退場的 1215 時仍在 1774），不會偷跑。
 .subpage__content--under-stage {
-  margin-top: -65vh;
-  margin-top: -65svh; // 與 .subpage__stage--pinned 的高度同單位，行動裝置才對得齊
+  margin-top: vh(-0.65); // 與 .subpage__stage--pinned 的高度同一把尺（--vh）
 }
 
-// 首屏裝飾圖：素材 856×400 為 @2x，自然顯示 428×200。
-// 距底用 % 而非固定值 —— 對稿距底是滿版 frame 的比例，視窗變高才跟著走。
-:deep(.subpage__hero-bg) {
-  position: absolute;
-  bottom: 23%;
-  left: 50%;
-  z-index: -1;
-  width: min(261px, 64vw);
-  height: auto;
-  transform: translateX(-50%);
-  pointer-events: none;
-
-  @include rwd-min('tablet') {
-    bottom: calc(265 / 1024 * 100%);
-    width: 428px;
-  }
-  // pc 稿改為「跟在副標下方、左緣切齊文案」，不再貼視窗右下。
-  //
-  // 定位：與文案的**相對位置固定**，所以用 top 定值而非 bottom ——
-  //   411 = 163(hero padding-top) + 72(主標) + 32(副標 margin-top) + 64(副標) + 80(稿上的間距)
-  // 主／副標高度是 CSS 寫死的，六頁一致，所以這個定值對六頁都準。
-  //
-  // 尺寸：稿的 480×224 是**上限**，視窗高度不足時依剩餘高度等比縮小（見 clamp）。
-  // width 交給 auto 由高度帶出來 —— 六頁素材比例都是 ~2.14（856×400），224 高算出 479.4，
-  // 與稿的 480 差 0.6px。寫死 480 反而會在比例微異的 education／health 上壓扁。
-  // ⚠️ clamp 的下限 0 是防呆：直接寫 `calc(100svh - 494px)` 的話，矮視窗算出負值會讓整條
-  //    height 宣告失效、退回 auto（＝素材原尺寸 856px）而爆版 —— 而且是靜默的。
-  @include rwd-min('pc') {
-    top: 411px;
-    right: auto;
-    bottom: auto;
-    left: calc(50% - 532px); // 1064 欄的左緣（pc 起 50% ≥ 640，算出來不會為負）
-    width: auto;
-    // 494 = 411(距頂) + 83(稿的底部留白)；720 高時得 226 → 取上限 224，正好對稿
-    height: clamp(0px, calc(100vh - 494px), 224px);
-    height: clamp(0px, calc(100svh - 494px), 224px); // 與 hero 的 100svh 同單位
-    transform: none;
-  }
-}
-
+// ≥1280 的寬度走 clamp，理由見上方「pc→ultra 的 clamp」註解。
 .subpage__title {
   margin: 0;
+  width: calc(150.29 / 320 * 100vw);
+
+  @include rwd-min('mobile') {
+    width: calc(197 / 414 * 100vw);
+  }
+  @include rwd-min('tablet') {
+    width: calc(331 / 768 * 100vw);
+  }
+  @include rwd-min('pc') {
+    width: clamp(350px, calc(350 / 1280 * 100vw), 525px);
+  }
 }
 
-// SVG 藝術字：定高、寬度隨比例，超出欄寬時等比縮小
+// SVG 藝術字（inline）：wrapper 定「字帶」、svg 撐滿；字形縮放與靠左交給
+// SVG 自己的 preserveAspectRatio="xMinYMid"（見 script 的 inlineHeroArt）。
+//
+// **為什麼字帶比例要寫死**：高度若不宣告，就會由各檔 SVG 自己的 viewBox 反推 ——
+// 而六頁的匯出稿比例不一致（主標 350×72 ~ 356.124×74.1944、副標 781×64 ~ 797×66.57），
+// 於是每頁文字組總高差到 7px，`hero-inner` 底下的 KV 圖跟著上下跳：用右側錨點 rail
+// 一頁一頁切，畫面上就是「每次切換都位移」。寫死之後高度與素材無關，六頁疊得起來。
+//
+// ⚠️ 比例取 350/72 與 797/66（news 那組）—— 不是隨便挑的，是唯一與版面算式對得上的
+//    一組：1280 稿 473.66 − bg 224.3 − gap 80 − 副標 margin 32 = 137.36 ≒ 72 + 65.93；
+//    1920 稿 710.49 − 336.45 − 120 − 48 = 206.04 ≒ 108 + 98.87。兩檔都在 1px 內。
+// ⚠️ 各檔與此比例的落差（≤3%）由 preserveAspectRatio 在字帶內縮放靠左消化，看不出來；
+//    但素材若改成真的不同比例就該連字帶一起改 —— 那道守在
+//    test/subpage-hero-art-band.spec.ts（SPEC 與這裡的 aspect-ratio 對帳）。
 .subpage__title-img {
   display: block;
-  width: auto;
-  height: 40px;
-  max-width: 100%;
-  object-fit: contain;
-  object-position: left center;
+  aspect-ratio: 350 / 72;
 
-  @include rwd-min('tablet') {
-    height: 68px;
-  }
-  @include rwd-min('pc') {
-    height: 72px;
+  :deep(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 }
 
-.subpage__subtitle-img {
-  display: block;
-  width: auto;
-  height: 29px;
-  max-width: 100%;
-  object-fit: contain;
-  object-position: left center;
+.subpage__subtitle {
   margin-top: 16px;
+  width: calc(272.42 / 320 * 100vw);
 
+  @include rwd-min('mobile') {
+    margin-top: 20px;
+    width: calc(340 / 414 * 100vw);
+  }
   @include rwd-min('tablet') {
-    height: 48px;
     margin-top: 32px;
+    width: calc(590.53 / 768 * 100vw);
   }
   @include rwd-min('pc') {
-    height: 64px;
+    width: clamp(796.08px, calc(796.08 / 1280 * 100vw), 1194.12px);
+  }
+  // 1920 稿的上距是 48（不是 tablet 那檔的 32）—— 少這 16px，文字組總高就短一截，
+  // 而 .subpage__hero-inner 的 gap 是標稿定值、沒有 space-between 可以吸收，
+  // KV 圖會整個往上挪 16px、底下空出約 15px（實測 1920×1080：內容 695 對舞台 710）。
+  // 算式對帳見上方 .subpage__title-img 的稿基準註解。
+  @include rwd-min('ultra') {
+    margin-top: 48px;
+  }
+}
+
+// 字帶比例同主標，理由與稿基準見 .subpage__title-img
+.subpage__subtitle-img {
+  display: block;
+  aspect-ratio: 797 / 66;
+
+  :deep(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 }
 
@@ -730,23 +864,27 @@ onBeforeUnmount(() => {
   }
 }
 
-// 引言滿版一屏（pin 模式時 = 舞台那一屏）：mob/pad 對稿上下留白相等 → 垂直置中；
-// pc 對稿不置中，改以「靠下 + 底距 80」表達，視窗高度一離開 720 也不會失準。
+// 引言滿版一屏（pin 模式時 = 舞台那一屏）：mob/pad 垂直置中 —— 但置中的是
+// 「扣掉 fixed header 之後」的剩餘區域（上 padding 多加一個 --header-height，
+// flex 置中的內容區就從 header 下緣起算），不是整個視窗；
+// pc 對稿不置中，改「靠下 + vh 等比底距」（80/720 = 120/1080，pc 與 ultra 同比例），
+// 底距跟著視窗高度縮放，視窗高度離開 720/1080 也不失準。
 // 本層沒有背景（透明），故右側 rail（SubpageAnchor，全程顯示）從它底下透出來，
 // 不需要在這裡排 z-index —— 會蓋住 rail 的只有滿屏引言媒體那一拍。
 .subpage__intro {
   display: flex;
   align-items: center;
-  min-height: 100vh;
-  min-height: 100svh;
-  padding: 56px 0; // 內容超過一屏時（窄機／放大字級）自然撐高，不裁切（pin 模式改由 overflow 裁）
+  min-height: vh(1);
+  // 56px／96px 是內容超過一屏時（窄機／放大字級）的最小留白：自然撐高，不裁切
+  //（pin 模式改由 overflow 裁）
+  padding: calc(56px + var(--header-height)) 0 56px;
 
   @include rwd-min('tablet') {
-    padding: 96px 0;
+    padding: calc(96px + var(--header-height)) 0 96px;
   }
   @include rwd-min('pc') {
     align-items: flex-end;
-    padding-bottom: 80px;
+    padding-bottom: calc(80 / 720 * #{vh(1)}); // 與舞台一屏同一把尺，底距才貼齊屏底
   }
 }
 
@@ -761,6 +899,16 @@ onBeforeUnmount(() => {
   @include rwd-min('tablet') {
     font-size: var(--text-intro);
     line-height: var(--text-intro--line-height);
+  }
+  // pc→ultra 稿是精確的 ×1.5 等比（欄寬 1040→1560、字級 32/60→48/90），
+  // 欄寬既走 vw 等比，字級也得跟著走，行數／行長才對得上稿；≥1920 隨欄寬一起錨定。
+  @include rwd-min('pc') {
+    font-size: calc(32 / 1280 * 100vw);
+    line-height: calc(60 / 1280 * 100vw);
+  }
+  @include rwd-min('ultra') {
+    font-size: 48px;
+    line-height: 90px;
   }
 }
 

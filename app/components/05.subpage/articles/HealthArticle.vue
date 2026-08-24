@@ -31,14 +31,14 @@ const assetUrl = useAssetUrl();
     </div>
 
     <!-- 縮短社會鴻溝 凝聚行動力 -->
-    <div class="sp-col mt-16">
+    <div v-ga-view="'health_dementia'" class="sp-col mt-16">
       <h2 class="sp-h3 mb-4">{{ c.gap.title }}</h2>
       <p class="sp-p" v-html="c.gap.body" />
     </div>
 
     <!-- 失智社群按鈕 -->
     <div class="mt-8">
-      <SubpageCta :label="c.communityCta.label" :url="c.communityCta.url" />
+      <SubpageCta :label="c.communityCta.label" :url="c.communityCta.url" ga-term="dementia" />
     </div>
 
     <!-- 媒體不只報導 更提供解方 -->
@@ -48,15 +48,25 @@ const assetUrl = useAssetUrl();
     </div>
 
     <!-- 近年得獎獎項 -->
-    <div class="max-w-152 lg:max-w-157.5 mt-16 mx-auto">
+    <div v-ga-view="'health_award'" class="max-w-152 lg:max-w-157.5 mt-16 mx-auto">
       <h2 class="sp-subtitle text-center">{{ c.awards.title }}</h2>
-      <div class="mt-4 gap-8 flex flex-col sm:mt-8 lg:mt-5 lg:gap-6">
+      <div class="mt-4 gap-8 flex flex-col sm:mt-8 lg:mt-5 lg:gap-6 pl-5 pr-5 xs:pl-6.5 xs:pr-6.5 sm:pl-0 sm:pr-0">
         <div
           v-for="(a, i) in c.awards.items"
           :key="i"
           class="flex flex-col items-center gap-4 sm:flex-row sm:gap-6"
         >
-          <img class="w-46.5 shrink-0" :src="assetUrl(a.img)" :alt="a.alt" loading="lazy" />
+          <!-- width/height ＝ 素材畫布（186×120，與 w-46.5 的 186px 同值）：lazy 圖
+               載入前若不保留版位，撐開那一刻會把下面所有 pin 的實際位置推走。
+               對帳見 test/subpage-image-space-reservation.spec.ts -->
+          <img
+            class="w-46.5 shrink-0"
+            :src="assetUrl(a.img)"
+            :alt="a.alt"
+            width="186"
+            height="120"
+            loading="lazy"
+          />
           <p class="m-0 text-[15px] leading-6 font-light text-gray">{{ a.body }}</p>
         </div>
       </div>
@@ -74,7 +84,7 @@ const assetUrl = useAssetUrl();
 
     <!-- 共享按鈕 -->
     <div class="mt-16 mb-16">
-      <SubpageCta :lead="c.finalCta.lead" :label="c.finalCta.label" :url="c.finalCta.url" />
+      <SubpageCta :lead="c.finalCta.lead" :label="c.finalCta.label" :url="c.finalCta.url" ga-term="new_medical" />
     </div>
   </Subpage>
 </template>

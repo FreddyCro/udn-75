@@ -1,4 +1,5 @@
 {
+  "slug": "visual",
   "hero": {
     "title": "視覺敘事",
     "subtitle": "用故事與創意抓住目光",
@@ -53,7 +54,7 @@
   },
   "experience": {
     "title": "體驗　因人味敘事深化",
-    "body": "<a href='https://udn.com/upf/newmedia/2018_data/childabuse/#/' target='_blank' rel='noopener'>兒虐告白--爸媽是我的噩夢</a>、<a href='https://udn.com/upf/newmedia/2017_data/chnv/trip.html' target='_blank' rel='noopener'>中興新村小清新之旅</a>、<a href='https://udn.com/upf/newmedia/2019_data/DUI_victim_stories/' target='_blank' rel='noopener'>來不及說再見--5個被酒駕撞碎的生命故事</a>、<a href='https://vip.udn.com/newmedia/2020/her_stories/' target='_blank' rel='noopener'>她們的故事</a>、<a href='https://udn.com/upf/newmedia/2017_data/farewell/index.html' target='_blank' rel='noopener'>好好說再見--插畫記林杰樑走後1500天</a> 是視覺設計中心早期和文字編輯合作的多媒體實驗，這奠定了日後視覺設計師自己策展新聞資訊的開始。<br/><br/>\n今年，「視覺故事」獲得SND (Society for News Design )第47屆全球新聞創意設計競賽，二面銅牌、三項優選的成績，以及2026年第50屆金鼎獎數位內容獎；這個以人人都能理解的插畫語言作為敘事媒介的專題，打造沉浸式氛圍，結合文字和圖像讓訊息更易於理解。〈紐約時報〉、〈路透社〉、〈華盛頓郵報〉、〈南華早報〉等，早在視覺敘事領域建立了世界標竿，他們的作品一直都是我們對齊的目標。<br/><br/>\n人工智慧的預測五花八門，它既可怕又美好，科技驅動新聞變革，設計思考驅動改變與受眾的關係，科技決定我們走得多快，但「心」決定我們走得多遠。"
+    "body": "<a href='https://udn.com/upf/newmedia/2018_data/childabuse/#/' data-ga-term='childabuse' target='_blank' rel='noopener'>兒虐告白--爸媽是我的噩夢</a>、<a href='https://udn.com/upf/newmedia/2017_data/chnv/trip.html' data-ga-term='chnv' target='_blank' rel='noopener'>中興新村小清新之旅</a>、<a href='https://udn.com/upf/newmedia/2019_data/DUI_victim_stories/' data-ga-term='dui_victim' target='_blank' rel='noopener'>來不及說再見--5個被酒駕撞碎的生命故事</a>、<a href='https://vip.udn.com/newmedia/2020/her_stories/' data-ga-term='her_stories' target='_blank' rel='noopener'>她們的故事</a>、<a href='https://udn.com/upf/newmedia/2017_data/farewell/index.html' data-ga-term='farewell' target='_blank' rel='noopener'>好好說再見--插畫記林杰樑走後1500天</a> 是視覺設計中心早期和文字編輯合作的多媒體實驗，這奠定了日後視覺設計師自己策展新聞資訊的開始。<br/><br/>\n今年，「視覺故事」獲得SND (Society for News Design )第47屆全球新聞創意設計競賽，二面銅牌、三項優選的成績，以及2026年第50屆金鼎獎數位內容獎；這個以人人都能理解的插畫語言作為敘事媒介的專題，打造沉浸式氛圍，結合文字和圖像讓訊息更易於理解。〈紐約時報〉、〈路透社〉、〈華盛頓郵報〉、〈南華早報〉等，早在視覺敘事領域建立了世界標竿，他們的作品一直都是我們對齊的目標。<br/><br/>\n人工智慧的預測五花八門，它既可怕又美好，科技驅動新聞變革，設計思考驅動改變與受眾的關係，科技決定我們走得多快，但「心」決定我們走得多遠。"
   },
   "awards": {
     "title": "近年得獎獎項",
@@ -63,6 +64,7 @@
       {
         "title": "喪屍青年如何誕生 依托咪酯悄悄毒害新生代",
         "desc": "SND插畫/銅牌獎 、頁面設計/優選。SND評審團評語「評審認為整體製作與視覺設計高度整合，帶來強烈的沉浸感，彷彿置身於作品所建構的世界之中」，評審特別指出，作品具有很強的吸引力，能夠有效將讀者帶入其中。",
+        "gaTerm": "visual_etomidate",
         "url": "https://vip.udn.com/event/newmedia_etomidate",
         "thumbs": [
           "/img/visual/udn75_video07_01.mp4",
@@ -88,6 +90,7 @@
       {
         "title": "台灣塑膠袋上癮了嗎？限塑喊很大 卻年年用更多",
         "desc": "SND頁面設計/銅牌獎。SND評審團評語： 「評審認為這件作品極具創意，特別讚賞在頁面上方運用連續動畫來吸引讀者注意。他們指出，作品以不同但有效的方式呈現內容，並且明確考量了讀者的觀看體驗。評審也特別提到桌機版流暢的動態呈現、精緻且執行到位的小型圖像設計，以及透過人物購買雜貨的情境，有效幫助讀者理解內容」。",
+        "gaTerm": "visual_reduce_plastic",
         "url": "https://vip.udn.com/event/newmedia_reduce-plastic",
         "thumbs": [
           "/img/visual/udn75_video08_01.mp4",
@@ -113,6 +116,7 @@
       {
         "title": "放下溫體肉迷思 給豬的最後一口溫柔",
         "desc": "SND頁面設計、插畫/二項優選、2026年第50屆金鼎獎數位內容獎",
+        "gaTerm": "visual_carcass_grade",
         "url": "https://vip.udn.com/event/newmedia_carcass_grade",
         "thumbs": [
           "/img/visual/udn75_pic09_01.jpg",
@@ -144,6 +148,7 @@
       },
       {
         "title": "防老存肌力 人生下半場最怕不運動",
+        "gaTerm": "visual_benefits_exercise",
         "url": "https://vip.udn.com/event/newmedia_benefits_exercise",
         "thumbs": [
           "/img/visual/udn75_video10_01.mp4",
@@ -175,6 +180,7 @@
       },
       {
         "title": "小宅屋主告白 美夢成真還是一場豪賭？",
+        "gaTerm": "visual_small_house",
         "url": "https://vip.udn.com/event/newmedia_small_house_phenomenon",
         "thumbs": [
           "/img/visual/udn75_pic11_01.jpg",
@@ -199,6 +205,7 @@
       },
       {
         "title": "地表最強戰車來了 M1A2T全解析",
+        "gaTerm": "visual_m1a2",
         "url": "https://vip.udn.com/event/newmedia_M1A2-Abrams-Tank",
         "thumbs": [
           "/img/visual/udn75_video12_01.mp4",
@@ -223,6 +230,7 @@
       },
       {
         "title": "你體內也有永世之毒？ 無所不在的PFAS",
+        "gaTerm": "visual_pfas",
         "url": "https://vip.udn.com/event/newmedia_pfas_forever_chemicals",
         "thumbs": ["/img/visual/udn75_video13_01.mp4"],
         "thumbW": 480,
@@ -238,6 +246,7 @@
       },
       {
         "title": "如何辨別心理症狀並尋求協助",
+        "gaTerm": "visual_mental_health",
         "url": "https://vip.udn.com/event/newmedia_mental_health",
         "thumbs": [
           "/img/visual/udn75_video14_01.mp4",
@@ -262,6 +271,7 @@
       },
       {
         "title": "氣候沸騰時代來臨",
+        "gaTerm": "visual_global_boiling",
         "url": "https://vip.udn.com/event/newmedia_era_of_global_boiling",
         "thumbs": ["/img/visual/udn75_video15_01.mp4"],
         "thumbW": 480,
@@ -277,6 +287,7 @@
       },
       {
         "title": "選票變鈔票 補助款一票值多少？",
+        "gaTerm": "visual_election_subsidy",
         "url": "https://vip.udn.com/event/newmedia_subsidy-of-election",
         "thumbs": [
           "/img/visual/udn75_video16_01.mp4",
@@ -301,6 +312,7 @@
       },
       {
         "title": "如果台灣發生戰爭 小老百姓如何保命",
+        "gaTerm": "visual_taiwan_survival",
         "url": "https://vip.udn.com/event/newmedia_taiwan_survival",
         "thumbs": [
           "/img/visual/udn75_video17_01.mp4",

@@ -4,20 +4,21 @@
 // 連續閱讀頁（pages/subpage.vue）把六篇串成同一份文件 —— 維持原本的做法就會出現六份底部
 // 錨點列疊在一起。
 //
-// 而「舞台演完才滑入」這個顯隱條件是 Subpage.vue 的舞台進度線算出來的，它與 layout 不在
-// 同一棵子樹，故用 useState 接（同 useAnchorClaim 的分工）。
+// 而 mode 是由頁面（獨立子頁／連續閱讀頁）決定、錨點元件消費的，兩邊不在同一棵子樹，
+// 故用 useState 接（同 useAnchorClaim 的分工）。
+//
+// ⚠ 這裡**沒有顯隱旗子**：pc rail 與 <1280 底部列都是全程顯示（一進入子頁就在），
+//   由 layouts/subpage.vue 直接傳 visible。原本有一面 visible 由舞台 pin 的
+//   onLeave／onEnterBack 寫入（「舞台演完才滑入」），改成全程顯示後恆真而移除。
 //
 // ⚠ useState **跨 client-side 導航存活**（同 useAnchorClaim 的警告）：離開子頁 layout 時
-//   必須清回初值，否則回首頁再進另一篇時，錨點列會在 hero 那一屏就已經掛在畫面上。
-//   清理寫在 layouts/subpage.vue 的 onBeforeUnmount。
+//   必須清回初值，否則 mode／activeSlug 會帶著上一頁的值進到下一頁（例如從連續閱讀頁
+//   回首頁再進獨立子頁，六項會全部不亮）。清理寫在 layouts/subpage.vue 的 onBeforeUnmount。
 import { SUBPAGE_ANCHOR_ATTR } from '~/utils/subpage-stream';
 
 export type SubpageAnchorMode = 'route' | 'scroll';
 
 export function useSubpageAnchor() {
-  /** 錨點列是否已滑入（舞台演完才 true；見 Subpage.vue 的 drivesAnchor） */
-  const visible = useState('subpage-anchor-visible', () => false);
-
   /**
    * 'route'  獨立子頁（/news…/health）：active 看 route.path，點擊＝換頁。
    * 'scroll' 連續閱讀頁（/subpage）：active 看 scroll-spy，點擊＝頁內捲動。
@@ -29,7 +30,6 @@ export function useSubpageAnchor() {
 
   /** 離開子頁 layout 時呼叫（見檔頭的 useState 存活警告） */
   const resetSubpageAnchor = () => {
-    visible.value = false;
     mode.value = 'route';
     activeSlug.value = '';
   };
@@ -63,5 +63,5 @@ export function useSubpageAnchor() {
     return el ? el.offsetTop : null;
   };
 
-  return { visible, mode, activeSlug, resetSubpageAnchor, jumpToSlug, slugTop };
+  return { mode, activeSlug, resetSubpageAnchor, jumpToSlug, slugTop };
 }

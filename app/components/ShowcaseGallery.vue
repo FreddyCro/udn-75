@@ -11,7 +11,10 @@
         :key="i"
         ref="cardRefs"
         class="showcase-gallery__card"
-        :class="{ 'showcase-gallery__card--blank': c.src === '' }"
+        :class="{
+          'showcase-gallery__card--blank': c.src === '',
+          'showcase-gallery__card--vector': isVector(c),
+        }"
         :style="{
           width: `${((c.w * (c.scale ?? 1)) / designW) * 100}%`,
           aspectRatio: `${c.w} / ${c.h}`,
@@ -20,8 +23,11 @@
         <UPic
           v-if="c.src"
           :src="c.src"
+          :ext="c.ext"
           :use-prefix="false"
           :srcset="['mob']"
+          :use2x="!isVector(c)"
+          :webp="!isVector(c)"
           classname="showcase-gallery__img"
           :alt="c.alt ?? ''"
         />
@@ -43,6 +49,8 @@ export interface ShowcaseSlide {
   /** 圖片路徑。有值＝顯示圖；'' ＝留白（佔位但不畫）；省略＝只有灰底 backdrop */
   src?: string;
   alt?: string;
+  /** 副檔名（預設 jpg）；'svg' ＝透明底的向量卡（無 @2x／webp，去灰底與陰影） */
+  ext?: string;
   /** 卡片放大倍率（預設 1）；只放大版面盒子，不影響路徑上的動態縮放與疊層 */
   scale?: number;
 }
@@ -51,16 +59,38 @@ export interface ShowcaseSlide {
 // 高度依各圖實際比例（3:2 / 4:5 / 1:1）換算，避免 cover 裁切
 // （module scope：defineProps 的 default 會被 hoist，不能引用 setup 區域變數）
 // 留白（src: ''）＝該張抽掉不顯示，但保留原尺寸佔位撐開節奏；scale 為校稿指定的放大倍率
+// 第 3／6／9 張為 AI 數據向量卡（428:574 直式）：沿用原留白格的高度換算寬度，避免比例被拉伸
 const DESIGN_SLIDES: ShowcaseSlide[] = [
   { w: 273, h: 182, src: '/img/data/udn75_pic30_01', scale: 1.1 },
   { w: 208, h: 139, src: '/img/data/udn75_pic30_02' },
-  { w: 241, h: 161, src: '' }, // 留白（原 udn75_pic30_03）
+  {
+    w: 120,
+    h: 161,
+    src: '/img/data/udn75_data_stat_03',
+    ext: 'svg',
+    scale: 1.5,
+    alt: 'AI 搜尋累積使用人次 20,000+',
+  },
   { w: 173, h: 216, src: '/img/data/udn75_pic30_04' },
   { w: 237, h: 158, src: '/img/data/udn75_pic30_05', scale: 1.2 },
-  { w: 141, h: 141, src: '' }, // 留白（原 udn75_pic30_06）
+  {
+    w: 105,
+    h: 141,
+    src: '/img/data/udn75_data_stat_06',
+    ext: 'svg',
+    scale: 1.5,
+    alt: 'AI 搜尋累積回應人次 50,000+',
+  },
   { w: 214, h: 143, src: '/img/data/udn75_pic30_07', scale: 1.1 },
   { w: 94, h: 94, src: '/img/data/udn75_pic30_08' },
-  { w: 241, h: 161, src: '' }, // 留白（原 udn75_pic30_09）
+  {
+    w: 120,
+    h: 161,
+    src: '/img/data/udn75_data_stat_09',
+    ext: 'svg',
+    scale: 1.5,
+    alt: 'AI 每日推薦文章累計使用人次 40,000+',
+  },
   { w: 190, h: 127, src: '/img/data/udn75_pic30_10' },
   { w: 273, h: 182, src: '/img/data/udn75_pic30_11' },
   { w: 161, h: 201, src: '/img/data/udn75_pic30_12', scale: 1.2 },
@@ -73,6 +103,7 @@ const DESIGN_SLIDES: ShowcaseSlide[] = [
 <script setup lang="ts">
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { killScrollTriggers } from '@/utils/scroll-trigger';
 
 const props = defineProps({
   /** 卡片清單（設計稿尺寸＋素材）；張數不足會自動循環填滿 count */
@@ -98,7 +129,7 @@ const props = defineProps({
 });
 
 // 【測試用】顯示每張卡片左上角的順序編號；不需要時改成 false 即可拿掉
-const DEBUG_SHOW_INDEX = true;
+const DEBUG_SHOW_INDEX = false;
 
 /** 設計稿 stage 寬（卡片尺寸以此換算為 %） */
 const DESIGN_W = 1280;
@@ -124,6 +155,13 @@ const cards = computed(() =>
     (_, i) => props.slides[i % props.slides.length]!,
   ),
 );
+
+/** 向量卡（SVG）：沒有 @2x／webp 變體，樣式也不畫灰底與陰影 */
+const isVector = (c: ShowcaseSlide) => c.ext === 'svg';
+
+// 向量卡的 z-index 加成：照片依縮放落在 30~110，加 1000 讓 SVG 數據卡永遠疊在照片之上
+//（透明底的橘字被照片壓住會像斷字），彼此之間仍照縮放前後排序
+const VECTOR_Z_BOOST = 1000;
 
 onMounted(() => {
   gsap.registerPlugin(ScrollTrigger);
@@ -181,6 +219,7 @@ onMounted(() => {
 
   const render = () => {
     const els = cardRefs.value;
+    const list = cards.value;
     for (let i = 0; i < N; i++) {
       const el = els[i];
       if (!el) continue;
@@ -197,7 +236,8 @@ onMounted(() => {
       el.style.top = `calc(50% + ${hy * S}px)`;
       // 只有 path（hy 乘 cosθ）會 rotate；卡片本身保持正立，不壓縮/翻轉
       el.style.transform = `translate(-50%, -50%) scale(${vs})`;
-      el.style.zIndex = String(Math.round(vs * 100));
+      const zBoost = isVector(list[i]!) ? VECTOR_Z_BOOST : 0;
+      el.style.zIndex = String(Math.round(vs * 100) + zBoost);
       el.style.opacity = String(Math.min(1, heightFactor * 2.4)); // 端點淡出，藏接縫
     }
   };
@@ -225,7 +265,7 @@ onMounted(() => {
 
   onBeforeUnmount(() => {
     ScrollTrigger.removeEventListener('refreshInit', onRefresh);
-    tl.scrollTrigger?.kill();
+    killScrollTriggers(tl.scrollTrigger); // 卸載路徑不 revert，見 utils/scroll-trigger
     tl.kill();
   });
 });
@@ -286,6 +326,16 @@ onMounted(() => {
 .showcase-gallery__card--blank {
   background: none;
   filter: none;
+}
+
+// 向量卡（ext: 'svg'）：AI 數據圖為透明底，去掉灰底與陰影（陰影會沿著字描邊），改 contain 不裁切
+.showcase-gallery__card--vector {
+  background: none;
+  filter: none;
+
+  :deep(.showcase-gallery__img) {
+    object-fit: contain;
+  }
 }
 
 // 【測試用】卡片左上角的順序編號；不需要時連同 template 內的 DEBUG_SHOW_INDEX 區塊一起刪除

@@ -13,6 +13,7 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { gaClickButton } from '~/utils/tracking-event';
 import { refreshScrollTriggers } from '@/utils/scroll-trigger';
 
 export interface AiKeyword {
@@ -272,7 +273,13 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="ai-search__cta-row">
-      <a class="ai-search__cta" :href="ctaUrl" target="_blank" rel="noopener">
+      <a
+        class="ai-search__cta"
+        :href="ctaUrl"
+        target="_blank"
+        rel="noopener"
+        @click="gaClickButton('button', 'vip')"
+      >
         深入體驗聯合報數位版
       </a>
     </div>
@@ -554,11 +561,30 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-gray-light);
   transition:
     color 0.2s ease,
-    border-color 0.2s ease;
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
 
-  &:hover {
-    color: var(--color-body);
-    border-color: var(--color-body);
+  &:hover,
+  &:focus-visible {
+    color: #fff;
+    background: var(--color-orange);
+    border-color: var(--color-orange);
+
+    // 放大只給 pc 以上（pad／mob 是觸控，hover 不成立）。
+    // 比例取自設計稿 hover 態：280×68 → 290×75，非等比。
+    @include rwd-min('pc') {
+      transform: scale(calc(290 / 280), calc(75 / 68));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:hover,
+    &:focus-visible {
+      transform: none;
+    }
   }
 }
 </style>

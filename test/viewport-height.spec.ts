@@ -20,10 +20,13 @@ const SCAN_EXT = ['.vue', '.ts', '.scss', '.css'];
 // 加新段落時**不要**順手加進來，除非那一段真的與捲動敘事無關。
 const OUT_OF_SCOPE = [
   'app/components/legacy/', //     已停用
-  'app/components/04.media/', //   刻意排除（見 architecture/viewport-height.md「唯一的例外」）
-  'app/composables/useMediaIntroMotion.ts',
-  'app/components/05.subpage/', // 已用 100svh 雙寫，本來就穩
-  'app/pages/demo.vue', //         開發用示範頁
+  // 04.media 已收編、不再排除（原「唯一的例外」撤銷，見 architecture/viewport-height.md 例外 1）
+  // 05.subpage 也收編了。原本的理由是「已用 100svh 雙寫，本來就穩」—— 那句是錯的：
+  // svh ＝ small viewport（網址列展開時的可視高），而舞台 pin 的 `+=300%` 是 GSAP 拿
+  // **`<div style="height:100vh">` 探針**量出來的（ScrollTrigger.js 的 _div100vh／_100vh，
+  // 註解寫明「不要靠 window.innerHeight」）—— 那是 large viewport，正是 --vh 的量法。
+  // 兩者在行動裝置上差一整條網址列（實測 60–115px）：版面吃 svh、捲動幾何吃 vh，
+  // 舞台底下就露一條縫，-65svh 的上拉也與拍長對不齊。
   'app/components/ShowcaseGallery.vue',
   'app/components/AwardTimeline.vue',
   'app/components/PhotoPanels.vue',
@@ -51,6 +54,10 @@ const INNER_HEIGHT_ALLOWED: Record<string, string> = {
   'app/components/ui/AppHeader.vue': '捲動進度條分母＝真實最大可捲距離',
   'app/components/DevCoreProgress.vue': 'dashboard 要顯示真相',
   'app/components/02.forum/Agenda.vue': '播放頭的「視窗中央」；且只在 measure() 跑',
+  'app/components/05.subpage/SubpageWorks.vue':
+    '懸浮縮圖貼上方或下方、以及「捲到畫面中央的列」—— 問的都是使用者此刻看得到什麼',
+  'app/components/05.subpage/Subpage.vue':
+    '「這次是跳捲還是連續捲動」的門檻，比的是使用者感知的一屏，不是版面尺長',
 };
 
 const stripComments = (src: string) =>
@@ -94,7 +101,8 @@ describe('視窗高只有一個來源', () => {
     const report = scan((line, rel) => {
       // `var(--vh, 1vh)` 的 fallback 是這套機制的一部分，先剝掉再找。
       const rest = line.replace(/var\(\s*--vh\s*,\s*1vh\s*\)/g, '');
-      if (!/\d+(\.\d+)?vh\b/.test(rest)) return null;
+      // [dsl]?vh：dvh / svh / lvh 一併抓（04.media 那次錯位的病灶就是 100dvh）
+      if (!/\d+(\.\d+)?[dsl]?vh\b/.test(rest)) return null;
       if (VH_LINE_EXCEPTIONS.some((e) => e.file === rel && line.includes(e.snippet)))
         return null;
       return 'CSS 用 vh()（mixins.scss）、JS 拼字串用 vhLength()';

@@ -7,7 +7,10 @@
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  killScrollTriggers,
+  refreshScrollTriggers,
+} from '@/utils/scroll-trigger';
 
 export interface TimelineAward {
   /** 獎項機構 */
@@ -91,7 +94,9 @@ function build() {
         root.clientHeight >= window.innerHeight ? 'top top' : 'center center',
       end: `+=${props.pinDistance}`,
       pin: true,
-      anticipatePin: 1,
+      // 不設 anticipatePin：它依速度提早釘住，center center 起點快捲時會把整塊
+      // 提前跳到置中定位、壓住上方還沒捲走的段落（4:3 高視窗實測提早 259px、
+      // 疊字 195px 並停格）。準時 pin 最多晚一幀在自己的留白內回吸，碰不到文字。
       scrub: 1,
       invalidateOnRefresh: true,
       onRefresh: measure, // 版面／欄寬變動後重量門檻
@@ -136,14 +141,15 @@ function build() {
   measure(); // onRefresh 之外先量一次，確保首屏就有門檻可比
 }
 
+/**
+ * 只有卸載路徑會呼叫（無跨斷點重建）→ 一律不 revert、不 clearProps：舊頁還要在畫面上
+ * 淡出 220ms，拔掉 pin-spacer 會讓下方版面跳一段而被看見（見 utils/scroll-trigger 的
+ * killScrollTriggers）。DOM 下一刻就丟掉，收拾 inline 樣式沒有實際效益。
+ */
 function teardown() {
-  tl?.scrollTrigger?.kill();
+  killScrollTriggers(tl?.scrollTrigger);
   tl?.kill();
   tl = null;
-  gsap.set(
-    [trackRef.value, lineRef.value, trailRef.value, arrowRef.value].filter(Boolean),
-    { clearProps: 'all' },
-  );
 }
 
 function onResize() {

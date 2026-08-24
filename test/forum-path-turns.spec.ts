@@ -5,10 +5,12 @@ import {
   FORUM_TURN_SAMPLE_LEN,
   FORUM_TURN_SFX,
   pickTurns,
+  squashScaleAt,
   turnAngleDeg,
 } from '../app/utils/forum-path-turns';
 import { SOUND_MANIFEST } from '../app/utils/sound-manifest';
 import { FORUM_FRONT_NODES } from '../app/utils/forum-node-path';
+import { CORE, FORUM_TURN_SQUASH } from '../app/utils/orange-core-config';
 
 describe('turnAngleDeg', () => {
   it('直行 ＝ 0°', () => {
@@ -170,5 +172,70 @@ describe('設定值', () => {
     for (const bp of ['pc', 'pad', 'mob'] as const) {
       expect(FORUM_FRONT_NODES[bp].length).toBeGreaterThanOrEqual(3);
     }
+  });
+});
+
+describe('squashScaleAt', () => {
+  const { size } = FORUM_TURN_SQUASH;
+  const base = CORE.dotSize;
+
+  it('amount 0 ＝ 原尺寸（撞擊之外的每一幀都必須完全不動）', () => {
+    const [sx, sy] = squashScaleAt(0, size, base);
+    expect(sx).toBe(1);
+    expect(sy).toBe(1);
+  });
+
+  // 這條是與稿的唯一對帳：26×26 壓到 32×17（2652-52697 → 2652-52711）。
+  it('amount 1 ＝ 稿上的撞擊形狀', () => {
+    const [sx, sy] = squashScaleAt(1, size, base);
+    expect(sx * base).toBeCloseTo(32);
+    expect(sy * base).toBeCloseTo(17);
+  });
+
+  // 壓的是「沿行進方向」那一軸（local y），側向鼓出去。反過來就是撞到側面了。
+  it('側向鼓出、行進方向壓扁', () => {
+    const [sx, sy] = squashScaleAt(1, size, base);
+    expect(sx).toBeGreaterThan(1);
+    expect(sy).toBeLessThan(1);
+  });
+
+  // back.out 的回彈會讓 amount 越過 0 變負 ＝ 反向的拉長（「再彈起」）。
+  // 夾掉就沒有彈性了，故這裡明確守著「不 clamp」。
+  it('負的 amount ＝ 反向拉長，不被夾成 1', () => {
+    const [sx, sy] = squashScaleAt(-0.1, size, base);
+    expect(sx).toBeLessThan(1);
+    expect(sy).toBeGreaterThan(1);
+  });
+
+  it('兩軸都線性內插', () => {
+    const [sx, sy] = squashScaleAt(0.5, size, base);
+    expect(sx * base).toBeCloseTo((26 + 32) / 2);
+    expect(sy * base).toBeCloseTo((26 + 17) / 2);
+  });
+
+  // fail-soft 同 slashCoreScaleAt：形變壞掉時看到的該是「沒有形變」，不是核心塌成 0。
+  it('base ≤ 0 → 不形變', () => {
+    expect(squashScaleAt(1, size, 0)).toEqual([1, 1]);
+    expect(squashScaleAt(1, size, -26)).toEqual([1, 1]);
+    expect(squashScaleAt(1, size, Number.NaN)).toEqual([1, 1]);
+  });
+});
+
+describe('FORUM_TURN_SQUASH', () => {
+  // 撞上去要比彈回來快 —— 兩段等長會像在呼吸，不像撞擊。
+  it('壓下去比彈回來快，且兩段都是正的秒數', () => {
+    expect(FORUM_TURN_SQUASH.inDur).toBeGreaterThan(0);
+    expect(FORUM_TURN_SQUASH.outDur).toBeGreaterThan(FORUM_TURN_SQUASH.inDur);
+  });
+
+  // 整段撞擊要短於「快速捲動下兩個轉折的最短間隔」的量級 —— 拖太長會變成一路壓著跑。
+  it('整段撞擊在半秒以內', () => {
+    expect(FORUM_TURN_SQUASH.inDur + FORUM_TURN_SQUASH.outDur).toBeLessThan(0.5);
+  });
+
+  // 壓扁不該把面積放大到誇張（那會看起來像變大而不是被壓）。
+  it('撞擊形狀的面積不大於原尺寸', () => {
+    const [w, h] = FORUM_TURN_SQUASH.size;
+    expect(w * h).toBeLessThanOrEqual(CORE.dotSize * CORE.dotSize);
   });
 });

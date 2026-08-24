@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  coreHandoffBackY,
   coverAnchorToScreen,
   isVerticallyOnScreen,
   unrotateDelta,
@@ -115,5 +116,30 @@ describe('unrotateDelta', () => {
       expect(back.x).toBeCloseTo(30);
       expect(back.y).toBeCloseTo(-40);
     }
+  });
+});
+
+describe('coreHandoffBackY 的 thunk 形式（避免熱路徑 forced reflow）', () => {
+  it('rawP > 0 時完全不呼叫 thunk —— 這就是它存在的理由', () => {
+    let calls = 0;
+    const scrolled = () => {
+      calls += 1;
+      return 1234;
+    };
+    for (const rawP of [0.0001, 0.25, 0.5, 1]) {
+      expect(coreHandoffBackY(rawP, 777, scrolled, 400)).toBe(777);
+    }
+    expect(calls).toBe(0);
+  });
+
+  it('rawP <= 0 時才求值，且結果與直接傳數字一致', () => {
+    let calls = 0;
+    const scrolled = () => {
+      calls += 1;
+      return 1000;
+    };
+    expect(coreHandoffBackY(0, 777, scrolled, 400)).toBe(1400);
+    expect(coreHandoffBackY(0, 777, 1000, 400)).toBe(1400);
+    expect(calls).toBe(1);
   });
 });

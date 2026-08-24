@@ -80,12 +80,11 @@ app/components/
 
 | 模組                                                                    | 角色          | 內容                                                                                                                                                                                                                     |
 | ----------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [useHeroVideo.ts](../app/composables/useHeroVideo.ts)                   | 狀態機        | hero 影片四階段 `main / loop / outro / gone`，衍生 `shouldLockScroll` / `isGone` / `hasLeftLoop`；與載入層的握手 `videoReady` / `loaderDone` / `heroStarted`；`currentTime`（dev 讀數）。狀態本身不含計時器，推進由 HeroVideo 依影片時間軸驅動 |
-| [hero-video-config.ts](../app/utils/hero-video-config.ts)               | 設定台        | `HERO_VIDEO_SRC` / `HERO_VIDEO_POSTER`（mob／pad／pc 三段，**RWD 預留**，目前三者共用 pc 版）、`HERO_VIDEO_SEGMENTS`（四階段的秒數區間，段落相接）、`HERO_VIDEO_SEGMENTS_BY_DEVICE`、`HERO_VIDEO_READY_TIMEOUT`、`HERO_GESTURE`（手勢門檻與冷卻） |
+| [useHeroVideo.ts](../app/composables/useHeroVideo.ts)                   | 狀態機        | hero 影片三階段 `main / outro / gone`（2026-08-22 起 `loop` 已移除），衍生 `shouldLockScroll` / `isGone`；與載入層的握手 `videoReady` / `loaderDone` / `heroStarted`；`currentTime`（dev 讀數）；「回到最開始」的 `restartOpening()`（2026-08-22 起是從 0s 重播，原為倒回 loop 段）。狀態本身不含計時器，推進由 HeroVideo 依影片時間軸驅動 |
+| [hero-video-config.ts](../app/utils/hero-video-config.ts)               | 設定台        | `HERO_VIDEO_SRC` / `HERO_VIDEO_POSTER`（mob／pad／pc 三段，**RWD 預留**，目前三者共用 pc 版）、`HERO_VIDEO_SEGMENTS`（`main` 0–33／`outro` 36–38.5，33–36 刻意不播）、`HERO_VIDEO_SEGMENTS_BY_DEVICE`、`HERO_VIDEO_READY_TIMEOUT`、`HERO_OUTRO_LOCK_GRACE_MS`（退場鎖保險絲）、`HERO_INTRO_READ_AT` ＋ `HERO_INTRO_AUTO_SCROLL`（退場播完自動捲到引言） |
 | [useOrangeCoreProgress.ts](../app/composables/useOrangeCoreProgress.ts) | 狀態機        | 五條 progress 軌（見下表）＋ 由它們解出的 `symbolTarget` / `symbolMode` / `symbolLayerDone` / `forumCoreActive` / `agendaRevealed` / `blessingFrame`，以及 `reduceMotion` / `stairsDone`。**不含**「章節.part」定址（那在 `useCoreSequence`） |
-| [orange-core-config.ts](../app/utils/orange-core-config.ts)             | 設定台        | 門檻與距離：`MOVE_EASE`、`INTRO_FADE_VH`、`TRANSITION_VH`、`SYMBOL_TRANSITION`、`SYMBOL_BEAT_VH`（符號段四拍的 vh ＝ 唯一旋鈕，`SYMBOL_VH` / `SYMBOL_STOPS` / `FORUM_HANDOFF` / `SYMBOL_INTRO` 皆由它經 `symbolProgressAt()` 推導）、`AGENDA_OFFSCREEN_VH`、`BLESSING_VH`、`BLESSING_HOLD`；序列定址表：`SEQUENCE` / `TRACK_VH`；幾何與外觀：`CORE`（論壇段設計線的節點資料在 `~/utils/forum-node-path`）。刻意**不含**子元件自身外觀參數（HeroLoader 的方塊／SymbolFace 的粒子物理），那些留在各元件 |
+| [orange-core-config.ts](../app/utils/orange-core-config.ts)             | 設定台        | 門檻與距離：`MOVE_EASE`、`INTRO_FADE_VH`、`TRANSITION_VH`、`SYMBOL_TRANSITION`、`SYMBOL_BEAT_VH`（符號段四拍的 vh ＝ 唯一旋鈕，`SYMBOL_RAIL_VH`（尺長）/ `SYMBOL_VH`（段高）/ `SYMBOL_STOPS` / `FORUM_HANDOFF` / `SYMBOL_INTRO` / `SEAM_AT_HANDOFF_VH` 皆由它經 `symbolProgressAt()` 推導）、`SYMBOL_HOVER_VH`、`AGENDA_IN_LEAD_VH`、`BLESSING_VH`、`BLESSING_HOLD`；序列定址表：`SEQUENCE` / `TRACK_VH`；幾何與外觀：`CORE`（論壇段設計線的節點資料在 `~/utils/forum-node-path`）。刻意**不含**子元件自身外觀參數（HeroLoader 的方塊／SymbolFace 的粒子物理），那些留在各元件 |
 | [blessing-face-frames.ts](../app/utils/blessing-face-frames.ts)         | 設定台        | 永續祝福逐格像素臉的格資料（`FACE_FRAME_COUNT` 17 格）                                                                                                                                                                   |
-| [hero-scroll-intent.ts](../app/utils/hero-scroll-intent.ts)             | 純函式        | loop ↔ outro 的方向手勢判定（body 鎖住時沒有 scroll 事件，故由 wheel／touchmove／方向鍵位移累積判定）。有 vitest 覆蓋                                                                                                     |
 
 ### progress 軌一覽
 
@@ -95,7 +94,7 @@ app/components/
 | --------------------- | ------------------------ | ----------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------- |
 | `pathProgress`        | `OrangeCorePath`（scrub）| `trigger: .sec1`、`start: 'top top'`、`endTrigger: .sec1__intro`、`end: 'bottom bottom'` | 由版面決定                  | core 沿線位置（`SEQUENCE` 的 `hero.core`）                      |
 | `transitionProgress`  | `Hero.vue` 的 transition pin | `trigger: .sec1__intro`、`start: 'bottom bottom'`、`end: +=TRANSITION_VH×vh` | **120vh**（`TRANSITION_VH` 1.2） | `SYMBOL_TRANSITION` → 兩段軸向放大（見 Section 1 詳規）        |
-| `symbolProgress`      | `SymbolScene`            | `trigger: .sec-symbol`、`start: 'top bottom'`、`end: 'bottom bottom'` | **344vh**（`SYMBOL_VH` 3.44 ＝ `SYMBOL_BEAT_VH` 四拍總和） | `SYMBOL_STOPS` → `symbolMode` / `symbolLayerDone`；`FORUM_HANDOFF` → `forumCoreActive` / `agendaRevealed` |
+| `symbolProgress`      | `SymbolScene`            | `trigger: .sec-symbol`、`start: 'top bottom'`、`end: 'bottom center'` | **334vh**（`SYMBOL_RAIL_VH` 3.34 ＝ `SYMBOL_BEAT_VH` 四拍總和；段落自己只有 `SYMBOL_VH` 2.84 ＝ 284vh，尺多出的 50vh 是舊的懸停期，見 `SYMBOL_HOVER_VH`） | `SYMBOL_STOPS` → `symbolMode` / `symbolLayerDone`；`FORUM_HANDOFF` → `forumCoreDotVisible` / `agendaRevealed` |
 | `blessingProgress`    | `Blessing.vue`           | `trigger: .section3__face-track`、`start: 'top top'`、`end: 'bottom bottom'` | **120vh**（`BLESSING_VH` 1.2） | `blessingFrame`（17 格逐格臉，尾端 `BLESSING_HOLD` 停在最後一格） |
 
 > 引言淡出**不在**這四條軌上：它由 `Hero.vue` 自己的一條 scrub ScrollTrigger 驅動（`trigger: .sec1__intro-body`、`start: 'bottom center'`、`end: +=INTRO_FADE_VH×vh`），起點是量出來的幾何（文字底緣升到視窗中央 ＝ core 剛穿出最後一行），不是 path 進度門檻。詳見 Section 1 的 ⑤。
@@ -124,7 +123,7 @@ app/components/
 
 ## Section 1 — Hero／開場（[Hero.vue](../app/components/01.hero/Hero.vue)）
 
-開場是一段連續的捲動敘事：**載入層 → start 閘門 → hero 影片（四階段）→ orange core 沿垂直線下降穿透引言 → transition pin 釘住做兩段軸向放大 → 交棒給符號段落**。
+開場是一段連續的捲動敘事：**載入層 → start 閘門 → hero 影片（正片順播到退場）→ orange core 沿垂直線下降穿透引言 → transition pin 釘住做兩段軸向放大 → 交棒給符號段落**。
 
 ### orange core 生命週期（✅ 已實作／🚧 規劃中）
 
@@ -137,7 +136,7 @@ app/components/
 │ ✅ ② 停在這一屏等使用者按 start（有聲播放必須綁使用者手勢，見 useAppSound）│
 └──────────────────────────────┬────────────────────────────────────────┘
 ┌─ hero 影片（#app-hero）───────┴───────────────────────  [useHeroVideo] ─┐
-│ 🚧 ③ main→loop→outro：core 應在影片中就已在場／可見（缺口，尚未實作）   │
+│ 🚧 ③ main→outro：core 應在影片中就已在場／可見（缺口，尚未實作）        │
 │      現況：core DOM 在場但 opacity:0、不可見；影片為 pc 版 demo 剪輯     │
 └──────────────────────────────┬────────────────────────────────────────┘
                                │ gone（影片淡出 → 白底）
@@ -164,7 +163,7 @@ app/components/
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-> 🚧 缺口③：影片播放期間（main/loop/outro）core 目前 `opacity:0`、不可見；「從 hero 影片就延續在場的橘核心」尚未實作。補完後才真正達成「貫穿全場」。core 的淡入點仍是「第一屏正中央」（舊稿 placeholder），新稿是從影片最後一幀的階梯線缺口掉出（設計稿約 x 515/1280），待正式影片到位後對齊。
+> 🚧 缺口③：影片播放期間（main/outro）core 目前 `opacity:0`、不可見；「從 hero 影片就延續在場的橘核心」尚未實作。補完後才真正達成「貫穿全場」。core 的淡入點仍是「第一屏正中央」（舊稿 placeholder），新稿是從影片最後一幀的階梯線缺口掉出（設計稿約 x 515/1280），待正式影片到位後對齊。
 
 ### 轉場詳規：core 穿透引言 → 展開成符號舞台
 
@@ -204,13 +203,13 @@ app/components/
 | 載入層（[HeroLoader.vue](../app/components/01.hero/HeroLoader.vue)）                | 進站載入動畫（滿版 fixed，z-index 2000 蓋過 Header） | 方塊網格以 Fisher–Yates 洗牌逐格由藍→橘（處理中前緣）→白翻面，中央計數 0→100%。網格強制奇數欄列並置中，**正中央格對齊視窗正中心**：收尾時中央格翻橘＝orange core 的視覺起點。`ready`（影片可播放）為 false 時進度封頂 99% 等待，轉 true 才補到 100% 並 `@done` 淡出移除。**不自行改 `body.overflow`**（捲動鎖由 Hero 單一擁有），避免卸載解鎖與父層重新上鎖之間出現「瞬間可捲動」破口。<br>`videoReady` 由 HeroVideo 的 `<video>` `@canplay` 設 true（載入失敗或超過 `HERO_VIDEO_READY_TIMEOUT` 也放行，避免卡在 99%）；反向的 `loaderDone` 讓影片等載入層收掉才開播 |
 | start 閘門（[HeroStart.vue](../app/components/01.hero/HeroStart.vue)）              | 等使用者手勢再開播                               | 載入層收掉後不直接播影片，先停在這一屏等按 start —— 有聲播放必須綁在使用者手勢上（見 [useAppSound.ts](../app/composables/useAppSound.ts)）。期間 `heroState` 仍為 `main` → body 保持捲動鎖。與載入層同為 fixed 層，**掛在 `.sec1__inner` 外面** |
 | hero（`#app-hero`）                                                                | 開場主視覺                                       | 兼作 Header 顯示時機的觀察目標：`id="app-hero"` 供 [AppHeader.vue](../app/components/ui/AppHeader.vue) 以 IntersectionObserver 監看，**hero 完全捲離視窗後 Header 才滑入**。修改 hero 結構時請保留此 id |
-| 影片四階段（[HeroVideo.vue](../app/components/01.hero/HeroVideo.vue)）              | 影片播放狀態機                                   | 四階段全域共享：`main`（播一次）→ `loop`（循環段，顯示「下滑看更多」）→ `outro`（loop 期間往下捲或按 SKIP 觸發的退場段）→ `gone`（退場結束、影片淡出露白底 → core 淡入）。<br>**推進的單一真相＝影片時間軸**：`timeupdate` 依 `HERO_VIDEO_SEGMENTS` 判斷段落推進；狀態被切換時 seek 到該段起點，已在段內則不動 —— `main → loop` 是相接的故不跳動，`loop → outro`（33 → 36）則是**刻意留白、必定 seek**。載入失敗或自動播放被瀏覽器封鎖（`NotAllowedError`）時直接進 `gone`，避免捲動鎖把整頁鎖死；其餘 `play()` rejection（多為 `AbortError`）不算，會由 `loadedmetadata` / `watch(heroState)` 重播。<br>`loop` 期間 body 鎖住、沒有 scroll 事件，故「往下捲觸發 outro」改由 wheel／touchmove／方向鍵的位移累積判定（純函式 `hero-scroll-intent.ts`）。**可逆邊界：`loop` 是「家」狀態，`outro ↔ gone` 可逆，`main` 不可逆** —— `gone` 且已在頂端往上回滑過門檻 → `rewindToLoop()` 切回 `loop`，影片淡回並 seek 回 loop 段 |
-| 捲動鎖（`Hero.vue` `applyScrollLock`）                                             | **重整一律從頂端重來**                           | 拍 ①–⑦（loader／等載入／loader 收尾／start 閘門／按下 start／`main`／`loop`）一律鎖，⑧ `outro` 起解鎖 —— ①–⑤ 期間 `heroState` 都還是 `main`，故自動落在鎖內。<br>唯一例外：離開 loop 之後**永不重新上鎖**（`hasLeftLoop`），因為倒帶回 loop 時 `scrollY` 已是 0、不鎖也上不去，而在 iOS 橡皮筋回彈途中切 `overflow:hidden` 會卡住畫面。<br>`onMounted` 設 `history.scrollRestoration = 'manual'`、上鎖前先 `scrollTo(0,0)`：否則重整後瀏覽器把位置還原到內容區、又處於 `main`，會被 `overflow:hidden` 永久鎖死在中途。<br>⚠️ `.is-scroll-locked` class 必須同時掛在 `<html>` 與 `<body>`：html 有 `overflow-x: clip`，根元素不再是 `overflow: visible` → body 的 overflow 不會傳播到視窗。樣式含 `padding-right: var(--scrollbar-width)` 補回捲軸寬，否則解鎖時捲軸回來會撐出水平捲軸 |
+| 影片三階段（[HeroVideo.vue](../app/components/01.hero/HeroVideo.vue)）              | 影片播放狀態機                                   | 三階段全域共享（2026-08-22 起，`loop` 已移除）：`main`（正片 0–33，播一次）→ **順播** `outro`（36–38.5，必定 seek；33–36 刻意不播）→ `gone`（溶解走完硬切消失 → core 交棒、引言淡入）。<br>**推進的單一真相＝影片時間軸**：`timeupdate` 依 `HERO_VIDEO_SEGMENTS` 判斷段落推進；狀態被切換時 seek 到該段起點，已在段內則不動 —— `main → outro`（33 → 36）是**刻意留白、必定 seek**。載入失敗或自動播放被瀏覽器封鎖（`NotAllowedError`）時直接進 `gone`，避免捲動鎖把整頁鎖死；其餘 `play()` rejection（多為 `AbortError`）不算，會由 `loadedmetadata` / `watch(heroState)` 重播。<br>**鎖到退場播完**：正片與「還沒播完的退場段」都鎖著（解鎖旗標 `outroWatched`），故「捲太快看不到 outro」不再可能；解鎖後的捲動只驅動溶解（按住 ＋ 緩慢放大 ＋ 走完硬切）。兩根保險絲防死結：`armStallFuse`（在 `main` 卻始終不能播 → 8s 後 `skipOpening()`）、`armOutroLockFuse`（鎖著的退場卡住 → 退場長度 ＋ 2.5s 後強制解鎖）。<br>**退場播完 → 自動捲到引言可讀位置**（`HERO_INTRO_READ_AT` 0.6：引言上緣落在畫面 60% 高；ScrollToPlugin ＋ `autoKill`，使用者一捲就中止）。<br>**進 `gone` 時 `currentTime` 歸零**：回捲時舞台淡回來看到的是第一幀，不是凍住的退場尾幀。<br>**可逆邊界**：回捲維持 `gone`（不重播退場）；**跨回 page top → `main` 從 0s 重播**（restart，三條路徑共用：子頁 logo 帶 `restartIntent` 導航回 `/`、首頁 logo 就地、回捲到頂）。詳見 `architecture/2026-08-22-hero-restart-on-top-design.md` |
+| 捲動鎖（`Hero.vue` `applyScrollLock`）                                             | **重整一律從頂端重來**                           | 2026-08-22（順播 ＋ restart 規則）：`shouldLockHeroScroll(state, outroWatched)` = **`main` ＋ 還沒播完的 `outro`**。①–⑤（loader／等載入／loader 收尾／start 閘門／按下 start）期間 `heroState` 都還是 `main`，故自動落在鎖內；解鎖點從「進 `loop`」延到「退場播完」。<br>`hasLeftLoop`（「看完過就永不重新上鎖」）已移除 —— 回到 page top 會把狀態打回 `main` 從 0s 重播，那一趟不鎖就會被使用者的下一個捲動事件打斷。上鎖前的 `scrollTo(0, 0)` 改為無條件，順帶吸收 iOS 橡皮筋回彈（原顧慮）。逃生口是 SKIP（按下即放棄退場那 2.5 秒的保護）；影片拉不動時由兩根保險絲逾時解鎖。<br>⚠️ 2026-08-07 也曾鎖住 outro 並在 08-16 被推翻，但**那次的失敗模式（鎖在半路介入、畫面凍在 scrollY 400）在順播流程下不可能發生** —— 退場是在 scrollY 0、還鎖著的狀態下自動接進來的。<br>`onMounted` 設 `history.scrollRestoration = 'manual'`、上鎖前先 `scrollTo(0,0)`：否則重整後瀏覽器把位置還原到內容區、又處於 `main`，會被 `overflow:hidden` 永久鎖死在中途。<br>⚠️ `.is-scroll-locked` class 必須同時掛在 `<html>` 與 `<body>`：html 有 `overflow-x: clip`，根元素不再是 `overflow: visible` → body 的 overflow 不會傳播到視窗。樣式含 `padding-right: var(--scrollbar-width)` 補回捲軸寬，否則解鎖時捲軸回來會撐出水平捲軸 |
 | orange core（[OrangeCore.vue](../app/components/01.hero/OrangeCore.vue)）           | 貫穿全場的橘色核心                               | 只負責外觀（24px 橘方塊 ＋ `opacity` 淡入 ＋ 曝露 root el）。位置由 `OrangeCorePath` 以 GSAP 驅動。<br>⚠️ **不可**在 `.sec1__orange-core` 再設 CSS `transform`（含置中、`scale` 淡入）—— 會與 GSAP 寫入的 transform 衝突；置中一律交給 GSAP（`xPercent/yPercent: -50`），淡入只用 `opacity`。<br>`transitionProgress > 0` 後由 Hero 隱去（其後畫面上那個方塊由轉場層接手畫，避免兩層各畫一次而 drift）；以 `opacity` 而非 `display` 隱藏 —— 轉場層仍要讀它的螢幕矩形 |
 | core 移動路徑（[OrangeCorePath.vue](../app/components/01.hero/OrangeCorePath.vue)） | 驅動 core 的路徑 overlay                         | `.sec1` 級絕對定位 overlay（1:1 px、無 `viewBox`、`pointer-events:none`），內含一條不可見驅動線（`stroke:none`）：第一屏正中央 → 視窗正中央的**垂直線**。單一 scrub ScrollTrigger ＋ `getPointAtLength()` 逐幀定位 core（含切線角度，為之後的曲線路徑預留）。<br>**幾何全由量測推導、無寫死座標**：x ＝ section 水平中心（引言文字也置中，故一路穿過文字），終點 y ＝ `endEl` 底緣 − 50vh。`.sec1__intro` 的 `padding-bottom: 60vh` 是 runway，**必須 > 50vh**，否則終點落在文字之內、core 還沒穿出文字就停住。<br>⚠️ 起訖與 `endEl` 都刻意避開 `.sec1` 的 bottom：transition pin 會在 `.sec1` 內插入 pin-spacer 撐高 section，用 `.sec1` 的 bottom 當基準會是循環依賴。<br>重建時機：`refreshInit`、`document.fonts.ready`、resize。<br>🚧 未實作：沿途殘影 trail dots、手機版另畫直式 path、`prefers-reduced-motion` 直接定位起／終點 |
 | transition pin（`Hero.vue` `transitionST`）                                        | 釘住整組跑兩段軸向放大                           | ⚠️ **trigger 是 `.sec1__intro` 而非 `.sec1`** —— pin 會在 `.sec1` 內插入 pin-spacer 撐高 section，拿 `.sec1` 的 `bottom bottom` 當 start 會是循環依賴。`OrangeCorePath` 的 `endTrigger` 用同一元素 → 「core 抵達中央」與「pin 開始」必然同一刻。<br>⚠️ pin 會在 `.sec1__inner` 寫入 `transform`，使其成為 fixed 子孫的 containing block → HeroLoader / HeroStart / HeroSymbolTransition 都必須掛在 inner「**外面**」，否則改以 inner 為定位基準而跑位 |
 | 轉場層（[HeroSymbolTransition.vue](../app/components/01.hero/HeroSymbolTransition.vue)） | 色場 ＋ clip 開窗（fixed 滿版，z-index 10）  | 窗的起始尺寸／位置 ＝ core 的螢幕矩形 → p≈0 時本層與 core 像素重合，看起來就是「那個橘方塊自己長大」。先 `h → 100vh`（同時橘→黑），再 `w → 100vw`。逐幀直接寫 `el.style`，不觸發 Vue re-render。slot 內放真正的 `<SymbolFace>`，於展開段依 `faceIn` 淡入。<br>⚠️ **量的是 field 自己的框（`clientWidth/Height`），不是 `window.innerWidth/Height`** —— 本層是 fixed `inset:0` → 寬度不含捲軸，而 `innerWidth` 含捲軸；混用兩套座標會讓開窗少一整個捲軸寬、左偏半個捲軸寬，且 p=1 時右緣殘留一條沒蓋到，剛好在交棒瞬間透出 hero 白底。展開完成後直接寫死 `inset(0px)`，不靠算式剛好等於 0。<br>⚠️ anchor 量到真 rect 才快取：`watch` 是 immediate，第一次 `apply(0)` 常早於 `coreEl` 就緒，若連 fallback 一起鎖住，整段轉場都會用錯的錨點。<br>⚠️ 以 `visibility:hidden`（非 `display:none`、非單純 `opacity:0`）隱藏：`display:none` 會讓 three.js 量到 0 寬高；只設 `opacity:0` 則 fixed 滿版 canvas 仍參與 hit-test，會吞掉影片階段的所有點擊。<br>**生命週期**：因為 canvas 住在本層 slot，本層必須撐到**整段符號序列跑完**才能撤 → `done` 讀的是 `symbolLayerDone`（序列越過 `enter`），不是「放大完成」。撤場走固定時間 crossfade ＝ 決策「**crossfade 用時間、放大綁 scrub**」 |
-| dev 工具                                                                           | 開發輔助                                         | [DevCoreProgress](../app/components/DevCoreProgress.vue)：整條序列的定址 dashboard（掛在 `pages/index.vue`，`?pathdebug` 才顯示）。**刻意不包 `<DevOnly>`** —— `?pathdebug` 本來就在 production 可用，deploy 出去的 preview 也要能開。<br>（影片四階段切換列 `DevHeroVideoControls` 已於 2026-08-10 刪除：不再需要。要重量 `HERO_OUTRO_CORE_ANCHOR` 改用 ffmpeg 抽幀，方法寫在 [hero-video-config.ts](../app/utils/hero-video-config.ts) 該常數上方） |
+| dev 工具                                                                           | 開發輔助                                         | [DevCoreProgress](../app/components/DevCoreProgress.vue)：整條序列的定址 dashboard（掛在 `pages/index.vue`，`?pathdebug` 才顯示）。**刻意不包 `<DevOnly>`** —— `?pathdebug` 本來就在 production 可用，deploy 出去的 preview 也要能開。<br>（影片階段切換列 `DevHeroVideoControls` 已於 2026-08-10 刪除：不再需要。要重量 `HERO_OUTRO_CORE_ANCHOR` 改用 ffmpeg 抽幀，方法寫在 [hero-video-config.ts](../app/utils/hero-video-config.ts) 該常數上方） |
 
 ---
 
@@ -218,23 +217,28 @@ app/components/
 
 對應 Figma「智慧論壇05–08」四拍。**本元件不畫任何東西** —— `<SymbolFace>` 住在 Hero 轉場層的 slot 裡（理由見 Section 1 轉場詳規）。因此它退化為一把「捲動尺」：一段 `SYMBOL_VH × 100vh` 高的空 section（黑底，萬一轉場層還沒蓋滿時不露白），把捲動換算成 `symbolProgress`、指派 `symbolMode` 與 `symbolLayerDone`。**不需要 pin**（視覺已是 fixed）→ 少一層 transform / containing block 的雷。
 
-`symbolProgress` 時序（`SYMBOL_VH` 3.44 ＝ **344vh**；px 為視窗高 1080 的換算）：
+⚠️ **尺比段落長 50vh**（2026-08-22 起）：`end` 收在 `'bottom center'`，故 `p = 1` 的意義是「段落底緣抵達視窗**中央**」，不是「段落捲完」。多出來的半個視窗就是舊的「懸停期」（`SYMBOL_HOVER_VH`），現在在軌上。完整推導見 [2026-08-22-forum-heading-in-handoff-viewport-design.md](2026-08-22-forum-heading-in-handoff-viewport-design.md)。
+
+`symbolProgress` 時序（尺長 `SYMBOL_RAIL_VH` 3.34 ＝ **334vh**、段高 2.84 ＝ 284vh；px 為視窗高 1080 的換算）：
 
 | step | mode / 事件                                     | 進度              | 累計距離（起→迄）              | 該段距離 |
 | ---- | ----------------------------------------------- | ----------------- | ------------------------------ | -------- |
-| ①    | `disperse` 分散（前段疊開場三行文案）           | 0 → 32.56%        | 0 → 112vh (0→1210px)           | 112vh    |
-| ②    | `face` 集合（人像）＝最長的一拍                 | 32.56% → 72.09%   | 112 → 248vh (1210→2678px)      | 136vh    |
-| ③    | `converge` 匯聚成點                             | 72.09% → 88.37%   | 248 → 304vh (2678→3283px)      | 56vh     |
-| ④    | `coreIn` 交棒：本層淡出 ＋ ForumCore 硬切上場    | 88.37%            | 304vh (3283px)                 | —        |
-| ⑤    | `enter` 橘核心停在黑畫面（原地停住）             | 88.37% → 90.70%   | 304 → 312vh (3283→3370px)      | 8vh      |
-| ⑥    | `agendaIn` 議程 reveal（仍在畫面外）             | 90.70%            | 312vh (3370px)                 | —        |
-| ⑦    | `coreOut` 黑底淡出、段落捲完（`onLeave` → 鎖 1） | 100%              | 344vh (3715px)                 | 32vh     |
+| ①    | `disperse` 分散（前段疊開場三行文案）           | 0 → 33.53%        | 0 → 112vh (0→1210px)           | 112vh    |
+| ②    | `face` 集合（人像）＝最長的一拍                 | 33.53% → 74.25%   | 112 → 248vh (1210→2678px)      | 136vh    |
+| ③    | `converge` 收攏成一顆**白** core（底色仍黑）     | 74.25% → 91.02%   | 248 → 304vh (2678→3283px)      | 56vh     |
+| ③b   | 白 core → 橘 ＋ 整片底色黑→白（`CORE_WARM_VH`）  | 91.02% → 97.01%   | 304 → 324vh (3283→3499px)      | 20vh     |
+| ⑥    | `agendaIn` 論壇主標／議程 reveal（在轉場層底下） | 91.02%            | 304vh (3283px)                 | —        |
+| ④    | `coreIn` 交棒：轉場層淡出 ＋ ForumCore 硬切上場  | 97.01%            | 324vh (3499px)                 | —        |
+| ⑤    | `handoff` 橘點停在中央（接縫 60vh → 50vh）      | 97.01% → 100%     | 324 → 334vh (3499→3607px)      | 10vh     |
+| ⑦    | 尺捲完 ＝ 接縫抵達視窗中央 → 論壇段路徑接手       | 100%              | 334vh (3607px)                 | —        |
 
 > ⚠️ 這張表是 **`SYMBOL_BEAT_VH`（四拍各吃多少 vh）** 的換算結果 —— 2026-08-13 起 progress 門檻本身也是從它推導的，不再手寫小數。動那個常數要同步更新這張表（`SymbolScene.vue` 檔內也有一份同樣的表）。
 >
-> ⑦ 的 32vh 是 `AGENDA_OFFSCREEN_VH` 的硬下限（議程那 0.4s 淡入必須發生在畫面外），由 `test/symbol-sequence.spec.ts` 守著。
+> ③ 途中的 **284vh** 是接縫（`.sec2` 頂端）越過視窗底緣的位置 —— 論壇內容從那裡開始升進畫面，但整段躲在不透明的轉場層底下，到 ④ 才現身。**④ 那一刻接縫已在螢幕 60vh（`SEAM_AT_HANDOFF_VH`）、論壇主標在它下方 140px**：這就是「聚合成 orange core 的同一屏就看得到論壇文字」。
 >
-> 軌 A（hero 轉場 120vh）與軌 B（本段 344vh）**恰好首尾相接**：`start: 'top bottom'` 是在「sec1 底緣抵達視窗底」那一刻觸發，與本段高度無關，故不論 `SYMBOL_VH` 調多少都精準對上 pin 釋放的同一刻。合計 **464vh**。
+> ⑤ 的 10vh 有上下限：上限是「交棒時主標要完整可見」、下限是「轉場層那 0.35s 的淡出要跑得完」，都由 `test/symbol-sequence.spec.ts` 守著。
+>
+> 軌 A（hero 轉場 120vh）與軌 B（本尺 334vh）**恰好首尾相接**：`start: 'top bottom'` 是在「sec1 底緣抵達視窗底」那一刻觸發，與本段高度無關，故不論段高調多少都精準對上 pin 釋放的同一刻。合計 **454vh**。而本尺的 `end` 與 `ForumCorePath` 的 `start: 'top center'` 是同一個幾何位置，故往後也首尾相接、路徑接手零跳點。
 
 | 元件 / 區塊                                                            | 功能                    | 說明                                                                                                                                                                                                                                                                                                                                                                                             |
 | ---------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -383,7 +387,7 @@ app/components/
 
 | 項目                          | 現況與缺口                                                                                                             |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 影片內的橘核心                | main/loop/outro 期間 core `opacity:0`、不可見；「從影片就延續在場」尚未實作。core 淡入點仍是第一屏正中央（舊稿 placeholder），待正式影片到位後對齊階梯線缺口（設計稿約 x 515/1280） |
+| 影片內的橘核心                | main/outro 期間 core `opacity:0`、不可見；「從影片就延續在場」尚未實作。core 淡入點仍是第一屏正中央（舊稿 placeholder），待正式影片到位後對齊階梯線缺口（設計稿約 x 515/1280） |
 | 引言逐行淡出                  | 分鏡 ① 看起來是文字**由上而下**隨 core 經過而淡，目前是整段一起淡                                                        |
 | `CORE.dotSize`                | 程式 24px、設計稿 26px（`OrangeCore` / `ForumCore` 的 SCSS 亦寫死 24）。尺寸對稿待辦                                     |
 | `SYMBOL_STOPS` 四拍文案       | 目前三態無文案；設計稿的四拍各帶文案（含 06 半調點陣臉 / 07 符號字元臉兩種臉）                                           |

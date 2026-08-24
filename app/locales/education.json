@@ -1,4 +1,5 @@
 {
+  "slug": "education",
   "hero": {
     "title": "青春印記",
     "subtitle": "書寫二十年淬鍊新篇章",
@@ -12,8 +13,8 @@
   "introMedia": {
     "images": [
       { "src": "/img/education/udn75_pic31_02", "alt": "", "caption": "聯合盃決賽命題力求突破，融合圖像、多元觀點與跨領域議題，鼓勵學生跳脫框架寫作。" },
-      { "src": "/img/education/udn75_pic31_03", "alt": "", "caption": "聯合盃作文大賽邁入20年，從初賽到全國決賽，臨場寫作考驗閱讀理解與文字駕馭力。" },
-      { "src": "/img/education/udn75_pic31_04", "alt": "", "caption": "2026年好讀周報自聯合盃得獎者中徵選「好讀U特派」，鼓勵學生用寫作實踐社會關懷。" }
+      { "src": "/img/education/udn75_pic31_04", "alt": "", "caption": "聯合盃作文大賽邁入20年，從初賽到全國決賽，臨場寫作考驗閱讀理解與文字駕馭力。" },
+      { "src": "/img/education/udn75_pic31_03", "alt": "", "caption": "2026年好讀周報自聯合盃得獎者中徵選「好讀U特派」，鼓勵學生用寫作實踐社會關懷。" }
     ]
   },
   "nav": {

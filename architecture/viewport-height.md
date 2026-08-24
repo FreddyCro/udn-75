@@ -17,7 +17,7 @@ CSS `100vh` **不變**（等同 `lvh`，固定為「網址列隱藏」的高度�
 | --- | --- | --- |
 | `div.sec1__intro-body` | 294 | `INTRO_FADE_VH 0.4 × 736` |
 | `div.sec1__intro`（pin）| 884 | `TRANSITION_VH 1.2 × 736` |
-| `section.sec-symbol` | 2532 | `SYMBOL_VH 3.44 × 736` |
+| `section.sec-symbol` | 2090 | `SYMBOL_VH 2.84 × 736` |
 | `div.section3__face-track` | 884 | `BLESSING_VH 1.2 × 736` |
 
 把 `innerHeight` 由 736 改成 676（−60px，典型網址列高度）：Hero pin 的 span **884 → 812**、
@@ -128,18 +128,23 @@ bottom: calc(20.67px + var(--chrome-inset)); // 設計稿的值 ＋ 補償
 
 ## 五、例外
 
-1. **`04.media`** —— 依專案決定排除。它是全庫**唯一**方向相反的一段：`Media.vue` 的
-   `height: 100dvh` 刻意跟著 `window.innerHeight` 走。量過影響：它的兩條 trigger 端點是元素邊緣
-   （`'top top'` / `'bottom top'`），本身不吃視窗高；`dvh` 讓 section 高度變動 60px，落在 2905px
-   的 span 上約 **2%**，而且吃到的是**開關型** trigger 不是 scrub，所以只是離場偵測早／晚 60px。
-   **已知、刻意保留的不一致，不是漏網之魚。**
+1. **`04.media`** —— ~~依專案決定排除~~ **2026-08-22 撤銷、收編進 `--vh`**。原本的排除
+   理由（trigger 端點是元素邊緣、dvh 只影響開關型偵測 ±60px）只量了捲動尺，漏了一條
+   **位置耦合**：`useMediaIntroMotion.buildMotion()` 在 onMounted 量一次 morph 中心、
+   把組字的 `wrapDx/wrapDy` 凍結，而 `.media__stage` 的 `100dvh` 會在 iOS 網址列收合時
+   把舞台中心往下推半個工具列高 —— iPhone 15 實測橘色直條偏低 ≈43px、疊到「媒體」上
+   （凍結量測 × 動態單位，與 useMediaIntroMotion 2026-08-19 事故記錄同型）。
+   現況：`Media.vue` 全數改 `vh()`、`HeartMetaball.vue` 手寫 `--vh` 展開式、拍 0 的
+   `window.innerHeight` 改 `vhPx(1)`，`test/viewport-height.spec.ts` 已將該目錄移出
+   OUT_OF_SCOPE 並把掃描擴及 `dvh/svh/lvh`。
 2. **`05.subpage`** —— 已用 `100svh` 雙寫，本來就穩。但實測發現舞台 pin 的 `end: '+=100%'`
    **是對視窗高解析，不是 trigger 元素高**（合成測試：元素 400px、span 900 ＝ 視窗高）——
    `ignoreMobileResize` 正好把它釘住，與 svh 舞台一致。
 3. **`SymbolFace.vue` 的 `.cfg__body`** —— dev 面板的 `max-height: calc(100vh - 68px)` 維持不動。
    面板本來就該貼合「此刻看得到的範圍」。
-4. **`SymbolFace.vue` 的 `<style scoped>` 沒有 `lang="scss"`** → `vh()` 不可用，`.stage` 手寫成
-   `calc(var(--vh, 1vh) * 100)`。全庫僅此一處。
+4. **`<style scoped>` 沒有 `lang="scss"` 的元件** → `vh()` 不可用，手寫成
+   `calc(var(--vh, 1vh) * 100)`。共兩處：`SymbolFace.vue` 的 `.stage`、
+   `HeartMetaball.vue` 的 `.metaballs`（2026-08-22 隨 04.media 收編加入）。
 
 ## 六、驗收
 

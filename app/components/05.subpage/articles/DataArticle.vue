@@ -27,7 +27,7 @@ const c = raw as DataContent;
     </div>
 
     <!-- AI推薦：無小標，接在體驗區之下 -->
-    <div class="sp-col mt-16">
+    <div v-ga-view="'data_creativity'" class="sp-col mt-16">
       <p class="sp-p" v-html="c.recommend" />
     </div>
 

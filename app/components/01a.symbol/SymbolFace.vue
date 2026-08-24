@@ -2,7 +2,23 @@
 // @ts-nocheck
 import * as THREE from 'three';
 import { gsap } from 'gsap';
-import portraitUrl from '~/assets/img/face.png';
+// 512×747 lossless WebP（268 KB），由 `node scripts/hero-assets.mjs --face` 從
+// face.png（1013×1478 RGBA、1.62 MB）降尺寸而來。
+//
+// 為什麼可以降：這張圖**只被拿去取樣粒子位置**，而 buildFromImage 自己會先縮到
+// cols(89) × SAMPLE_PX_PER_CELL(4) = 356 px 寬再取樣（見該處註解）—— 1013 px 有 2.8 倍
+// 是白付的頻寬，而且它在 onMounted 就開抓，正好和 9.8 MB 的開場影片搶同一段。
+//
+// 實測等價（temp/face-sample-equiv.mjs，對兩張圖跑同一條 sampleImageToGrid）：
+//   網格 89×84 相同 · 粒子數 5,981 ↔ 5,981 完全相同 · 位置偏差 0.000000 world
+//   字元階 98/5,981 顆不同 (1.64%) · 平均亮度差 0.00075
+// 也就是輪廓與密度逐點相同，只有少數卡在亮度階界的格子換了字元。
+//
+// ⚠️ 用 lossless 而非有損：sampler 以 alpha ≥ 0.5 判斷「去背輪廓內」（symbol-sampler.ts），
+//    有損 WebP 的 alpha 量化會直接改變粒子數。
+// ⚠️ 換素材時目標寬度不可低於 cols × SAMPLE_PX_PER_CELL，否則取樣解析度不足。
+// （face.png 原檔留在 repo 供對照；沒有 import 就不會進 bundle。）
+import portraitUrl from '~/assets/img/face.webp';
 // import portraitUrl from '~/assets/img/einstein.png';
 import {
   buildColorRamp,
@@ -16,18 +32,26 @@ import { FACE_HOVER_INFLUENCE, faceUv } from '~/utils/symbol-hint';
 import { EGG_CLOSED, nextEggIndex, tapEggIndex } from '~/utils/symbol-egg';
 import {
   SYMBOL_CONFIG_KEYS,
-  SYMBOL_LIVE_COLOR_KEYS,
-} from '~/utils/symbol-face-schema';
+  SYMBOL_MAX_GLITCH_ITEMS,
+} from '~/utils/symbol-face-config';
 import { scrambleText } from '~/utils/symbol-scramble';
 import type { SymbolMode } from '~/composables/useOrangeCoreProgress';
 
 const props = defineProps({
   /** 人像圖片（需含透明背景，alpha 即輪廓遮罩） */
   src: { type: String, default: portraitUrl },
-  /** 符號字元集（設計稿定案前先用範例集） */
+  /** 符號字元集。2026-08-20 起為設計師定案的集合（見 temp/matrix_preset_.json 的
+   *  customChars）—— 取自 "UDN75 ANNIVERSERIY/:_+.=)(#\"><" 去空白後的 24 個唯一字元。
+   *  ⚠️ 順序無意義：sortCharsByInk 會去重並**依墨水量重排**，字元是按該格亮度指派的，
+   *     畫面上不會排出可讀的單字（故原字串把 ANNIVERSARY 拼成 ANNIVERSERIY 不影響輸出，
+   *     但也不要「順手修正」—— 那會少一個 I、多一個 A ＝ 換掉字元集）。 */
   chars: {
     type: Array as () => string[],
-    default: () => ['M', 'F', 'O', 'A', 'B', 'I', '7', '5'],
+    default: () => [
+      'U', 'D', 'N', '7', '5',
+      'A', 'I', 'V', 'E', 'R', 'S', 'Y',
+      '/', ':', '_', '+', '.', '=', ')', '(', '#', '"', '>', '<',
+    ],
   },
   /** 顏色：單色字串，或多色標漸層陣列（如 ['#000','#77c6e0','#fff']），依 colorMode 取色 */
   color: {
@@ -52,20 +76,31 @@ const props = defineProps({
    *     硬切對位，不可跟著縮。 */
   worldScale: { type: Number, default: 1.0 },
   /** 橫向格數＝疏密主控，clamp 到 20..400。
-   *  85 而非 gemini 的 130：滿版一屏放不下 130 欄的可辨識字級（見 spec § 2 的對照表） */
-  cols: { type: Number, default: 85 },
+   *  89 ＝ 設計師 preset 的值（見 temp/matrix_preset_.json）。他的產生器畫在 578×840 的
+   *  canvas 上、cellW 6.5 / cellH 10 → 89 × 84 格；我們在 face.png（1013×1478）以
+   *  fit 500 × worldScale 0.9 取樣，computeGrid 算出的也是 89 × 84 —— 兩邊同一個格網，
+   *  故他的 px 級參數（sizeMin/sizeMax）可以直接除以 10 換成本檔的「佔格高比例」。
+   *  （曾為 85，理由是「滿版一屏放不下 gemini 預設的 130 欄」——89 同樣遠低於 130，
+   *    那個結論不受影響。） */
+  cols: { type: Number, default: 89 },
   /** monospace 寬高比：cellH = cellW / charAspect。0.65 取自 gemini 的 baseFontSize × 0.65 */
   charAspect: { type: Number, default: 0.65 },
-  /** 對比：繞中灰 0.5 放大明暗差（取代舊的 darkBoost 乘法增益） */
-  contrast: { type: Number, default: 1.2 },
+  /** 對比：繞中灰 0.5 放大明暗差（取代舊的 darkBoost 乘法增益）。
+   *  1.4 ＝ 設計師 preset；公式與他的產生器完全相同（見 symbol-sampler 的 toneMap）。 */
+  contrast: { type: Number, default: 1.4 },
   /** 負片：反轉明暗，決定人臉是「光雕」還是「陰影雕」 */
   invert: { type: Boolean, default: false },
   /** 字重階數；1 ＝ 單一字重 */
   weightSteps: { type: Number, default: 5 },
   /** 暗部字重 */
   weightMin: { type: Number, default: 100 },
-  /** 亮部字重 */
-  weightMax: { type: Number, default: 900 },
+  /** 亮部字重。500 ＝ 設計師 preset；與 weightMin 100 搭 weightSteps 5 恰好是他的產生器
+   *  在 100..500 間做 round(w/100)*100 的那 5 階。
+   *  ⚠️ 未驗證：atlas 烘字用 "Courier New", monospace（非可變字型，只有 regular/bold），
+   *     canvas 對 100–500 很可能一律選 regular ＝ 這五階畫出來一樣粗、字重滑桿是啞的。
+   *     他的產生器用 monospace 也有同樣限制，故兩邊一致、不是我們這邊的 bug；
+   *     真的要連續字重得換成 variable mono font。 */
+  weightMax: { type: Number, default: 500 },
   /** 漸層色標位置（0..1），長度需與 color 相同；空陣列＝等距 */
   colorStops: { type: Array as () => number[], default: () => [] },
   /** glitch 跳色：依 fps 隨機把少量粒子染色（取代舊的隨機換字），最多 4 組 */
@@ -75,11 +110,15 @@ const props = defineProps({
   },
   /** 格點隨機位移比例；0 ＝ 全規則格點 */
   jitter: { type: Number, default: 0 },
-  /** 暗部字級佔格高的比例（0..1） */
-  sizeMin: { type: Number, default: 0.43 },
-  /** 亮部字級佔格高的比例；1.0 ＝ 字級等於格高（墨水寬 ≈ 0.92 × cellW，同 gemini），
-   *  超過約 1.08 開始橫向重疊成塊 */
-  sizeMax: { type: Number, default: 1.0 },
+  /** 暗部字級佔格高的比例（0..1）。0.40 ＝ 設計師 preset 的 minSize 4px ÷ 他的 cellH 10px。 */
+  sizeMin: { type: Number, default: 0.4 },
+  /** 亮部字級佔格高的比例。0.80 ＝ 設計師 preset 的 maxSize 8px ÷ 他的 cellH 10px
+   *  （1.0 ＝ 字級等於格高、墨水寬 ≈ 0.92 × cellW；超過約 1.08 開始橫向重疊成塊）。
+   *  ⚠️ 待校準：inkGamma 的 0.6 是在 sizeMax = 1.0 下對照他的產生器校出來的。降到 0.8 後
+   *     sprite 由 ~10.3px 縮到 ~8.2px，而 atlas 烘的是 25px → 放大倍率 2.4 升到 3.0、
+   *     多吃一層 mipmap，筆劃會再被攤薄，預期 inkGamma 要往下調才追得回濃度。
+   *     這一項只能目視／量墨水量校，不能純換算，故先不動 inkGamma。 */
+  sizeMax: { type: Number, default: 0.8 },
   /** 粒子數上限；超過時自動遞減 cols 重新取樣（不隨機淘汰，那會打壞矩陣） */
   maxParticles: { type: Number, default: 24000 },
 
@@ -126,7 +165,8 @@ const props = defineProps({
    *  「mode 剛剛翻了」，不知道捲到哪裡，於是往回滑時整拍靜止、補間要到離開那一拍
    *  才開始跑 —— 使用者看到的就是連續 96vh 一片白什麼都不動。完整推導在那支函式上方。
    *
-   *  demo 頁（側欄三顆按鈕）維持 null：那裡根本沒有捲動可以綁，按鈕按下去要有補間才看得到。
+   *  null ＝ 走元件自己的定時補間（mode 一翻就跑一次 disperseDuration）：沒有捲動
+   *  可綁的用法（單純掛著切 mode）只有這條看得到動作。
    *  所以這是**兩種驅動方式**，不是新舊版本 —— 兩條路都要留著。
    *
    *  ⚠️ 2026-08-17 起它**只**接管 uConverge（粒子的收攏）。底色與白→橘各自有自己的
@@ -137,7 +177,7 @@ const props = defineProps({
   convergeAmount: { type: Number as PropType<number | null>, default: null },
   /** 那顆已實心的 core 由白轉橘的量（0..1），由外部**逐幀**餵進來；
    *  null ＝ 沿用 mode 觸發的補間（與 uConverge 同一組 duration / ease，
-   *  ＝ 改版前「實心化的同時就是橘的」那個行為，demo 頁走這條）。
+   *  ＝ 改版前「實心化的同時就是橘的」那個行為）。
    *
    *  正式站傳 `symbolCoreWarm`（＝ coreWarmAt(symbolProgress)）。
    *  ⚠️ 只作用在已實心化的粒子上（vWarm ＝ solid × uWarm），所以收攏途中把它推到 1
@@ -234,17 +274,27 @@ const props = defineProps({
    *     （IO 只看幾何與 display:none，visibility / opacity 都不算），元件自己偵測不到
    *     「其實看不見」。唯一便宜的替代是每幀 getComputedStyle，那是強制 style recalc。
    *     故由做出隱藏決定的那一層把「本層在場嗎」傳進來。
-   *  預設 true：demo 等一般 in-flow 用法不必傳，交給下方 IntersectionObserver 判斷即可。 */
+   *  預設 true：一般 in-flow 用法不必傳，交給下方 IntersectionObserver 判斷即可。 */
   active: { type: Boolean, default: true },
 
-  /** PC 互動提示文字（空字串＝不顯示）。換行用 \n，樣式端以 white-space: pre-line 呈現。
+  /** PC 互動提示文字（≥1280px，空字串＝不顯示）。換行用 \n，樣式端以 white-space: pre-line 呈現。
    *  設計稿 Figma 2065:139734：圓環圖示 + 兩行說明橫排，錨在人像右下臉頰（見 HINT_ICON_UV）。
-   *  只在 ≥1280px 出現（樣式端擋），且游標真的碰到人像就收起（收多久見 hintOnce）。 */
+   *  游標真的碰到人像就收起（收多久見 hintOnce）。 */
   hint: { type: String, default: '' },
+  /** 平板互動提示文字（768–1279px，空字串＝不顯示）。
+   *  **版位與 hint 同一套**（圓環圖示 + 右側兩行橫排，見 .hint__text 的斷點），只有文案不同
+   *  —— 這一段的操作邏輯跟手機一樣是點擊（見 TAP_QUERY），沿用 hint 的「游標移動」
+   *  等於叫使用者移動一個不存在的游標。故是獨立一份文案、不是獨立一套版位。 */
+  hintPad: { type: String, default: '' },
   /** 手機版互動提示文字（＜768px，空字串＝不顯示）。設計稿 Figma 2065:120222。
-   *  與 hint 的差別是**版位與文案**：手機的說明不排在圖示右邊，而是單行置中排在人像下方；
-   *  文案也不同（手機沒有游標，稿上是「點擊人臉…」）。圓環圖示本身兩個斷點共用。 */
+   *  與 hint / hintPad 的差別是**版位**：手機的說明不排在圖示右邊，而是單行置中排在人像下方
+   *  （見 .hint-mob）。圓環圖示本身三個斷點共用。 */
   hintMob: { type: String, default: '' },
+  /** 下滑提示的說明文字（空字串＝不渲染這顆按鈕）。設計稿 Figma 2065:139741。
+   *  圖示本體、漂移動態與「點了往下捲一屏」都在 <UBtnScrollHint>，本元件只給版位。
+   *  ⚠️ 有文案**不等於**會出現：顯示時機是三個條件的交集（2026-08-23 定案，見 scrollHintOn）
+   *     —— 本層在場 ＋ 停超過十秒沒捲動 ＋ 手機版互動提示不在畫面上。 */
+  scrollHint: { type: String, default: '' },
   /** 提示是否「整個生命週期只出現一次」。
    *  false（預設）＝ 每次**重新完整集合**都再出現一次；游標碰到人像仍立即收起，
    *    但那次收起只對這一輪集合有效（見 faceFormed 的 watch）。
@@ -267,8 +317,13 @@ const srgbColor = (style: string) =>
 const wrapRef = ref<HTMLDivElement | null>(null);
 const eggRef = ref<HTMLDivElement | null>(null);
 // 目前顯示的彩蛋句 index（EGG_CLOSED ＝ 不顯示），只在換句時更新 → slot 內容僅換句才 re-render。
-// 兩種驅動方式（見下方 isMob 那段）：桌機是游標所在宮格逐幀推導，手機是 tap／計時器寫入。
+// 兩種驅動方式（見下方 TAP_QUERY 那段）：桌機是游標所在宮格逐幀推導，手機／平板是 tap／計時器寫入。
 const activeEgg = ref(EGG_CLOSED);
+
+// 彩蛋換句的音效。⚠️ **不要**掛在 watch(activeEgg) 上 —— 那個 watcher 對自動換句
+// 與使用者換句一視同仁，而自動換句是每 3 秒一輪（EGG_AUTO_MS），音檔卻有 2.3s，
+// 掛上去等於不間斷的嗡嗡聲。故只掛在兩個使用者驅動點：手機 tap 與桌機 hover 換宮格。
+const { play: playSfx } = useSfx();
 
 // 彩蛋切換時的「亂碼跑動」出現動畫：activeEgg 換格時，文字由隨機字元逐步落定成句子，
 // 讓「切換到另一則彩蛋」更明顯。displayText 取代直接顯示 phrases[activeEgg]。
@@ -296,20 +351,32 @@ watch(activeEgg, (idx) => {
   runScramble(idx >= 0 ? (cfg.phrases[idx] ?? '') : '');
 });
 
-// ---------- 手機版彩蛋：tap 驅動 ----------
-// 手機沒有 hover，故 <768px 走另一套：點人臉**任一處**就依序換下一句（不分宮格，
+// ---------- 彩蛋：tap 驅動（手機 ＋ 平板）----------
+// 手機與平板都沒有 hover，故 <1280px 走另一套：點人臉**任一處**就依序換下一句（不分宮格，
 // 規則見 ~/utils/symbol-egg），開啟後每 EGG_AUTO_MS 自動換下一句，且**不因手指離開而收起**
 // —— 只有點在人臉以外、或整個離開集合態（見 faceFormed 的 watch）才關。
 // 桌機維持宮格 hover 對位，兩套只在 animate() 的彩蛋段分流。
 //
-// 斷點沿用 hint 那把尺（下方 HINT_ICON_UV 的 mob 版位也吃它）：與 hintMob 的文案
-// 「點擊人臉…」、Hero 的 worldScale 同一個 768 界線，全站一致。
-// ⚠️ 已知取捨（同 .hint 的 SCSS 註解）：≥768px 的觸控裝置仍走 hover 那套，在那些機器上
-//    彩蛋摸不到。改用 (hover: none) 可解，但會與吃寬度的 hint 版位脫鉤，故依專案慣例走斷點。
+// ⚠️ 這裡有**兩把不同的尺**，別再併回同一個查詢（2026-08-23 拆開）：
+//   TAP_QUERY(<1280) ── 互動模式。平板是觸控，界線得畫在 pc 那一格才吃得到 tap。
+//                       併回 768 的話 768–1279 會落在「走 hover 那套、但機器沒有 hover」
+//                       的縫裡 ＝ 彩蛋整段摸不到。
+//   MOB_QUERY(<768)  ── hint **版位**（HINT_ICON_UV 的 mob/pc 版位、.hint-mob 的存在）。
+//                       稿只有 mob 與 pc 兩版，平板沿用 pc 版位、只換文案（見 hintPad）。
+// 也就是說平板 ＝ 「pc 的版位 ＋ mob 的操作」，這正是它掉在縫裡的原因。
+// ⚠️ 已知取捨：768–1279 外接滑鼠的機器（Surface、iPad + 觸控板）也走 tap ——
+//    hover 不再開彩蛋，要點一下。改用 (hover: none) 能分辨，但會與吃寬度的 hint 版位脫鉤，
+//    故依專案慣例一律走斷點。
+const TAP_QUERY = '(max-width: 1279.98px)'; // ＝ mixins.scss 的 rwd-max('pc')
 const MOB_QUERY = '(max-width: 767.98px)'; // ＝ mixins.scss 的 rwd-max('tablet')
 // 非 reactive：animate() 每幀讀它分流，包成 ref 等於在熱迴圈多一次 getter。
 // 真正需要重繪的狀態是 activeEgg，那個才是 ref。初值與後續變動見 onMounted 的 matchMedia。
-let isMob = false;
+let isTapMode = false;
+// 版位那把尺的反應式副本：這兩支要進 template（文案來源、.hint-mob 的存在），
+// 不在熱迴圈裡，故用 ref。與 isTapMode 在同一批地方一起更新（onMounted 的 matchMedia）。
+const isMobView = ref(false);
+/** 768–1279：pc 的 hint 版位 ＋ mob 的 tap 操作。 */
+const isPadView = ref(false);
 /** 自動換下一句的間隔（ms）。扣掉 480ms 的亂碼動畫還有 2.5 秒可讀。 */
 const EGG_AUTO_MS = 3000;
 let eggAutoTimer = 0;
@@ -341,15 +408,15 @@ onBeforeUnmount(() => {
 });
 // 三種狀態：'face' = 集合（人像）/ 'disperse' = 分散（散場漂浮）/ 'converge' = 匯聚成點。
 // 三態互斥，由 uDisperse / uConverge 兩個 uniform 表示（同一時間至多一個為 1）。
-// v-model 由父層決定預設值並隨意切換（正式站是 SymbolScene 依捲動指派，
-// demo 頁是側欄面板的三顆按鈕）。
+// v-model 由父層決定預設值並隨意切換（正式站是 SymbolScene 依捲動指派）。
 // 型別取自 useOrangeCoreProgress（驅動端 SymbolScene 寫的就是那個 useState）——
 // 兩邊各宣告一份的話，哪天多一個狀態就會只改到一邊。
 const mode = defineModel<SymbolMode>('mode', { default: 'face' });
 let disperseFn: ((animated?: boolean) => void) | null = null;
 
 // 狀態改變時，可逆地補間 uDisperse / uConverge / uWarm（0↔1）與整片底色（見 syncBg）。
-// 全部吃同一組 duration / ease，故在 demo 那條路徑上「收攏」「轉橘」「翻底色」是同一個動作。
+// 全部吃同一組 duration / ease，故在「外部沒接管」那條路徑上，
+// 「收攏」「轉橘」「翻底色」是同一個動作。
 // ⚠️ 外部有接管的那幾樣改由捲動驅動，這兩支會讓開（見 convergeAmount / warmAmount /
 //    bgLightAmount 三個 prop）；mode 本身照舊翻面 —— disperse↔face 仍歸它管，
 //    faceFormed 也還讀它。
@@ -392,47 +459,47 @@ const faceFormed = ref(false);
 let syncActive: (() => void) | null = null;
 watch(() => props.active, () => syncActive?.());
 
-// ---------- 設定（cfg）與開發面板的對接 ----------
+// ---------- 設定（cfg）----------
 // cfg 是 three.js 實際讀取的設定（初值 = props 併入 default 後的結果；本檔內 three.js
-// 讀設定的地方一律讀 cfg 而不是 props）。開發面板本身住在 <SymbolFaceDevPanel>，
-// 由 demo 頁擺在 canvas 旁邊當側欄 —— 本元件只負責把 cfg 套進 three.js。
+// 讀設定的地方一律讀 cfg 而不是 props）。要抄哪些 prop 見 SYMBOL_CONFIG_KEYS。
 //
-// 對外兩條套用路徑（見檔尾 defineExpose）：
-//   ・applyConfig(next) —— 全套用：重建 atlas / 幾何 / 材質並重跑 reveal。非顏色參數走這條。
-//   ・applyColors(next) —— 只換一張 256×1 的 ramp texture 與幾個 uniform，不動幾何。
-//     顏色類參數走這條，所以拖色票 / 色標滑桿時畫面即時跟著變，不會每改一次就重跑
-//     3 秒的組合動畫。可即時的鍵名列在 SYMBOL_LIVE_COLOR_KEYS。
+// 套用只有一條路徑：applyConfig(next) —— 合併後重建 atlas / 幾何 / 材質並重跑 reveal。
 const cfg: Record<string, any> = {};
 for (const key of SYMBOL_CONFIG_KEYS) {
   cfg[key] = props[key as keyof typeof props];
 }
 
-// 面板的唯讀資訊：實際採用的格數與粒子數（cols 可能因 maxParticles 被降過）
-const gridStats = ref({ cols: 0, rows: 0, count: 0 });
+/** glitch 的 uniform 陣列長度。這個數字同時出現在
+ *  JS（備幾組 uniform）與 GLSL（陣列宣告與迴圈上界，靠字串插值帶進去），
+ *  兩邊分開寫的話擴組數時只會改到一半，多出來的組會安靜地不生效。
+ *  ⚠️ GLSL ES 1.0 的陣列 uniform 長度與 for 迴圈上界都必須是**編譯期常數**，
+ *     所以不能改成執行期依 glitchItems.length 動態決定。 */
+const GLITCH_SLOTS = SYMBOL_MAX_GLITCH_ITEMS;
 
-// glitch 跳色的 uniform 值。抽成函式是因為有兩個呼叫點：建材質時（buildParticles）
-// 與即時套色時（repaintColors）—— 後者要在材質已存在的情況下就地覆寫同一組 uniform。
-// GLSL ES 1.0 的陣列 uniform 必須是固定長度，故一律備 4 組，未使用的以 uGlitchCount 擋掉
-// （density 0 也不會命中）。
+// glitch 跳色的 uniform 值（建材質時由 buildParticles 呼叫）。
+// GLSL ES 1.0 的陣列 uniform 必須是固定長度，故一律備 GLITCH_SLOTS 組，未使用的以
+// uGlitchCount 擋掉（density 0 也不會命中）。
 // ⚠️ 顏色必須走 srgbColor（理由見該 helper 上方）：直接 new THREE.Color(hex) 會被
 //    ColorManagement 轉成 linear-sRGB，而本元件是 raw shader、沒有轉回來的那一段 ——
 //    #ff0055 會畫成約 #ff0017、#00ffcc 約 #00ff9a。
 // density 除以 100：gemini 的 density 單位是百分比（1–30）。
 const glitchUniforms = () => {
-  const items = (cfg.glitchItems ?? []).slice(0, 4);
+  const items = (cfg.glitchItems ?? []).slice(0, GLITCH_SLOTS);
   return {
     count: items.length,
-    colors: Array.from({ length: 4 }, (_, i) =>
+    colors: Array.from({ length: GLITCH_SLOTS }, (_, i) =>
       srgbColor(items[i]?.color ?? '#000000'),
     ),
-    density: Array.from({ length: 4 }, (_, i) => (items[i]?.density ?? 0) / 100),
-    fps: Array.from({ length: 4 }, (_, i) => items[i]?.fps ?? 0),
+    density: Array.from(
+      { length: GLITCH_SLOTS },
+      (_, i) => (items[i]?.density ?? 0) / 100,
+    ),
+    fps: Array.from({ length: GLITCH_SLOTS }, (_, i) => items[i]?.fps ?? 0),
   };
 };
 
-// 兩者都在 onMounted 內指派（要有 scene / mat 才做得了事）
+// 在 onMounted 內指派（要有 scene / mat 才做得了事）
 let rebuildParticles: (() => void) | null = null;
-let repaintColors: (() => void) | null = null;
 
 /** 全套用：合併設定後重建粒子系統（換圖、換格數、換字重…都走這條）。 */
 const applyConfig = (next: Record<string, any>) => {
@@ -441,28 +508,20 @@ const applyConfig = (next: Record<string, any>) => {
 };
 
 // cfg 的初值是在 setup 抄一次 props，**之後 props 變動不會自動跟上** —— 這是刻意的：
-// cfg 每幀被 animate() 讀很多次，做成 reactive 等於每幀加一整排 proxy trap（見檔尾 defineExpose）。
+// cfg 每幀被 animate() 讀很多次，做成 reactive 等於每幀加一整排 proxy trap。
 // worldScale 是唯一破例追蹤的一項：正式站用它做 RWD（手機的人臉要再縮一號，見 01.hero/Hero.vue
 // 的 SYMBOL_WORLD_SCALE），而那個值會在轉向／跨斷點時才改變 —— 沒有這個 watch，
 // 使用者橫轉直的那一刻人臉就會維持桌機尺寸而被切掉左右。
 // 走 applyConfig ＝ 整組重建（它改的是取樣幾何），故必然伴隨一次 reveal 重跑；
-// 這在「跨斷點」的頻率下可接受，也正是面板 Refresh 走的同一條路。
+// 這在「跨斷點」的頻率下可接受。
 watch(() => props.worldScale, (v) => applyConfig({ worldScale: v }));
-
-/** 即時套色：只合併顏色鍵並就地更新 texture / uniform，不重建幾何。 */
-const applyColors = (next: Record<string, any>) => {
-  for (const key of SYMBOL_LIVE_COLOR_KEYS) {
-    if (key in next) cfg[key] = next[key];
-  }
-  repaintColors?.();
-};
 
 // ---------- 互動提示 ----------
 // 顯示條件三個都要成立：人臉已完整集合（faceFormed）、尚未 dismiss、斷點有稿（樣式端擋）。
 // 位置由 onMounted 內把人像 bbox 上的錨點投影到螢幕算出，null ＝ 人像還沒建好、先不渲染。
 
 // 圓環圖示的錨點：人像 bbox 內的正規化座標（u 由左、v 由上，0..1）。
-// 稿上兩個斷點放的位置不同，故分開列：
+// 稿只有兩版版位，故只有兩組（平板沿用 pc 那組，見 MOB_QUERY 那段的兩把尺）：
 //   pc  ── 使用者提供的 pc 版位參考圖，量圖示中心相對 bbox 的比例（右下臉頰、壓在下顎線上）
 //   mob ── Figma 2065:120222：bbox (62,135) 293×428、圖示 88×88 落在 (269,368)
 //          → u=(269+44-62)/293、v=(368+44-135)/428
@@ -474,7 +533,18 @@ const HINT_ICON_UV = {
 };
 // 手機版說明文字與人像 bbox 底緣的距離（Figma 2065:120222：bbox 底 563 → 文字頂 594）。
 // 實際寫在 .hint-mob 的 margin-top，這裡只是註記出處。
-// 斷點判定共用上方彩蛋那支 isMob（同一把尺，見 MOB_QUERY）。
+// 版位判定吃 MOB_QUERY 那把尺（＜768 才有這一組），與互動模式的 TAP_QUERY 分開。
+
+/** 圓環圖示右側那段橫排文字（pc 與平板共用版位、只換文案；手機不在這組裡，見 .hint-mob）。 */
+const hintText = computed(() =>
+  isPadView.value ? props.hintPad : props.hint,
+);
+/** 當下斷點真的會出現在畫面上的那一份文案 ＝ hint 顯隱的判準（見 syncHintVisible）。
+ *  ⚠️ 不能一律讀 props.hint：平板讀的是 hintPad、手機讀的是 hintMob，
+ *     用 props.hint 當判準的話，只給了其中一份文案的斷點會整組不出現。 */
+const hintCopy = computed(() =>
+  isMobView.value ? props.hintMob : hintText.value,
+);
 
 const hintVisible = ref(false);
 const hintPos = ref<{ x: number; y: number } | null>(null);
@@ -490,12 +560,20 @@ const dismissHint = () => {
   hintVisible.value = false;
 };
 
+/** 依當下斷點與集合狀態重算 hint 顯隱。兩個呼叫點：集合狀態改變（faceFormed 的 watch）、
+ *  以及拉視窗／轉向跨過斷點（onTierChange）。
+ *  ⚠️ 後者是必要的、不是保險：文案來源會跟著斷點換（見 hintCopy），
+ *     從有文案的那一格換到沒文案的那一格時，舊的 true 會賴在畫面上。 */
+const syncHintVisible = () => {
+  hintVisible.value = faceFormed.value && !hintDismissed && !!hintCopy.value;
+};
+
 // 綁 faceFormed 而不是 mode：粒子真的聚成人臉那一刻才淡入，離開集合態（捲回 disperse、
 // 前進 converge、或捲出視窗停掉迴圈）立即隱藏。
 // ⚠️ 這裡不再排 setTimeout —— 舊寫法是「mode 翻成 face 後等 disperseDuration」去**猜**
 //    集合完成的時間點：猜不到首次進場的 revealDuration、也猜不到補間被 kill/重跑
 //    （見 disperseFn 的 killTweensOf）或迴圈中途被停掉的情形。
-// props.hint / props.hintOnce 都是靜態常數（文案從 section1.json import，once 由父層寫死），
+// 三份文案與 props.hintOnce 都是靜態常數（文案從 section1.json import，once 由父層寫死），
 // 故不納入 watch source；若之後改成動態值，需一併加進來追蹤。
 watch(faceFormed, (formed) => {
   // 非 once：離開集合態時把「已收起」還原 → 下一次完整集合會再出現一次。
@@ -503,15 +581,71 @@ watch(faceFormed, (formed) => {
   //    dismissHint 與這裡會在同一輪集合內互踩 —— 游標一停在人像上，
   //    收起與復原會輪流發生，提示變成閃爍。
   if (!formed && !props.hintOnce) hintDismissed = false;
-  hintVisible.value = formed && !hintDismissed && !!props.hint;
+  syncHintVisible();
 
-  // 手機版彩蛋的第二個（也是最後一個）關閉入口：離開集合態 —— 捲到 disperse／converge、
+  // tap 版彩蛋的第二個（也是最後一個）關閉入口：離開集合態 —— 捲到 disperse／converge、
   // 捲出視口、切分頁（見 stopLoop 也會把 faceFormed 收成 false）。
   // ⚠️ 少了這一段，捲到匯聚那一拍畫面只剩一顆橘核心，卻還飄著一句橘字，
   //    而且背景那支 3 秒計時器會一直換句換下去。
   // 桌機寫不寫都一樣：它的 index 由 animate() 每幀依游標重算，下一幀就蓋掉了。
   if (!formed) closeEgg();
 });
+
+// ---------- 下滑提示 ----------
+// 三個條件同時成立才出現（2026-08-23 定案，取代原本「有文案就常駐」）：
+//   ① onStage    ── 本層在場（＝ rAF 的執行閘門 shouldRun：active ＋ inView ＋ 分頁在前景）
+//   ② scrollIdle ── 連續 SCROLL_IDLE_MS 沒有捲動
+//   ③ !mobHintOn ── 手機版互動提示不在畫面上
+//
+// ⚠️ ① 刻意用執行閘門、不是 faceFormed：這顆是「還有下文」的指引，使用者停在散開／匯聚
+//    那兩拍一樣需要它；faceFormed 是上面兩組「這裡可以互動」提示的判準，語意不同。
+// ⚠️ ③ 只擋手機那組：稿上手機的說明排在人像下方、這顆距框底 44px，兩者都擠在下半部，
+//    同時出現會變成兩個互搶注意力的提示。PC 那組錨在右下臉頰、與這顆不重疊，故不擋。
+
+/** 停多久算「停下來了」。 */
+const SCROLL_IDLE_MS = 10_000;
+
+// 本層是否在場：由 onMounted 內的 syncRunning 寫入 —— inView / docVisible 都住在那層，
+// 這裡只收結果（也因此「在場」與「跑不跑 rAF」永遠是同一個判斷，不會各自漂移）。
+const onStage = ref(false);
+// 連續 SCROLL_IDLE_MS 沒捲動 → true；任何一次捲動立即打回 false 並重新計時。
+const scrollIdle = ref(false);
+let idleTimer = 0;
+
+/** 重新計時。可重複觸發 —— 使用者每次停下來都會再拿到一次提示（不是一生一次）。
+ *  ⚠️ 離開現場時只清計時器、不排新的：回來那一刻 onStage 的 watch 會重新排，
+ *     於是「十秒」永遠是從真的看得到這一段開始算。 */
+const armIdleTimer = () => {
+  scrollIdle.value = false;
+  clearTimeout(idleTimer);
+  if (!onStage.value) return;
+  idleTimer = window.setTimeout(() => {
+    scrollIdle.value = true;
+  }, SCROLL_IDLE_MS);
+};
+
+// 進場／離場都要重排計時（切分頁回來也走這條，見 onDocVisibility → syncRunning）。
+watch(onStage, armIdleTimer);
+
+// 手機版互動提示此刻是否真的在畫面上：條件與 .hint-mob 的 v-if ＋ .hint-mob--on 完全一致，
+// 外加它只在 <768px 才 display:block 的那道樣式條件（＝ isMobView，同一把尺 MOB_QUERY）。
+// ⚠️ 平板不算在內：那一段的說明排在圖示右邊（pc 版位）、與下滑提示不重疊，故不必互斥。
+const mobHintOn = computed(
+  () =>
+    isMobView.value &&
+    !!props.hintMob &&
+    !!hintMobPos.value &&
+    hintVisible.value,
+);
+
+/** 下滑提示的顯隱（template 的唯一判斷點）。 */
+const scrollHintOn = computed(
+  () =>
+    !!props.scrollHint &&
+    onStage.value &&
+    scrollIdle.value &&
+    !mobHintOn.value,
+);
 
 
 onMounted(() => {
@@ -520,17 +654,30 @@ onMounted(() => {
   const width = wrap.clientWidth;
   const height = wrap.clientHeight;
 
-  // 手機版彩蛋走 tap（見 MOB_QUERY 那段），hint 的版位也吃同一把尺。
-  // 轉向／拉視窗跨過斷點時：先關掉彩蛋（換到桌機那套後，tap 開的那句沒有人會再收），
-  // 再重算 hint 錨點（pc 與 mob 的 HINT_ICON_UV 不同）。
+  // 兩把尺（理由與界線見 TAP_QUERY / MOB_QUERY 那段）：<1280 走 tap 操作，<768 走 mob 版位。
+  // 兩個查詢的 change 共用同一支處理器 —— 跨過任何一條界線都要做同樣三件事：
+  //   ① 關掉彩蛋 ── 換到桌機那套後，tap 開的那句沒有人會再收（桌機的 index 由游標重算）
+  //   ② 重算 hint 錨點 ── pc 與 mob 的 HINT_ICON_UV 不同
+  //   ③ 重算 hint 顯隱 ── 文案來源跟著斷點換（見 syncHintVisible）
+  // ⚠️ 每次都重讀兩顆 mq 的 matches、不用事件的 e.matches：一次 change 只告訴你**其中一條**
+  //    界線的新值，拿它去寫另一支旗標會寫錯（例如 1280→1200 只有 tapMq 觸發，
+  //    此時 isMobView 應維持 false，用 e.matches 會被寫成 true）。
+  const tapMq = window.matchMedia(TAP_QUERY);
   const mobMq = window.matchMedia(MOB_QUERY);
-  isMob = mobMq.matches;
-  const onMobChange = (e: MediaQueryListEvent) => {
-    isMob = e.matches;
+  const readTier = () => {
+    isTapMode = tapMq.matches;
+    isMobView.value = mobMq.matches;
+    isPadView.value = tapMq.matches && !mobMq.matches;
+  };
+  readTier();
+  const onTierChange = () => {
+    readTier();
     closeEgg();
     updateHintAnchor();
+    syncHintVisible();
   };
-  mobMq.addEventListener('change', onMobChange);
+  tapMq.addEventListener('change', onTierChange);
+  mobMq.addEventListener('change', onTierChange);
 
   const scene = new THREE.Scene();
   // ⚠️ 這顆 Color 物件從頭到尾是同一個 instance（下方 syncBg 就地補間 r/g/b），
@@ -542,12 +689,12 @@ onMounted(() => {
   // scrub 接管時的兩端色（下方 syncBg 的第一條分支就地 lerp 它們到 bgColor）。
   // 物件重複使用：那條路徑在捲動中**逐幀**會走到，每幀 new 兩顆 THREE.Color
   // 等於在整段最忙的那一拍餵 GC。每次都重讀 cfg 而不是建構時算一次 ——
-  // 面板可以即時改色（見 repaintColors）。
+  // rebuildParticles 可能換掉這兩個值。
   const bgFrom = new THREE.Color();
   const bgTo = new THREE.Color();
   // 兩端色的**解析結果**也重複使用：THREE.Color.set() 吃的是 CSS 顏色字串，逐幀重解
-  // 兩次等於每幀兩次字串剖析。只有面板改色（repaintColors / rebuildParticles）才會
-  // 動到 cfg 的這兩個值，故拿字串本身當快取鍵 —— 面板即時改色照樣立刻生效。
+  // 兩次等於每幀兩次字串剖析。只有 rebuildParticles 才會動到 cfg 的這兩個值，
+  // 故拿字串本身當快取鍵 —— 重建後換掉的色照樣立刻生效。
   let bgFromKey = '';
   let bgToKey = '';
   const ensureBgEnds = () => {
@@ -567,9 +714,9 @@ onMounted(() => {
 
   // 翻底色。兩條路徑：
   //   scrub（正式站）—— 直接把 bgLightAmount 當 lerp 的 t，往回捲自動沿原路退回。
-  //   mode （demo）  —— converge → convergeBgColor、其餘（集合 / 散場）→ bgColor 的可逆補間，
+  //   mode（未接管）—— converge → convergeBgColor、其餘（集合 / 散場）→ bgColor 的可逆補間，
   //                     與 disperseFn 同一套寫法與同一組 duration / ease。
-  // animated=false 用於初始定位、面板即時套色與重建粒子（scrub 路徑則恆等於 false 的行為）。
+  // animated=false 用於初始定位與重建粒子（scrub 路徑則恆等於 false 的行為）。
   // ⚠️ 這裡用 new THREE.Color(hex) 而不是本檔的 srgbColor()：scene.background 走的是
   //    three 自己的 output 轉換鏈（會轉回 sRGB 再輸出），與 raw shader 的 uniform 不同。
   //    詳見 srgbColor 上方那段。
@@ -641,8 +788,8 @@ onMounted(() => {
   //    存 px 的話文字會釘在舊像素位置、與人臉脫節；存 world 則由 animate() 每幀投影，
   //    自動跟著人臉走（同 hint 錨點的做法）。
   const eggAnchor = new THREE.Vector3();
-  /** 手機彩蛋開著嗎 ＝ 真空是否該定住不放（見 onLeave）。 */
-  const eggHolding = () => isMob && activeEgg.value >= 0;
+  /** tap 版彩蛋開著嗎 ＝ 真空是否該定住不放（見 onLeave）。 */
+  const eggHolding = () => isTapMode && activeEgg.value >= 0;
 
   // canvas 左上角（視窗座標）：clientX/Y → NDC 的換算基準。
   //
@@ -696,27 +843,35 @@ onMounted(() => {
   // passive：兩支都沒有 preventDefault，宣告出來瀏覽器才不必為了等它而延後捲動
   renderer.domElement.addEventListener('pointermove', onMove, { passive: true });
   renderer.domElement.addEventListener('pointerleave', onLeave, { passive: true });
-  window.addEventListener('scroll', invalidateRect, { passive: true });
+  // 捲動時做兩件事：作廢 canvas 位置快取（見 invalidateRect），以及把下滑提示的十秒
+  // 重新計時（見 armIdleTimer）。併成同一支 listener ＝ 一次事件派發做完，
+  // 不為了「兩件事不相干」各掛一支 —— 這支在捲動中是每幀都會被叫的路徑。
+  const onScroll = () => {
+    invalidateRect();
+    armIdleTimer();
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
 
   // 彩蛋關閉時鬆開真空（closeEgg 走這條，見它的宣告處）。桌機不受影響：
   // 那邊的 influence 一律由游標的進出決定，closeEgg 只是在離開集合態時順手收東西。
   releaseMouseFn = () => {
-    if (isMob) targetInfluence = 0;
+    if (isTapMode) targetInfluence = 0;
   };
 
-  // 手機版彩蛋：點人臉換下一句、點人臉以外關閉（桌機讓開，走 animate() 的宮格路徑）。
+  // tap 版彩蛋（手機 ＋ 平板）：點人臉換下一句、點人臉以外關閉（桌機讓開，走 animate() 的宮格路徑）。
   // ⚠️ 用 click 而不是 pointerdown：捲動拖曳會走 pointercancel、不會合成 click，
   //    故「捲頁時手指掃過人臉」不會誤開彩蛋 —— 這一段畫面本來就是靠捲動推進的。
   const onTap = (e: MouseEvent) => {
     // 集合途中／散場中點下去不該冒出彩蛋（同 PC 提示，理由見 faceFormed 宣告處）
-    if (!isMob || !faceFormed.value) return;
+    if (!isTapMode || !faceFormed.value) return;
     toNdc(e.clientX, e.clientY);
     raycaster.setFromCamera(ndc, camera);
     if (!raycaster.ray.intersectPlane(plane, hit)) return;
-    // 命中框與桌機宮格同一套（faceUv），差別只在手機不再把它切成 gridCols × gridRows
+    // 命中框與桌機宮格同一套（faceUv），差別只在 tap 版不再把它切成 gridCols × gridRows
     const uv = faceUv(hit.x, hit.y, halfW, halfH);
     const next = tapEggIndex(activeEgg.value, cfg.phrases.length, !!uv);
     activeEgg.value = next;
+    if (next >= 0) playSfx('aiFaceText'); // next < 0 ＝ 點在臉外＝關閉，不出聲
     // ⚠️ 分支看的是「真的開了嗎」而不是「點在臉上嗎」：沒有文案時（phrases 為空）
     //    點人臉並不會開，那就不該留下一支永遠換不出東西的計時器。
     if (next >= 0) {
@@ -726,7 +881,7 @@ onMounted(() => {
       mouse.copy(hit);
       targetInfluence = 1;
       startEggAuto(); // 點擊＝剛換過一句，3 秒從頭算
-      // 手機的提示文案就是「點擊人臉…」，點到了就等於學會了 → 收起（收多久見 hintOnce）
+      // tap 版的提示文案就是「點擊人臉…」，點到了就等於學會了 → 收起（收多久見 hintOnce）
       if (!hintDismissed) dismissHint();
     } else {
       stopEggAuto();
@@ -749,6 +904,17 @@ onMounted(() => {
   let targetArr: Float32Array | null = null; // formation 座標（命中測試用）
   let seedArr: Float32Array | null = null; // 每顆隨機種子（impulse 發散角／z 散射用）
   let dispAttr: THREE.BufferAttribute | null = null;
+  // 物理已完全靜止（disp／vel 全部小於 SETTLE_EPS）且沒有新的游標命中 ⇒ 整段積分與
+  // aDisp 的 VBO 上傳都可以跳過。
+  //
+  // 為什麼值得做：aDisp 是 pCount × 3 個 float，實測 5,471 顆 ≈ 64 KB／幀（60fps ≈ 3.8 MB/s）。
+  // 而觸控裝置沒有 hover，`canHit` 幾乎恆為 false、disp 恆為 0 —— 這筆頻寬與那 pCount 次
+  // 空轉的積分是純白付。**這是首頁在低階手機上唯一「省下來完全看不出差別」的每幀成本。**
+  //
+  // ⚠️ 判定要同時看 vel：disp 可能剛好路過 0 而 vel 還很大（撞散後回位的過程中），
+  //    只看 disp 會把粒子凍在半路上。
+  let dispSettled = false;
+  const SETTLE_EPS = 0.01; // world 單位。world 寬約 274–560 對應整個視窗寬 ⇒ 0.01 遠低於一個次像素
   let pCount = 0;
   // 人像半寬高 + 自動游標遊走半徑（buildFromImage 依人像實際範圍設定）
   let halfW = 0;
@@ -852,7 +1018,6 @@ onMounted(() => {
         '[SymbolFace] 取樣結果為 0 顆粒子，請檢查 contrast / invert / 圖片 alpha',
       );
       clearParticleState(); // ⚠️ 不能只是 return，理由見該函式
-      gridStats.value = { cols: sample.cols, rows: sample.rows, count: 0 };
       return;
     }
     if (count > cfg.maxParticles) {
@@ -860,7 +1025,6 @@ onMounted(() => {
         `[SymbolFace] 粒子數 ${count} 已達 cols 下限仍超過上限 ${cfg.maxParticles}`,
       );
     }
-    gridStats.value = { cols: sample.cols, rows: sample.rows, count };
 
     // 人像置中於原點；自動游標在 ~70% 內遊走
     halfW = sample.halfW;
@@ -912,9 +1076,11 @@ onMounted(() => {
     dispAttr.setUsage(THREE.DynamicDrawUsage);
     geom.setAttribute('aDisp', dispAttr);
 
-    // glitch 跳色（4 組固定長度陣列 uniform 的理由見 glitchUniforms 上方註解）
-    if ((cfg.glitchItems ?? []).length > 4) {
-      console.warn('[SymbolFace] glitchItems 最多 4 組，其餘已忽略');
+    // glitch 跳色（固定長度陣列 uniform 的理由見 GLITCH_SLOTS 與 glitchUniforms 的註解）
+    if ((cfg.glitchItems ?? []).length > GLITCH_SLOTS) {
+      console.warn(
+        `[SymbolFace] glitchItems 最多 ${GLITCH_SLOTS} 組，其餘已忽略`,
+      );
     }
     const glitch = glitchUniforms();
 
@@ -991,9 +1157,9 @@ onMounted(() => {
         uniform float uGroupFar;
         uniform float uColorRandom;
         uniform int uGlitchCount;
-        uniform vec3 uGlitchColor[4];
-        uniform float uGlitchDensity[4];
-        uniform float uGlitchFps[4];
+        uniform vec3 uGlitchColor[${GLITCH_SLOTS}];
+        uniform float uGlitchDensity[${GLITCH_SLOTS}];
+        uniform float uGlitchFps[${GLITCH_SLOTS}];
         varying float vAlpha;
         varying float vGlyph;
         varying float vT;
@@ -1080,10 +1246,10 @@ onMounted(() => {
           vGlyph = aGlyph;
 
           // glitch 跳色：每組各自的 fps 決定換幀速率，density 決定命中比例。
-          // GLSL ES 1.0 迴圈上界必須是常數，故固定 4 次搭配 break。
+          // GLSL ES 1.0 迴圈上界必須是常數，故固定跑 GLITCH_SLOTS 次搭配 break。
           vGlitchColor = vec3(0.0);
           vGlitchOn = 0.0;
-          for (int i = 0; i < 4; i++) {
+          for (int i = 0; i < ${GLITCH_SLOTS}; i++) {
             if (i >= uGlitchCount) break;
             if (uGlitchFps[i] > 0.0 && uGlitchDensity[i] > 0.0) {
               // 引數必須維持在小範圍：hash 是 fract(sin(n)·43758)，而 GLSL 的 sin
@@ -1221,7 +1387,7 @@ onMounted(() => {
       else mat.uniforms.uDisperse.value = dTarget;
 
       // uWarm：外部接管時**完全不碰**（同下方 uConverge）。沒接管時跟著 uConverge 一起補間 ——
-      // 顏色本來就只作用在已實心的粒子上（vWarm ＝ solid × uWarm），故 demo 按下「匯聚」
+      // 顏色本來就只作用在已實心的粒子上（vWarm ＝ solid × uWarm），故外部沒接管時切到「匯聚」
       // 看到的仍是「收攏末段凝成核心的同時轉橘」，＝ 2026-08-17 之前的行為。
       const wTarget = mode.value === 'converge' ? 1 : 0;
       if (scrubbedWarm() !== null) applyWarmFn?.();
@@ -1247,7 +1413,7 @@ onMounted(() => {
 
   // ---------- 執行閘門：三個訊號皆為真才跑 rAF（迴圈啟停見下方 syncRunning）----------
   //   props.active — 父層是否讓本層在場（元件看不到祖先的 visibility，見該 prop 的說明）
-  //   inView       — 自己的幾何是否落在視口內（demo 等 in-flow 用法的主訊號）
+  //   inView       — 自己的幾何是否落在視口內（in-flow 用法的主訊號）
   //   docVisible   — 分頁是否在前景（切分頁時瀏覽器雖已節流 rAF，仍要自己停以處理恢復接縫）
   let inView = false;
   let docVisible = true;
@@ -1339,31 +1505,6 @@ onMounted(() => {
     buildFromImage(loadedImg);
   };
 
-  // 即時套色：只換 ramp texture 與幾個 uniform，不碰幾何、不重跑 reveal。
-  // 面板的顏色類欄位（色票 / 色標滑桿 / glitch 卡片）每次 input 都會打到這裡，
-  // 所以這條路徑不能有取樣、烘 atlas、配置 Float32Array 之類的動作。
-  repaintColors = () => {
-    if (unmounted) return;
-    // 不換物件、只就地補到目前狀態該有的顏色（理由見 bgColor 宣告處）。
-    // 不動畫：面板拖色票是「即時預覽」，每次 input 都排一段 0.6s 補間會變成拖影。
-    syncBg(false);
-    if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
-    if (!mat) return; // 粒子系統還沒建好（圖片載入中）：cfg 已更新，等 build 時自然吃到
-
-    const nextRamp = makeColorRamp();
-    colorRamp?.dispose(); // 舊 texture 是這裡唯一的 owner，不 dispose 就每拖一格漏一張
-    colorRamp = nextRamp;
-    mat.uniforms.uColorRamp.value = nextRamp;
-    mat.uniforms.uColorRandom.value = cfg.colorMode === 'random' ? 1 : 0;
-    mat.uniforms.uSolidColor.value.copy(srgbColor(cfg.convergeColor));
-
-    const glitch = glitchUniforms();
-    mat.uniforms.uGlitchCount.value = glitch.count;
-    mat.uniforms.uGlitchColor.value = glitch.colors;
-    mat.uniforms.uGlitchDensity.value = glitch.density;
-    mat.uniforms.uGlitchFps.value = glitch.fps;
-  };
-
   // 圖片載入（初次與 refresh 換 src 共用）。
   // ⚠️ crossOrigin：本專案的圖片走 APP_ASSETS_PATH 前綴，正式站可能與頁面不同源 ——
   //    沒有 CORS 的圖畫進 canvas 會「污染」它，buildFromImage 的 getImageData() 就會在
@@ -1395,7 +1536,7 @@ onMounted(() => {
   // refresh：套用 cfg（背景色/彩蛋色即時更新）後重建粒子；src 變更則先載入新圖再重建
   rebuildParticles = () => {
     if (unmounted) return;
-    syncBg(false); // 同 repaintColors：就地補色、不換物件（理由見 bgColor 宣告處）
+    syncBg(false); // 就地補色、不換物件（理由見 bgColor 宣告處）
     if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
     if (cfg.src !== loadedSrc) {
       const nextSrc = cfg.src;
@@ -1449,9 +1590,10 @@ onMounted(() => {
     //    啟動 rAF），此時 camera.matrixWorldInverse 仍是單位矩陣、position.z 還沒烘進去，
     //    project() 的透視除法會除以 0 → Infinity。先手動更新矩陣，補上 renderer 尚未做的那一步。
     camera.updateMatrixWorld();
-    // 斷點讀彩蛋那支 isMob（onMounted 內以 matchMedia 初始化並追蹤變動）：
+    // 版位讀 isMobView（onMounted 內以 matchMedia 初始化並追蹤變動，見 readTier）：
     // 跨斷點時 change 回呼會直接再呼叫本函式一次，不必在這裡重新查詢 media query。
-    const [u, v] = isMob ? HINT_ICON_UV.mob : HINT_ICON_UV.pc;
+    // ⚠️ 讀的是 **MOB_QUERY 那把尺**、不是互動模式的 isTapMode —— 平板走 pc 版位。
+    const [u, v] = isMobView.value ? HINT_ICON_UV.mob : HINT_ICON_UV.pc;
     // uv(0..1，左上原點) → world：x 由 -halfW 到 +halfW、y 由 +halfH 到 -halfH
     hintPos.value = projectAnchor(halfW * (u! * 2 - 1), -halfH * (v! * 2 - 1));
     hintMobPos.value = projectAnchor(0, -halfH);
@@ -1493,7 +1635,12 @@ onMounted(() => {
     // 每顆粒子維持 disp(位移)+vel(速度)：速度只保留動量並靠 friction 衰減（負責往外散）；
     // 位置每幀對原位(0)做指數 lerp（單調趨近、不會回彈）。游標半徑內持續注入外推速度 → 在時開洞、
     // 離開後速度衰減、位置 ease 回原位（脫離果凍感）。
-    if (dispArr && velArr && targetArr && dispAttr) {
+    //
+    // dispSettled 這道閘門（宣告處有完整說明）刻意放在最外面：靜止時連 velDecay／easeAmt
+    // 這些 Math.exp 都不必算。canHit 得先於閘門求值 —— 它就是「該不該醒過來」的訊號。
+    const canHit = mode.value === 'face' && influence > 0.01;
+    if (canHit) dispSettled = false;
+    if (!dispSettled && dispArr && velArr && targetArr && dispAttr) {
       const disp = dispArr;
       const vel = velArr;
       const tgt = targetArr;
@@ -1502,7 +1649,10 @@ onMounted(() => {
       const easeAmt = 1 - Math.exp(-cfg.returnEase * dt); // 與幀率無關的回位 lerp 係數（趨近 0）
       const hitR = cfg.holeRadius + cfg.holeSpread;
       const hitR2 = hitR * hitR;
-      const canHit = mode.value === 'face' && influence > 0.01;
+      // 本幀 disp／vel 的最大平方量 → 決定下一幀能不能休息（見 dispSettled）。
+      // 存平方而非絕對值：內圈本來就會算 v2，位移也只多一次平方和，省掉 pCount 次 sqrt。
+      let settleD2 = 0;
+      let settleV2 = 0;
       const mx = smoothMouse.x;
       const my = smoothMouse.y;
       const kick = cfg.impulseStrength * influence;
@@ -1574,11 +1724,25 @@ onMounted(() => {
         vel[i3 + 2] = vz;
         // 位置：動量位移 + 對原位(0)做指數 ease（disp*(1-easeAmt) 單調趨近，無回彈）。
         // 等價於 reference 的 x += vx + (origin - x)*ease，這裡 origin=0（disp 是相對 formation 的位移）。
-        disp[i3] = disp[i3]! * (1 - easeAmt) + vx * dt;
-        disp[i3 + 1] = disp[i3 + 1]! * (1 - easeAmt) + vy * dt;
-        disp[i3 + 2] = disp[i3 + 2]! * (1 - easeAmt) + vz * dt;
+        const dx2 = disp[i3]! * (1 - easeAmt) + vx * dt;
+        const dy2 = disp[i3 + 1]! * (1 - easeAmt) + vy * dt;
+        const dz2 = disp[i3 + 2]! * (1 - easeAmt) + vz * dt;
+        disp[i3] = dx2;
+        disp[i3 + 1] = dy2;
+        disp[i3 + 2] = dz2;
+        const d2 = dx2 * dx2 + dy2 * dy2 + dz2 * dz2;
+        if (d2 > settleD2) settleD2 = d2;
+        if (v2 > settleV2) settleV2 = v2;
       }
       dispAttr.needsUpdate = true;
+      // 這一幀已經把 ~0 寫回 VBO 了，所以下一幀起才能休息（不是這一幀就跳過上傳）。
+      // 速度也要夠小：VEL_EPS 0.5 world/秒 ＝ 60fps 下每幀約 0.008 world 位移，
+      // 低於 SETTLE_EPS，不會出現「凍在半路」。
+      if (!canHit) {
+        const VEL_EPS = 0.5;
+        dispSettled =
+          settleD2 < SETTLE_EPS * SETTLE_EPS && settleV2 < VEL_EPS * VEL_EPS;
+      }
     }
 
     // 「完整集合」判定（見 faceFormed 宣告處）：三個 uniform 的實況，不是 mode 這道指令。
@@ -1602,17 +1766,17 @@ onMounted(() => {
     // PC 提示：游標真的碰到人像 → 永久收起。
     // ⚠️ 判定用 bbox 而非「真的撞散粒子」（holeRadius 命中）—— 後者在臉的空白處移動不會觸發，
     //    提示會賴著不走。autoMouse 是無 hover 環境用的虛擬游標，會自己戳到，不算使用者互動。
-    // ⚠️ 手機讓開（!isMob）：那邊沒有 hover，收起時機改在 tap（見 onTap）——
+    // ⚠️ tap 版讓開（!isTapMode）：那邊沒有 hover，收起時機改在 tap（見 onTap）——
     //    不擋的話，手指為了捲動掃過人臉就會把「點擊人臉…」這句提示收掉，而使用者根本沒點過。
-    if (onFace && !hintDismissed && !cfg.autoMouse && !isMob) dismissHint();
+    if (onFace && !hintDismissed && !cfg.autoMouse && !isTapMode) dismissHint();
 
-    // 彩蛋：兩套驅動（見 MOB_QUERY 那段）
-    //   手機 ── index 由 tap／3 秒計時器寫入，這裡只負責定位；錨點是最後一次點擊處，
-    //           顯隱**不看 influence**（手指早就離開了，看它就會自己淡掉）。
-    //   桌機 ── index 由游標所在宮格逐幀推導，文字跟著游標跑、濃度跟著 influence 淡入淡出。
+    // 彩蛋：兩套驅動（見 TAP_QUERY 那段）
+    //   手機／平板 ── index 由 tap／3 秒計時器寫入，這裡只負責定位；錨點是最後一次點擊處，
+    //                 顯隱**不看 influence**（手指早就離開了，看它就會自己淡掉）。
+    //   桌機       ── index 由游標所在宮格逐幀推導，文字跟著游標跑、濃度跟著 influence 淡入淡出。
     const eggEl = eggRef.value;
     if (eggEl && halfW > 0) {
-      if (isMob) {
+      if (isTapMode) {
         const open = activeEgg.value >= 0;
         if (open) placeEgg(eggEl, eggAnchor);
         eggEl.style.opacity = open ? '1' : '0';
@@ -1624,7 +1788,10 @@ onMounted(() => {
           const i = row * cfg.gridCols + col;
           if (i < cfg.phrases.length && cfg.phrases[i]) idx = i;
         }
-        if (idx !== activeEgg.value) activeEgg.value = idx; // 僅換格才觸發 re-render
+        if (idx !== activeEgg.value) {
+          activeEgg.value = idx; // 僅換格才觸發 re-render
+          if (idx >= 0) playSfx('aiFaceText'); // idx < 0 ＝ 滑出人臉＝收起，不出聲
+        }
         if (idx >= 0) {
           // 文字中心對齊真空中心（游標位置）
           placeEgg(eggEl, smoothMouse);
@@ -1668,10 +1835,15 @@ onMounted(() => {
       dispArr.fill(0);
       velArr.fill(0);
       dispAttr.needsUpdate = true;
+      // 已經是全 0 且已上傳 → 恢復後直接從「靜止」起跳，第一個 canHit 會把它叫醒。
+      dispSettled = true;
     }
   };
   const syncRunning = () => {
-    if (shouldRun()) {
+    // 下滑提示吃同一組訊號（見 scrollHintOn 的 ①）：這裡是三個訊號變動的唯一匯流點，
+    // 故在場與否也在這裡交出去，不另外再接一套 IO／watch。
+    onStage.value = shouldRun();
+    if (onStage.value) {
       tryReveal();
       startLoop();
     } else {
@@ -1741,15 +1913,17 @@ onMounted(() => {
     renderer.domElement.removeEventListener('pointermove', onMove);
     renderer.domElement.removeEventListener('pointerleave', onLeave);
     renderer.domElement.removeEventListener('click', onTap);
-    window.removeEventListener('scroll', invalidateRect);
-    mobMq.removeEventListener('change', onMobChange);
+    window.removeEventListener('scroll', onScroll);
+    clearTimeout(idleTimer); // 下滑提示的十秒計時（由上面那支 onScroll 排的）
+    tapMq.removeEventListener('change', onTierChange);
+    mobMq.removeEventListener('change', onTierChange);
     revealTween?.kill(); // gsap ticker 上的補間，不會隨 rAF 一起停
     revealTween = null;
     gsap.killTweensOf(bgColor); // 同上：底色補間也跑在 gsap 的 ticker 上
     syncBgFn = null;
     // ⚠️ dispose() 只釋放 three 這側的資源，WebGL context 本身要 forceContextLoss() 才會
-    //    還給瀏覽器。demo 頁的「矩陣／散點」切換每按一次就掛一個新的 WebGL 元件 ——
-    //    不還的話大約 8~16 次就撞到瀏覽器的 context 上限，之後新的 canvas 全黑。
+    //    還給瀏覽器。每次掛載就佔掉一個 context（開發時 HMR 反覆重掛最容易撞到）——
+    //    不還的話大約 8~16 次就到瀏覽器的 context 上限，之後新的 canvas 全黑。
     renderer.forceContextLoss();
     renderer.dispose();
     geom?.dispose();
@@ -1759,11 +1933,6 @@ onMounted(() => {
     wrap.removeChild(renderer.domElement);
   });
 });
-
-// 給開發面板用的介面（正式站不會碰到；面板只在 demo 頁掛載）。
-// config 是 plain object、故意不做成 reactive —— 它在 animate() 熱迴圈裡每幀被讀很多次，
-// 包成 reactive 等於在每幀加上一整排 proxy trap。面板只在初始化時讀它一次當 draft 初值。
-defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
 </script>
 
 <template>
@@ -1776,10 +1945,11 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
     </div>
 
     <!-- 互動提示：圓環圖示錨在人像右下臉頰（位置由 JS 投影寫成 --hint-x/y，對位交給 CSS），
-         游標/手指真的碰到人像後收起。圖示照 Figma 2065:139734 的三個同心圓，兩個斷點共用；
-         說明文字 pc 排在圖示右邊（.hint__text）、手機排在人像下方（.hint-mob）。 -->
+         游標/手指真的碰到人像後收起。圖示照 Figma 2065:139734 的三個同心圓，三個斷點共用；
+         說明文字 pc／平板排在圖示右邊（.hint__text，兩者文案不同見 hintText）、
+         手機排在人像下方（.hint-mob）。 -->
     <div
-      v-if="(hint || hintMob) && hintPos"
+      v-if="(hint || hintPad || hintMob) && hintPos"
       class="hint"
       :class="{ 'hint--on': hintVisible }"
       :style="{ '--hint-x': `${hintPos.x}px`, '--hint-y': `${hintPos.y}px` }"
@@ -1810,7 +1980,7 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
         />
         <circle cx="44" cy="44" r="8" fill="white" fill-opacity="0.85" />
       </svg>
-      <p class="hint__text">{{ hint }}</p>
+      <p class="hint__text">{{ hintText }}</p>
     </div>
 
     <!-- 手機版說明文字：單行置中，錨在人像 bbox 底緣中點、下移 31px（Figma 2065:120222）。
@@ -1827,6 +1997,15 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
     >
       {{ hintMob }}
     </p>
+
+    <!-- 下滑提示：水平置中、距舞台底緣 44px（Figma 2065:139741）。
+         語意與上面兩組不同 —— 那兩組是「這裡可以互動」的邀請，這顆是「還有下文」的指引；
+         但在手機兩者會擠在同一塊，故顯示時機上互斥（三個條件見 scrollHintOn）。 -->
+    <UBtnScrollHint
+      v-if="scrollHintOn"
+      class="scroll-hint"
+      :label="scrollHint"
+    />
   </div>
 </template>
 
@@ -1836,7 +2015,7 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
   width: 100%;
   // 視窗高的單一來源見 app/utils/viewport-height.ts；mixins.scss 由 nuxt.config
   // 的 additionalData 自動注入，不必在此 @use。
-  // 這是 in-flow 用法（demo 頁）的預設；掛在 hero 轉場層裡時由該層覆寫成 height:100%
+  // 這是 in-flow 用法的預設；掛在 hero 轉場層裡時由該層覆寫成 height:100%
   // —— 那層是 fixed inset:0（dynamic viewport），與 --vh（large viewport）不是同一把尺。
   // 理由寫在 01.hero/HeroSymbolTransition.vue 的 :deep(.stage)。
   height: vh(1);
@@ -1870,8 +2049,10 @@ defineExpose({ config: cfg, gridStats, applyConfig, applyColors });
 }
 
 // 圓環圖示那一組：位置由 JS 把 bbox 上的錨點投影成螢幕 px，寫進 --hint-x/y。
-// tablet（768–1279）不顯示：稿只有 mob 與 pc 兩版，中間那段沒有版位可依。
-// ⚠️ 已知取捨：寬度 ≥1280 的觸控裝置（iPad Pro 橫向、Surface）也會看到 pc 那句「游標移動」，
+// 三個斷點都出現。稿只有 mob 與 pc 兩版，平板沿用 pc 版位、只換文案（見 hintPad prop）——
+// 2026-08-23 之前 tablet（768–1279）是 display:none，那一段整組提示看不到，而彩蛋也同時
+// 卡在「走 hover 那套、但機器沒有 hover」的縫裡（見 script 側 TAP_QUERY 那段）。
+// ⚠️ 已知取捨：寬度 ≥1280 的觸控裝置（iPad Pro 橫向、Surface）仍會看到 pc 那句「游標移動」，
 //    但那台機器沒有游標。改用 (hover: hover) 能擋掉，此處依專案決定一律走斷點。
 $hint-icon-size: 88px;
 
@@ -1880,7 +2061,7 @@ $hint-icon-size: 88px;
   left: 0;
   top: 0;
   z-index: 2;
-  display: none;
+  display: flex;
   align-items: center;
   gap: 16px;
   // ⚠️ 第二段位移是把**圖示中心**（而非整組的中心）對到錨點：pc 稿的說明文字排在圖示
@@ -1892,14 +2073,6 @@ $hint-icon-size: 88px;
   opacity: 0;
   transition: opacity 0.4s ease;
   will-change: opacity;
-
-  @include rwd-max('tablet') {
-    display: flex;
-  }
-
-  @include rwd-min('pc') {
-    display: flex;
-  }
 }
 
 .hint--on {
@@ -1914,7 +2087,8 @@ $hint-icon-size: 88px;
 }
 
 // pc 稿的橫排說明：Noto Sans TC Light 13 / 26、字距 1.3、白色（主字體由 base.scss 全域指定）。
-// 手機不排在圖示旁邊，故 <pc 一律不出現 —— 這也讓 .hint 在手機只剩圖示、上面那道
+// 平板共用這一組版位、只換文案（見 script 側的 hintText），故界線畫在 tablet 而不是 pc。
+// 手機不排在圖示旁邊，故 <768 一律不出現 —— 這也讓 .hint 在手機只剩圖示、上面那道
 // translate 自然等於置中。
 .hint__text {
   display: none;
@@ -1926,7 +2100,7 @@ $hint-icon-size: 88px;
   color: #fff;
   white-space: pre-line; // 吃文案裡的 \n
 
-  @include rwd-min('pc') {
+  @include rwd-min('tablet') {
     display: block;
   }
 }
@@ -1960,6 +2134,32 @@ $hint-icon-size: 88px;
 
 .hint-mob--on {
   opacity: 1;
+}
+
+// 下滑提示的版位（圖示本體、漂移動態與捲動行為都在 <UBtnScrollHint>）。
+// 設計稿 Figma 2065:139741（1280×720 的「智慧論壇07」）：22×12 的圖示水平置中
+// —— 量到的墨水 bbox 是 x 629..650，中心 640 ＝ 畫面中心；距框底 44px。
+// （metadata 回報 x=651 是旋轉過的 instance 的未變換 bbox，不是實際落點。）
+// 稿上只有 pc 那一格有這個提示（mob 的 2065:120222 沒有），故三個斷點共用同一組數字。
+//
+// ⚠️ 不補 --chrome-inset（與 hero 的 .sec1__hero-scroll 不同）：正式站本層住在
+//    HeroSymbolTransition 的 fixed inset:0 之內、.stage 被覆寫成 height:100%
+//    ＝ dynamic viewport，底緣就是「看得到的」底緣。hero 那邊要補是因為它的容器高是
+//    vh() ＝ large viewport（凍結、不隨網址列收合）。
+//
+// ⚠️ pointer-events: auto 是必要條件，不是保險：外層 .hero-symbol-transition 是
+//    pointer-events: none（只有 :deep(canvas) 被打開，見該檔），不覆寫回來這顆按鈕
+//    的命中會穿過去掉到下層，點不到。
+// z-index 2 ＝ 與 .egg / .hint 同層：三者不重疊，都只需要疊在 canvas 之上
+//    （canvas 由 three.js appendChild 進來、未定位，故任何 positioned 子項都在它之上，
+//     這個 2 是把意圖寫明、不倚賴那條規則）。
+.scroll-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  z-index: 2;
+  transform: translateX(-50%);
+  pointer-events: auto;
 }
 
 </style>

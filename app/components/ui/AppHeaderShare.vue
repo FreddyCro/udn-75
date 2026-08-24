@@ -13,6 +13,8 @@ const props = withDefaults(
 // LINE 的手機／PC 網址不同，且只有瀏覽器才判得出來 —— 掛載後才換值（見 utils/share）。
 const lineHref = useLineShareUrl();
 
+const { play } = useSfx();
+
 // glyph：該圖示在 36 見方外框內的原生高度佔比（設計稿 fb 25.31 / LINE 27.87 / X 22.75）。
 // 三個 glyph 的長寬比不同，撐滿外框會讓 X 比框寬 3.8px —— 外框只是版位，glyph 不填滿。
 const links = computed(() => [
@@ -61,7 +63,7 @@ onBeforeUnmount(() => {
       :class="{ 'app-header-share__link--shown': shown }"
       :style="{
         '--glyph-h': `${link.glyph}%`,
-        ...(layout === 'dropdown' ? { '--i': i + 1 } : {}),
+        ...(layout === 'dropdown' ? { '--i': i } : {}),
       }"
       :href="link.href"
       :aria-label="link.label"
@@ -69,6 +71,8 @@ onBeforeUnmount(() => {
       :data-ga="link.ga"
       target="_blank"
       rel="noreferrer noopener"
+      @mouseenter="play('sfx01')"
+      @click="play('sfx01')"
     >
       <AppHeaderIcon :name="link.key" />
     </a>
@@ -80,7 +84,8 @@ onBeforeUnmount(() => {
       type="button"
       aria-label="分享"
       :aria-expanded="open"
-      @click="open = !open"
+      @mouseenter="play('sfx01')"
+      @click="open = !open; play('sfx01')"
     >
       <AppHeaderIcon name="share" />
     </button>
@@ -97,6 +102,14 @@ onBeforeUnmount(() => {
   &--inline {
     gap: 16px;
   }
+
+  // 稿（Figma 3547:29512，note 寫著「分享icon，和header距離12px，三個icon距離12px」）：
+  // 展開的三顆各是 36 見方的框（＝ inline 那組同一個元件，glyph 佔比也相同），
+  // 第一顆上緣離主列底緣 12px、之後每顆間距 12px（故節距 48）。
+  &--dropdown {
+    --drop-box: 36px;
+    --drop-gap: 12px;
+  }
 }
 
 .app-header-share__link {
@@ -105,16 +118,18 @@ onBeforeUnmount(() => {
   justify-content: center;
   color: inherit;
 
-  // 展開的三顆與 toggler 疊在同一欄（left: 0），故外框寬要和 toggler 一致，
-  // glyph 才會置中對齊；若留 auto，各 glyph 會靠左貼齊而與 toggler 差 4~5px。
+  // 展開的三顆與 toggler 疊在同一欄。框比 toggler 寬（36 vs --hd-icon-w 27.5），
+  // 故用 left: 50% ＋ translateX(-50%) 對齊兩者的**中軸**——
+  // 若寫 left: 0，glyph 會整欄往右偏 (36 − 27.5) / 2 ＝ 4.25px。
   .app-header-share--dropdown & {
     position: absolute;
     top: 0;
-    left: 0;
-    width: var(--hd-icon-w);
-    height: var(--hd-icon-h);
+    left: 50%;
+    width: var(--drop-box);
+    height: var(--drop-box);
     opacity: 0;
     pointer-events: none;
+    transform: translateX(-50%);
     transition:
       top 0.25s,
       opacity 0.25s;
@@ -125,9 +140,20 @@ onBeforeUnmount(() => {
     height: 36px;
   }
 
+  // 落點（--i 從 0 起算）：主列底緣 ＋ 12 ＋ 第 n 顆 × 節距。
+  //
+  // 起點用「50% ＋ 半個主列高」而不是寫死 63px：本體（＝ toggler 那一格）在主列裡是
+  // 垂直置中的（.app-header__bar 與 .app-header__icons 都 align-items: center），
+  // 故 50% 就是主列中線，加半個主列高正好落在主列底緣 ——
+  // --header-height 或 icon 版位改了都不必回來改這裡。
+  // 原本是 top: calc(var(--i) * 116%)（節距 ＝ 116% 的 22px 框 ≈ 25.5px、第一顆還在
+  // 主列**內**），那是沿用 NmdHeaderShare 的節奏，不是本站的稿。
   &--shown {
     .app-header-share--dropdown & {
-      top: calc(var(--i) * 116%);
+      top: calc(
+        50% + (var(--header-height) - 3px) / 2 + var(--drop-gap) + var(--i) *
+          (var(--drop-box) + var(--drop-gap))
+      );
       opacity: 1;
       pointer-events: auto;
     }
