@@ -254,11 +254,20 @@ onBeforeUnmount(() => {
 
   position: relative;
   padding: 0 26px;
-  margin: 0 auto;
+  // mob 稿：議程與論壇三之間的 32 留白（pc / pad 稿沒有，故 ≥768 歸零）。
+  // ⚠️ 一定要用 margin，**不可以改成 padding-top** —— measure() 的 bounds 以 .agenda 的
+  //    border box 頂端為 0 起算，而它假設那裡就是第一組的上緣。padding 會把兩者拉開 32px，
+  //    第一個箭頭就在核心還沒被群組遮住（＝還看得見）時提前亮起，破壞「箭頭不可以在核心
+  //    還看得見的時候出現或消失」這條設計要求（見上方 CORE_HALF 的說明）。
+  // 這個 margin 會與 .sec2__pin 的上緣 collapse（那層無 padding-top／border-top）→ 留白
+  // 落在 .sec2__path 與 .sec2__pin 之間，兩邊都是白底故看不出差別，而 --sec2-pin-h
+  // （sticky 夾點）不含它、仍與自己的塊高一致。
+  margin: 32px auto 0;
 
   @include rwd-min('tablet') {
     max-width: 608px;
     padding: 0;
+    margin-top: 0;
   }
 
   @include rwd-min('pc') {
