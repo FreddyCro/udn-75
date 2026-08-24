@@ -1,0 +1,1 @@
+import{H as o}from"./MRAXCAJA.js";import{o as r,g as e,Y as p}from"./BV_g2IUg.js";import"./P7EiMmiy.js";import"./DlAUqK2U.js";import"./BqnVrj3b.js";import"./CfpM0-02.js";import"./CUhv4dJj.js";import"./6-W2TXLO.js";import"./Ctm9ne2l.js";const d=r({__name:"health",setup(m){return(a,i)=>{const t=o;return p(),e(t)}}});export{d as default};

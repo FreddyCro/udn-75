@@ -1,0 +1,1 @@
+import{E as t}from"./BWTqQtX2.js";import{o as r,g as e,Y as c}from"./BV_g2IUg.js";import"./P7EiMmiy.js";import"./DlAUqK2U.js";import"./CUhv4dJj.js";import"./CfpM0-02.js";import"./6-W2TXLO.js";import"./Ctm9ne2l.js";const E=r({__name:"education",setup(i){return(n,p)=>{const o=t;return c(),e(o)}}});export{E as default};
