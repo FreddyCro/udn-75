@@ -102,7 +102,9 @@ const stageEl = ref<HTMLElement | null>(null);
 // 換算成螢幕座標（退場交棒，見 ~/utils/hero-core-handoff）。
 defineExpose({ videoEl });
 
-const videoSrc = computed(() => `${ASSETS_PATH}${HERO_VIDEO_SRC[device.value]}`);
+const videoSrc = computed(
+  () => `${ASSETS_PATH}${HERO_VIDEO_SRC[device.value]}`,
+);
 const videoPoster = computed(() => {
   const poster = HERO_VIDEO_POSTER[device.value];
   return poster ? `${ASSETS_PATH}${poster}` : undefined;
@@ -548,7 +550,8 @@ onMounted(() => {
   if (heroEl.value) {
     heroIO = new IntersectionObserver(
       ([entry]) => {
-        if (!entry || entry.isIntersecting || heroState.value === 'gone') return;
+        if (!entry || entry.isIntersecting || heroState.value === 'gone')
+          return;
         setState('gone');
       },
       { threshold: 0 },
@@ -826,6 +829,7 @@ onBeforeUnmount(() => {
   }
   @include rwd-max('tablet') {
     object-position: center; // mob（直式剪輯）
+    object-fit: contain;
   }
 }
 
