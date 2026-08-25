@@ -90,16 +90,20 @@ const props = defineProps({
   contrast: { type: Number, default: 1.4 },
   /** 負片：反轉明暗，決定人臉是「光雕」還是「陰影雕」 */
   invert: { type: Boolean, default: false },
-  /** 字重階數；1 ＝ 單一字重 */
-  weightSteps: { type: Number, default: 5 },
-  /** 暗部字重 */
+  /** 字重階數；1 ＝ 單一字重（只烘 weightMax 那一階，見 buildWeightLadder）。
+   *  2026-08-26 由 5 降到 1：那五階是**啞的**（下方 weightMax 的量測），
+   *  atlas 因此白付 96/120 格 —— 352×352 降到 160×160，畫面逐像素相同。
+   *  ⚠️ 要動回 >1 之前先確認烘字字型真的有那些字重，否則只是把貼圖放大 5 倍。 */
+  weightSteps: { type: Number, default: 1 },
+  /** 暗部字重。⚠️ weightSteps = 1 時**不會被讀到**（階梯只取 weightMax）。 */
   weightMin: { type: Number, default: 100 },
   /** 亮部字重。500 ＝ 設計師 preset；與 weightMin 100 搭 weightSteps 5 恰好是他的產生器
    *  在 100..500 間做 round(w/100)*100 的那 5 階。
-   *  ⚠️ 未驗證：atlas 烘字用 "Courier New", monospace（非可變字型，只有 regular/bold），
-   *     canvas 對 100–500 很可能一律選 regular ＝ 這五階畫出來一樣粗、字重滑桿是啞的。
+   *  ⚠️ 那五階是啞的（2026-08-26 實測）：atlas 烘字用 "Courier New", monospace ——
+   *     非可變字型，canvas 對 100–500 一律選 regular。以 32px cell 逐格量總 alpha，
+   *     100/200/300/400/500 五階完全相同（N 皆 85.4、U 皆 67.35），故 weightSteps 已降為 1。
    *     他的產生器用 monospace 也有同樣限制，故兩邊一致、不是我們這邊的 bug；
-   *     真的要連續字重得換成 variable mono font。 */
+   *     真的要連續字重得換成 variable mono font（換了才有理由把 weightSteps 調回 5）。 */
   weightMax: { type: Number, default: 500 },
   /** 漸層色標位置（0..1），長度需與 color 相同；空陣列＝等距 */
   colorStops: { type: Array as () => number[], default: () => [] },

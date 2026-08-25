@@ -834,6 +834,11 @@ function applyScrollLock() {
         active 由轉場層以 slot prop 交出（＝該層自己的顯隱條件），SymbolFace 據此停/續 rAF：
         轉場開始前與交棒之後，那顆滿版 canvas 是看不見的，不該還在跑幾千顆粒子的
         物理積分 + buffer 上傳 + draw call。
+
+        ⚠️ weight-steps 是 1 而不是 preset 的 5（2026-08-26 改）：Courier New 沒有 100–500
+           變體，那五階烘出來逐像素相同 ＝ atlas 白付 96/120 格（352×352 → 160×160）。
+           量測與還原點見 SymbolFace 的 weightMax 註解；weight-min 在 steps=1 時不會被讀到，
+           留著是為了將來換可變 mono 字型時能直接調回去。
       -->
       <template #default="{ active: symbolLayerActive }">
         <SymbolFace
@@ -868,7 +873,7 @@ function applyScrollLock() {
           :invert="false"
           :size-min="0.4"
           :size-max="0.8"
-          :weight-steps="5"
+          :weight-steps="1"
           :weight-min="100"
           :weight-max="500"
           :glitch-items="SYMBOL_GLITCH_ITEMS"

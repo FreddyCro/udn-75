@@ -122,7 +122,9 @@ export function sortCharsByInk(chars: string[]): string[] {
  * cell 索引 ＝ glyphIndex(charIdx, weightIdx, weights.length)，
  * fragment shader 以 gl_PointCoord + cell offset 取樣（uAtlasGrid 傳 cols/rows）。
  *
- * 預設 8 字 × 5 階 = 40 cells → 7×6 grid × 64px = 448×384。
+ * 現況（2026-08-26 起）24 字 × 1 階 = 24 cells → 5×5 grid × 32px = 160×160。
+ * 曾是 24 字 × 5 階 = 120 cells（11×11 = 352×352），但 Courier New 沒有 100–500 變體，
+ * 五階逐像素相同 —— 見 SymbolFace 的 weightSteps / weightMax 註解。
  *
  * @param chars 已排序、**不含**前置空白的字元（即 sortCharsByInk(...).slice(1)）
  */
