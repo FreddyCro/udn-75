@@ -28,6 +28,8 @@ const { play } = useSfx();
       variant="gray"
       class="agenda-report__cta"
       :href="cta.href"
+      :target="cta.target"
+      :rel="cta.target === '_blank' ? 'noopener' : undefined"
       @mouseenter="play('sfx01')"
       @click="play('sfx01'); gaClickButton('button', cta.gaTerm)"
     >

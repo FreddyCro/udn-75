@@ -291,7 +291,8 @@ function onTimeUpdate() {
   switch (heroState.value) {
     case 'main':
       // 正片播完 → **順播進退場段**（2026-08-22；原本是進 loop 等使用者下滑）。
-      // 頁面此刻仍鎖著，下方 watch(heroState) 會 seek 到 36s 續播。
+      // 頁面此刻仍鎖著；main.end 與 outro.start 相接（2026-08-25 起不再跳段）⇒ 下方
+      // watch(heroState) 的 alignToSegment 判定「已在段內」而不 seek，影片就這樣播下去。
       if (v.currentTime >= seg.main.end) setState('outro');
       break;
     case 'outro':
@@ -341,7 +342,8 @@ function onError() {
 let heroIO: IntersectionObserver | null = null;
 
 // 狀態改變（順播推進 / SKIP / scrub）→ 對齊該段起點並續播；gone 則停住影片並歸零。
-// 已落在目標段內就不 seek。main → outro 必定 seek（33 → 36 中間刻意留白，見段落表）。
+// 已落在目標段內就不 seek ⇒ main → outro 這個順播交界**不會** seek（兩段秒數相接，
+// 見段落表）。真的會 seek 的只剩 SKIP（正片中途跳到退場段）與 restart（回到 0）。
 watch(heroState, (s) => {
   const v = videoEl.value;
   // 進 main（首訪／restart 重播）＝ 又被鎖起來了 → 補上保險絲；離開 main 則收掉。
@@ -799,10 +801,11 @@ onBeforeUnmount(() => {
   }
 }
 
-// <video> 本體：滿版裁切置中。
-// RWD 影片「來源」在 ~/utils/hero-video-config 依裝置切換；三支剪輯都已到位，且 pad / mob
-// 是直式（1024×1364 / 720×1280，與其視窗方向相符）→ cover 置中就是設計要的裁切，
-// 下面兩個斷點覆寫目前與預設同值，留著當「要按斷點微調時」的位置。
+// <video> 本體：置中；pc 裁切滿版（cover），pad / mob 完整收進畫面（contain）。
+// RWD 影片「來源」在 ~/utils/hero-video-config 依裝置切換；三支剪輯都已到位，pad / mob
+// 是直式（1024×1364 / 720×1280，與其視窗方向相符）—— 但視窗比例只要與剪輯不合，cover
+// 仍會把畫面邊緣裁掉，故這兩個斷點改 contain（設計師指定）。留白露出的是 .sec1 的白底，
+// 與 gone 之後淡出露出的同一個顏色，銜接不會有落差。
 //
 // ⚠️ 改 object-position 要一起改退場交棒的換算：coverAnchorToScreen 預設以 center 分配
 //    裁切量（見 ~/utils/hero-core-handoff 與 Hero.vue 的 runCoreEntrance），
@@ -826,7 +829,9 @@ onBeforeUnmount(() => {
 
   @include rwd-max('pc') {
     object-position: center; // pad（直式剪輯）
+    object-fit: contain;
   }
+  // mob 與 pad 目前同值，仍各寫一次 —— 日後把 pad 改回 cover 時 mob 不會跟著被改掉。
   @include rwd-max('tablet') {
     object-position: center; // mob（直式剪輯）
     object-fit: contain;

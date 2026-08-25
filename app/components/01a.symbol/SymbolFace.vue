@@ -1945,7 +1945,8 @@ onMounted(() => {
     </div>
 
     <!-- 互動提示：圓環圖示錨在人像右下臉頰（位置由 JS 投影寫成 --hint-x/y，對位交給 CSS），
-         游標/手指真的碰到人像後收起。圖示照 Figma 2065:139734 的三個同心圓，三個斷點共用；
+         游標/手指真的碰到人像後收起。圖示照 Figma 2065:139734 的三個同心圓（中／外兩圈
+         實作成向外擴散的漣漪，見 .hint__wave），三個斷點共用；
          說明文字 pc／平板排在圖示右邊（.hint__text，兩者文案不同見 hintText）、
          手機排在人像下方（.hint-mob）。 -->
     <div
@@ -1963,22 +1964,9 @@ onMounted(() => {
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
-        <circle
-          cx="44"
-          cy="44"
-          r="43.75"
-          stroke="white"
-          stroke-opacity="0.5"
-          stroke-width="0.5"
-        />
-        <circle
-          cx="44"
-          cy="44"
-          r="23.5"
-          stroke="white"
-          stroke-opacity="0.75"
-        />
-        <circle cx="44" cy="44" r="8" fill="white" fill-opacity="0.85" />
+        <circle class="hint__wave" cx="44" cy="44" r="43.75" />
+        <circle class="hint__wave hint__wave--late" cx="44" cy="44" r="43.75" />
+        <circle class="hint__dot" cx="44" cy="44" r="8" />
       </svg>
       <p class="hint__text">{{ hintText }}</p>
     </div>
@@ -2084,6 +2072,77 @@ $hint-icon-size: 88px;
   flex: 0 0 auto;
   width: $hint-icon-size;
   height: $hint-icon-size;
+}
+
+// 漣漪：與 HeroStart 的音效提示同一套做法（見 .hero-start__sound-wave）——
+// 設計稿那張「中圈 ＋ 外圈」的定格，實作成同一顆最外圈（r=43.75）的兩份副本，
+// 各自由圓心擴到最外圈、相位差半個週期，故畫面上同時看得到一內一外兩圈。
+// ⚠️ 這兩個秒數與 HeroStart 的 PULSE_DURATION / PULSE_STAGGER 是同一組節奏，
+//    分屬 scss 與 ts 無法共用，改一邊要記得跟著改另一邊。
+$hint-pulse-dur: 1.5s;
+$hint-pulse-stagger: 0.75s;
+
+// scale 0.1829 = 8 / 43.75（設計稿實心點 → 最外圈的半徑比）
+@keyframes hint-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.1829);
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  60% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+.hint__wave {
+  fill: none;
+  stroke: #fff;
+  stroke-opacity: 0.75; // 設計稿中圈的值 ＝ 漣漪最亮的那一段；擴到最外圈時已在淡出
+  stroke-width: 0.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  // 這組提示沒有固定次數（收場由「碰到人像」決定，見 script 的 dismissHint），故 infinite；
+  // fill-mode: both 讓 delay 期間也套 0% 那格（透明），第二圈才不會先閃一下靜止的滿版外圈。
+  animation: hint-pulse $hint-pulse-dur ease-out infinite both;
+  // 平時暫停、整組亮起才跑。用 paused 而不是「亮起時才掛 animation」：整組淡出的那 0.4s
+  // （.hint 的 transition）若把動畫拿掉，會先跳回靜止的滿版外圈再淡掉；暫停則是原地凍住。
+  animation-play-state: paused;
+
+  &--late {
+    animation-delay: $hint-pulse-stagger;
+  }
+}
+
+.hint--on .hint__wave {
+  animation-play-state: running;
+}
+
+.hint__dot {
+  fill: #fff;
+  fill-opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  // 不擴散：直接定在設計稿的靜態三層（中圈 23.5/43.75、外圈原尺寸且較淡）。
+  // 顯隱照舊由 .hint--on 的 opacity 過渡負責，故提示該在的時候還是在。
+  .hint__wave {
+    animation: none;
+    transform: scale(0.5371);
+
+    &--late {
+      stroke-opacity: 0.5;
+      transform: none;
+    }
+  }
 }
 
 // pc 稿的橫排說明：Noto Sans TC Light 13 / 26、字距 1.3、白色（主字體由 base.scss 全域指定）。

@@ -9,7 +9,7 @@
 // 三個裝置各有一支剪輯，main / outro 都在同一支裡，長度實測皆為 40.73s
 // → 段落秒數三個裝置共用（下方 HERO_VIDEO_SEGMENTS_BY_DEVICE 不必覆寫）。
 // 畫面尺寸不同：pc 1920×1080（橫）、pad 1024×1364（直）、mob 720×1280（直）。
-// 實際會播到的只有 0–33 與 36–38.5 兩段（中間 3 秒與 38.5s 之後都不播，見下方段落表）。
+// 實際會播到的是 0–38.5 這一整段（順播、不跳段；38.5s 之後不播，見下方段落表）。
 
 import type { HeroCoreAnchor } from './hero-core-handoff';
 
@@ -77,16 +77,22 @@ export const HERO_VIDEO_END = Number.POSITIVE_INFINITY;
 //   outro outro.start → outro.end 退場段；到 end（或影片播完）→ 解鎖，等捲動溶解
 //
 // 2026-08-22（使用者裁決）：原本 main 只到 30、30–33 是「等使用者下滑」的 loop 循環段。
-// 新流程沒有等待階段 —— 正片一路播到 33（loop 段當正片尾巴播一次，不再循環），
-// 接著 seek 到 36 播退場，**整段都還鎖著**，退場播完才解鎖（見 ~/utils/hero-scroll-lock）。
-// 於是設計師「不要因為捲太快而看不到 outro」這條需求第一次真正成立。
+// 新流程沒有等待階段 —— 正片一路播到退場段，**整段都還鎖著**，退場播完才解鎖
+// （見 ~/utils/hero-scroll-lock）。於是設計師「不要因為捲太快而看不到 outro」這條需求
+// 第一次真正成立。
 //
-// ⚠️ main → outro 之間那 3 秒（33 → 36）**刻意不播**：這是剪輯要求（退場要從 36s 那一幀
-//    開始），不是漏填 —— 別「順手」把它改成相接。seek 由 HeroVideo 的 watch(heroState) 做。
+// 2026-08-25（使用者裁決）：**跳段功能移除，整支順播到底**。在此之前 main 只到 33、
+// 33 → 36 那 3 秒由 watch(heroState) seek 跳過（舊剪輯要求退場從 36s 那一幀開始）。
+// 現在 main.end 直接接上 outro.start ⇒ alignToSegment 判定「已在段內」而不 seek，
+// 影片從 0 一路播到 38.5s（見 HeroVideo 的 watch(heroState) 與 alignToSegment）。
 //
-// 秒數：正片 0–33（含原 loop 段）、退場 36–38.5 → gone（影片其餘部分不播）。影片全長 40.02s。
+// ⚠️ 這兩個值要**維持相接**：一旦讓它們產生落差，main → outro 就會又變回一次 seek
+//    （＝把剛移除的跳段功能默默裝回去）。要改退場起點就兩個一起改。
+//
+// 秒數：正片 0–36（含原 loop 段與原本跳過的 3 秒）、退場 36–38.5 → gone
+// （38.5s 之後不播）。影片全長約 40s。
 export const HERO_VIDEO_SEGMENTS: HeroVideoSegments = {
-  main: { start: 0, end: 33 },
+  main: { start: 0, end: 36 },
   outro: { start: 36, end: 38.5 },
 };
 
@@ -115,7 +121,7 @@ export function heroVideoSegments(device: HeroVideoDevice): HeroVideoSegments {
  * 淡出不另設秒數 —— 一離開正片（main → outro）就淡出，故跟著 main.end 走。
  *
  * 設計稿 #BN skip 標的是 3 秒；2026-08-22 使用者裁決改為 **2 秒**（開場的強制觀看時間
- * 隨順播延長到 35.5 秒，逃生口該更早出現）。
+ * 隨順播延長到 35.5 秒，逃生口該更早出現；2026-08-25 移除跳段後又延長到 38.5 秒）。
  */
 export const HERO_SKIP_APPEAR_AT = 2;
 

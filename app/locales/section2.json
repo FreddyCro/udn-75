@@ -496,7 +496,7 @@
         "id": "forum-agenda-download",
         "gaTerm": "agenda_download",
         "label": "下載完整議程",
-        "href": "/meta.jpg",
+        "href": "/img/udn75_agenda.jpg",
         "variant": "outline",
         "download": "udn75-完整議程.jpg"
       },
@@ -505,7 +505,8 @@
         "gaTerm": "agenda_signup",
         "label": "立即報名",
         "href": "https://udn.com/upf/ubrand/2026_data/udn75-sustainability-signup/",
-        "variant": "primary"
+        "variant": "primary",
+        "target": "_blank"
       }
     ]
   },
@@ -519,7 +520,8 @@
       "id": "forum-report-cta",
       "gaTerm": "generation_report",
       "label": "AI時代 <br/>跨世代永續與未來生活大調查",
-      "href": "https://udn.com/upf/ubrand/2026_data/udn75-sustainability/"
+      "href": "https://udn.com/upf/ubrand/2026_data/udn75-sustainability/",
+      "target": "_blank"
     }
   },
   "highlights": {
