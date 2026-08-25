@@ -1069,7 +1069,7 @@ export const COVER_HANDOFF_SPAN = 0.15;
 
 // 飛機沉到「機身最上緣剛好沒入接縫」之後，再多推的餘裕（px）。
 //
-// **推的總距離不是常數，是量出來的**（見 ForumCorePath 的 planeOverhang）：
+// **推的總距離不是常數，是量出來的**（見 ForumCorePath 的 measurePlaneSpan 的 back）：
 // 真正要走完的只有「機身露在接縫上方的那一截」，而它在接觸點就已經很小了 ——
 // pc 實測 13.8px（設計線末端切線幾乎垂直，sprite 旋轉近 180° 之後大半本來就在接縫下）。
 //
@@ -1102,6 +1102,34 @@ function easeOutQuad(t: number): number {
  *  純函式、不依賴 DOM —— 曲線由 test/blessing-cover.spec.ts 守著。 */
 export function coverHandoffAt(p: number): number {
   return easeOutQuad((p - COVER_CONTACT) / COVER_HANDOFF_SPAN);
+}
+
+/** 紙飛機沒入色塊的比例（0 ＝ 機鼻剛碰到接縫、1 ＝ 機尾也沒入）。
+ *
+ *  ⚠️ 這才是「變身進度」的真相，coverHandoffAt 不是 —— 兩者差一整個機身：
+ *     核心的**定位點**（`.forum-path__core` 的中心）抵達接縫的那一刻＝ COVER_CONTACT，
+ *     但機身是畫在定位點**前方**的 —— pc 實測機鼻在定位點前 76.6px、機尾只在後 14.5px。
+ *     照 coverHandoffAt 走，白方塊開始長的時候飛機早已沒入 84%（2026-08-25 實測，
+ *     見 temp/2026-08-25-plane-whitecore-sync.md），使用者看到的就是
+ *     「紙飛機已經進 blessing 一點了，white core 才出現」。
+ *     所以白方塊的 scaleY／尾跡淡出／底色翻橘一律改吃本函式。
+ *
+ *  參數都是**量出來的**（見 ForumCorePath 的 measurePlaneSpan），不是常數 ——
+ *  機身的跨距隨斷點、末端切線、筆尖縮放一起變，寫死就會在某個斷點再歪一次：
+ *    anchorFromSeam ＝ 定位點在接縫下方多少 px（負 ＝ 還在上方；含下潛位移）
+ *    lead / back     ＝ 機身最下緣／最上緣相對定位點的垂直距離
+ *  extent ≤ 0（還沒量到機身）時回 0：寧可「還沒開始變身」，也不要拿假的比例去長白方塊。
+ *
+ *  純函式、不依賴 DOM —— 由 test/blessing-cover.spec.ts 守著。 */
+export function planeSubmergedAt(
+  anchorFromSeam: number,
+  lead: number,
+  back: number,
+): number {
+  const extent = lead + back;
+  if (!(extent > 0)) return 0;
+  const t = (anchorFromSeam + lead) / extent;
+  return t < 0 ? 0 : t > 1 ? 1 : t;
 }
 
 // ── 序列定址表：章節 → part → progress ────────────────────────────────

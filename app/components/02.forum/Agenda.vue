@@ -18,13 +18,25 @@ import { stepToward, targetSlotAt } from '~/utils/agenda-active';
 import { CORE } from '~/utils/orange-core-config';
 import type { UBtnVariant } from '~/types/ui';
 import { gaClickButton } from '~/utils/tracking-event';
+import { detectInAppBrowser } from '~/utils/in-app-browser';
 
 const { groups } = str.agenda;
+
+// 標題存成陣列＝設計稿指定的強制折行點（目前只有 14:00 那列：斷在「》」之後，
+// 自然折行會斷在「發布」之後）。段與段之間插一個 <br class="agenda__title-break">，
+// 該 <br> 只在 pc／pad 生效 —— mob 欄寬不同、稿上沒有這個要求（見 SCSS）。
+// 單行標題仍是字串，不必為了這一列全部改寫成陣列。
+const titleLines = (title: string | string[]) =>
+  Array.isArray(title) ? title : [title];
 
 // CTA 資料。download 欄位只掛在「要當附件存下來」的那顆（目前是下載完整議程），
 // 有它才把 href 前綴 APP_ASSETS_PATH —— 另一顆（立即報名）是 udn.com 的絕對網址，
 // 前綴上去會變成 https 疊 https 的壞網址。
-// ⚠️ download 只在同源時有效；APP_ASSETS_PATH 若指到別的 origin，瀏覽器會改成直接開圖。
+// ⚠️ download 只在同源時有效（目前各環境的 NUXT_URL 與 APP_ASSETS_PATH 同 host，成立）；
+// 若哪天資產搬到別的 origin，瀏覽器會忽略 download 改成直接開圖。
+// 也因為「download 隨時可能失效」，下載那顆一併給了 target="_blank"：失效時（跨網域、
+// 舊 iOS）就變成開新分頁看圖，活動頁的 ScrollTrigger／pin／橘核心進度不會被整頁跳走清掉。
+// in-app WebView 是另一種失效，target 救不到，得靠下面把 download 整個拿掉。
 type AgendaAction = {
   /** DOM id（GTM 點擊事件用） */
   id: string;
@@ -34,14 +46,32 @@ type AgendaAction = {
   href: string;
   variant: string;
   download?: string;
-  /** 外連才給 '_blank'（目前是立即報名）；同源的下載那顆不給，留在原分頁 */
+  /** 兩顆都是 '_blank'：立即報名是外連，下載那顆是 download 失效時的保命傘（見上方說明） */
   target?: string;
 };
 const asset = useAssetUrl();
-const actions = (str.agenda.actions as AgendaAction[]).map((action) => ({
-  ...action,
-  href: action.download ? asset(action.href) : action.href,
-}));
+
+// in-app WebView（LINE／FB／IG 內建瀏覽器）不吃 <a download> —— 點了完全沒反應，
+// 而且 target="_blank" 救不到（判定發生在開分頁之前，見 ~/utils/in-app-browser）。
+// 偵測到就把 download 拿掉，退成單純「另開分頁看圖」：圖片導覽在任何 WebView 都成立，
+// iOS 直接開 JPG 會是 image document，長按即可「加入照片」—— 比下載到「檔案」還更接近
+// 使用者實際想要的結果。GA 的 gaTerm 刻意不跟著改（維持 agenda_download），
+// 換掉會讓 GTM 報表在這裡斷點。
+//
+// ⚠️ 首次渲染（含 prerender）必須維持有 download，掛載後才拿掉：UA 只有瀏覽器讀得到，
+//    在模組頂層或 setup 期間就定案會 hydration attribute mismatch（同 share.ts 的作法）。
+const inApp = ref(false);
+onMounted(() => {
+  inApp.value = detectInAppBrowser();
+});
+
+const actions = computed(() =>
+  (str.agenda.actions as AgendaAction[]).map((action) => ({
+    ...action,
+    href: action.download ? asset(action.href) : action.href,
+    download: inApp.value ? undefined : action.download,
+  })),
+);
 
 // 兩顆 CTA 的點擊音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
 // 見 useSfx.ts）；音效池由 pages/index.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
@@ -217,7 +247,11 @@ onBeforeUnmount(() => {
         <div v-for="(row, j) in group.rows" :key="j" class="agenda__row">
           <p class="agenda__time">{{ row.time }}</p>
           <div class="agenda__detail">
-            <p class="agenda__title">{{ row.title }}</p>
+            <p class="agenda__title">
+              <template v-for="(line, l) in titleLines(row.title)" :key="l">
+                <br v-if="l > 0" class="agenda__title-break" />{{ line }}
+              </template>
+            </p>
             <p v-for="(note, k) in row.notes" :key="k" class="agenda__note">
               {{ note }}
             </p>
@@ -240,7 +274,10 @@ onBeforeUnmount(() => {
         :target="action.target"
         :rel="action.target === '_blank' ? 'noopener' : undefined"
         @mouseenter="play('sfx01')"
-        @click="play('sfx01'); gaClickButton('signup', action.gaTerm)"
+        @click="
+          play('sfx01');
+          gaClickButton('signup', action.gaTerm);
+        "
       >
         {{ action.label }}
       </UBtn>
@@ -502,6 +539,14 @@ onBeforeUnmount(() => {
   }
 }
 
+// 設計稿指定的強制折行（只有 title 存成陣列的那列會出現，見 titleLines）：
+// pc／pad 照稿斷行，mob 收掉 → 兩段接回同一行、交給瀏覽器自然折。
+.agenda__title-break {
+  @include rwd-max('tablet') {
+    display: none;
+  }
+}
+
 .agenda__note {
   margin: 0;
   font-size: 18px;
@@ -513,18 +558,19 @@ onBeforeUnmount(() => {
 .agenda__actions {
   display: flex;
   justify-content: center;
+  flex-direction: column;
   gap: 14px;
   margin: 32px 0 80px;
 
   // pad：兩顆各 296 剛好併滿 608 的內容寬；mob 轉直排滿版。
-  @include rwd-max('pc') {
+  @include rwd-min('tablet') {
     gap: 16px;
-    margin: 60px 0 60px;
+    flex-direction: row;
+    margin: 40px 0 80px;
   }
 
-  @include rwd-max('tablet') {
-    flex-direction: column;
-    margin: 40px 0 80px;
+  @include rwd-min('pc') {
+    margin: 60px 0 60px;
   }
 }
 

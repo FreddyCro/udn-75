@@ -20,3 +20,4 @@
 - [Forum slash core alignment](forum-slash-core-alignment.md) — 論壇二 09/15 那一撇是核心畫出來的：撇的位置（CSS）與驅動線必須同一個真值；pad/mob 節點錨在撇上綁死、pc 只有守衛，動 pc 的 d 或 --coreslash-x/y 一定要回頭驗
 - [WebKit flex scroll intrinsic width](webkit-flex-scroll-intrinsic-width.md) — iOS 對 flex 裡的橫向捲動列寬度算錯（Chromium 看不出來）；寬度寫死、置中用首尾 auto margin、驗證用 Playwright WebKit
 - [GSAP refresh measures pinned DOM](gsap-refresh-measures-pinned-dom.md) — refreshInit 早於 revert pin：在 pin 生效／跑完時量 pin 內的元素會多算一整段 pin 距離（hero core 掉出視窗、轉場沒劃開的根因）
+- [Playwright fallback when MCP locked](playwright-fallback-when-mcp-locked.md) — MCP 瀏覽器被佔住時改用 npx cache 的 playwright ＋ 系統 Chrome；canvas 視覺用讀像素算 bbox 來驗

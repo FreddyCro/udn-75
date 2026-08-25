@@ -1,14 +1,13 @@
 <script setup lang="ts">
-// 永續祝福的夥伴清單面板（Figma 祝福詞0818：
+// 永續祝福的夥伴清單面板（Figma 祝福詞0824：
 // pc 3450:107574 / pad 3511:34196 / mob 3451:112446）。
 //
 // 白底面板、內部垂直捲動、自訂捲軸（軌 #bcbcbc / 把手 #686868、寬 8）。
 // 列的排列：pc / pad 是「logo 左 ＋ 語錄右對齊」，mob 改成「logo 上 / 語錄下」，
 // 文字框置中但**框內**語錄靠左、企業名置中（見 __text / __name 的 tablet 段）。
 //
-// 🚧 各夥伴的正式 logo 檔尚未提供 —— section3.json 的 logo 欄位目前一律指向同一支
-//    udn75_logo03_01.svg（設計稿原生尺寸 232×64，與 pc 的 logo 框等寬高）。
-//    檔案到齊後只要逐列改 JSON 的 logo 路徑即可，元件不需再動。
+// logo 放 public/img/blessing/partner-*.svg（少數含點陣圖的是 .png），一律裁成設計稿的
+// 232×64 框；還沒給 logo 的夥伴指向 partner-placeholder.svg，就是設計稿上的灰底佔位框。
 //
 // url／quote 皆可為空字串（客戶尚未提供）：空 url 該列就渲染成 <div> 而非 <a>，
 // 空 quote 整行不輸出——空的 <p> 會佔掉一行行高、把該列撐高。欄位一律保留而不省略，

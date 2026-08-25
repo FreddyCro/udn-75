@@ -47,6 +47,10 @@ const FIG_SIZE = [
 // 對錯圖示為 runtime 組出的動態路徑，須自行補資產前綴
 const assetUrl = useAssetUrl();
 
+// 兩顆作答鈕的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
+// 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
+const { play } = useSfx();
+
 const picked = ref(-1); // 使用者選的 index；-1 = 未作答
 const answered = computed(() => picked.value >= 0);
 const isCorrect = computed(() => props.options[picked.value]?.isAi === true);
@@ -88,7 +92,8 @@ function pick(i: number) {
         :class="{ 'ai-quiz__btn--picked': picked === i }"
         type="button"
         :aria-pressed="picked === i"
-        @click="pick(i)"
+        @mouseenter="play('sfx01')"
+        @click="play('sfx01'); pick(i)"
       >
         <!-- 圓鈕：hover 版（橘底白箭頭）疊在預設版上淡入，橘底不透明所以不必藏底下那張 -->
         <span v-if="i === 0" class="ai-quiz__btn-circle" aria-hidden="true">

@@ -2,6 +2,10 @@
 /** SubpageCta — 子頁置中外連按鈕（可選 lead 引導句，education / health 頁）。 */
 import { gaClickButton } from '~/utils/tracking-event';
 
+// CTA 的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
+// 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
+const { play } = useSfx();
+
 defineProps<{
   label: string;
   url: string;
@@ -22,7 +26,8 @@ defineProps<{
       :href="url"
       target="_blank"
       rel="noopener"
-      @click="gaTerm && gaClickButton('button', gaTerm)"
+      @mouseenter="play('sfx01')"
+      @click="play('sfx01'); gaTerm && gaClickButton('button', gaTerm)"
       >{{ label }}</a
     >
   </div>

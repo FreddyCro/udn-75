@@ -72,8 +72,10 @@ const {
   setForumTurns,
   setForumCoreCenterOffset,
   forumPathRiding,
+  coverGrow,
   coverHandoff,
   coverHandedOff,
+  setPlaneSubmerged,
 } = useOrangeCoreProgress();
 
 // 轉折音效。play() 在音效總開關關著時本身就是 no-op（見 useSfx），故這裡不必再加閘門。
@@ -218,8 +220,10 @@ function reset() {
   // 姿態快取也要清：留著上一個斷點的座標，下潛的 watch 會把核心寫回那個位置
   // —— 同 planeFrame 那條，殘影會是一架停在錯誤位置的紙飛機。
   pose = null;
-  // 露出量是**該斷點該次幾何**的量測值（旋轉角隨設計線走），換斷點要重量。
-  planeOverhang = null;
+  // 跨距是**該斷點該次幾何**的量測值（旋轉角隨設計線走），換斷點要重量。
+  planeSpan = null;
+  // 沒入比例也要歸零：留著上一個斷點的值，白方塊會在飛機還沒出現時就長在接縫上。
+  setPlaneSubmerged(0);
   setForumPathActive(false);
   setForumPathProgress(0);
   setForumSlashWindow(null);
@@ -656,8 +660,8 @@ function build() {
 
     setForumPathActive(true);
     exposeDebug(out.points, marks, turns);
-    // 幾何重建了 → 末端切線（＝機身的旋轉角）可能跟著變，露出量要重量。
-    planeOverhang = null;
+    // 幾何重建了 → 末端切線（＝機身的旋轉角）可能跟著變，跨距要重量。
+    planeSpan = null;
     place(st ? st.progress : 0);
   } finally {
     scope?.removeAttribute('data-path-measuring');
@@ -670,23 +674,38 @@ function build() {
 type CorePose = { x: number; y: number; angle: number; scale: number };
 let pose: CorePose | null = null;
 
-// 機身露在定位點上方的高度（px）＝ 下潛真正要走完的距離。null ＝ 還沒量。
+// 機身相對定位點的**垂直**跨距（px）。null ＝ 還沒量。
+//   lead ＝ 定位點到機身最下緣 —— 行進方向的前緣，**先碰到接縫的就是它**。
+//   back ＝ 定位點到機身最上緣 —— 下潛真正要走完的距離（原本的 planeOverhang）。
 //
 // 為什麼用量的而不是算的：幾何是「sprite 底部貼核心框底部、整組繞定位點旋轉」，
 // 算得出來，但要在這裡複製一份 sprite 的尺寸表與錨定規則 —— 那份副本壞掉時不會有人
-// 發現（飛機只是沒鑽乾淨）。量一次就沒有第二份事實。
+// 發現（飛機只是沒鑽乾淨）。量就沒有第二份事實。
 //
-// 只在下潛開始的那一幀量一次（此時路徑已跑完、機身停在最後一格、旋轉角不再變），
-// 不在逐幀的熱路徑上。定位點取核心框的**中心**：框是旋轉的，但中心是旋轉不變量。
-let planeOverhang: number | null = null;
+// ⚠️ 2026-08-25 起改成**逐幀重量**（限定在接近接縫的那一小段，見 PLANE_SPAN_WATCH_PX）。
+//    原本是「下潛開始的那一幀量一次」，那時機身早已沒入 84%、量到的是最終姿態；
+//    但 coverGrow 需要的是**接觸前**的跨距，而跨距在最後這段還在縮
+//    （pc 實測：接縫上方 260px 處 108.3px → 接觸時 91.1px，筆尖縮放與末端切線都還在變）。
+//    凍結一次就會讓白方塊早一截或晚一截開始長，正是這次要修的那個「比例跑掉」。
+// 定位點取核心框的**中心**：框是旋轉的，但中心是旋轉不變量。
+let planeSpan: { lead: number; back: number } | null = null;
 
-function measurePlaneOverhang(): number {
+// 從接縫上方多遠開始逐幀量跨距。只要**大於機身跨距**就行，寬鬆沒有代價（多量幾幀而已）；
+// 太小才會壞：機鼻已經碰到接縫卻還沒量到跨距 ⇒ 白方塊晚開始長。
+// 三個斷點共用一個值：pc 是最大的那個（接縫上方 260px 處量到 108px），mob 只會更小。
+const PLANE_SPAN_WATCH_PX = 320;
+
+function measurePlaneSpan(): { lead: number; back: number } | null {
   const core = coreEl.value;
   const sprite = core?.querySelector('svg');
-  if (!core || !sprite) return 0;
+  if (!core || !sprite) return null;
   const cr = core.getBoundingClientRect();
   const sr = sprite.getBoundingClientRect();
-  return Math.max(0, cr.top + cr.height / 2 - sr.top);
+  const cy = cr.top + cr.height / 2;
+  return {
+    lead: Math.max(0, sr.bottom - cy),
+    back: Math.max(0, cy - sr.top),
+  };
 }
 
 /**
@@ -707,10 +726,9 @@ function writeCore(next?: CorePose) {
   const core = coreEl.value;
   if (!core || !pose) return;
   const handoff = coverHandoff.value;
-  if (handoff > 0 && planeOverhang === null) {
-    planeOverhang = measurePlaneOverhang();
-  }
-  const dive = handoff * ((planeOverhang ?? 0) + PLANE_DIVE_MARGIN_PX);
+  // 跨距還沒量到就要下潛（例如深連結直接落在接觸點之後）：補量一次，別讓 dive 吃 0。
+  if (handoff > 0 && planeSpan === null) planeSpan = measurePlaneSpan();
+  const dive = handoff * ((planeSpan?.back ?? 0) + PLANE_DIVE_MARGIN_PX);
   const rad = (pose.angle * Math.PI) / 180;
   // 撞擊擠壓疊在 pose.scale 上（相乘，不是取代）：pose.scale 是「這一段路上核心該多大」
   // （筆尖縮放），擠壓是「此刻被撞成什麼形狀」，兩件事互不知情、合成才對。
@@ -727,6 +745,24 @@ function writeCore(next?: CorePose) {
     scaleX: pose.scale * sx,
     scaleY: pose.scale * sy,
   });
+
+  // 「飛機沒入色塊多少」＝ 白方塊該長多少（見 useOrangeCoreProgress 的 coverGrow）。
+  //
+  // 接縫在容器座標裡就是 y = tailEndY（設計線的末節點錨在 .sec2__seam，而色塊上緣
+  // 就是同一個位置）—— 所以不必去量接縫，兩者本來就在同一個座標系裡 1:1 一起捲動。
+  // 定位點的 y 要**含下潛位移**（sin(rad) × dive ＝ 它的縱向分量），否則路徑跑完之後
+  // 比例就凍在那裡、最後一截機尾沒入的過程白方塊不會跟著長完。
+  //
+  // 量跨距放在 gsap.set **之後**：跨距吃這一幀的旋轉與縮放，量在 set 之前拿到的是上一幀。
+  const anchorY = pose.y + Math.sin(rad) * dive;
+  if (tailEndY > 0 && anchorY > tailEndY - PLANE_SPAN_WATCH_PX) {
+    planeSpan = measurePlaneSpan() ?? planeSpan;
+  }
+  setPlaneSubmerged(
+    planeSpan
+      ? planeSubmergedAt(anchorY - tailEndY, planeSpan.lead, planeSpan.back)
+      : 0,
+  );
 }
 
 // 下潛的驅動：coverProgress 由 Blessing 的 coverST 每幀寫入，而本元件的 ScrollTrigger
@@ -903,12 +939,12 @@ onBeforeUnmount(() => {
 
     <!-- 尾跡：可見層吃固定 dasharray（＝虛線釘在弧長上），遮罩層滑動開窗。
          遮罩描邊取可見層的 2 倍才蓋得乾淨。 -->
-    <!-- 尾跡跟著飛機的下潛淡出（scrub，見 coverHandoff）。它的幾何釘在路徑上、
+    <!-- 尾跡跟著飛機沒入色塊的比例淡出（scrub，見 coverGrow）。它的幾何釘在路徑上、
          沒辦法跟著往下沉，但機身還在飛的時候尾巴不能先不見 —— 讀起來會像尾巴自己
          斷掉。淡出用 inline style 而非 class：那是逐幀的量，class 只能給二元的。 -->
     <svg
       class="forum-path__trail"
-      :style="{ opacity: 1 - coverHandoff }"
+      :style="{ opacity: 1 - coverGrow }"
       xmlns="http://www.w3.org/2000/svg"
     >
       <mask

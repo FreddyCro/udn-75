@@ -6,6 +6,7 @@ import {
   coverContactAlign,
   coverHandoffAt,
   coverOrangeAt,
+  planeSubmergedAt,
   PLANE_DIVE_MARGIN_PX,
   seedTravelAt,
   SEQUENCE,
@@ -203,5 +204,39 @@ describe('cover 在 SEQUENCE 上的位置', () => {
         flat[i]!.drive === 'none' && flat[i - 1]!.drive === 'none';
       expect(adjacent).toBe(false);
     }
+  });
+});
+
+// 白方塊該長多少 ＝ 飛機沒入色塊多少。守的是「以機鼻為 0、機尾為 1」這件事 ——
+// 2026-08-25 之前這個比例是拿捲動窗口（coverHandoffAt）當代理，而窗口的起點是
+// 核心**定位點**抵達接縫，比機鼻晚一整個機身：pc 實測 lead 76.6 / back 14.5，
+// 定位點抵達接縫時飛機已經沒入 84%，白方塊卻才要從 0 開始長。
+describe('planeSubmergedAt（紙飛機沒入色塊的比例 ＝ 白方塊的 scaleY）', () => {
+  const lead = 76.6;
+  const back = 14.5;
+
+  it('機鼻剛碰到接縫時是 0（定位點還在接縫上方一個 lead）', () => {
+    expect(planeSubmergedAt(-lead, lead, back)).toBe(0);
+  });
+
+  it('機尾也沒入時是 1（定位點已在接縫下方一個 back）', () => {
+    expect(planeSubmergedAt(back, lead, back)).toBe(1);
+  });
+
+  it('定位點抵達接縫時已經沒入一大半 —— 這就是原本的錯位', () => {
+    const atContact = planeSubmergedAt(0, lead, back);
+    expect(atContact).toBeCloseTo(lead / (lead + back), 5);
+    expect(atContact).toBeGreaterThan(0.8);
+  });
+
+  it('窗口內線性、且兩端都夾得住', () => {
+    expect(planeSubmergedAt((back - lead) / 2, lead, back)).toBeCloseTo(0.5, 5);
+    expect(planeSubmergedAt(-1000, lead, back)).toBe(0);
+    expect(planeSubmergedAt(1000, lead, back)).toBe(1);
+  });
+
+  it('還沒量到機身（跨距 0）時回 0，不拿假比例去長白方塊', () => {
+    expect(planeSubmergedAt(0, 0, 0)).toBe(0);
+    expect(planeSubmergedAt(500, 0, 0)).toBe(0);
   });
 });

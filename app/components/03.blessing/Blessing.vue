@@ -44,7 +44,7 @@ const {
   coverSeed,
   coverSeedVisible,
   coverFaceVisible,
-  coverHandoff,
+  coverGrow,
   coverDone,
   outroWhite,
 } = useOrangeCoreProgress();
@@ -555,14 +555,14 @@ onBeforeUnmount(() => {
               <!-- 白方塊：紙飛機沒入色塊後從接縫長出來的那一格 ＝ 逐格臉的第 01 格
                    （FACE_FRAMES[0] = [7,0,2,2]）。位置用網格比例寫死、不需量測；
                    只有位移的幅度要量（--face-cell-y，見 script）。
-                   --cover-grow ＝ 從接縫「長出來」的高度比例，與飛機下潛共用同一條
-                   曲線（coverHandoff）—— 兩者同一個 x、同一個窗口，是同一個變身。 -->
+                   --cover-grow ＝ 從接縫「長出來」的高度比例，值就是**飛機沒入色塊的比例**
+                   （coverGrow）—— 兩者同一個 x、同一個量，是同一個變身。 -->
               <span
                 v-if="coverSeedVisible"
                 class="section3__face-seed"
                 :style="{
                   '--cover-seed': coverSeed,
-                  '--cover-grow': coverHandoff,
+                  '--cover-grow': coverGrow,
                 }"
                 aria-hidden="true"
               />
@@ -987,8 +987,11 @@ onBeforeUnmount(() => {
 // --cover-seed 由 seedTravelAt(coverProgress) 餵入，scrub 驅動故不加 transition。
 // fallback 0px：量到之前不動，不會亂飛。
 //
-// 「長出來」（2026-08-14）：--cover-grow 由 coverHandoff 餵入，scaleY 0 → 1。
+// 「長出來」（2026-08-14）：--cover-grow 餵入 scaleY 0 → 1。
 // 改版前它是以完整尺寸憑空出現的（使用者回饋「白方塊直接出現」）。
+// ⚠️ 餵的值 2026-08-25 從 coverHandoff（捲動窗口）換成 coverGrow（飛機實際沒入的比例）：
+//    前者的窗口從「核心定位點抵達接縫」起跑，而飛機是用機鼻碰到接縫的 —— 差一整個機身，
+//    白方塊開始長的時候飛機已經沒入 84%。理由見 orange-core-config 的 planeSubmergedAt。
 //
 // ⚠️ transform-origin 必須是 top：方塊的上緣在接觸點精準貼齊色塊上緣
 //    （2026-08-12 紀錄第八節實測 0.0px），以上緣為原點縮放才是「從接縫往下長出來」。
