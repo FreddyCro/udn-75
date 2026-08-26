@@ -1,8 +1,14 @@
-// 影片裡那顆 orange core → DOM orange core 的「交棒」幾何（純函式，無 Vue / DOM 依賴）。
+// 影片裡那顆 orange core 與 DOM 那顆的「交棒」幾何（純函式，無 Vue / DOM 依賴）。
 //
-// hero 退場段最後幾秒，影片畫面裡就有一顆 orange core；gone 那一刻要由 01.hero/OrangeCore
-// 接手。兩顆要疊在同一點，就得把「影片畫面座標」換算成「螢幕座標」—— <video> 是
-// object-fit: cover，畫面被等比放大並裁掉溢出的部分，不能直接拿元素矩形的比例算。
+// 兩處交棒各在影片的一頭，用同一套換算：
+//   進場  start 閘門的 cube 縮到影片**首幀**那顆的尺寸（HERO_INTRO_CORE_ANCHOR）
+//   退場  gone 那一刻 DOM core 疊上影片**尾幀**那顆（HERO_OUTRO_CORE_ANCHOR）
+//
+// 兩邊都不能直接拿元素矩形的比例算：`<video>` 有 object-fit（pc cover 裁切、
+// pad / mob contain 留白），畫面被等比縮放後與元素矩形並不重合。
+
+/** `<video>` 的 object-fit。pc 是 cover、pad / mob 是 contain（見 HeroVideo 的 SCSS）。 */
+export type VideoFit = 'cover' | 'contain';
 
 /** core 在影片畫面上的落點（正規化，與視窗尺寸無關） */
 export interface HeroCoreAnchor {
@@ -33,23 +39,33 @@ export interface HeroCoreScreenPoint {
 /**
  * 把影片畫面上的 anchor 換算成螢幕座標。
  *
- * object-fit: cover ＝ 等比放大到「兩邊都不小於元素」，溢出的部分依 object-position 裁掉：
- *   scale  = max(元素寬 / 畫面寬, 元素高 / 畫面高)
- *   origin = 元素左上 + (元素尺寸 − 放大後尺寸) × objectPosition   ← 差值為負，即被裁掉的量
+ * 兩種 fit 只差放大倍率取 max 還是 min，其餘算式相同：
+ *   cover   scale = max(元素寬 / 畫面寬, 元素高 / 畫面高)   溢出被裁（差值為負）
+ *   contain scale = min(...)                               留白（差值為正）
+ *   origin = 元素左上 + (元素尺寸 − 放大後尺寸) × objectPosition
  *
  * frameW / frameH 傳 `<video>` 的 videoWidth / videoHeight；metadata 還沒到（皆為 0）時回 null。
- * objectPosition 對應 SCSS 的 object-position（0.5 / 0.5 ＝ center）—— 那邊改了這裡要一起改。
+ *
+ * ⚠️ fit 與 objectPosition 都對應 SCSS 的宣告（見 HeroVideo 的 .sec1__hero-video-el，
+ *    pc cover ／ ≤1023.98 contain）。呼叫端請直接讀 `getComputedStyle(video).objectFit`
+ *    而不要照斷點再寫一份 —— 2026-08-26 之前這裡寫死 cover，而 SCSS 早已把 pad / mob
+ *    換成 contain，pad / mob 的交棒尺寸因此一路算錯（mob 390×844 差 22%）。
  */
-export function coverAnchorToScreen(
+export function videoAnchorToScreen(
   box: ScreenBox,
   frameW: number,
   frameH: number,
   anchor: HeroCoreAnchor,
-  objectPosition: { x: number; y: number } = { x: 0.5, y: 0.5 },
+  opts: {
+    fit?: VideoFit;
+    objectPosition?: { x: number; y: number };
+  } = {},
 ): HeroCoreScreenPoint | null {
+  const { fit = 'cover', objectPosition = { x: 0.5, y: 0.5 } } = opts;
   if (frameW <= 0 || frameH <= 0 || box.width <= 0 || box.height <= 0) return null;
 
-  const scale = Math.max(box.width / frameW, box.height / frameH);
+  const pick = fit === 'contain' ? Math.min : Math.max;
+  const scale = pick(box.width / frameW, box.height / frameH);
   const shownW = frameW * scale;
   const shownH = frameH * scale;
   const originX = box.left + (box.width - shownW) * objectPosition.x;

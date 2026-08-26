@@ -15,7 +15,7 @@ metadata:
 
 **How to apply:**
 
-- 影片剪輯換了 → 只改 `HERO_OUTRO_CORE_ANCHOR`（`~/utils/hero-video-config`）。座標是**影片畫面**的正規化比例（pc 版畫面 1920×1080），不是螢幕比例；換視窗尺寸／斷點都不必重量。預設 `{0.5, 0.5, 39/1920}` ＝ 畫面正中心、在 1280×720 視窗上剛好 26px。
+- 影片剪輯換了 → 只改 `HERO_OUTRO_CORE_ANCHOR`（`~/utils/hero-video-config`）。座標是**影片畫面**的正規化比例（pc 版畫面 1920×1080），不是螢幕比例；換視窗尺寸／斷點都不必重量。**⚠️ 2026-08-26 更正：現行預設 `{0.5, 0.5, 39/1920}` 是錯的** —— 那個 size 量的是 DOM core（26 CSS px 換算回 1920 影片稿），不是影片裡那顆；而 `y: 0.5` 只在影片停定之後才成立，`outro.end = 38.5` 停在移動中。實測值與正確做法見 [[hero-video-core-geometry]]。
 - **不能直接拿元素矩形的比例算**：`<video>` 是 `object-fit: cover`，畫面被等比放大並裁掉溢出部分。換算在 `~/utils/hero-core-handoff` 的 `coverAnchorToScreen()`（有單元測試）。視窗越高，影片被 cover 放得越大、畫面裡那顆 core 在螢幕上就越大（1280×871 實測 31.45px 而非 26px）——尺寸也要跟著換算，不能寫死。改 SCSS 的 `object-position` 要一起改那裡的 `objectPosition` 參數。
 - **旋轉補償不可省**：`OrangeCorePath` 在 core 外層寫入路徑切線 `rotation`（hero 段恆 90°），子層的 translate 會跟著轉，故要先過 `unrotateDelta()` 換回 local 座標 —— 少了它，水平位移會整個跑到垂直方向去（實測差 320px）。
 - SKIP（`main` → `outro`，退場沒播完就被捲走時的 `gone`）**兩種都不做**：那時影片還沒播退場，維持單純淡入。`prefers-reduced-motion` 也跳過。

@@ -1,13 +1,16 @@
 <template>
   <div class="loader" aria-label="載入中" role="img">
-    <!-- 舞台：與影片層 / start 閘門共用的尺寸上限（見 base.scss 的 --hero-stage-max-*），
-         置中；方塊只鋪在舞台內，外面留白底。網格改以「舞台」為量測基準（見 computeGrid）。 -->
-    <div ref="stageRef" class="stage">
-      <!-- 網格比舞台略大且置中，溢出等量裁掉 → 中間格中心 = 舞台正中心 -->
-      <div class="grid">
-        <div v-for="i in count" :key="i" ref="tileRefs" class="tile" />
+    <!-- 尺：與影片舞台 / start 閘門同一把（top: 0 ＋ 高 vh(1)），負責置中 —— 見下方 SCSS。 -->
+    <div class="ruler">
+      <!-- 舞台：與影片層 / start 閘門共用的尺寸上限（見 base.scss 的 --hero-stage-max-*），
+           在尺內置中；方塊只鋪在舞台內，外面留白底。網格以「舞台」為量測基準（見 computeGrid）。 -->
+      <div ref="stageRef" class="stage">
+        <!-- 網格比舞台略大且置中，溢出等量裁掉 → 中間格中心 = 舞台正中心 -->
+        <div class="grid">
+          <div v-for="i in count" :key="i" ref="tileRefs" class="tile" />
+        </div>
+        <div ref="counterRef" class="counter">0%</div>
       </div>
-      <div ref="counterRef" class="counter">0%</div>
     </div>
   </div>
 </template>
@@ -84,7 +87,8 @@ const oddCover = (size: number, tile: number) => {
 };
 
 // 量的是「舞台」而非視窗：舞台在 pc 有尺寸上限（--hero-stage-max-*），方塊只鋪滿舞台，
-// 外面露白底 —— 與影片層同一條規則。舞台已置中，故下面的「網格中心」仍等於視窗正中心。
+// 外面露白底 —— 與影片層同一條規則。舞台在 .ruler 內置中，故下面的「網格中心」等於
+// 尺的中心，也就是影片畫面中心（見 .ruler 的 SCSS 註解）。
 const computeGrid = () => {
   const vw = stageRef.value?.clientWidth || window.innerWidth;
   const vh = stageRef.value?.clientHeight || window.innerHeight;
@@ -237,16 +241,29 @@ onBeforeUnmount(() => {
 });
 </script>
 
-<style scoped>
+<!-- lang="scss" 是 .ruler 的 vh() 需要的（原本是純 CSS，那個 function 會被整條丟棄）。
+     其餘規則都是 CSS 子集，走 sass 沒有行為差異。 -->
+<style lang="scss" scoped>
 .loader {
   /* 覆蓋整個視窗的載入層（蓋在 header 之上，z-index > .app-header 的 1000）。
-     底色白：舞台有尺寸上限時，上限之外露出的就是這片白（同影片層淡出後的白底）。 */
+     底色白：舞台有尺寸上限時，上限之外露出的就是這片白（同影片層淡出後的白底）。
+     置中改由 .ruler 負責；inset: 0 要留著 —— 白底必須蓋滿**看得到的**範圍。 */
   position: fixed;
   inset: 0;
   z-index: 2000;
   overflow: hidden;
   background: #fff;
-  /* 舞台置中 */
+}
+
+/* 尺：與影片舞台完全同一把（`.sec1__hero-stage` 是 `inset: 0 0 auto 0` ＋ `height: vh(1)`）。
+   父層的 `fixed; inset: 0` 是**活視窗**、影片舞台是 `--vh`（large viewport、凍結），兩邊
+   各自置中就會差 `--chrome-inset / 2` ⇒ 手機上中央留白格與影片那顆橘塊對不上。
+   完整理由（含「為什麼不動影片、也不用 translateY 補償」）寫在 HeroStart.vue 的
+   .hero-start__ruler，這裡不重複。本層同樣**不套** --hero-stage-max-h（會把中心拉回 720）。 */
+.ruler {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: vh(1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -254,7 +271,7 @@ onBeforeUnmount(() => {
 
 /* 舞台：三層共用的尺寸上限（見 base.scss 的 --hero-stage-max-*，pc 2560×1440；
    其餘斷點為 none ＝ 滿版）。overflow 在這一層裁：網格比舞台略大且置中，
-   溢出等量被裁 → 正中間那一格中心 = 舞台正中心 = 視窗正中心。 */
+   溢出等量被裁 → 正中間那一格中心 = 舞台正中心 = 尺的中心 = 影片畫面中心。 */
 .stage {
   position: relative;
   width: 100%;

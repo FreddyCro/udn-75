@@ -16,15 +16,17 @@ import {
   refreshScrollTriggers,
 } from '@/utils/scroll-trigger';
 import {
-  coverAnchorToScreen,
   isVerticallyOnScreen,
   unrotateDelta,
+  videoAnchorToScreen,
+  type VideoFit,
 } from '@/utils/hero-core-handoff';
 import {
   HERO_CORE_DROP_IN,
   HERO_CORE_HANDOFF,
   HERO_DISSOLVE_VH,
   HERO_INTRO_AUTO_SCROLL,
+  HERO_INTRO_CORE_ANCHOR,
   HERO_INTRO_READ_AT,
   HERO_INTRO_REVEAL,
   HERO_OUTRO_CORE_ANCHOR,
@@ -368,6 +370,17 @@ onMounted(() => {
   mq.addEventListener('change', onMqChange);
   onBeforeUnmount(() => mq.removeEventListener('change', onMqChange));
 
+  // start 閘門的退場尺寸：掛載時補一次（閘門已在場的路徑），其後只在閘門還在場時跟著
+  // resize 重量 —— 開場期間頁面鎖著、手機網址列不會收合，故實際上只有桌機拉視窗與轉螢幕。
+  if (startGateUp.value) measureStartExitSize();
+  const onStartGateResize = () => {
+    if (startGateUp.value) measureStartExitSize();
+  };
+  window.addEventListener('resize', onStartGateResize, { passive: true });
+  onBeforeUnmount(() =>
+    window.removeEventListener('resize', onStartGateResize),
+  );
+
   // hydration 那一輪擋不掉（理由見上方 bypassLoader）：補在這裡，仍搶在 applyScrollLock 之前。
   // 重入由 bypassForEntry() 自己的 entryHandled 擋掉（client-side 導航時 setup 已經跑過）。
   if (initialHash) bypassForEntry();
@@ -582,6 +595,41 @@ onBeforeUnmount(() => {
   introScrollTween = null;
 });
 
+// `<video>` 的 object-fit 一律從 computed style 讀，**不要**照斷點在 JS 再寫一份：
+// SCSS 那側是 pc cover ／ ≤1023.98 contain（見 HeroVideo 的 .sec1__hero-video-el），
+// 兩邊各留一份就會出現「SCSS 改了、換算沒跟上」—— 2026-08-26 之前換算寫死 cover，
+// 而 pad / mob 早已改成 contain，兩處交棒的尺寸一路算錯（mob 390×844 差 22%）。
+const videoFit = (el: HTMLVideoElement): VideoFit =>
+  getComputedStyle(el).objectFit === 'contain' ? 'contain' : 'cover';
+
+// ── start 閘門的退場尺寸（進場側的交棒）────────────────────────────────
+// cube 縮到「影片**首幀**那顆橘塊在畫面上的邊長」而不是寫死的 26px —— 那顆是各支剪輯的
+// 64 source px，畫面上的邊長隨 fit 放大倍率變（32–85px），寫死會讓交接那一刻橘塊彈大
+// 1.2–3.3 倍。量測值與理由見 ~/utils/hero-video-config 的 HERO_INTRO_CORE_ANCHOR。
+// 量不到（metadata 還沒到）就留 0 → HeroStart 退回 CORE.dotSize，與改動前同行為。
+const startGateUp = computed(() => loaderDone.value && !heroStarted.value);
+const startExitSize = ref(0);
+
+function measureStartExitSize() {
+  const video = heroVideoRef.value?.videoEl;
+  if (!video) return;
+  const p = videoAnchorToScreen(
+    video.getBoundingClientRect(),
+    video.videoWidth,
+    video.videoHeight,
+    HERO_INTRO_CORE_ANCHOR[getDeviceTypeByResolution()],
+    { fit: videoFit(video) },
+  );
+  startExitSize.value = p?.size ?? 0;
+}
+
+// 閘門出現的那一刻量（此時 videoReady 必然已成立 ⇒ metadata 到了）。
+// 閘門「已經在場」才掛載的情形（loaderDone / heroStarted 是跨導航存活的 useState）
+// 由 onMounted 那一次補上。
+watch(startGateUp, (up) => {
+  if (up) measureStartExitSize();
+});
+
 // ── core 的進場（gone 的那一刻）────────────────────────────────────────
 // core 的落點由 OrangeCorePath 驅動（恆在視窗正中央，見
 // .claude/memory/hero-core-screen-locked.md）；這裡只決定「它從哪裡滑過來」，
@@ -625,11 +673,12 @@ function runCoreEntrance(fromOutro: boolean) {
   if (onScreen && !fromOutro) return; // SKIP
 
   const fromVideo = onScreen
-    ? coverAnchorToScreen(
+    ? videoAnchorToScreen(
         videoBox,
         video.videoWidth,
         video.videoHeight,
         HERO_OUTRO_CORE_ANCHOR[getDeviceTypeByResolution()],
+        { fit: videoFit(video) },
       )
     : null;
   // 影片在畫面上卻讀不到 metadata（例如載入失敗直接進 gone）→ 沒有可對齊的目標，
@@ -735,7 +784,8 @@ function applyScrollLock() {
     -->
     <Transition name="hero-start-exit">
       <HeroStart
-        v-if="loaderDone && !heroStarted"
+        v-if="startGateUp"
+        :exit-size="startExitSize"
         @start="heroStarted = true"
       />
     </Transition>
