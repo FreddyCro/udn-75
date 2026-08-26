@@ -587,9 +587,22 @@ onBeforeUnmount(() => {
     padding-left: calc(108 / 1280 * 100vw);
     max-width: 796px;
   }
+  // ≥1920：左邊界不照稿值（162）自己算，改跟著引言欄（.subpage__col--wide，錨定
+  // 1560 置中）的左邊界走 —— hero 藝術字與引言的可視左緣要切齊。
+  //
+  // **為什麼不能留 `162 / 1920 * 100vw`**：那條只在 1920 對得上稿，且與引言欄用的是
+  // 兩把不同的尺 ——
+  //   ① 稿上兩者本來就差 18px（hero 162 vs 引言 (1920−1560)/2 = 180），肉眼看得出來；
+  //   ② 引言欄是在父容器裡置中，左邊界＝(父寬 − 1560)/2 會隨視窗持續外推；hero 的
+  //      vw 等比只長到 8.4375% ⇒ 越寬差越多（實測 2560：hero 216 對引言 492.5，差 276.5）。
+  //
+  // **為什麼是 `100%` 而不是 `100vw`**：100vw 含捲軸寬，父容器內容寬不含 —— 兩者混用時
+  // 有傳統捲軸就差 scrollbar/2（實測 1920×1080 有 15px 捲軸：hero 162 對引言 172.5）。
+  // 這裡的 % 解析基準是 .subpage__hero 的內容寬，與引言欄置中用的是同一把尺，故永遠等寬。
+  // ⚠️ 改動 .subpage__col--wide 的 ultra 錨定值（1560）時這裡的 1560 要一起改。
   @include rwd-min('ultra') {
-    padding-left: calc(162 / 1920 * 100vw);
-    max-width: calc(1194px + calc(162 / 1920 * 100vw));
+    padding-left: calc((100% - 1560px) / 2);
+    max-width: calc(1194px + (100% - 1560px) / 2);
   }
 }
 // 文字組與 KV 圖的間距直接標稿值（gap），不再靠 space-between 從「容器高 − 子項高」
@@ -663,6 +676,8 @@ onBeforeUnmount(() => {
   @include rwd-min('pc') {
     max-width: calc(1040 / 1280 * 100vw); // = 1560/1920，pc 與 ultra 同比例
   }
+  // ⚠️ 這個 1560 同時是 hero 欄 ≥1920 的左邊界基準（見 .subpage__col--hero 的 ultra
+  //    區塊）—— 兩者的可視左緣靠它切齊，改這裡要一起改那裡。
   @include rwd-min('ultra') {
     max-width: 1560px;
   }
