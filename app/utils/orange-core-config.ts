@@ -350,64 +350,73 @@ export const FORUM_HANDOFF = {
 // ── 開場三行文案（Figma 智慧論壇05：pc 2065:139731 / pad 2065:124199 / mob 2065:120221）──
 // 疊在第一拍（disperse）上的一層純文字，見 01a.symbol/SymbolIntro.vue。
 //
-// 2026-08-12 改版：三行的動畫**不再綁捲動**，改吃時間軸（見 INTRO_TIMELINE）。
-// symbolProgress 只剩兩個門檻，作用是「觸發」與「保底」，不再逐幀驅動任何值：
-//   in   起播（滑到這裡就自己跑完整段，停著不動也看得完整）
-//        退回這之前 → 重置成未播狀態，再進來從頭播一次（不是倒帶）
-//   out  保底清場：越過就強制淡出，不管時間軸跑到哪
+// 2026-08-26 改版：**進場吃時間軸、退場吃捲動**，兩把尺各管一半。
+//   進場  捲到 in 就起播，2.0s 內三行依序上浮 ＋ 逐字亂碼落定 ——
+//         停在原地不動也看得完整（這是 2026-08-12 改版的成果，本次不動）。
+//   停留  三行到位之後就停在全亮，**不會自己消失**。停多久由使用者決定。
+//   退場  exit → out 這段距離逐幀 scrub，捲多少退多少；往回捲文字會回來。
+//
+// 為什麼退場不能也吃時間軸：改版前那個 hold ＝ 3s 是一個**賭注** —— 賭使用者在三秒內
+// 讀完三行。讀得慢的人字在眼前消失、讀完的人還得等，兩邊都不對，而頁面無從得知是哪一種。
+// 距離不賭這件事：停著就一直在，往下走才收，「要不要收」的決定權回到讀的人手上。
 //
 // ⚠️ out 必須早於 SYMBOL_STOPS[0].until（＝ disperse→face 的交界）——
 //    文字要在粒子開始集合成人像之前淡乾淨，兩件事同時發生會互相搶焦點。
-//    改吃時間軸後這條**不再自動成立**（時間軸不知道捲動位置），out 這道閘門是把它補回來的
-//    唯一手段 —— 所以它比改版前更重要，不是比較不重要。
+//    退場改吃捲動後，這件事回到**構造上**成立：p ≥ out ⇒ 每行 opacity 恆為 0，與捲速無關。
+//    2026-08-12～08-26 之間為此存在的整套保底清場（clearElapsed / clearDur /
+//    symbolIntroClear）與那條「距離換算成秒數夠不夠清完」的條件保證，一併隨之消失
+//    —— 連同它自承的殘留風險（快捲仍會短暫重疊）。
 //
-//    ⚠️ 但補回來的是「條件保證」，不是改版前那種**構造上**的保證：清場自己要花 clearDur
-//    （0.3s），而越過 out 之後使用者還在往下捲。out 到人像集合只有
-//    1.12 − 1.04 ＝ 8vh，換算：捲速 ≲ 27vh/s 時 8vh 走得比 0.3s 慢 → 淡乾淨；
-//    **更快的捲速仍會短暫重疊**，而且沒有任何門檻安排救得回來（要救只能縮短 clearDur）。
-//    這是已接受的殘留風險：那個速度的人是「一路往下滑」而不是在讀，本來就看不到內容。
-//    守著這件事的不是 `out < until` 這個大小比較（清場改吃時間後它已不蘊含該性質），
-//    而是 ASSUMED_READING_VH_PER_S 那條換算關係，見 test/symbol-sequence.spec.ts。
+// 決策紀錄：architecture/2026-08-26-symbol-intro-scroll-exit-design.md
+//   （它推翻了 architecture/2026-08-12-symbol-intro-timeline-design.md 的**退場**部分；
+//     該文的進場、三塊職責、reduce-motion 兩態退化仍然有效）
 //
-// 決策紀錄：architecture/2026-08-12-symbol-intro-timeline-design.md
-//   （它推翻了前一版 architecture/2026-08-12-symbol-intro-stagger-design.md 第一節的 scrub 結論）
-//
-// 兩個門檻都用**絕對距離**定錨（同 FORUM_HANDOFF.agendaIn）：8vh 起播 → 104vh 保底清場，
-// 中間 96vh。它們描述的是「文案在第一拍裡的位置」，第一拍的 vh 不變時就不該跟著總長飄。
-// ⇒ 捲速慢於約 15vh/s 才看得完整段 6.4s。停下來讀的人沒問題（這正是不綁 scroll 的用意）；
-//   一路不停往下捲的人會被截斷 —— 但那種人在 scrub 版本也只是一閃而過，不算退步。
+// 三個門檻都用**絕對距離**定錨（同 FORUM_HANDOFF.agendaIn）：8vh 起播 → 80vh 開始退 →
+// 104vh 全空。它們描述的是「文案在第一拍裡的位置」，第一拍的 vh 不變時就不該跟著總長飄。
+// ⇒ 全亮期至少 38vh（進場以 16–19vh/s 走完約 34vh，之後到 80vh 還有 38vh ≈ 2.2s），
+//   而退場的 24vh 換算約 1.3–1.5s，與改版前那段自走退場（1.4s）等長 —— 手感不變，
+//   變的只有「什麼時候開始退」由誰決定。
 export const SYMBOL_INTRO = {
-  in: symbolProgressAt(0.08), // 8vh
-  out: symbolProgressAt(1.04), // 104vh（距第一拍結束 8vh，見上方 clearDur 的說明）
+  in: symbolProgressAt(0.08), // 8vh   起播（退回這之前 → 重置，再進來從頭播一次，不是倒帶）
+  exit: symbolProgressAt(0.8), // 80vh  退場起點
+  out: symbolProgressAt(1.04), // 104vh 退場終點（全空，距第一拍結束 8vh）
 } as const;
 
 // 「一邊讀一邊往下捲」的假設捲速上限（vh/s）。
 //
-// ⚠️ 這是**假設，不是量測** —— 它描述我們願意為哪種使用者保證「文字在人像集合前淡乾淨」。
-//    25vh/s 在 1080 高的螢幕上約 270px/s。實際觀察到的「穩定往下讀」約 170–200px/s
-//    （16–19vh/s），故 25 已經是閱讀行為的上緣；再快的就是在滑過去、不是在讀。
+// ⚠️ 這是**假設，不是量測** —— 它描述我們願意為哪種使用者保證「某段 CSS transition
+//    在被捲過去之前跑得完」。25vh/s 在 1080 高的螢幕上約 270px/s。實際觀察到的
+//    「穩定往下讀」約 170–200px/s（16–19vh/s），故 25 已經是閱讀行為的上緣；
+//    再快的就是在滑過去、不是在讀。
 //
-// 用途只有一個：把「out 到人像集合的 8vh」換算成秒數，跟 clearDur 比大小
-//（見 test/symbol-sequence.spec.ts）。調大它＝宣稱要保證更快的捲速，那條測試就會要求
-// 更短的 clearDur 或更寬的 margin —— 這正是它存在的意義：讓那個取捨顯式化，不能默默劣化。
+// 用途：把「某兩個門檻之間的 vh」換算成秒數，跟一段**程式讀不到的 CSS transition**
+// 比大小（議程 reveal 的 0.4s、交棒淡出的 0.35s，見 test/symbol-sequence.spec.ts）。
+// 調大它＝宣稱要保證更快的捲速，那些測試就會要求更寬的距離 —— 這正是它存在的意義：
+// 讓那個取捨顯式化，不能默默劣化。
+//
+// ⚠️ 開場三行的退場**不再**是它的消費端（2026-08-26 起退場吃捲動距離，
+//    「在人像集合前淡乾淨」是構造上成立的，不需要換算）。
 export const ASSUMED_READING_VH_PER_S = 25;
 
-// 開場三行的時間軸（ms）。整段長度與各拍起點由行數推導，見 symbolIntroTotal /
-// symbolIntroOutPhase —— 行數若從三行變四行，時間軸自己變長，不必手改。
+// 開場三行的**進場**時間軸（ms）。整段長度由行數推導，見 symbolIntroTotal ——
+// 行數若從三行變四行，時間軸自己變長，不必手改。
 //
-// inStagger / inDur = 0.5 ＝ 相鄰兩行重疊一半（前一行升到一半，下一行才起跑），
-// 承接改版前 INTRO_LINE_SPAN_RATIO = 2 的語意，故那個常數已刪除；outStagger 同理。
+// inStagger / inDur = 0.5 ＝ 相鄰兩行重疊一半（前一行升到一半，下一行才起跑）。
 //
-// 三行代入：0–2.0s 依序進場、2.0–5.0s 全亮停留（讀完三行）、5.0–6.4s 依序退場。
+// ⚠️ 這裡**只有進場**：停留與退場都不在時間軸上（停留無限長、退場吃捲動，見 SYMBOL_INTRO）。
+//    改版前的 hold / outDur / outStagger / clearDur 已刪除；退場的節奏改由
+//    INTRO_EXIT_STAGGER_RATIO 在**捲動距離**上表達。
 export const INTRO_TIMELINE = {
   inDur: 1000,
   inStagger: 500,
-  hold: 3000,
-  outDur: 700,
-  outStagger: 350,
-  // 保底清場（越過 SYMBOL_INTRO.out）的快速淡出長度。
-  clearDur: 300,
 } as const;
+
+// 退場的逐行錯開量。單位是「一扇退場窗的比例」而不是 ms —— 退場住在捲動距離上，
+// 沒有秒數可言（同一段距離，捲得快就退得快）。
+// 0.5 ＝ 相鄰兩行重疊一半，與進場的 inStagger / inDur 同語意。
+// 三行代入：窗長 1 / (1 + 2×0.5) ＝ 0.5，三扇窗落在 [0,.5] [.25,.75] [.5,1]，
+// 最後一行剛好收在 k = 1（見 symbolIntroExitAt，比例由行數推導、不手寫）。
+export const INTRO_EXIT_STAGGER_RATIO = 0.5;
 
 // 每行由多少 px 的下方升到定位；退場時再往上離場同樣的距離。
 // 24px 對 44/48px 的行高約半行 —— 看得出來但不誇張。
@@ -423,41 +432,20 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** 三行全部到位的時刻（ms）。私有：對外只暴露 outPhase / total 兩個時刻。 */
-function introAllIn(count: number): number {
+/** 進場時間軸的長度（ms）＝ 三行全部到位的時刻。elapsed 到這裡＝演完，rAF 可以停。
+ *  之後三行就停在全亮，直到捲動把它們帶走（見 symbolIntroExitAt）。 */
+export function symbolIntroTotal(count: number): number {
   return (count - 1) * INTRO_TIMELINE.inStagger + INTRO_TIMELINE.inDur;
 }
 
-/** 第 index 行開始退場的時刻（ms）。 */
-function introOutStart(index: number, count: number): number {
-  return (
-    introAllIn(count) + INTRO_TIMELINE.hold + index * INTRO_TIMELINE.outStagger
-  );
-}
-
-/** 時間軸進入退場段的時刻（ms）＝ 第一行開始退場。
+/** 第 index 行在**進場**時間軸 t（ms，自起播起算）時的狀態。
  *
- *  ⚠️ 這支**沒有 app/ 內的消費端**（2026-08-13 起保底清場不再看它，見 symbolIntroGate 的
- *     那段註解）。留著是因為它是時間軸的**地標**：測試與文件要指涉「退場段」這個區間時
- *     需要一個定址點，刪掉的話那些測試就得在自己那邊重寫
- *     `(count−1)·inStagger + inDur + hold`，把公式抄成兩份 —— 而那份抄寫壞掉時
- *     測試會安靜地開始取樣錯誤的時刻。故它是刻意保留的測試／文件用 API，不是死程式碼。 */
-export function symbolIntroOutPhase(count: number): number {
-  return introOutStart(0, count);
-}
-
-/** 整段時間軸的長度（ms）。elapsed 到這裡＝演完，rAF 可以停。 */
-export function symbolIntroTotal(count: number): number {
-  return introOutStart(count - 1, count) + INTRO_TIMELINE.outDur;
-}
-
-/** 第 index 行（共 count 行）在時間軸 t（ms，自起播起算）時的狀態。
+ *  進場窗 [i·inStagger, +inDur]，之後恆為到位狀態（opacity 1 / shift 0 / reveal 1）——
+ *  時間軸沒有退場段，退場是 symbolIntroExitAt 的事。
  *
- *  進場窗 [i·inStagger, +inDur]、退場窗 [outStart(i), +outDur]，中間是全亮停留。
- *
- *  ⚠️ shift **直接是最終位移、符號自己帶**（進場為正＝由下方升上來、退場為負＝繼續往上
- *     離場）。改版前的 `INTRO_LINE_SHIFT × (1 − opacity)` 只描述得出進場，
- *     退場也用那個公式的話字會往下掉回來 —— 三行要像一列字持續往上飄走。
+ *  ⚠️ 不吃 count：進場的第 i 扇窗只由 i 決定，行數多寡不影響任何一行的起跑時刻
+ *     （只影響整段多長，那是 symbolIntroTotal 的事）。退場相反 —— 它要把所有行
+ *     塞進同一段固定距離裡，故 symbolIntroExitAt 非吃 count 不可。
  *
  *  ⚠️ reveal 用**線性**而不是 smoothstep：落字要等速，用 smoothstep 會變成
  *     「先慢、中間一次噴完、再慢」，看起來像掉幀。
@@ -466,13 +454,7 @@ export function symbolIntroTotal(count: number): number {
 export function symbolIntroLineAt(
   t: number,
   index: number,
-  count: number,
 ): { opacity: number; shift: number; reveal: number } {
-  const outStart = introOutStart(index, count);
-  if (t >= outStart) {
-    const k = smoothstep(outStart, outStart + INTRO_TIMELINE.outDur, t);
-    return { opacity: 1 - k, shift: -INTRO_LINE_SHIFT * k, reveal: 1 };
-  }
   const inStart = index * INTRO_TIMELINE.inStagger;
   const opacity = smoothstep(inStart, inStart + INTRO_TIMELINE.inDur, t);
   const local = (t - inStart) / INTRO_TIMELINE.inDur;
@@ -480,94 +462,134 @@ export function symbolIntroLineAt(
   return { opacity, shift: INTRO_LINE_SHIFT * (1 - opacity), reveal };
 }
 
-/** 保底清場的**整組** opacity 乘數（1 ＝ 在場、0 ＝ 已清乾淨）。
- *  tc 自清場觸發那一刻起算，與時間軸的 elapsed 是**兩把獨立的尺**。
- *  消費端寫在根層的 style.opacity，乘在逐行的 opacity 之上。 */
-export function symbolIntroClear(tc: number): number {
-  return 1 - smoothstep(0, INTRO_TIMELINE.clearDur, tc);
+/** 捲動進度 p → 退場的正規化進度 k（0 ＝ 還沒開始退、1 ＝ 已全空）。
+ *
+ *  ⚠️ **線性**，不是 smoothstep：緩動由每行自己那扇窗負責（symbolIntroExitAt），
+ *     外層再緩一次會把中段壓平 —— 畫面上是三行在區間正中央一起頓一下。
+ *     這與進場那邊「t 是線性的時間、窗才是 smoothstep」是同一個分工。 */
+export function symbolIntroExitK(p: number): number {
+  const { exit, out } = SYMBOL_INTRO;
+  return Math.min(1, Math.max(0, (p - exit) / (out - exit)));
 }
 
-/** 開場三行的播放狀態。兩個欄位是兩把獨立的尺，都以 null 表示「那把尺還沒起跑」。 */
+/** 第 index 行（共 count 行）在退場進度 k（0..1）時的**退場乘數與位移**。
+ *
+ *  逐行錯開由 INTRO_EXIT_STAGGER_RATIO 推導：以「一扇窗 ＝ 1」為單位，
+ *  第 i 行的窗是 [i·ratio, i·ratio + 1]，整段長 span ＝ 1 + (count−1)·ratio，
+ *  再把 k 乘上 span 換進這個單位 ⇒ 最後一行的窗尾**精確**落在 k = 1。
+ *  行數變了自己重算，不必手寫任何比例。
+ *
+ *  ⚠️ 換算的方向是刻意的：先算窗長 1/span 再逐行相加的話，count = 4 時
+ *     最後一行的窗尾會是 1.0000000000000002（IEEE754 殘差）—— k = 1 那一刻
+ *     opacity 不是 0 而是 ~1e-16，畫面上看不出來，但「越過 out 必然全空」
+ *     這條構造上的保證就從等式退化成近似，守它的測試也只能改成 toBeCloseTo。
+ *
+ *  ⚠️ shift 為負＝繼續往上離場。三行要像一列字持續往上飄走 —— 不是原地淡掉，
+ *     更不是往下掉回來（用「SHIFT × (1 − opacity)」描述退場時就會往下掉）。
+ *
+ *  opacity 是**乘數**、shift 是**增量**：消費端把它們疊在進場的輸出上（見 symbolIntroLineState）。 */
+export function symbolIntroExitAt(
+  k: number,
+  index: number,
+  count: number,
+): { opacity: number; shift: number } {
+  const span = 1 + (count - 1) * INTRO_EXIT_STAGGER_RATIO;
+  const start = index * INTRO_EXIT_STAGGER_RATIO;
+  const e = smoothstep(start, start + 1, k * span);
+  return { opacity: 1 - e, shift: -INTRO_LINE_SHIFT * e };
+}
+
+/** 開場三行的播放狀態。
+ *
+ *  只有一把尺：**進場**時間軸已跑的 ms，null ＝ 尚未起播（含 reset 之後）。
+ *  退場不在這裡 —— 它由 symbolProgress 即時算出、沒有需要記住的東西，
+ *  而「沒有狀態」正是它可逆（往回捲文字會回來）的原因。 */
 export interface SymbolIntroState {
-  /** 時間軸已跑的 ms；null ＝ 尚未起播（含 reset 之後）。 */
   elapsed: number | null;
-  /** 保底清場已跑的 ms；null ＝ 未清場。 */
-  clearElapsed: number | null;
 }
 
 /** 未播狀態。凍結避免消費端誤改共用物件（狀態轉換一律回傳新物件）。 */
 export const SYMBOL_INTRO_IDLE: SymbolIntroState = Object.freeze({
   elapsed: null,
-  clearElapsed: null,
 });
 
-/** 閘門：symbolProgress = p 時，播放狀態該怎麼變。
+/** 閘門：symbolProgress = p 時，**進場時間軸**的狀態該怎麼變。
  *
- *  **狀態沒變就回傳同一個 reference** —— 消費端靠這件事跳過重繪，
- *  也讓「同一個 p 重複套用不會再變」這條冪等性可以直接用 toBe 測。
+ *  **狀態沒變就回傳同一個 reference**，讓「同一個 p 重複套用不會再變」這條冪等性
+ *  可以直接用 toBe 測。（消費端已改成在退場區間內每幀重繪，不再靠它跳過重繪。）
  *
- *  這是整套機制唯一的判斷所在：元件只負責持有狀態、推進 rAF、寫 DOM，不做判斷。
- *  四條規則見 architecture/2026-08-12-symbol-intro-timeline-design.md 第二節。 */
+ *  三條規則：
+ *    p < in   → 重置成未播（下次進來從頭播一次，不是倒帶）
+ *    in ≤ p   → 起播（已播過就不重播）
+ *    p ≥ out  → 直接跳到進場終點，**不起播、不跑 rAF**
+ *
+ *  ⚠️ 第三條不是「清場」——「越過 out 就看不見」已由退場的 scrub 構造上保證了。
+ *     它在管的是**可逆**：從下方往回捲進來時，三行要以全亮狀態被 scrub 帶回來，
+ *     不該重跑一次落字動畫（那段文字已經演過了），也不該在粒子集合成人像那一刻
+ *     ——頁面最重的時候——為看不見的東西空轉 2s 的 rAF。
+ *     同一條也順手處理「重新整理落在符號段中段」（symbolProgress 初值是 0，
+ *     ScrollTrigger refresh 後才寫入真值）：跳到終點而不是從 0 起播，畫面上不會無故閃一下文字。 */
 export function symbolIntroGate(
   s: SymbolIntroState,
   p: number,
   count: number,
 ): SymbolIntroState {
   if (p >= SYMBOL_INTRO.out) {
-    if (s.clearElapsed !== null) return s; // 已在清場（或已清完）
-    // ⚠️ 這裡**沒有**「已進入退場段就讓它自己跑完」的例外（2026-08-13 移除）。
-    //    疊清場不會看起來斷掉：清場乘數乘在逐行 opacity 之上，兩條都是兩端一階導數為 0
-    //    的遞減 smoothstep，相乘仍然單調遞減、兩端仍然平滑 —— 唯一的效果是**收得更快**，
-    //    而收得更快正是 out 存在的目的。有那個例外時最壞情況要多留
-    //    outDur + (count−1)·outStagger ＝ 1.4s 的尾巴，而 out 到人像集合只有 8vh
-    //    （16–19vh/s 的閱讀捲速走完只要 0.42–0.5s）—— 於是最常見的捲速反而是唯一
-    //    會撞上人像集合的一段。移除後最壞情況變成 clearDur ＝ 0.3s。
-    // 從未起播就越過（重新整理落在符號段中段：progress 初值 0，
-    // ScrollTrigger refresh 後才寫入真值）→ 直接跳到清場終點，
-    // 否則畫面上會無故閃一下文字。
-    return {
-      elapsed: s.elapsed,
-      clearElapsed: s.elapsed === null ? INTRO_TIMELINE.clearDur : 0,
-    };
+    const done = symbolIntroTotal(count);
+    return s.elapsed === done ? s : { elapsed: done };
   }
   if (p >= SYMBOL_INTRO.in) {
-    if (s.elapsed !== null || s.clearElapsed !== null) return s; // 不重播
-    return { elapsed: 0, clearElapsed: null };
+    return s.elapsed === null ? { elapsed: 0 } : s;
   }
-  // p < in：回未播狀態，下次再進來從頭播一次（不是倒帶）
-  return s.elapsed === null && s.clearElapsed === null ? s : SYMBOL_INTRO_IDLE;
+  return s.elapsed === null ? s : SYMBOL_INTRO_IDLE;
 }
 
-/** 第 index 行在狀態 s 下該有的值（含 reduce-motion 的退化）。
+/** 第 index 行在狀態 s ＋ 捲動進度 p 下**最終**該有的值（進場 × 退場，含 reduce-motion 退化）。
  *
- *  reduce-motion：改吃時間軸後這三行是本頁唯一一段**自走播放**的動畫
- *  （捲動動畫由使用者的手控制，自走的不是），落在 WCAG 2.2.2 的範疇 ——
- *  故退化成「未起播 → 藏、已起播 → 全亮」的兩態，無 stagger、無亂碼、無位移。 */
+ *  合成規則：opacity **相乘**、shift **相加**、reveal 只由進場決定（退場不跑亂碼）。
+ *  兩條都是兩端一階導數為 0 的 smoothstep，相乘仍然平滑；兩者同時發生時（捲很快、
+ *  進場還沒跑完就已越過 exit）位移互相抵消一部分 —— 那正是「還沒站定就被帶走」該有的樣子。
+ *
+ *  reduce-motion：**進場**是本頁唯一一段自走播放的動畫（捲動動畫由使用者的手控制，
+ *  自走的不是），落在 WCAG 2.2.2 的範疇 ⇒ 退化成「未起播 → 藏、已起播 → 全亮」的兩態，
+ *  無 stagger、無亂碼、無位移。退場本身是捲動驅動、不受 2.2.2 管，仍保留淡出
+ *  （否則文字會硬生生消失），但去掉逐行錯開與位移，整組一起淡。 */
 export function symbolIntroLineState(
   s: SymbolIntroState,
+  p: number,
   index: number,
   count: number,
   reduceMotion: boolean,
 ): { opacity: number; shift: number; reveal: number } {
   if (reduceMotion) {
-    return s.elapsed === null
-      ? { opacity: 0, shift: INTRO_LINE_SHIFT, reveal: 0 }
-      : { opacity: 1, shift: 0, reveal: 1 };
+    if (s.elapsed === null) {
+      return { opacity: 0, shift: INTRO_LINE_SHIFT, reveal: 0 };
+    }
+    return {
+      opacity: 1 - smoothstep(0, 1, symbolIntroExitK(p)),
+      shift: 0,
+      reveal: 1,
+    };
   }
-  return symbolIntroLineAt(s.elapsed ?? 0, index, count);
+  const enter = symbolIntroLineAt(s.elapsed ?? 0, index);
+  const exit = symbolIntroExitAt(symbolIntroExitK(p), index, count);
+  return {
+    opacity: enter.opacity * exit.opacity,
+    shift: enter.shift + exit.shift,
+    reveal: enter.reveal,
+  };
 }
 
-/** 還有東西需要逐幀推進嗎（兩把尺任一未跑完）。
+/** 還要不要再排下一個 rAF ＝ **進場**時間軸還沒跑完嗎。
  *
- *  ⚠️ 清場跑完就是**終態**（直到 gate 重置回 SYMBOL_INTRO_IDLE），此時不論 elapsed
- *     到哪都要停 —— 否則整組已經看不見了，rAF 還會為它空轉到 total，
- *     而那段時間正是粒子集合成人像那一拍（頁面最重的一刻），清場的目的就是讓路。 */
+ *  ⚠️ 退場不出現在這裡，而這不是漏寫：它逐幀跟著 symbolProgress，由 watch 重繪，
+ *     捲動停下來時本來就不該有任何東西在跑。改版前那把清場的尺（以及它那條
+ *     「清場跑完是終態、不論 elapsed 到哪都要停」的例外）已隨保底清場一起刪除。 */
 export function symbolIntroRunning(
   s: SymbolIntroState,
   reduceMotion: boolean,
   count: number,
 ): boolean {
-  if (s.clearElapsed !== null) return s.clearElapsed < INTRO_TIMELINE.clearDur;
   if (reduceMotion) return false; // 兩態切換，沒有補間要跑
   return s.elapsed !== null && s.elapsed < symbolIntroTotal(count);
 }

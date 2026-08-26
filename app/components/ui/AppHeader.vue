@@ -8,6 +8,7 @@ import {
   type ThemeSpan,
 } from '@/utils/header-theme';
 import { pickActiveAnchor } from '@/utils/anchor-spy';
+import { nextHeaderShown } from '@/utils/header-autohide';
 import { anchorLanding, anchorOffsetVh } from '@/utils/anchor-landing';
 import { requestHomeRestart, resolveHomeIntent } from '@/utils/home-intent';
 import { gaLogo } from '@/utils/tracking-event';
@@ -71,9 +72,10 @@ let themeEls: HTMLElement[] = [];
 // 直接視為 true —— 那些頁面根本沒有 #app-hero。
 const heroOut = ref(!props.autoHide);
 
-// header 是否顯示。autoHide=false 時恆為 true（含 SSR），避免子頁載入時的滑入動畫。
+// 開場閘門：header **可以**開始顯示了嗎。autoHide=false 時恆為 true（含 SSR），
+// 避免子頁載入時的滑入動畫。
 //
-// autoHide=true（首頁）有兩個顯示條件，任一成立即顯示：
+// autoHide=true（首頁）有兩個條件，任一成立即通過：
 //   heroOut  hero 完全捲離視窗 —— 原本的唯一條件。
 //   isGone   影片退場結束。2026-08-16 起 .sec1__hero 是 sticky 且高 2.05 個視窗，
 //            「完全捲離視窗」要到 scrollY 4000 以上才成立（實測 1440×900 約 4223），
@@ -81,9 +83,28 @@ const heroOut = ref(!props.autoHide);
 //            那正是 gone，故直接讀狀態，不再另外量幾何。
 //   ⚠️ 影片重新回到畫面上（logo 就地重播／回捲到頂端 restart）時 isGone 轉 false，header 會跟著收回去 ——
 //      這是對的：那時影片又回到畫面上了。
-const isVisible = computed(
+const heroPassed = computed(
   () => !props.autoHide || heroOut.value || isGone.value,
 );
+
+// ── <1280 的自動隱藏（下滑藏／上滑顯）────────────────────────────────
+// 判定本身是純函式（見 ~/utils/header-autohide，邏輯對齊 common-components 的 NmdHeader），
+// 這裡只負責「什麼時候該套用」。逐幀更新掛在既有的 onScroll rAF 上，不另開 listener。
+const autoHideShown = ref(true);
+// SSR 與 hydration 之前一律 false（量不到視窗寬）——此時 autoHideShown 恆為 true，
+// 不影響 isVisible，故不會有閃動。真值在 onMounted 由 mqPc 寫入。
+const isPc = ref(false);
+let lastScrollY = 0;
+
+// header 是否顯示 ＝ 開場閘門通過 ＋ 自動隱藏沒把它收起來。
+const isVisible = computed(() => heroPassed.value && autoHideShown.value);
+
+// 閘門開的那一刻強制顯示。少了這條會有一個很難查的破口：hero 期間使用者一路往下捲，
+// autoHideShown 早就被判成 false，等 isGone 轉 true 時 isVisible 仍是 false ——
+// header 該滑入的那一刻沒滑入，要往上捲才叫得出來。
+watch(heroPassed, (passed) => {
+  if (passed) autoHideShown.value = true;
+});
 const anchors = str.headerAnchors as HeaderAnchor[];
 // logo 的替代文字與漢堡的 aria-label 一律走文案檔（locales/common.json 的 header），
 // 元件內不寫死中文 —— 校稿時只需要改 JSON。
@@ -97,10 +118,17 @@ let mqPc: MediaQueryList | null = null;
 let rafId = 0;
 let heroRafId = 0;
 
-// 放大到 ≥1280 時漢堡與選單都 display:none，menuOpen 若還留著 true，選單的捲動鎖
-// （AppHeaderMenu 的 .is-menu-locked）就沒人來解 → 整頁鎖死且看不到能關的 UI。
-function closeMenuOnPc(e: MediaQueryListEvent) {
-  if (e.matches) menuOpen.value = false;
+// 跨過 1280 的兩件事：
+// ① 放大到 ≥1280 時漢堡與選單都 display:none，menuOpen 若還留著 true，選單的捲動鎖
+//    （AppHeaderMenu 的 .is-menu-locked）就沒人來解 → 整頁鎖死且看不到能關的 UI。
+// ② 自動隱藏只在 <1280 生效（≥1280 有常駐錨點列，收掉不合理）；放大的當下若 header
+//    正被收著，得立刻還原，不然要等到下一次捲動才回得來。
+function onPcChange(e: MediaQueryListEvent | MediaQueryList) {
+  isPc.value = e.matches;
+  if (e.matches) {
+    menuOpen.value = false;
+    autoHideShown.value = true;
+  }
 }
 
 onMounted(() => {
@@ -123,8 +151,10 @@ onMounted(() => {
   docObserver.observe(document.documentElement);
   docObserver.observe(document.body);
 
+  lastScrollY = window.scrollY;
   mqPc = window.matchMedia(`(min-width: ${PC_BREAKPOINTS}px)`);
-  mqPc.addEventListener('change', closeMenuOnPc);
+  onPcChange(mqPc);
+  mqPc.addEventListener('change', onPcChange);
 
   // scroll-spy：以各區塊在視窗中央的可見度決定「當前錨點」。
   // 觀察對象有兩種來源：錨點本體的 id，以及用 data-anchor-target 宣告「我屬於哪個錨點」
@@ -206,7 +236,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', onScroll);
   window.removeEventListener('resize', onResize);
-  mqPc?.removeEventListener('change', closeMenuOnPc);
+  mqPc?.removeEventListener('change', onPcChange);
+  if (anchorScrollTimer) window.clearTimeout(anchorScrollTimer);
   if (rafId) window.cancelAnimationFrame(rafId);
   if (heroRafId) window.cancelAnimationFrame(heroRafId);
   observer?.disconnect();
@@ -263,11 +294,63 @@ function updateTheme() {
   theme.value = pickHeaderTheme(spans, headerBottom);
 }
 
+// 自動隱藏的例外：這些情況一律維持顯示，不看捲動方向。
+//   isPc            ≥1280 有常駐錨點列，收掉不合理（本功能只針對 <1280）。
+//   menuOpen        面板開著時 header 是它的關閉入口，收掉就沒得關了。
+//                   （選單期間 html/body 有 .is-menu-locked，但 iOS 的慣性捲動仍可能
+//                    在上鎖後補幾個 scroll 事件進來 —— 故不倚賴「鎖了就不會捲」。）
+//   bandTheme       轉場開窗期間。窗內那條反白 header 是效果的一部分，跟著滑走就破圖了。
+//   anchorScrolling 錨點的程式化 smooth scroll 期間，見 pinDuringAnchorScroll。
+function autoHidePinned() {
+  return isPc.value || menuOpen.value || !!bandTheme.value || anchorScrolling;
+}
+
+// 錨點捲動期間鎖住顯示。理由是落點：anchorLanding 一律扣掉 --header-height 預留 header
+// 的位置，若往下捲的途中 header 自己收起來，使用者看到的就是段落上方多一條空白。
+//
+// 解鎖條件是「捲動靜下來」而不是「捲到目標」或固定時長：
+//   ・捲到目標 —— 使用者中途手動介入時瀏覽器會取消 smooth scroll，那個目標永遠到不了，
+//     條件式解鎖會把 header 永久鎖在顯示。
+//   ・固定時長 —— 試過 1.2s，本站最長的一段錨點跳躍（首頁到 #media 約 14000px）要 1.4s，
+//     尾段就脫鎖收起來了，正是這段要避免的空白。
+// smooth scroll 進行中每幀都有 scroll 事件，靜默 200ms 即視為抵達。最壞情況是使用者
+// 點完錨點又立刻自己接手一直捲 —— 那段期間 header 維持顯示，停手 200ms 後恢復，
+// 方向是「多顯示」而不是「卡住不見」，可以接受。
+const ANCHOR_SCROLL_IDLE_MS = 200;
+let anchorScrolling = false;
+let anchorScrollTimer = 0;
+function armAnchorScrollRelease() {
+  window.clearTimeout(anchorScrollTimer);
+  anchorScrollTimer = window.setTimeout(() => {
+    anchorScrolling = false;
+    // 解鎖時把基準點對齊當下 —— 否則 lastScrollY 還停在整段捲動之前，
+    // 下一幀會拿一個上千 px 的假位移去判方向。
+    lastScrollY = window.scrollY;
+  }, ANCHOR_SCROLL_IDLE_MS);
+}
+function pinDuringAnchorScroll() {
+  anchorScrolling = true;
+  autoHideShown.value = true;
+  armAnchorScrollRelease();
+}
+
+function updateAutoHide() {
+  const y = window.scrollY;
+  // 還在錨點捲動中就把「靜下來」的計時往後推 —— 沒有這行，長距離跳躍會在半路脫鎖。
+  if (anchorScrolling) armAnchorScrollRelease();
+  autoHideShown.value = autoHidePinned()
+    ? true
+    : nextHeaderShown({ y, prevY: lastScrollY, shown: autoHideShown.value });
+  // 基準點無論有沒有套用都要更新，不然解除例外的那一幀會拿到累積的巨大位移。
+  lastScrollY = y;
+}
+
 function onScroll() {
   if (rafId) return;
   rafId = window.requestAnimationFrame(() => {
     updateProgress();
     updateTheme();
+    updateAutoHide();
     rafId = 0;
   });
 }
@@ -294,6 +377,7 @@ function scrollToTarget(target: string, e?: Event) {
     // 以 --vh 為單位（見 ~/composables/useViewportHeight），兩邊必須同一把尺。
     vh: vhPx(),
   });
+  pinDuringAnchorScroll();
   window.scrollTo({ top, behavior: 'smooth' });
 }
 
@@ -427,8 +511,10 @@ const layers = computed<HeaderLayer[]>(() => {
       :aria-hidden="layer.key === 'band' || undefined"
       :inert="layer.key === 'band' || undefined"
     >
-      <!-- 閱讀進度 -->
-      <div v-show="isVisible" class="app-header__progress">
+      <!-- 閱讀進度。吃 heroPassed 而不是 isVisible：<1280 下滑自動隱藏時只收主列，
+           這條 3px 的進度線留在頂端（閱讀中還看得到自己走到哪）。跟著 isVisible 的話
+           它會被 v-show 直接 display:none —— 主列是滑走的、它是瞬間消失，兩者不同調。 -->
+      <div v-show="heroPassed" class="app-header__progress">
         <div
           class="app-header__progress-bar"
           :style="{ width: `${progress}%` }"
@@ -731,7 +817,7 @@ const layers = computed<HeaderLayer[]>(() => {
   display: flex;
   align-items: center;
   width: 100%;
-  max-width: 1920px;
+  max-width: 2560px;
   height: calc(var(--header-height) - 3px);
   padding: 0 20px;
 
