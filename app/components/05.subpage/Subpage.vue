@@ -63,6 +63,10 @@ export interface SubpageContent {
    * 不會被拉開，與早期拆成多個 <p> 的排版等價。
    */
   intro: string;
+  /**
+   * 引言的 <768 無斷行。
+   */
+  introBreakFrom?: 'tablet';
   /** 引言之後的滿屏媒體；沒給（或內容為空）就不渲染、舞台也不多一拍 */
   introMedia?: SubpageIntroMediaData;
   nav: SubpageNavData;
@@ -514,7 +518,11 @@ onBeforeUnmount(() => {
 
       <div class="subpage__intro">
         <div ref="introInnerRef" class="subpage__col subpage__col--wide">
-          <p class="subpage__intro-text" v-html="content.intro" />
+          <p
+            class="subpage__intro-text"
+            :class="{ 'subpage__intro-text--br-tablet': content.introBreakFrom === 'tablet' }"
+            v-html="content.intro"
+          />
         </div>
       </div>
 
@@ -896,9 +904,25 @@ onBeforeUnmount(() => {
   color: var(--color-gray);
   text-align: justify;
 
+  // ≤375（含 375，故斷點寫 376）字級降到 18/32 並隨 vw 等比：引言層只有一屏高（pin 舞台
+  // overflow 裁切），底部又有 60px 錨點列 —— 最長的 health 引言在 375×667 用 22/40 要 14 行、
+  // 560px，扣掉 header＋內距只剩 468px 可用，尾段整段被錨點列蓋住；18/32 約 12 行、384px 放得下，
+  // 320×568（可用 369px）亦然。
+  @include rwd-max(376px) {
+    font-size: calc(18 / 375 * 100vw);
+    line-height: calc(32 / 375 * 100vw);
+  }
   @include rwd-min('tablet') {
     font-size: var(--text-intro);
     line-height: var(--text-intro--line-height);
+  }
+  // introBreakFrom
+  &--br-tablet :deep(br) {
+    display: none;
+
+    @include rwd-min('tablet') {
+      display: inline;
+    }
   }
   // pc→ultra 稿是精確的 ×1.5 等比（欄寬 1040→1560、字級 32/60→48/90），
   // 欄寬既走 vw 等比，字級也得跟著走，行數／行長才對得上稿；≥1920 隨欄寬一起錨定。

@@ -217,12 +217,20 @@ function pick(i: number) {
   cursor: pointer;
   transition:
     color 0.25s ease,
-    border-color 0.25s ease;
+    border-color 0.25s ease,
+    background-color 0.25s ease;
 
-  // 選中後停在橘色（等同 hover 的橘，但不隨滑鼠移開消失）
+  // 選中後停在橘色（不隨滑鼠移開消失）：
+  // mob 對稿 click 態＝橘底盒＋白字白箭頭；pad 以上沒有盒（無底無框），維持橘字＋橘底圓鈕
   &--picked {
     border-color: var(--color-orange);
-    color: var(--color-orange);
+    background: var(--color-orange);
+    color: #fff;
+
+    @include rwd-min('tablet') {
+      background: none;
+      color: var(--color-orange);
+    }
   }
 
   &:last-child {
@@ -306,8 +314,9 @@ function pick(i: number) {
   -webkit-mask: url('/img/udn75_arrow_pixel.svg') no-repeat center / contain;
   transition: background-color 0.25s ease;
 
+  // 選中：橘底盒上的白箭頭（對稿 click 態）
   .ai-quiz__btn--picked & {
-    background: var(--color-orange);
+    background: #fff;
   }
 
   @include rwd-min('tablet') {
@@ -328,6 +337,13 @@ function pick(i: number) {
   line-height: 26px;
   font-weight: 300;
   letter-spacing: 0.1em;
+
+  // mob 對稿 click 態字重 Light → Regular（Button_S → Button_S_bold）；pad 以上字重不變
+  .ai-quiz__btn--picked & {
+    @include rwd-max('tablet') {
+      font-weight: 400;
+    }
+  }
 
   @include rwd-min('tablet') {
     font-size: var(--text-body);
