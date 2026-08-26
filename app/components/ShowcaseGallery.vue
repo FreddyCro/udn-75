@@ -116,13 +116,26 @@ const props = defineProps({
   minScale: { type: Number, default: 0.3 },
   /** 峰頂最大縮放 */
   maxScale: { type: Number, default: 1.1 },
-  /** 元件寬度：路徑兩端（出現/消失點）占視窗寬的比例。1=貼齊兩側、<1=往內縮、>1=推到畫面外 */
-  widthRatio: { type: Number, default: 0.9 },
+  /**
+   * 元件寬度：路徑兩端（出現/消失點）占視窗寬的比例。1=貼齊兩側、<1=往內縮、>1=推到畫面外。
+   * 卡片相位固定為 1/count，所以這條就是「卡片間距」的總開關 —— 調大＝路徑拉長＝間距變鬆
+   * （卡片大小由 designW 決定，不會跟著變）。
+   */
+  widthRatio: { type: Number, default: 1.1 },
   /** 每張 rotateX 的分佈上限（度）；各卡分散在 [-range, +range]，±180 = 上下鏡像 */
   rotateXRange: { type: Number, default: 180 },
-  /** 每張 scaleY 的下/上限（改各自鐘形的峰高） */
+  /**
+   * 照片 scaleY 的下/上限（改各自鐘形的峰高）。實際值還會被 measure() 壓在數據卡振幅
+   * 之下（見 PHOTO_AMP_RATIO），所以窄視窗下抽到的上限不一定吃得到。
+   */
   scaleYMin: { type: Number, default: 0.6 },
   scaleYMax: { type: Number, default: 1.3 },
+  /**
+   * AI 數據向量卡專用的峰高（希望值）。高於 scaleYMax，讓三張數據卡的峰頂就是整個波段的
+   * 最高／最低點。measure() 會再依當前視窗把它夾到「峰頂不被 overflow:hidden 切到」的上限，
+   * 所以這裡可以放心給大值：窄視窗自動讓步，寬視窗才吃得到全部。
+   */
+  vectorScaleY: { type: Number, default: 1.5 },
 });
 
 // 【測試用】顯示每張卡片左上角的順序編號；不需要時改成 false 即可拿掉
@@ -160,6 +173,17 @@ const isVector = (c: ShowcaseSlide) => c.ext === 'svg';
 //（透明底的橘字被照片壓住會像斷字），彼此之間仍照縮放前後排序
 const VECTOR_Z_BOOST = 1000;
 
+// 三張 AI 數據向量卡的峰頂朝向（依卡片出現順序，即第 3／6／9 張）：
+// -1 ＝ rotateX 180° 上下鏡像，峰頂朝下（落在波段最低點）；+1 ＝ 峰頂朝上（最高點）。
+// 校稿指定「下、上、下」。
+const VECTOR_PEAK_DIRS = [-1, 1, -1];
+
+/** 向量卡峰頂與視窗邊緣保留的空隙（px）：貼齊 0 會因為次像素捨入而看起來被削一刀 */
+const VECTOR_EDGE_GAP = 8;
+
+/** 照片振幅相對「最矮那張數據卡」的比例上限：留 15% 差距，極值點才看得出是數據卡 */
+const PHOTO_AMP_RATIO = 0.85;
+
 onMounted(() => {
   gsap.registerPlugin(ScrollTrigger);
   const section = sectionRef.value;
@@ -183,11 +207,39 @@ onMounted(() => {
   }
   const ySpan = yMax - yMin || 1;
   const xExtent = (xMax - xMin) / 1000 || 1; // 路徑水平總寬（正規化 0..1）
+  const yPeakNorm = Math.abs((yMin - 500) / 1000); // 峰頂距中線的正規化距離（乘 sclY×S ＝實際 px）
+
+  const N = props.count;
+
+  // 每張一條不同的 path：同一條 base bell 套各自的 rotateX(θ) + scaleY。
+  // 照片：θ 與 scaleY 皆「隨機」取，使相鄰路徑之間的差距不固定（非等差）。
+  // AI 數據向量卡：不進隨機池。隨機的 θ 可能落在 ±90° 附近使 cosθ≈0，路徑會被壓成一條
+  // 水平直線、那張卡就一路貼著中線滑過去，走不到波段的高低點。改成寫死 cosθ = ±1（滿振幅
+  // 不壓扁），方向照 VECTOR_PEAK_DIRS。峰高與「照片不得超過數據卡」的夾擠都在 measure()，
+  // 因為兩者都跟視窗尺寸有關，resize 要重算。
+  const DEG = Math.PI / 180;
+  const cosθ: number[] = []; // rotateX 的 cos（=垂直 scaleY；負值=上下鏡像、0=俯視收成一線）
+  const sclYBase: number[] = []; // 抽到的峰高（照片＝隨機值、向量卡＝vectorScaleY 希望值）
+  const sclY: number[] = []; // 實際使用的峰高：由 measure() 依當前視窗從 sclYBase 換算
+  let vectorSeen = 0;
+  for (let i = 0; i < N; i++) {
+    if (isVector(cards.value[i]!)) {
+      cosθ[i] = VECTOR_PEAK_DIRS[vectorSeen % VECTOR_PEAK_DIRS.length]!;
+      sclYBase[i] = props.vectorScaleY;
+      vectorSeen++;
+      continue;
+    }
+    const theta = (Math.random() * 2 - 1) * props.rotateXRange * DEG; // 隨機 θ ∈ [-range, +range]
+    cosθ[i] = Math.cos(theta);
+    sclYBase[i] =
+      props.scaleYMin + Math.random() * (props.scaleYMax - props.scaleYMin); // 隨機峰高
+  }
 
   let S = 0; // 垂直基準（依 min(視窗寬高) 等比）
   let SX = 0; // 水平展開基準（由 widthRatio × 視窗寬 決定）
   const measure = () => {
     const w = section.clientWidth;
+    const h = section.clientHeight;
     // pad / mob 稿：卡片放大、路徑向視窗外擴（群組寬 pc 903/1280、
     // pad 1246/768、mob 800/414），垂直振幅同步放大
     const isMob = window.matchMedia('(max-width: 767.98px)').matches;
@@ -195,24 +247,47 @@ onMounted(() => {
     designW.value = isMob ? 467 : isPad ? 556 : DESIGN_W;
     const spread = isMob ? 2.7 : isPad ? 2.3 : 1;
     const vScale = isMob ? 1.55 : isPad ? 1.3 : 1;
-    S = Math.min(w, section.clientHeight) * 0.95 * vScale;
+    S = Math.min(w, h) * 0.95 * vScale;
     SX = (props.widthRatio * spread * w) / xExtent; // 路徑兩端落在 ±widthRatio×spread×寬/2
+
+    // 向量卡帶數字，峰頂被 section 的 overflow:hidden 切到就會斷字。但 S 綁在 min(寬,高)、
+    // 卡片尺寸卻綁在視窗寬度 —— 超寬螢幕（如 21:9）卡片變大而振幅沒變，vectorScaleY 直上
+    // 會頂出畫面。所以固定值不夠，這裡依當前視窗反推「峰頂剛好貼齊上/下緣」的峰高上限。
+    // 朝上的那張還要多讓開 fixed header：卡片 z-index 是 1000+，比 header 的 1000 高，
+    // 不讓的話數字會直接壓在 logo／nav 上面。
+    const headerH =
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          '--header-height',
+        ),
+      ) || 0;
+    let minVectorAmp = Infinity; // 三張數據卡裡最小的振幅（照片要壓在它之下）
+    for (let i = 0; i < N; i++) {
+      const c = cards.value[i]!;
+      if (!isVector(c)) continue;
+      const cardW = ((c.w * (c.scale ?? 1)) / designW.value) * w;
+      const halfH = ((cardW * c.h) / c.w) * props.maxScale * 0.5; // 峰頂時 scale ＝ maxScale
+      const inset = (cosθ[i]! > 0 ? headerH : 0) + VECTOR_EDGE_GAP;
+      const cap = (h * 0.5 - halfH - inset) / (yPeakNorm * S);
+      sclY[i] = Math.min(sclYBase[i]!, Math.max(0, cap));
+      minVectorAmp = Math.min(minVectorAmp, sclY[i]!); // 向量卡 |cosθ| ＝ 1，峰高即振幅
+    }
+
+    // 照片壓在數據卡振幅之下 —— 上一步的視窗夾擠可能把數據卡壓到比隨機照片還矮，
+    // 那「三張數據卡是波段極值」就不成立了。振幅 ＝ sclY × |cosθ|，所以反推 sclY 上限。
+    const photoAmpLimit = minVectorAmp * PHOTO_AMP_RATIO;
+    for (let i = 0; i < N; i++) {
+      if (isVector(cards.value[i]!)) continue;
+      const absCos = Math.abs(cosθ[i]!);
+      sclY[i] =
+        absCos > 1e-3
+          ? Math.min(sclYBase[i]!, photoAmpLimit / absCos)
+          : sclYBase[i]!; // cosθ≈0：路徑已被壓平，本來就沒振幅
+    }
   };
   measure();
 
   const state = { p: 0 };
-  const N = props.count;
-
-  // 每張一條不同的 path：同一條 base bell 套各自的 rotateX(θ) + scaleY。
-  // θ 與 scaleY 皆「隨機」取，使相鄰路徑之間的差距不固定（非等差）。
-  const DEG = Math.PI / 180;
-  const cosθ: number[] = []; // rotateX 的 cos（=垂直 scaleY；負值=上下鏡像、0=俯視收成一線）
-  const sclY: number[] = []; // 各自的 scaleY（峰高）
-  for (let i = 0; i < N; i++) {
-    const theta = (Math.random() * 2 - 1) * props.rotateXRange * DEG; // 隨機 θ ∈ [-range, +range]
-    cosθ[i] = Math.cos(theta);
-    sclY[i] = props.scaleYMin + Math.random() * (props.scaleYMax - props.scaleYMin); // 隨機峰高
-  }
 
   const render = () => {
     const els = cardRefs.value;
