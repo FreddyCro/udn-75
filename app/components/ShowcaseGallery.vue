@@ -55,14 +55,15 @@ export interface ShowcaseSlide {
   scale?: number;
 }
 
-// 「綁滾動多圖輪播」正式素材 udn75_pic30_01~15：寬度沿用設計稿的大小分佈（94~273 @1280 stage），
+// 「綁滾動多圖輪播」正式素材：校稿後由 15 張精簡為 11 張（抽掉 pic30_05／07／08／10），
+// 順序與放大倍率依校稿表指定；寬度沿用設計稿的大小分佈（120~273 @1280 stage），
 // 高度依各圖實際比例（3:2 / 4:5 / 1:1）換算，避免 cover 裁切
 // （module scope：defineProps 的 default 會被 hoist，不能引用 setup 區域變數）
 // 留白（src: ''）＝該張抽掉不顯示，但保留原尺寸佔位撐開節奏；scale 為校稿指定的放大倍率
 // 第 3／6／9 張為 AI 數據向量卡（428:574 直式）：沿用原留白格的高度換算寬度，避免比例被拉伸
 const DESIGN_SLIDES: ShowcaseSlide[] = [
-  { w: 273, h: 182, src: '/img/data/udn75_pic30_01', scale: 1.1 },
-  { w: 208, h: 139, src: '/img/data/udn75_pic30_02' },
+  { w: 273, h: 182, src: '/img/data/udn75_pic30_01' },
+  { w: 161, h: 201, src: '/img/data/udn75_pic30_12', scale: 1.5 },
   {
     w: 120,
     h: 161,
@@ -71,8 +72,8 @@ const DESIGN_SLIDES: ShowcaseSlide[] = [
     scale: 1.5,
     alt: 'AI 搜尋累積使用人次 20,000+',
   },
+  { w: 173, h: 173, src: '/img/data/udn75_pic30_15', scale: 2 },
   { w: 173, h: 216, src: '/img/data/udn75_pic30_04' },
-  { w: 237, h: 158, src: '/img/data/udn75_pic30_05', scale: 1.2 },
   {
     w: 105,
     h: 141,
@@ -81,8 +82,8 @@ const DESIGN_SLIDES: ShowcaseSlide[] = [
     scale: 1.5,
     alt: 'AI 搜尋累積回應人次 50,000+',
   },
-  { w: 214, h: 143, src: '/img/data/udn75_pic30_07', scale: 1.1 },
-  { w: 94, h: 94, src: '/img/data/udn75_pic30_08' },
+  { w: 120, h: 120, src: '/img/data/udn75_pic30_14', scale: 2 },
+  { w: 208, h: 139, src: '/img/data/udn75_pic30_02' },
   {
     w: 120,
     h: 161,
@@ -91,12 +92,8 @@ const DESIGN_SLIDES: ShowcaseSlide[] = [
     scale: 1.5,
     alt: 'AI 每日推薦文章累計使用人次 40,000+',
   },
-  { w: 190, h: 127, src: '/img/data/udn75_pic30_10' },
-  { w: 273, h: 182, src: '/img/data/udn75_pic30_11' },
-  { w: 161, h: 201, src: '/img/data/udn75_pic30_12', scale: 1.2 },
-  { w: 225, h: 150, src: '/img/data/udn75_pic30_13' },
-  { w: 120, h: 120, src: '/img/data/udn75_pic30_14' },
-  { w: 173, h: 173, src: '/img/data/udn75_pic30_15' },
+  { w: 225, h: 150, src: '/img/data/udn75_pic30_13', scale: 1.7 },
+  { w: 273, h: 182, src: '/img/data/udn75_pic30_11', scale: 1.2 },
 ];
 </script>
 
@@ -111,8 +108,8 @@ const props = defineProps({
     type: Array as () => ShowcaseSlide[],
     default: () => DESIGN_SLIDES,
   },
-  /** 同時鋪在路徑上的卡片數（越多越像連續 stream） */
-  count: { type: Number, default: 15 },
+  /** 同時鋪在路徑上的卡片數（越多越像連續 stream）；與 slides 張數一致才不會出現重複素材 */
+  count: { type: Number, default: 11 },
   /** pin 期間可捲動距離（px）；越大動得越慢 */
   pinDistance: { type: Number, default: 2000 },
   /** 端點最小縮放（路徑兩端） */
