@@ -839,6 +839,10 @@ function applyScrollLock() {
            變體，那五階烘出來逐像素相同 ＝ atlas 白付 96/120 格（352×352 → 160×160）。
            量測與還原點見 SymbolFace 的 weightMax 註解；weight-min 在 steps=1 時不會被讀到，
            留著是為了將來換可變 mono 字型時能直接調回去。
+
+        disperse-alpha / disperse-lift 是「散開態專屬」的亮度（只吃 uDisperse，集合／匯聚不受影響）：
+        alpha 1 ＝ 不再半透明（元件預設 0.5），lift 0.35 ＝ 取色位置往漸層亮端推 35%，
+        讓人臉暗部那些接近黑的符號在黑底上也看得見。兩者的取值範圍與原理見 SymbolFace 的 prop 註解。
       -->
       <template #default="{ active: symbolLayerActive }">
         <SymbolFace
@@ -879,6 +883,8 @@ function applyScrollLock() {
           :glitch-items="SYMBOL_GLITCH_ITEMS"
           :float-amp="18"
           :float-micro="0.5"
+          :disperse-alpha="1"
+          :disperse-lift="0.35"
         />
 
         <!--

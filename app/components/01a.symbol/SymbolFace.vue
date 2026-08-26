@@ -145,6 +145,18 @@ const props = defineProps({
     type: Array as () => number[],
     default: () => [900, 520, 240],
   },
+  /** 散場態的 alpha 倍率（0..1，原本寫死 0.5 ＝ 半透明）。
+   *  1 ＝ 與集合態同濃度。只在 uDisperse 那一段生效，集合／匯聚不受影響。
+   *  ⚠️ 這一項的天花板就是 1（alpha 再高也只是不透明）；要比集合態**更亮**得靠
+   *     下面的 disperseLift —— 因為暗部粒子是「顏色本來就接近黑」，加濃度不會變亮。 */
+  disperseAlpha: { type: Number, default: 0.5 },
+  /** 散場態把取色位置往漸層亮端推的量（0..1，0 ＝ 現狀不推）。
+   *  漸層是 color / colorStops 那條（正式站 #000 → #77c6e0 → #d1f4ff → #fff），
+   *  取色位置平時 ＝ 該格亮度（aBright）→ 人臉暗部的符號在黑底上幾乎看不見。
+   *  這一項把每顆的取色位置 mix 向 1.0（＝漸層最亮端），故**每顆都會變亮**、
+   *  且暗部拉升最多；1 ＝ 散場時整片收斂成漸層最亮端的單色。
+   *  ⚠️ 只吃 uDisperse，集合態的人臉明暗不受影響（不然臉就平掉了）。 */
+  disperseLift: { type: Number, default: 0 },
   /** 匯聚成點時那顆點的螢幕邊長（CSS px）。
    *  預設 ＝ CORE.dotSize（見 ~/utils/orange-core-config）：converge 終點要與 ForumCore 的
    *  橘方塊硬切交棒（FORUM_HANDOFF.coreIn），兩者同尺寸才不會在接棒那刻跳大小。
@@ -1095,6 +1107,9 @@ onMounted(() => {
         uProgress: { value: 0 },
         uTime: { value: 0 },
         uDisperse: { value: 0 },
+        // 散場態的濃度／提亮：與 uDisperse（進度）分家 —— 進度歸 mode 補間，這兩個是設定值。
+        uDisperseAlpha: { value: clampAmount(cfg.disperseAlpha) ?? 0.5 },
+        uDisperseLift: { value: clampAmount(cfg.disperseLift) ?? 0 },
         uConverge: { value: 0 },
         uConvergePx: { value: cfg.convergeSize },
         // clamp 到 0.9：1.0 會讓 per-particle 的 smoothstep 窗寬變 0（見 convergeStagger prop）
@@ -1140,6 +1155,8 @@ onMounted(() => {
         uniform float uProgress;
         uniform float uTime;
         uniform float uDisperse;
+        uniform float uDisperseAlpha;
+        uniform float uDisperseLift;
         uniform float uConverge;
         uniform float uConvergePx;
         uniform float uConvergeStagger;
@@ -1275,9 +1292,14 @@ onMounted(() => {
 
           float twinkle = (1.0 - uTwinkleAmp) + uTwinkleAmp * sin(uTime * 2.2 + aSeed * 40.0);
           // 不透明（gemini 邊緣銳利）；只保留 reveal(local) 與散場的淡入淡出
-          vAlpha = local * twinkle * mix(1.0, 0.5, uDisperse);
+          vAlpha = local * twinkle * mix(1.0, uDisperseAlpha, uDisperse);
           // 取色位置：tone=依亮度（亮→漸層右端＝高光色）/ random=每顆隨機
           vT = mix(aBright, hash(aSeed * 53.7), uColorRandom);
+          // 散場提亮：把取色位置往漸層最亮端推（見 disperseLift prop）。
+          // 亮度是「顏色」而不只是 alpha —— 暗部粒子的 vT≈0 ＝ 漸層左端的黑，
+          // 在黑底上不管 alpha 多高都看不見，故要動的是取色位置。
+          // 乘 uDisperse ＝ 只在散場態生效，集合態的人臉明暗維持原樣。
+          vT = mix(vT, 1.0, uDisperseLift * uDisperse);
           // 實心化後所有粒子必須同色：alpha=1 的疊畫是後畫的覆蓋前面，各顆顏色不同的話
           // 那顆方塊會變成「buffer 裡最後一顆」的顏色（換 cols / 換圖就換色）。
           // 這裡先把取色位置收斂到漸層最亮端，最終顏色再由 fragment 的 uSolidColor 蓋掉
