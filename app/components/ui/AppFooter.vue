@@ -100,11 +100,21 @@ const gaViewTerm = computed(() => {
 
     // NmdAuthor 名字欄的寬度上限（它的 grid 第二欄是 minmax(auto, var(--maxWidth, 8em))）。
     // 對稿：mob 120px、pad / pc 180px。名單裡每個名字與「、」都是各自的 flex item，
-    // 所以這個寬度就直接決定斷行位置 —— 180px 剛好三個名字＋頓號、120px 剛好兩個。
-    --maxWidth: 120px;
+    // 所以這個寬度就直接決定斷行位置 —— 12em 剛好三個名字＋頓號、8em 剛好兩個。
+    //
+    // ⚠️ 單位必須是 em，不可寫死 px。NmdAuthor 的字級固定 15px，8em / 12em 就是對稿的
+    //    120 / 180px，預設狀態下渲染結果與寫死 px 完全一樣；差別在字被放大時：
+    //    Android WebView 預設把系統的「字體大小」設定當 textZoom 套用（Chrome for
+    //    Android 有自己獨立的文字縮放偏好、預設 100%，故不受影響），而 LINE 這類
+    //    in-app 瀏覽器就是 WebView，且沒有呼叫 setTextZoom(100) 關掉它。
+    //    寫死 px 會變成「字放大、欄寬不動」：mob 兩個名字實寬 7 個全形字 ＝ 105px，
+    //    離 120px 只剩一個字的餘裕，系統字級往上調一格（約 115%）就擠不下 ——
+    //    斷成一行一個名字。改用 em，欄寬會跟著放大的字一起長，斷行位置不隨字級縮放而變。
+    //    （2026-08-27 修，Pixel 9a ╱ LINE in-app 回報。）
+    --maxWidth: 8em;
 
     @include rwd-min('tablet') {
-      --maxWidth: 180px;
+      --maxWidth: 12em;
     }
 
     // NmdAuthor 自己的 padding-top 是 mob 60 / ≥1280 才 80，但 pad 稿也要 80。
