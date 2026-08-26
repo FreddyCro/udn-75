@@ -309,8 +309,14 @@ const props = defineProps({
   /** 下滑提示的說明文字（空字串＝不渲染這顆按鈕）。設計稿 Figma 2065:139741。
    *  圖示本體、漂移動態與「點了往下捲一屏」都在 <UBtnScrollHint>，本元件只給版位。
    *  ⚠️ 有文案**不等於**會出現：顯示時機是三個條件的交集（2026-08-23 定案，見 scrollHintOn）
-   *     —— 本層在場 ＋ 停超過十秒沒捲動 ＋ 手機版互動提示不在畫面上。 */
+   *     —— 本層在場 ＋ 停超過十秒沒捲動 ＋ 手機版互動提示不在畫面上。
+   *     第二個條件可由 scrollHintPinned 整個跳過。 */
   scrollHint: { type: String, default: '' },
+  /** 下滑提示是否**常駐**：true ＝ 跳過「停十秒沒捲動」那道閘門，只要在場就顯示。
+   *  正式站傳 `symbolScrollHintPinnedAt(symbolProgress)`（＝開場三行文案起播 → 粒子開始集合，
+   *  見 ~/utils/orange-core-config），也就是「三行文字那一段常駐、進入 face 才開始十秒規則」。
+   *  另外兩個條件（在場、手機提示互斥）不受影響 —— 這顆只關掉計時器那一道。 */
+  scrollHintPinned: { type: Boolean, default: false },
   /** 提示是否「整個生命週期只出現一次」。
    *  false（預設）＝ 每次**重新完整集合**都再出現一次；游標碰到人像仍立即收起，
    *    但那次收起只對這一輪集合有效（見 faceFormed 的 watch）。
@@ -610,8 +616,15 @@ watch(faceFormed, (formed) => {
 // ---------- 下滑提示 ----------
 // 三個條件同時成立才出現（2026-08-23 定案，取代原本「有文案就常駐」）：
 //   ① onStage    ── 本層在場（＝ rAF 的執行閘門 shouldRun：active ＋ inView ＋ 分頁在前景）
-//   ② scrollIdle ── 連續 SCROLL_IDLE_MS 沒有捲動
+//   ② scrollIdle ── 連續 SCROLL_IDLE_MS 沒有捲動，**或** props.scrollHintPinned
 //   ③ !mobHintOn ── 手機版互動提示不在畫面上
+//
+// ⚠️ ② 的那個 or 是 2026-08-27 加的：開場三行文案那一段（disperse 拍）改成常駐，
+//    十秒規則從**進入 face 那一拍**才開始。理由（三行不會自己消失、畫面上沒別的東西
+//    指引往下捲）與窗口的兩個端點寫在 symbolScrollHintPinnedAt —— 窗口本身由驅動端
+//    算好傳進來，本元件不認得 symbolProgress（同 convergeAmount 那幾個 prop 的分工）。
+//    pinned 期間計時器照跑：離開窗口那一刻必然伴隨一次捲動事件（armIdleTimer 會重排），
+//    所以「十秒」是從進入 face 起算，不是沿用文案那段的殘值。
 //
 // ⚠️ ① 刻意用執行閘門、不是 faceFormed：這顆是「還有下文」的指引，使用者停在散開／匯聚
 //    那兩拍一樣需要它；faceFormed 是上面兩組「這裡可以互動」提示的判準，語意不同。
@@ -659,7 +672,7 @@ const scrollHintOn = computed(
   () =>
     !!props.scrollHint &&
     onStage.value &&
-    scrollIdle.value &&
+    (props.scrollHintPinned || scrollIdle.value) &&
     !mobHintOn.value,
 );
 

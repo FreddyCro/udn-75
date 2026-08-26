@@ -98,11 +98,19 @@ const {
   transitionProgress,
   setTransitionProgress,
   symbolMode,
+  symbolProgress,
   symbolLayerDone,
   symbolConvergeAmount,
   symbolCoreWarm,
   symbolBgLight,
 } = useOrangeCoreProgress();
+
+// 下滑提示要不要常駐：開場三行文案那一段是，進入 face 那一拍改回十秒規則。
+// 窗口與理由都在 symbolScrollHintPinnedAt（純函式，有單元測試）—— 本處只是把它接上去，
+// 同 symbolConvergeAmount 那幾個「值在 config 算好、元件只收數字」的分工。
+const symbolScrollHintPinned = computed(() =>
+  symbolScrollHintPinnedAt(symbolProgress.value),
+);
 
 // ── 符號人臉的縮放：手機要再小一號 ──────────────────────────────────
 // SymbolFace 的 world→px 換算只綁**視窗高**（uWorldToPx = 視窗高 / 559.6，見該元件的
@@ -906,6 +914,7 @@ function applyScrollLock() {
           :hint-pad="str.symbol.hintPad"
           :hint-mob="str.symbol.hintMob"
           :scroll-hint="str.symbol.scrollHint"
+          :scroll-hint-pinned="symbolScrollHintPinned"
           :hole-radius="25"
           :hole-spread="50"
           :return-ease="1.5"

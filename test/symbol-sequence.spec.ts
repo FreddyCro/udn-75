@@ -29,6 +29,7 @@ import {
   symbolIntroLineState,
   symbolIntroRunning,
   symbolIntroTotal,
+  symbolScrollHintPinnedAt,
   type SymbolIntroState,
 } from '../app/utils/orange-core-config';
 
@@ -86,6 +87,28 @@ describe('符號段序列門檻', () => {
     expect(SYMBOL_INTRO.in).toBeLessThan(SYMBOL_INTRO.exit);
     expect(SYMBOL_INTRO.exit).toBeLessThan(SYMBOL_INTRO.out);
     expect(SYMBOL_INTRO.out).toBeLessThan(SYMBOL_STOPS[0]!.until);
+  });
+
+  // 下滑提示的常駐窗口（2026-08-27）。守的同樣是「關係」不是值：
+  // 起點要壓在文案起播上（不能提早涵蓋 hero 轉場）、終點要壓在 disperse→face 的交界上
+  // （＝進入 face 才開始十秒規則）。理由見 symbolScrollHintPinnedAt。
+  it('下滑提示常駐窗口 ＝ 三行文案起播 → 粒子開始集合', () => {
+    // 端點：起點含、終點不含（face 那一拍立刻交回十秒規則）
+    expect(symbolScrollHintPinnedAt(SYMBOL_INTRO.in)).toBe(true);
+    expect(symbolScrollHintPinnedAt(SYMBOL_STOPS[0]!.until)).toBe(false);
+
+    // hero 轉場（本尺還沒起跑，p 恆 0）與文案起播之前：不常駐
+    expect(symbolScrollHintPinnedAt(0)).toBe(false);
+    expect(symbolScrollHintPinnedAt(SYMBOL_INTRO.in / 2)).toBe(false);
+
+    // 文案的全亮期與退場期都在窗口內 —— 停著不動時提示要一直在
+    expect(symbolScrollHintPinnedAt(SYMBOL_INTRO.exit)).toBe(true);
+    expect(symbolScrollHintPinnedAt(SYMBOL_INTRO.out)).toBe(true);
+
+    // face 之後（含 converge 與段尾）一律交回十秒規則
+    for (const p of [SYMBOL_STOPS[1]!.until, FORUM_HANDOFF.coreIn, 1]) {
+      expect(symbolScrollHintPinnedAt(p)).toBe(false);
+    }
   });
 
   // 這條才是「文字要在粒子集合成人像之前淡乾淨」的本體。

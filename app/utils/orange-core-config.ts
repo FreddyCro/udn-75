@@ -605,6 +605,25 @@ export const SYMBOL_STOPS: readonly {
   { until: 1.0, mode: 'enter' }, //                                      →334vh (100%)   轉場層淡出、橘核心接棒
 ];
 
+/** 下滑提示要不要**常駐**（＝跳過 SymbolFace 那道「停十秒沒捲動」的閘門）。
+ *  窗口 ＝ 開場三行文案起播（SYMBOL_INTRO.in ＝ 8vh）→ 粒子開始集合成人像
+ *  （SYMBOL_STOPS[0].until ＝ disperse→face 的交界 ＝ 112vh）。
+ *
+ *  為什麼這一段要常駐：三行到位之後**停在全亮不會自己消失**（停留無限長，見 SYMBOL_INTRO），
+ *  畫面上沒有任何東西告訴使用者「讀完了往下捲」—— 等十秒才給指引太晚，那十秒他面對的是
+ *  三行不動的字。進入 face 之後畫面本身就有事情在演（人像集合、可互動），指引改回十秒規則，
+ *  才不會跟那兩組互動提示互搶注意力（互斥關係見 SymbolFace 的 scrollHintOn ③）。
+ *
+ *  ⚠️ 起點取 in 而不是 0：p ＝ 0 涵蓋**整段 hero 轉場**（本尺那時還沒起跑，見 SymbolScene 檔頭），
+ *     那是使用者正在捲的轉場動畫，不需要有人請他往下捲。
+ *  ⚠️ 終點取 disperse→face 的交界、不是文案自己的 out（104vh）：那 8vh 之間文字已淡乾淨、
+ *     粒子還沒開始集合，讓提示在這裡閃一下再滅掉沒有意義（且那一刻使用者必然正在捲）。
+ *
+ *  純函式、不依賴 DOM —— 由 test/symbol-sequence.spec.ts 守著。 */
+export function symbolScrollHintPinnedAt(p: number): boolean {
+  return p >= SYMBOL_INTRO.in && p < SYMBOL_STOPS[0]!.until;
+}
+
 /** 匯聚那一拍的收攏量（0 ＝ 還是完整人像、1 ＝ 已收成一顆點）。
  *  SymbolFace 的 uConverge 吃這一個值。
  *
