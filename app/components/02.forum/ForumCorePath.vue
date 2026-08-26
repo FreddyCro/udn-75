@@ -33,6 +33,7 @@ import {
 import {
   FORUM_TURN_SAMPLE_LEN,
   FORUM_TURN_SFX,
+  isWallContact,
   pickTurns,
   squashScaleAt,
   turnAngleDeg,
@@ -482,26 +483,56 @@ function syncTurns(
   }
 
   const d = FORUM_TURN_SAMPLE_LEN;
-  const angleAt = (id: string): number | undefined => {
+
+  // 節點弧長 ±d 的三點取樣。angleAt 與 wallHit 吃的是**同一組點**，故存一份就好 ——
+  // 沒有這層 memo，貼邊判定會讓 getPointAtLength 的次數翻倍（每個節點 3 → 6 次）。
+  // undefined ＝ 兩端取樣越界，兩個判定都當「不是轉折」（首尾本來就不該出聲）。
+  const sampleCache = new Map<string, [DOMPoint, DOMPoint, DOMPoint] | undefined>();
+  const samplesAt = (id: string) => {
+    if (sampleCache.has(id)) return sampleCache.get(id);
     const len = lenAt.get(id);
-    // 兩端取樣會越界 → 不給角度 → pickTurns 直接剔除（首尾本來就不該出聲）。
-    if (len == null || len - d < 0 || len + d > pathLen) return undefined;
-    const p = motion.getPointAtLength(len);
-    const before = motion.getPointAtLength(len - d);
-    const after = motion.getPointAtLength(len + d);
+    const s =
+      len == null || len - d < 0 || len + d > pathLen
+        ? undefined
+        : ([
+            motion.getPointAtLength(len - d),
+            motion.getPointAtLength(len),
+            motion.getPointAtLength(len + d),
+          ] as [DOMPoint, DOMPoint, DOMPoint]);
+    sampleCache.set(id, s);
+    return s;
+  };
+
+  const angleAt = (id: string): number | undefined => {
+    const s = samplesAt(id);
+    if (!s) return undefined;
+    const [before, p, after] = s;
     return turnAngleDeg([before.x, before.y], [p.x, p.y], [after.x, after.y]);
+  };
+
+  // 容器寬 ＝ 路徑座標系裡 x 的上限（原點同 buildNodesD 的 rootRect，見該處）。
+  // 貼邊判定要拿它比；量一次就好，syncTurns 只在 build() 跑。
+  const rootW = rootEl.value?.getBoundingClientRect().width ?? 0;
+  const wallHit = (id: string): boolean => {
+    const s = samplesAt(id);
+    if (!s) return false;
+    const [before, p, after] = s;
+    return isWallContact(before.x, p.x, after.x, rootW);
   };
 
   // 鍵含 d、斷點、取樣間距，以及 lenAt 的完整內容 —— 後者是 angleAt 的取樣位置來源，
   // 少放進鍵就會在「同一條線但節點弧長換了」時回舊答案（?highlights 增刪節點即是）。
+  // ⚠ rootW 也要進鍵：它是貼邊判定的另一個輸入，而「同一條 d、同一組弧長、容器卻換了寬」
+  //   在斷點區間內縮放視窗時真的會發生（線的 d 由節點錨點算出，未必每 1px 都變）。
   const turns = turnCache.get(
-    `${pathD}|${b}|${d}|${[...lenAt].map(([id, len]) => `${id}:${len}`).join(',')}`,
+    `${pathD}|${b}|${d}|${Math.round(rootW)}|${[...lenAt].map(([id, len]) => `${id}:${len}`).join(',')}`,
     () =>
       pickTurns({
         order: FORUM_FRONT_NODES[b].map((n) => n.id),
         angleAt,
         lenAt: (id) => lenAt.get(id),
         pathLen,
+        wallHit,
       }),
   );
   turnLens = turns.map((t) => t.len);

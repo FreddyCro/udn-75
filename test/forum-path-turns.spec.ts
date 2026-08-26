@@ -4,6 +4,8 @@ import {
   FORUM_TURN_MIN_GAP_LEN,
   FORUM_TURN_SAMPLE_LEN,
   FORUM_TURN_SFX,
+  FORUM_TURN_WALL_PAD,
+  isWallContact,
   pickTurns,
   squashScaleAt,
   turnAngleDeg,
@@ -144,6 +146,94 @@ describe('pickTurns', () => {
     });
     expect(turns).toEqual([]);
   });
+
+  // 第二條入選路徑（2026-08-26）：角度不夠但貼邊也算撞擊。實地成因見
+  // FORUM_TURN_WALL_PAD —— mob 的 P5/P6/P7 與 pad 的 Q10 都是 36–51° 的大弧擦牆。
+  it('角度不夠但貼邊的節點也入選，並標記 wall', () => {
+    const turns = pickTurns({
+      ...build(
+        { A: 0, B: 40, C: 130, D: 0 },
+        { A: 0, B: 1000, C: 2000, D: 3000 },
+      ),
+      minAngleDeg: 90,
+      minGapLen: 0,
+      wallHit: (id) => id === 'B',
+    });
+    expect(turns.map((t) => t.id)).toEqual(['B', 'C']);
+    expect(turns.find((t) => t.id === 'B')?.wall).toBe(true);
+  });
+
+  // 角度本來就過門檻的不該被標成 wall —— dashboard 上那個旗子要能回答
+  // 「這一聲是靠貼邊撈回來的嗎」，兩者混在一起就失去意義。
+  it('角度過門檻的節點不標 wall，即使它同時貼邊', () => {
+    const turns = pickTurns({
+      ...build({ A: 130 }, { A: 1000 }),
+      minAngleDeg: 90,
+      minGapLen: 0,
+      wallHit: () => true,
+    });
+    expect(turns[0]?.wall).toBeUndefined();
+  });
+
+  // 不傳 wallHit ＝ 既有行為（只看角度）。這支守的是「補這條規則沒有改動舊路徑」。
+  it('不傳 wallHit 時只用角度判', () => {
+    const turns = pickTurns({
+      ...build({ A: 40, B: 130 }, { A: 1000, B: 2000 }),
+      minAngleDeg: 90,
+      minGapLen: 0,
+    });
+    expect(turns.map((t) => t.id)).toEqual(['B']);
+  });
+
+  // 兩種入選方式共用同一個 lastLen：各記一個游標的話，「貼邊點緊接在硬轉角後面」
+  // 會連響兩聲 —— 而那正是 mob 的 P11(143°) → P12 型態，間隔只有 273px。
+  it('貼邊點與硬轉角共用同一道間隔閘門', () => {
+    const turns = pickTurns({
+      ...build({ A: 130, B: 40 }, { A: 1000, B: 1100 }),
+      minAngleDeg: 90,
+      minGapLen: 200,
+      wallHit: (id) => id === 'B',
+    });
+    expect(turns.map((t) => t.id)).toEqual(['A']);
+  });
+});
+
+describe('isWallContact', () => {
+  const W = 375; // mob 實測容器寬
+
+  it('貼左緣且 x 是局部最小 → 撞牆', () => {
+    expect(isWallContact(40, 2, 40, W)).toBe(true);
+  });
+
+  it('貼右緣且 x 是局部最大 → 撞牆', () => {
+    expect(isWallContact(340, 373, 340, W)).toBe(true);
+  });
+
+  // 沿著邊緣「直行」不是撞擊 —— 少了極值條件，路過的每個節點都會出聲。
+  it('貼著邊緣直行不算撞牆', () => {
+    expect(isWallContact(2, 5, 8, W)).toBe(false); // 一路往右，不是局部最小
+    expect(isWallContact(373, 370, 367, W)).toBe(false); // 一路往左，不是局部最大
+  });
+
+  // 畫面中央的髮夾彎由角度那條路負責，不該被貼邊規則重複收進來。
+  it('離邊緣夠遠的極值不算撞牆', () => {
+    expect(isWallContact(200, 187, 200, W)).toBe(false);
+    expect(isWallContact(100, 54, 100, W)).toBe(false); // mob P4：距邊 54，最近的非貼邊節點
+  });
+
+  // 幾何還沒量好時（build 之前、斷點切換途中）座標不可信，寧可少一聲。
+  it('width ≤ 0 回 false', () => {
+    expect(isWallContact(40, 2, 40, 0)).toBe(false);
+    expect(isWallContact(40, 2, 40, -1)).toBe(false);
+  });
+
+  // 實測值回歸：這四個是設計師回報「碰到邊沒聲音」的那四個節點。
+  it('實測的四個貼邊節點都判為撞牆', () => {
+    expect(isWallContact(300, 373, 300, 375)).toBe(true); // mob P5  x=373
+    expect(isWallContact(60, 2, 60, 375)).toBe(true); // mob P6  x=2
+    expect(isWallContact(300, 373, 300, 375)).toBe(true); // mob P7  x=373
+    expect(isWallContact(80, 5, 80, 768)).toBe(true); // pad Q10 x=5
+  });
 });
 
 describe('設定值', () => {
@@ -159,6 +249,20 @@ describe('設定值', () => {
     expect(FORUM_TURN_MIN_ANGLE_DEG).toBeGreaterThan(0);
     expect(FORUM_TURN_MIN_GAP_LEN).toBeGreaterThan(0);
     expect(FORUM_TURN_SAMPLE_LEN).toBeGreaterThan(0);
+    expect(FORUM_TURN_WALL_PAD).toBeGreaterThan(0);
+  });
+
+  // 實測的安全區間：貼邊節點量到 2–5px、最近的非貼邊節點 54px（見 FORUM_TURN_WALL_PAD）。
+  // 掉出這個區間就會漏掉貼邊點或收進不貼邊的緩彎，而兩種都只有耳朵聽得出來。
+  it('貼邊門檻落在實測的安全區間內', () => {
+    expect(FORUM_TURN_WALL_PAD).toBeGreaterThan(5);
+    expect(FORUM_TURN_WALL_PAD).toBeLessThan(54);
+  });
+
+  // 貼邊判定吃的是核心「半寬」的尺度：路徑中心離邊緣不到半個核心寬，方塊就抵著邊緣了。
+  // 門檻比半寬小就等於要求核心陷進邊緣才算撞到。
+  it('貼邊門檻不小於核心半寬', () => {
+    expect(FORUM_TURN_WALL_PAD).toBeGreaterThanOrEqual(CORE.dotSize / 2);
   });
 
   // 取樣半徑必須遠小於最小間隔，否則「前後各取一點」會跨進鄰近的彎，把折角抹平。

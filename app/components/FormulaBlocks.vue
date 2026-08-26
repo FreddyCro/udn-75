@@ -519,6 +519,9 @@ onBeforeUnmount(() => {
   gap: 4px;
   width: 360px;
   height: 160px;
+  // 兩行文字整體下移 4px：flex 置中下，padding-top 8px＝內容中心下移 4px。
+  // 外框／底色是絕對定位的 ::before／::after（貼 padding box），不受影響。
+  padding-top: 8px;
 
   @include rwd-min('tablet') {
     top: 214px;
