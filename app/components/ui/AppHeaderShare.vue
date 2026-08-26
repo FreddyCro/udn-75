@@ -71,8 +71,8 @@ onBeforeUnmount(() => {
       :data-ga="link.ga"
       target="_blank"
       rel="noreferrer noopener"
-      @mouseenter="play('sfx01')"
-      @click="play('sfx01')"
+      @mouseenter="play('sfx01Short')"
+      @click="play('sfx01Short')"
     >
       <AppHeaderIcon :name="link.key" />
     </a>
@@ -84,8 +84,8 @@ onBeforeUnmount(() => {
       type="button"
       aria-label="分享"
       :aria-expanded="open"
-      @mouseenter="play('sfx01')"
-      @click="open = !open; play('sfx01')"
+      @mouseenter="play('sfx01Short')"
+      @click="open = !open; play('sfx01Short')"
     >
       <AppHeaderIcon name="share" />
     </button>

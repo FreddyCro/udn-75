@@ -92,8 +92,8 @@ function pick(i: number) {
         :class="{ 'ai-quiz__btn--picked': picked === i }"
         type="button"
         :aria-pressed="picked === i"
-        @mouseenter="play('sfx01')"
-        @click="play('sfx01'); pick(i)"
+        @mouseenter="play('sfx01Short')"
+        @click="play('sfx01Short'); pick(i)"
       >
         <!-- 圓鈕：hover 版（橘底白箭頭）疊在預設版上淡入，橘底不透明所以不必藏底下那張 -->
         <span v-if="i === 0" class="ai-quiz__btn-circle" aria-hidden="true">

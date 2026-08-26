@@ -35,7 +35,7 @@ function onHomeSelect(anchor: HeaderAnchor, e: MouseEvent) {
   e.preventDefault();
   emit('close');
   emit('select', anchor.target);
-  play('sfx01');
+  play('sfx01Short');
   gaClickMenu(anchor.ga);
 }
 
@@ -43,7 +43,7 @@ function onHomeSelect(anchor: HeaderAnchor, e: MouseEvent) {
 function onAwaySelect(anchor: HeaderAnchor, e: MouseEvent) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   emit('close');
-  play('sfx01');
+  play('sfx01Short');
   gaClickMenu(anchor.ga);
 }
 
@@ -140,7 +140,7 @@ onBeforeUnmount(() => {
     :class="{ 'app-header-menu--open': open }"
     :aria-hidden="!open"
   >
-    <div class="app-header-menu__scrim" @click="emit('close'); play('sfx01')" />
+    <div class="app-header-menu__scrim" @click="emit('close'); play('sfx01Short')" />
 
     <div ref="panelRef" class="app-header-menu__panel">
       <nav class="app-header-menu__nav">
@@ -154,7 +154,7 @@ onBeforeUnmount(() => {
             }"
             :href="`#${anchor.target}`"
             :tabindex="open ? 0 : -1"
-            @mouseenter="play('sfx01')"
+            @mouseenter="play('sfx01Short')"
             @click="onHomeSelect(anchor, $event)"
           >
             <span class="app-header-menu__art" :style="artStyle(anchor.art.menu)" />
@@ -173,7 +173,7 @@ onBeforeUnmount(() => {
             }"
             :to="`/#${anchor.target}`"
             :tabindex="open ? 0 : -1"
-            @mouseenter="play('sfx01')"
+            @mouseenter="play('sfx01Short')"
             @click="onAwaySelect(anchor, $event)"
           >
             <span class="app-header-menu__art" :style="artStyle(anchor.art.menu)" />

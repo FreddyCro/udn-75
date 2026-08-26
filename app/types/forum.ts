@@ -96,6 +96,15 @@ export type ForumEvent = {
   ctaId?: string;
   /** CTA 的 GA term（click_button / area=signup）：forum2_signup ／ forum4_signup */
   ctaGaTerm?: string;
+  /**
+   * 報名尚未開放時的「佔位隱藏」：按鈕照樣渲染、照樣佔位，只是看不見也點不到
+   * （visibility: hidden）。
+   *
+   * ⚠️ 不能改用 v-if 拿掉按鈕 —— .forum-event__cta 是 ForumCorePath 的量測錨點
+   *    （utils/forum-node-path 的 W12／R3／S3），節點消失那條橘核心設計線就會偏掉；
+   *    且按鈕上還掛著論壇二品牌行讓出的 margin-bottom，抽掉會讓 CTA 以下整組上移。
+   */
+  ctaHidden?: boolean;
   /** 本場次的 GA term（section_view 的 symposium_{gaTerm}、click_news 共用同一組 slug） */
   gaTerm: string;
   year: string;

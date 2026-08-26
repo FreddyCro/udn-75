@@ -50,8 +50,8 @@ const { play } = useSfx();
             :id="item.id"
             class="highlights__cta"
             :href="item.href"
-            @mouseenter="play('sfx01')"
-            @click="play('sfx01'); gaClickNews(item.gaTerm)"
+            @mouseenter="play('sfx01Short')"
+            @click="play('sfx01Short'); gaClickNews(item.gaTerm)"
           >
             <span class="highlights__cta-label">{{ item.cta }}</span>
             <span class="highlights__arrow" aria-hidden="true" />

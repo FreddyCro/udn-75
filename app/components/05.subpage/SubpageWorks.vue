@@ -136,7 +136,7 @@ function deactivate() {
 /* ≥1280：hover 列觸發；離開整個清單才收起 */
 function onEnter(i: number, e: Event) {
   if (!hoverMode) return;
-  play('sfx01'); // <1280 的滾動觸發不出聲，只有真的 hover 才播
+  play('sfx01Short'); // <1280 的滾動觸發不出聲，只有真的 hover 才播
   activate(i, e.currentTarget as HTMLElement);
 }
 function onLeaveWrap() {
@@ -241,7 +241,7 @@ onBeforeUnmount(() => {
         :active="activeIdx === i"
         :dimmed="activeIdx !== -1 && activeIdx !== i"
         @mouseenter="onEnter(i, $event)"
-        @click="play('sfx01'); w.gaTerm && gaClickButton('works', w.gaTerm)"
+        @click="play('sfx01Short'); w.gaTerm && gaClickButton('works', w.gaTerm)"
       />
     </div>
   </div>

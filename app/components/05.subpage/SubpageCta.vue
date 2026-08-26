@@ -26,8 +26,8 @@ defineProps<{
       :href="url"
       target="_blank"
       rel="noopener"
-      @mouseenter="play('sfx01')"
-      @click="play('sfx01'); gaTerm && gaClickButton('button', gaTerm)"
+      @mouseenter="play('sfx01Short')"
+      @click="play('sfx01Short'); gaTerm && gaClickButton('button', gaTerm)"
       >{{ label }}</a
     >
   </div>

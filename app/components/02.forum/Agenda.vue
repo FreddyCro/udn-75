@@ -273,9 +273,9 @@ onBeforeUnmount(() => {
         :download="action.download"
         :target="action.target"
         :rel="action.target === '_blank' ? 'noopener' : undefined"
-        @mouseenter="play('sfx01')"
+        @mouseenter="play('sfx01Short')"
         @click="
-          play('sfx01');
+          play('sfx01Short');
           gaClickButton('signup', action.gaTerm);
         "
       >

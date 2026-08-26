@@ -33,10 +33,17 @@ const isActive = (url: string) =>
 
 const linkTo = (url: string) => (mode.value === 'scroll' ? `#${anchorSlug(url)}` : url);
 
+// 錨點的 hover／click 音效。useSfx() 一定要在 setup 期間取（見 useSfx.ts 檔頭）。
+const { play } = useSfx();
+
 function onClick(e: MouseEvent, url: string) {
   // ⚠️ GA 必須排在下面那道 return **之前**：route 模式（獨立子頁）會早退把導航交給
   //    NuxtLink，埋在後面就只有連續閱讀頁的點擊會被記到。兩種模式都是同一個 click_anchor。
   gaClickAnchor(anchorSlug(url));
+
+  // 修飾鍵點擊＝開新分頁的意圖，不算本頁互動、不出聲（同 AppHeaderNav.onAwaySelect）。
+  // 排在 GA 之後：那一下仍是一次錨點點擊，只是換了落地的視窗。
+  if (!(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) play('sfx01Short');
 
   if (mode.value !== 'scroll') return; // route 模式：交給 NuxtLink 換頁
   e.preventDefault();
@@ -101,6 +108,7 @@ onBeforeUnmount(() => {
           class="subpage-anchor__link"
           :class="{ 'subpage-anchor__link--active': isActive(a.url) }"
           :to="linkTo(a.url)"
+          @mouseenter="play('sfx01Short')"
           @click="onClick($event, a.url)"
         >
           <span class="subpage-anchor__art">

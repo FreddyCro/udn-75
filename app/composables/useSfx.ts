@@ -1,7 +1,7 @@
 // 互動音效（SFX）播放 API —— 其他事件要出聲，只需要碰這支。
 //
 //   const { play, stop, stopAll } = useSfx();
-//   play('sfx01');   // 重複呼叫會重頭播（見下方「重複觸發」）
+//   play('sfx01Short');   // 重複呼叫會重頭播（見下方「重複觸發」）
 //
 // 與 useAppSound 的關係：**共用同一顆開關**。soundOn 為 false 時 play() 直接 no-op，
 // 使用者只需要理解「一個音效開關」（hero 的 start 閘門 / header 那顆按鈕）。

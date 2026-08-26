@@ -34,17 +34,10 @@
           },
           {
             "name": "蝦皮購物平台",
-            "quote": "守護安心交易，共築永續美好未來",
+            "quote": "ＡI守護安心交易 共築永續美好未來",
             "logo": "/img/blessing/partner-shopee.svg",
             "gaTerm": "shopee",
             "url": "https://shopee.tw/m/unpackaged?uls_trackid=56dvkvn500j3&utm_content=DKQ69155XxFDZZb4Q6uFNsTWvJB"
-          },
-          {
-            "name": "品牌名",
-            "quote": "",
-            "logo": "/img/blessing/partner-placeholder.svg",
-            "gaTerm": "",
-            "url": ""
           }
         ]
       },
@@ -59,16 +52,16 @@
             "url": "https://www.scsb.com.tw"
           },
           {
-            "name": "日月光",
+            "name": "日月光、日月光投控",
             "quote": "低碳使命、循環再生、價值共創、社會共融",
-            "logo": "/img/blessing/partner-placeholder.svg",
+            "logo": "/img/blessing/partner-aseglobal.svg",
             "gaTerm": "aseglobal",
             "url": "https://www.aseglobal.com/ch/csr/"
           },
           {
             "name": "日立永大電梯",
             "quote": "日立永大電梯，乘載城市向上而行",
-            "logo": "/img/blessing/partner-yungtay.svg",
+            "logo": "/img/blessing/partner-yungtay.png",
             "gaTerm": "yungtay",
             "url": "https://www.hitachi-yungtay.com.tw/"
           },
@@ -81,7 +74,7 @@
           },
           {
             "name": "冠德企業集團",
-            "quote": "AI賦能建築未來 KINDOM LIVING與跨世代共好",
+            "quote": "AI賦能建築未來<br/>KINDOM LIVING與跨世代共好",
             "logo": "/img/blessing/partner-kindom.svg",
             "gaTerm": "kindom",
             "url": "https://www.facebook.com/kindomdevelopment"
@@ -100,23 +93,23 @@
           },
           {
             "name": "群創能源科技股份有限公司",
-            "quote": "科技引領能源轉型共築綠色新未來",
+            "quote": "科技引領能源轉型，共築綠色新未來",
             "logo": "/img/blessing/partner-cirsolar.svg",
             "gaTerm": "cirsolar",
             "url": "https://cirsolar.tw/"
-          },
-          {
-            "name": "品牌名",
-            "quote": "",
-            "logo": "/img/blessing/partner-placeholder.svg",
-            "gaTerm": "",
-            "url": ""
           }
         ]
       },
       {
         "label": "響應夥伴",
         "partners": [
+          {
+            "name": "Acer",
+            "quote": "每個決定至關重要，共同為環境帶來改變",
+            "logo": "/img/blessing/partner-acer.svg",
+            "gaTerm": "acer",
+            "url": "https://www.acer.com/50-years/tw-zh/"
+          },
           {
             "name": "Happy GO",
             "quote": "點數串聯智慧生活，陪伴每一個更好的選擇",
@@ -132,22 +125,22 @@
             "url": "https://a1.chiu-i.news"
           },
           {
-            "name": "中力都市",
+            "name": "中力都市更新",
             "quote": "回歸耐震安全本質<br/>共築台灣永續未來",
             "logo": "/img/blessing/partner-dyf.svg",
             "gaTerm": "dyf",
             "url": "https://www.dyf.com.tw/dyf/"
           },
           {
-            "name": "中租",
-            "quote": "打造綠能價值鏈，低碳轉型，邁向永續",
+            "name": "中租控股",
+            "quote": "打造綠能價值鏈，低碳轉型邁向永續",
             "logo": "/img/blessing/partner-chailease.svg",
             "gaTerm": "chailease",
             "url": "https://www.chaileaseholding.com/CSR/OperatorTalk"
           },
           {
             "name": "中國信託金融控股股份有限公司",
-            "quote": "永續金融 淨無止境",
+            "quote": "永續金融　淨無止境",
             "logo": "/img/blessing/partner-ctbc.png",
             "gaTerm": "ctbc",
             "url": "https://ir.ctbcholding.com/c/esg"
@@ -175,7 +168,7 @@
           },
           {
             "name": "台中銀行",
-            "quote": "AI 賦能綠色轉型，台中銀行陪您永續同行",
+            "quote": "AI 賦能綠色轉型<br/>台中銀行陪您永續同行",
             "logo": "/img/blessing/partner-tcbbank.png",
             "gaTerm": "tcbbank",
             "url": "https://www.tcbbank.com.tw/"
@@ -188,7 +181,7 @@
             "url": "https://teca.org.tw/"
           },
           {
-            "name": "台灣八木",
+            "name": "台灣八木通商股份有限公司",
             "quote": "支持永續行動，共同守護台灣土地與生態",
             "logo": "/img/blessing/partner-yagitsu.svg",
             "gaTerm": "yagitsu",
@@ -197,7 +190,7 @@
           {
             "name": "育達科大",
             "quote": "培育達人就在育達 聯合攜手永續家園",
-            "logo": "/img/blessing/partner-placeholder.svg",
+            "logo": "/img/blessing/partner-ydu.svg",
             "gaTerm": "ydu",
             "url": "https://www1.ydu.edu.tw/?locale=zh_tw"
           },
@@ -223,14 +216,7 @@
             "url": "https://www.24tms.com.tw/"
           },
           {
-            "name": "宏碁",
-            "quote": "每個決定至關重要，共同為環境帶來改變",
-            "logo": "/img/blessing/partner-acer.svg",
-            "gaTerm": "acer",
-            "url": "https://www.acer.com/50-years/tw-zh/"
-          },
-          {
-            "name": "味丹",
+            "name": "味丹企業",
             "quote": "實踐價值轉型，邁向永續未來",
             "logo": "/img/blessing/partner-vedan.svg",
             "gaTerm": "vedan",
@@ -265,7 +251,7 @@
             "url": "https://www.nu-pasta.com.tw/"
           },
           {
-            "name": "康和証券",
+            "name": "康和證券",
             "quote": "打造幸福追求共好 永續金融社會共榮",
             "logo": "/img/blessing/partner-concords.svg",
             "gaTerm": "concords",
@@ -322,7 +308,7 @@
           },
           {
             "name": "新業建設",
-            "quote": "有種生活叫聯合永續 讓新業建設美好延續",
+            "quote": "有種生活叫聯合永續<br/>讓新業建設美好延續",
             "logo": "/img/blessing/partner-hsinyeh.svg",
             "gaTerm": "hsinyeh",
             "url": "https://www.hsinyeh.com/"
@@ -385,7 +371,7 @@
           },
           {
             "name": "薰衣草森林集團",
-            "quote": "讓療癒成為生活，讓永續成為日常",
+            "quote": "讓療癒成為生活<br/>讓永續成為日常",
             "logo": "/img/blessing/partner-lavenderforest.svg",
             "gaTerm": "lavenderforest",
             "url": "https://www.lavenderforest.com.tw/zh-tw"
@@ -419,7 +405,7 @@
             "url": "https://www.paohuei.com/"
           },
           {
-            "name": "寶璽建築",
+            "name": "寶璽建築機構",
             "quote": "聯合建築美學 創新城市地表",
             "logo": "/img/blessing/partner-signet.svg",
             "gaTerm": "signet",

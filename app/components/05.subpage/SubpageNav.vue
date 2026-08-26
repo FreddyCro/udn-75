@@ -32,8 +32,8 @@ const gaNav = (dir: 'back' | 'next') => {
       <NuxtLink
         class="subpage-nav__link subpage-nav__link--back"
         :to="backUrl"
-        @mouseenter="play('sfx01')"
-        @click="play('sfx01'); gaNav('back')"
+        @mouseenter="play('sfx01Short')"
+        @click="play('sfx01Short'); gaNav('back')"
       >
         <!-- 靜止／hover 同一顆圖示，只換顏色（圓：透明→橘、箭頭：灰→白）與尺寸——
              <img> 載入的 svg 無法用 CSS 上色，故內嵌。
@@ -56,8 +56,8 @@ const gaNav = (dir: 'back' | 'next') => {
         v-if="next?.url"
         class="subpage-nav__link subpage-nav__link--next"
         :to="next.url"
-        @mouseenter="play('sfx01')"
-        @click="play('sfx01'); gaNav('next')"
+        @mouseenter="play('sfx01Short')"
+        @click="play('sfx01Short'); gaNav('next')"
       >
         <span class="subpage-nav__label">{{ next.title }}</span>
         <!-- 兩段音波（同 HeroStart 音效提示）：兩圈相位差半個週期的擴散波，墊在圓鈕背後；

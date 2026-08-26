@@ -119,15 +119,21 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
            盒子與配色由 <UBtn> 畫，本檔的 .forum-event__cta 只給尺寸與版位。
            點擊音效：帶 cta 的場次目前是論壇二與論壇四，兩者共用這顆按鈕 —— 不按場次分，
            頁面上五顆 CTA（本顆 ×2、議程 ×2、報導 ×1）行為一致。UBtn 沒宣告 emits，
-           故 @click 會落在真正的 <a> 上（同 Agenda／AgendaReport 的寫法）。 -->
+           故 @click 會落在真正的 <a> 上（同 Agenda／AgendaReport 的寫法）。
+           ctaHidden：報名未開放時佔位隱藏（見 types/forum.ts 的欄位說明）。
+           aria-hidden ＋ tabindex="-1" 是配套 —— visibility: hidden 已經把它移出無障礙樹
+           與定位順序，這兩個屬性只是明寫意圖；fallthrough attrs 會落在真正的 <a> 上。 -->
       <UBtn
         v-if="event.cta"
         :id="event.ctaId"
         variant="primary"
         class="forum-event__cta"
+        :class="{ 'forum-event__cta--hidden': event.ctaHidden }"
+        :aria-hidden="event.ctaHidden ? 'true' : undefined"
+        :tabindex="event.ctaHidden ? -1 : undefined"
         href="#"
-        @mouseenter="play('sfx01')"
-        @click="play('sfx01'); gaClickButton('signup', event.ctaGaTerm ?? '')"
+        @mouseenter="play('sfx01Short')"
+        @click="play('sfx01Short'); gaClickButton('signup', event.ctaGaTerm ?? '')"
       >
         {{ event.cta }}
       </UBtn>
@@ -766,6 +772,14 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       }
     }
   }
+}
+
+// 佔位隱藏（報名未開放）：只關掉可見性，盒子與所有 margin 照舊 ——
+// ForumCorePath 的 W12／R3／S3 量得到同一個 rect，論壇二掛在按鈕下方的
+// margin-bottom 也還在，故橘核心設計線與 CTA 以下的版位完全不動。
+// visibility 同時讓它不可點、不可 focus，故不必再補 pointer-events。
+.forum-event__cta--hidden {
+  visibility: hidden;
 }
 
 // 定位層本身不佔高度，內部三組各自吃設計稿座標。

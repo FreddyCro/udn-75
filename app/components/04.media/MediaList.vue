@@ -54,8 +54,8 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
       <NuxtLink
         class="media__row"
         :to="linkFor(a.url)"
-        @mouseenter="play('sfx01')"
-        @click="play('sfx01'); gaClickAnchor(anchorSlug(a.url))"
+        @mouseenter="play('sfx01Short')"
+        @click="play('sfx01Short'); gaClickAnchor(anchorSlug(a.url))"
       >
         <!-- 文字塊（編號＋標題，hover 整塊 scale）；break 只在 mob 稿於「：」後換行 -->
         <span class="media__text">

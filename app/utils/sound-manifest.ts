@@ -11,8 +11,22 @@
 // 清單與 public/sounds/ 的實際檔案由 test/sound-manifest.spec.ts 雙向對照 ——
 // 檔名打錯、或丟了檔卻忘了登記，都會被測試擋下來。
 export const SOUND_MANIFEST = {
-  /** 通用短音（0.4s）：按鈕 hover／click、路徑撞擊點、議程箭頭。 */
+  /** 2.11s。剩三個呼叫端：紙飛機變身（ForumCorePath）、小飛機進入橘色（Blessing）、
+   *  議程箭頭換組（Agenda）—— 都是「一個段落級的事件」，撐得起 2 秒的音。
+   *
+   *  ⚠️ 這支在 2026-08-25 的 `efc4b81` 被換過內容 —— **檔名沒變、音檔換了**：
+   *  0.27s／96 kbps／3.2 KB → 2.11s／196 kbps／51 KB（ffprobe 實測）。
+   *  同名不同音在 code review 與 git diff 上都看不出來，這是那次事故沒被發現的原因；
+   *  日後要換音效請**加新檔名**，不要覆蓋既有檔案。 */
   sfx01: 'udn75_sfx01_01.mp3',
+  /** 0.27s：`efc4b81` 之前的 sfx01，自 0.7.0 還原（blob cf7edb70）。
+   *
+   *  **全站的互動音**：按鈕與連結的 hover／click（55 處）＋ orange core 的路徑撞擊
+   *  （FORUM_TURN_SFX）。選它而不是 sfx01 的理由是長度 —— 這兩類都是密集、可連發的
+   *  事件（滑過一排 icon、快速捲過連續轉折），而 play() 對同一支是 currentTime 歸零
+   *  重播（見 useSfx）：2.11s 的音會被下一次觸發從頭打斷，糊成一團；0.27s 每一下都
+   *  播得完。 */
+  sfx01Short: 'udn75_sfx01_01_short.mp3',
   /** 2.8s：符號段粒子收攏（converge）。 */
   aiFaceBg: 'udn75_sfx_ai_face_bg.mp3',
   /** 2.3s：符號段的文字亂碼跳動與方塊遮罩轉場。 */

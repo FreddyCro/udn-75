@@ -76,14 +76,39 @@ export const FORUM_TURN_MIN_ANGLE_DEG = 90;
  *
  *  ⚠ 這道閘門不是可有可無的：髮夾彎的**回程點**也是大轉角（pc 的 W4 實測 98.4°），
  *    而它距頂點 W3 只有約 107px 弧長 —— 沒有間隔限制就會在同一個彎裡連響兩聲。
- *  單位與 FORUM_PLANE.morphLen / forum-path-events 的 dLen 相同（px 弧長）。 */
-export const FORUM_TURN_MIN_GAP_LEN = 300;
+ *  單位與 FORUM_PLANE.morphLen / forum-path-events 的 dLen 相同（px 弧長）。
+ *
+ *  2026-08-26：300 → 200。設計師回報「手機版撞擊到牆壁也要有聲音」，實測（Playwright
+ *  沿驅動線每 2px 取樣、撈出所有 ≥60° 的局部尖峰，再與 pickTurns 的結果對照）：
+ *
+ *    斷點   前段硬轉角   原本入選   被本閘門擋掉
+ *    pc     11          11        —          （最小間隔 303px，只差 3px 就會被擋）
+ *    pad    7           7         —          （最小間隔 642px）
+ *    mob    6           5         **1**      （len 6306、115.4°，距前一個轉折 272px）
+ *
+ *  mob 漏掉的那個是 x 由 293 跳到 98 的硬左轉 ＝ 撞上左牆，正是設計師聽不到的那一下。
+ *  三個斷點裡只有 mob 中彈：它的節點表只有 14 個，彎與彎因此擠得比 pc / pad 近。
+ *
+ *  ⚠ 200 的區間是**兩邊夾出來的**，不是隨手取的整數：
+ *    ・下限 107（pc 的 W3 → W4 回程點）—— 必須仍被擋掉，否則同一個髮夾彎連響兩聲。
+ *    ・上限 272（mob 那個撞牆）—— 必須被放進來。
+ *    200 距兩端各有 93px / 72px 餘裕。要再動它，先照上表重量一次三個斷點：
+ *    往上調會把 mob 的撞牆再弄丟，往下調則會在 pc 的髮夾彎裡連響兩聲，
+ *    而兩種症狀都只有耳朵聽得出來、畫面上完全正常。 */
+export const FORUM_TURN_MIN_GAP_LEN = 200;
 
 /** 轉折要播哪一支音效。三個斷點、每個轉折都是同一支（見 sound-manifest 的清單）。
  *
  *  型別綁 SoundKey → 打錯字或音效檔被移出清單時編譯期就報錯，不會變成靜默的 no-op
- *  （useSfx 的 play() 對不認識的 key 直接 return）。 */
-export const FORUM_TURN_SFX: SoundKey = 'sfx01';
+ *  （useSfx 的 play() 對不認識的 key 直接 return）。
+ *
+ *  2026-08-26：sfx01 → sfx01Short（0.27s 那支，見 sound-manifest）。撞擊是**事件**、
+ *  不是一段路程（同 FORUM_TURN_SQUASH 那段的論證），而現行 sfx01 是 2.11s ——
+ *  快速捲動時相鄰兩次撞擊可以只隔幾十毫秒（間隔下限 FORUM_TURN_MIN_GAP_LEN 是
+ *  200px 弧長），2.11s 的音會被下一次撞擊從頭打斷，聽起來是一團糊的長音而不是
+ *  「咚、咚」兩下。0.27s 短到每一次撞擊都能完整播完，與擠壓動畫（inDur 0.07s ＋
+ *  outDur）的尺度也對得上。 */
+export const FORUM_TURN_SFX: SoundKey = 'sfx01Short';
 
 /**
  * 撞擊擠壓的倍率：把「壓了多少」（amount）換算成方塊的 [scaleX, scaleY]。

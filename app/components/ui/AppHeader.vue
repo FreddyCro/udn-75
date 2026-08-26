@@ -393,7 +393,7 @@ function onLogoClick(e: MouseEvent) {
   // 攔下來會讓使用者按了沒反應。中鍵在現代瀏覽器發的是 auxclick，本來就不會進來。
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 
-  play('sfx01');
+  play('sfx01Short');
   // 兩個渲染分支（首頁 <a> ／子頁 <NuxtLink>）都導到這裡，故 GA 只需埋這一處。
   gaLogo();
 
@@ -534,7 +534,7 @@ const layers = computed<HeaderLayer[]>(() => {
             class="app-header__logo"
             :href="logoHref"
             :aria-label="labels.logoLabel"
-            @mouseenter="play('sfx01')"
+            @mouseenter="play('sfx01Short')"
             @click="onLogoClick"
           >
             <img
@@ -551,7 +551,7 @@ const layers = computed<HeaderLayer[]>(() => {
             class="app-header__logo"
             :to="homeIntent.to"
             :aria-label="labels.logoLabel"
-            @mouseenter="play('sfx01')"
+            @mouseenter="play('sfx01Short')"
             @click="onLogoClick"
           >
             <img
@@ -583,8 +583,8 @@ const layers = computed<HeaderLayer[]>(() => {
                   menuOpen ? labels.menuCloseLabel : labels.menuOpenLabel
                 "
                 :aria-expanded="menuOpen"
-                @mouseenter="play('sfx01')"
-                @click="menuOpen = !menuOpen; play('sfx01')"
+                @mouseenter="play('sfx01Short')"
+                @click="menuOpen = !menuOpen; play('sfx01Short')"
               >
                 <AppHeaderIcon :name="menuOpen ? 'close' : 'menu'" />
               </button>

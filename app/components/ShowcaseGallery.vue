@@ -92,8 +92,8 @@ const DESIGN_SLIDES: ShowcaseSlide[] = [
     scale: 1.5,
     alt: 'AI 每日推薦文章累計使用人次 40,000+',
   },
-  { w: 225, h: 150, src: '/img/data/udn75_pic30_13', scale: 1.7 },
-  { w: 273, h: 182, src: '/img/data/udn75_pic30_11', scale: 1.2 },
+  { w: 273, h: 182, src: '/img/data/udn75_pic30_11', scale: 1 },
+  { w: 225, h: 150, src: '/img/data/udn75_pic30_13', scale: 1.5 },
 ];
 </script>
 
@@ -121,7 +121,7 @@ const props = defineProps({
    * 卡片相位固定為 1/count，所以這條就是「卡片間距」的總開關 —— 調大＝路徑拉長＝間距變鬆
    * （卡片大小由 designW 決定，不會跟著變）。
    */
-  widthRatio: { type: Number, default: 1.1 },
+  widthRatio: { type: Number, default: 1.2 },
   /** 每張 rotateX 的分佈上限（度）；各卡分散在 [-range, +range]，±180 = 上下鏡像 */
   rotateXRange: { type: Number, default: 180 },
   /**
