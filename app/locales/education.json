@@ -10,6 +10,7 @@
     "bg": "/img/education/udn75_bg_education"
   },
   "intro": "我們在哪裡寫下真實的自己？<br/>從無名小站到脆，載體不斷流變，但書寫的渴望未曾停歇。<br/>現在，文字時光機準備啟動，<br/>邀請你藉由跨世代的寫作軌跡，找回思辨與感動。",
+  "introBreakFrom": "tablet",
   "introMedia": {
     "images": [
       { "src": "/img/education/udn75_pic31_02", "alt": "", "caption": "聯合盃決賽命題力求突破，融合圖像、多元觀點與跨領域議題，鼓勵學生跳脫框架寫作。" },

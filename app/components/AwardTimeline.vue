@@ -206,7 +206,7 @@ onBeforeUnmount(() => {
             :ref="(el) => setItem(el, i)"
             class="award-timeline__item"
             :class="{ 'award-timeline__item--passed': i <= activeIdx }"
-            :style="{ '--w': `${item.width ?? 277}px` }"
+            :style="{ '--w': item.width ?? 277 }"
           >
             <img
               class="award-timeline__year"
@@ -242,6 +242,13 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
+// <375 等比縮放：mob 稿以 375 為基準，欄寬 400 + 左內距 26 在 320 級窄機上放不下、
+// 作品行被裁掉 → 整條時間軸（幾何、字級）一律以 375 稿值等比走 vw。
+// JS 端（build/measure）量的都是實際 offsetWidth/offsetLeft，跟著縮放不必另外處理。
+@function sm($px) {
+  @return calc(#{$px} / 375 * 100vw);
+}
+
 .award-timeline {
   width: 100%;
   background: #fff;
@@ -262,6 +269,9 @@ onBeforeUnmount(() => {
   padding: 0 26px;
   will-change: transform;
 
+  @include rwd-max(375px) {
+    padding: 0 sm(26);
+  }
   @include rwd-min('tablet') {
     padding: 0 119px;
   }
@@ -274,6 +284,10 @@ onBeforeUnmount(() => {
 .award-timeline__head {
   position: relative;
   height: 44px;
+
+  @include rwd-max(375px) {
+    height: sm(44);
+  }
 }
 
 .award-timeline__line {
@@ -283,6 +297,11 @@ onBeforeUnmount(() => {
   display: block;
   width: 100%;
   height: 4px;
+
+  @include rwd-max(375px) {
+    top: sm(20);
+    height: sm(4);
+  }
 }
 
 // 箭頭走過的橘色軌跡：疊在藍線上、與藍線同幾何，scaleX 由 build() 的 timeline
@@ -296,6 +315,11 @@ onBeforeUnmount(() => {
   background: var(--color-orange);
   transform: scaleX(0);
   transform-origin: left center;
+
+  @include rwd-max(375px) {
+    top: sm(20);
+    height: sm(4);
+  }
 }
 
 .award-timeline__arrow {
@@ -305,6 +329,11 @@ onBeforeUnmount(() => {
   display: block;
   width: 153px;
   height: 44px;
+
+  @include rwd-max(375px) {
+    width: sm(153);
+    height: sm(44);
+  }
 }
 
 // 對稿：三斷點同欄寬（--w）與 gap 48，pad/mob 靠軌道平移看完整排
@@ -315,17 +344,26 @@ onBeforeUnmount(() => {
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
+
+  @include rwd-max(375px) {
+    gap: sm(48);
+    margin-top: sm(16);
+  }
 }
 
-// 年份欄位：寬度對稿各欄不同（--w 由 template 帶入）
+// 年份欄位：寬度對稿各欄不同（--w 為 template 帶入的**無單位** px 數，<375 才能拿來算 vw）
 // 預設 0.5，箭頭走過（i <= activeIdx）改 1：純 class 切換、無 transition，故是瞬間跳變
 .award-timeline__item {
   flex-shrink: 0;
-  width: var(--w, 277px);
+  width: calc(var(--w, 277) * 1px);
   opacity: 0.5;
 
   &--passed {
     opacity: 1;
+  }
+
+  @include rwd-max(375px) {
+    width: calc(var(--w, 277) / 375 * 100vw);
   }
 }
 
@@ -334,10 +372,19 @@ onBeforeUnmount(() => {
   display: block;
   height: 23px;
   margin: 0 0 8px;
+
+  @include rwd-max(375px) {
+    height: sm(23);
+    margin-bottom: sm(8);
+  }
 }
 
 .award-timeline__award {
   margin-top: 8px;
+
+  @include rwd-max(375px) {
+    margin-top: sm(8);
+  }
 }
 
 .award-timeline__org {
@@ -346,6 +393,11 @@ onBeforeUnmount(() => {
   line-height: var(--text-h5--line-height);
   font-weight: 400;
   color: var(--color-orange);
+
+  @include rwd-max(375px) {
+    font-size: sm(20); // --text-h5 20/32
+    line-height: sm(32);
+  }
 }
 
 .award-timeline__title {
@@ -354,6 +406,11 @@ onBeforeUnmount(() => {
   line-height: var(--text-h5--line-height);
   font-weight: 400;
   color: var(--color-gray);
+
+  @include rwd-max(375px) {
+    font-size: sm(20); // --text-h5 20/32
+    line-height: sm(32);
+  }
 }
 
 .award-timeline__work {
@@ -363,6 +420,11 @@ onBeforeUnmount(() => {
   font-weight: 300;
   color: var(--color-gray-light);
   text-align: justify; // 對稿：作品行左右對齊
+
+  @include rwd-max(375px) {
+    font-size: sm(15); // --text-caption 15/24
+    line-height: sm(24);
+  }
 }
 
 .award-timeline__dots {
