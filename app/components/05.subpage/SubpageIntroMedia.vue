@@ -55,6 +55,26 @@ export interface IntroMediaImage extends IntroMediaPicOptions {
 export interface IntroMediaVideo {
   /** 三個裝置尺寸的影片路徑（不含副檔名），同一支就三個 key 給同一個值 */
   src: { mob: string; pad: string; pc: string };
+  /**
+   * 首幀 poster（不含副檔名，UVid 會補 .jpg）。**不要省略。**
+   *
+   * 沒有 poster 時 <video> 在解出第一格畫面之前什麼都不畫 —— 露出的是
+   * `.intro-media__viewport` 的黑底。這一拍是滿屏的，等於整個畫面是純黑，而且
+   * preload="metadata" 讓抓資料延到「輪到它演」才開始，那段等待完全落在使用者眼前
+   * （dev 環境 readyState 0→4 約 3 秒，行動網路更久）。萬一影片整支載入失敗，
+   * 有 poster 才會優雅降級成一張靜圖，而不是一片黑。
+   *
+   * 命名與存放沿用 GlitchImage 那組作品影片的慣例：
+   *   影片   public/img/<section>/<name>.mp4
+   *   poster public/img/<section>/poster/<name>_preview.jpg
+   * 三個裝置各一張 —— 三支剪輯的畫面比例不同（mob 720×1280、pad 1024×1364、
+   * pc 1920×1080），共用一張會裁錯。
+   *
+   * ⚠️ 一律抽**第 0 秒**：poster 與影片的第一格不同的話，開始播的瞬間會跳一下。
+   *    換剪輯時要一起重做，否則 poster 會是上一版的畫面（同 hero-video-config.ts 的提醒）。
+   *    有 ffmpeg 的環境：
+   *      ffmpeg -v error -y -i <clip>.mp4 -frames:v 1 -q:v 6 poster/<name>_preview.jpg
+   */
   poster?: { mob: string; pad: string; pc: string };
   caption?: string;
   ariaLabel?: string;
