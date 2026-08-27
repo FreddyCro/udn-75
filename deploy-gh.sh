@@ -2,14 +2,15 @@
 #
 # 產生靜態站台用的部署 branch。
 #
-# 支援兩個部署目標：
-#   staging → branch staging，用 .env.ghpage.example（GitHub Pages）
-#   nmdap   → branch nmdap，用 .env.nmdap.example（nmdap.udn.com.tw 測試機）
+# 支援三個部署目標：
+#   staging    → branch staging，用 .env.ghpage.example（GitHub Pages）
+#   nmdap      → branch nmdap，用 .env.nmdap.example（nmdap.udn.com.tw 測試機）
+#   production → branch prod，用 .env.production.example（udn75.udn.com 正式站）
 #
 # 流程：砍掉本地目標 branch → 從目前 HEAD 重開 → 套用對應環境變數 → generate
 #       → 把靜態輸出放到 docs/ → commit → force push。
 #
-# 用法：./deploy-gh.sh [staging|nmdap]
+# 用法：./deploy-gh.sh [staging|nmdap|production]
 #       不帶參數會跳互動選單。
 #
 # ⚠️ 會直接覆蓋 .env（內容換成該目標的 example）。跑完要回到開發設定的話，
@@ -26,12 +27,14 @@ TARGET="${1:-}"
 
 if [ -z "$TARGET" ]; then
   echo "==> 選擇部署目標："
-  echo "    1) staging  (GitHub Pages)"
-  echo "    2) nmdap    (nmdap.udn.com.tw)"
-  read -r -p "請輸入 1 或 2（或直接輸入名稱）： " choice
+  echo "    1) staging    (GitHub Pages)"
+  echo "    2) nmdap      (nmdap.udn.com.tw)"
+  echo "    3) production (udn75.udn.com)"
+  read -r -p "請輸入 1、2 或 3（或直接輸入名稱）： " choice
   case "$choice" in
-    1|staging) TARGET="staging" ;;
-    2|nmdap)   TARGET="nmdap" ;;
+    1|staging)         TARGET="staging" ;;
+    2|nmdap)           TARGET="nmdap" ;;
+    3|production|prod) TARGET="production" ;;
     *) echo "!!! 無效的選擇：${choice}"; exit 1 ;;
   esac
 fi
@@ -45,8 +48,13 @@ case "$TARGET" in
     BRANCH="nmdap"
     ENV_EXAMPLE=".env.nmdap.example"
     ;;
+  production|prod)
+    TARGET="production"
+    BRANCH="prod"
+    ENV_EXAMPLE=".env.production.example"
+    ;;
   *)
-    echo "!!! 未知的部署目標：${TARGET}（可用：staging、nmdap）"
+    echo "!!! 未知的部署目標：${TARGET}（可用：staging、nmdap、production）"
     exit 1
     ;;
 esac
