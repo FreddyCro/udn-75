@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { chromeInset } from '../app/utils/viewport-height';
+import { chromeInset, chromeOverscan } from '../app/utils/viewport-height';
 
 // 視窗高在本專案有**單一來源** `--vh`（CSS 用 vh() / vhLength()、JS 用 vhPx()）。
 // 這支守住「別處不要再直接寫 100vh 或讀 window.innerHeight」。
@@ -48,7 +48,7 @@ const VH_LINE_EXCEPTIONS = [
 const INNER_HEIGHT_ALLOWED: Record<string, string> = {
   'app/composables/useViewportHeight.ts': '單一來源自己的 fallback',
   'app/plugins/viewport-height.client.ts':
-    '--chrome-inset ＝ large viewport − 此刻可視高，後者本來就得是活值',
+    '--chrome-inset／--chrome-overscan ＝ large viewport 與此刻可視高的差（兩個方向），後者本來就得是活值',
   'app/components/01.hero/Hero.vue': 'isVerticallyOnScreen：影片現在在不在畫面上',
   'app/components/01.hero/HeroLoader.vue': '磁磚格數，且元素框優先、innerHeight 只是 fallback',
   'app/components/ui/AppHeader.vue': '捲動進度條分母＝真實最大可捲距離',
@@ -154,6 +154,43 @@ describe('視窗高只有一個來源', () => {
 
     it('--vh 還沒量到（0）時回 0，不把整個視窗高當成 inset', () => {
       expect(chromeInset(0, 659)).toBe(0);
+    });
+  });
+
+  // --chrome-overscan 是 --chrome-inset 的**鏡像**：in-app 瀏覽器的 webview 框在原生
+  // 導覽列隱藏時變高，100vh 也跟著變高，但 --vh 已凍在小值 ⇒ 滿版區塊比可視範圍矮，
+  // 下緣露餡。這個值回答「多出多少」，供滿版層往下溢出補足（見 chromeOverscan()）。
+  describe('chromeOverscan（--chrome-overscan 的算式）', () => {
+    it('in-app 瀏覽器導覽列隱藏後 ＝ 多出來的那一段', () => {
+      expect(chromeOverscan(659, 745)).toBe(86); // 與 chromeInset 同一組數字、反方向
+    });
+
+    it('桌機（兩者相等）＝ 0', () => {
+      expect(chromeOverscan(900, 900)).toBe(0);
+    });
+
+    // 正常瀏覽器（含 iOS Safari）走這條：100vh 真的是 large viewport ⇒ 恆為 0，
+    // 本值不生效，滿版層維持原樣。這一條就是「其他環境零影響」的保證。
+    it('innerHeight 較小時夾成 0，不把滿版層縮得比現在更矮', () => {
+      expect(chromeOverscan(745, 659)).toBe(0);
+    });
+
+    it('--vh 還沒量到（0）時回 0，不把整個視窗高當成溢出量', () => {
+      expect(chromeOverscan(0, 745)).toBe(0);
+    });
+
+    // 兩者互斥＝同一個差值的兩個方向，任一組輸入只會有一邊為正。
+    it('與 chromeInset 互斥：任一組輸入至多一邊為正', () => {
+      const cases: Array<[number, number]> = [
+        [745, 659],
+        [659, 745],
+        [900, 900],
+        [0, 745],
+      ];
+      const both = cases.filter(
+        ([vh100, ih]) => chromeInset(vh100, ih) > 0 && chromeOverscan(vh100, ih) > 0,
+      );
+      expect(both).toEqual([]);
     });
   });
 

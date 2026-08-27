@@ -24,11 +24,15 @@
 // 這與 GSAP 的 ignoreMobileResize 同一套判準（見 plugins/gsap-config.client.ts），
 // 兩者刻意保持一致 —— 否則會出現「尺重算了但 --vh 沒跟上」的半套狀態。
 //
-// ── 順便量的另一件事：--chrome-inset ─────────────────────────────────
+// ── 順便量的另兩件事：--chrome-inset／--chrome-overscan ───────────────
 // 上面那套「凍結」讓滿版區塊比此刻看得到的範圍高一截（網址列展開時）。底部錨定的
 // UI 要的是相反的東西 —— 工具列吃掉多少。理由與用法見 ~/utils/viewport-height 的
 // chromeInset()。它是**活值**，故刻意繞過上面的重量門檻，每次 resize 都跟上。
-import { chromeInset } from '~/utils/viewport-height';
+//
+// --chrome-overscan 是它的鏡像，補的是**反方向**：in-app 瀏覽器的 webview 框在原生
+// 導覽列隱藏時變高，100vh 也跟著變高，但 --vh 已凍在小值 ⇒ 滿版區塊比可視範圍矮，
+// 下緣露餡。理由與用法見 chromeOverscan()。同為活值，與 inset 同一條路徑更新。
+import { chromeInset, chromeOverscan } from '~/utils/viewport-height';
 import { refreshScrollTriggers } from '~/utils/scroll-trigger';
 
 /** 高度變動超過這個比例才視為真實版面改變（網址列收合遠低於此）。 */
@@ -60,11 +64,20 @@ export default defineNuxtPlugin(() => {
     document.documentElement.style.setProperty('--vh', `${h / 100}px`);
   };
 
-  // 工具列吃掉的高度。跟著 --vh 一起更新（--vh 變了、差值當然要重算），
-  // 但**也**在 --vh 被門檻擋掉時單獨更新 —— 網址列收合正是它該跟上的事。
+  // 工具列吃掉的高度，以及它的鏡像（可視範圍反而多出來多少）。兩者跟著 --vh 一起更新
+  // （--vh 變了、差值當然要重算），但**也**在 --vh 被門檻擋掉時單獨更新 ——
+  // 網址列／in-app 導覽列收合正是它們該跟上的事。
+  // 一個函式寫兩個值：它們是同一個差值的兩個方向（必有一邊為 0），分開寫只會漂掉。
   const commitInset = () => {
-    const inset = chromeInset(vh.value, window.innerHeight);
-    document.documentElement.style.setProperty('--chrome-inset', `${inset}px`);
+    const ih = window.innerHeight;
+    document.documentElement.style.setProperty(
+      '--chrome-inset',
+      `${chromeInset(vh.value, ih)}px`,
+    );
+    document.documentElement.style.setProperty(
+      '--chrome-overscan',
+      `${chromeOverscan(vh.value, ih)}px`,
+    );
   };
 
   commit(measure());

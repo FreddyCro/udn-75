@@ -699,6 +699,28 @@ onBeforeUnmount(() => {
     min-height: 0; // 高度由 inset 決定（= 舞台一屏），不再各自撐 vh(1)
     height: auto;
   }
+
+  // 媒體層（只有它）往下多長一段 --chrome-overscan —— **in-app 瀏覽器補丁**。
+  //
+  // 病灶：--vh 刻意凍結成 large viewport（見 utils/viewport-height），前提是「CSS 的
+  // 100vh ≥ 此刻可視高」。in-app 瀏覽器打破這個前提 —— 原生導覽列隱藏時 webview 的框
+  // 變高、100vh 也跟著變高，但 --vh 已凍在導覽列還在時的小值（RESIZE_EPS 擋掉了）。
+  // 於是舞台比可視範圍**矮** 60–115px，滿屏媒體下緣露出墊在後面的 `.subpage__content`
+  // （白底正文）—— 實測 Threads 的 in-app 瀏覽器。
+  //
+  // ⚠️ 為什麼不是「把舞台加高」：pin 期間 ScrollTrigger 會把量到的高度寫成**行內**
+  //    `height` / `max-height`（ScrollTrigger.js 的 pinActiveState），CSS 這邊改高度在
+  //    pin 期間根本不生效。只有溢出這條路走得通（overflow 不在它複製的屬性清單裡）。
+  // ⚠️ 為什麼不是「媒體層改 position: fixed 去吃真實視窗」：pin 會在舞台上留下行內
+  //    transform（pinSetter 寫的是 `y`，即使值為 0），舞台因此成為 fixed 子孫的
+  //    containing block —— fixed 等於 absolute，還反而被舞台的 overflow 裁掉。
+  //    這與 01.hero/HeroVideo 的 `.sec1__hero` 記下的是同一個坑。
+  // ⚠️ 正常瀏覽器（含 iOS Safari）--chrome-overscan 恆為 0 ⇒ 這條規則不生效、版面照舊。
+  //    溢出要靠下方 `--media` 的 overflow: visible 放行（兩處要一起看）。
+  .subpage__media {
+    bottom: auto;
+    height: calc(100% + var(--chrome-overscan, 0px));
+  }
 }
 
 // 媒體那一拍：整個舞台抬到 header（z-index 1000）之上，滿屏照片／影片才蓋得掉頂條。
@@ -713,10 +735,20 @@ onBeforeUnmount(() => {
 //    直到照片真的蓋上來。不會有「header 先消失一拍」的破綻。
 .subpage__stage--pinned.subpage__stage--media {
   z-index: 1100; // 與 SubpageIntroMedia 的 .intro-media 同值，兩處要一起改
-  // ⚠️ 這裡曾有一條 `overflow: visible`：舞台吃 svh、媒體層吃 dvh，工具列收合後媒體得能
-  //    伸出舞台才不露縫。改吃 --vh（＝ large viewport，收合網址列不變）之後舞台本來就
-  //    比可視範圍高，那個補丁連同它放開的 overflow 一起拿掉 —— 全程維持 hidden，
-  //    hero 進出場的位移才不會超出舞台。
+
+  // 放行溢出，讓媒體層的 `calc(100% + var(--chrome-overscan))` 真的長出舞台外
+  // （in-app 瀏覽器補丁的另一半，見上方 .subpage__media 的長註解）。
+  //
+  // 沿革：這條 `overflow: visible` 曾經存在（舞台吃 svh、媒體吃 dvh 的時代），改吃 --vh
+  // 之後以「舞台本來就比可視範圍高」為理由拿掉，顧慮是「hero 進出場的位移超出舞台」。
+  // 現在只在**媒體那一拍**放行，那個顧慮不成立：
+  //   ・pin 期間舞台上緣 ＝ 視窗上緣 ⇒ **往上溢出一律在畫面外**。hero／引言的退場
+  //     位移都是往上（HIDE_Y.after = -120），看不到。
+  //   ・唯一往下的位移是 hero 載入進場的 REVEAL.y = 200，發生在 progress ≈ 0；
+  //     而 `--media` 要到 progress ≥ 0.5（lines.mediaIn = 1.5/3）才掛上，兩者不重疊。
+  //   ・`.subpage__hero` 自己還有 overflow: hidden，hero 內部的東西照樣裁在框內。
+  // ⚠️ 所以這條**只能**綁 `--media`：改成常態生效就會退回當年被拿掉的那個狀態。
+  overflow: visible;
 }
 
 // 舞台佔位（GSAP 插入的 .pin-spacer）不吃指標事件。

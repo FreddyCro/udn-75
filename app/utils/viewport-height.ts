@@ -50,3 +50,34 @@ export function chromeInset(vh100: number, innerHeight: number): number {
   if (!vh100) return 0;
   return Math.max(0, vh100 - innerHeight);
 }
+
+// ── `--chrome-overscan`：`--chrome-inset` 的鏡像 ───────────────────────
+//
+// 上面那套的前提是「CSS 的 100vh ＝ large viewport ≥ 此刻可視高」。**in-app 瀏覽器
+// 打破這個前提**：webview 的框在原生導覽列隱藏時**變高**，`100vh` 也跟著變高，但
+// `--vh` 已經凍在導覽列還在時的小值（門檻見 plugins/viewport-height.client.ts 的
+// RESIZE_EPS）。於是滿版區塊比可視範圍**矮**一截，下緣露出墊在後面的東西
+// —— 實測 Threads 的 in-app 瀏覽器，子頁滿屏媒體下方漏出白底正文。
+//
+// `--chrome-inset` 補不了這個方向（它夾在 0 以上，此時恆為 0），所以另立一個鏡像值
+// 回答「可視範圍比 --vh 多出多少」：
+//
+//   height: calc(100% + var(--chrome-overscan));  // 讓滿版層往下溢出補足
+//
+// 兩者**互斥**：一個為正時另一個必為 0（同一個差值的兩個方向）。正常瀏覽器
+// （含 iOS Safari）恆為 0 —— 那裡 100vh 真的是 large viewport，本值不會生效。
+// 與 `--chrome-inset` 同為**活值**，故同樣繞過 --vh 的重量門檻，每次 resize 都跟上。
+
+/**
+ * 可視範圍比 large viewport 多出來的高度（px）＝「此刻的可視高」− 量到的 100vh。
+ *
+ * @param vh100 量到的 CSS `100vh`（本該是 large viewport，即 `--vh` × 100）
+ * @param innerHeight 此刻的 `window.innerHeight`（dynamic viewport）
+ *
+ * 夾在 0 以上：正常瀏覽器 `innerHeight ≤ vh100`，吐負值會把滿版層縮得比現在更矮。
+ * `vh100` 還沒量到（0）時回 0 —— 那時整個視窗高會被誤當成溢出量。
+ */
+export function chromeOverscan(vh100: number, innerHeight: number): number {
+  if (!vh100) return 0;
+  return Math.max(0, innerHeight - vh100);
+}
