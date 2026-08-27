@@ -140,6 +140,16 @@ function buildOrangeCoreProgress() {
   const coverProgress = useState<number>('blessing-cover-progress', () => 0);
   const setCoverProgress = (p: number) => (coverProgress.value = clamp01(p));
 
+  // 紙飛機沒入色塊的比例（0 ＝ 機鼻剛碰到接縫、1 ＝ 機尾也沒入）。ForumCorePath 每幀
+  // 依實際幾何算出來寫入（曲線與理由見 orange-core-config 的 planeSubmergedAt）。
+  //
+  // ⚠️ 為什麼要**另開一條軌**、不從 coverProgress 推：coverProgress 講的是「色塊升到哪」，
+  //    而變身該跟的是「飛機進去多少」—— 兩者差一整個機身（機鼻畫在核心定位點前方 76.6px，
+  //    pc 實測）。2026-08-25 之前白方塊吃的是前者，症狀是飛機已沒入 84% 白方塊才開始長。
+  //    這條軌是唯一知道「機身在哪」的人，故由持有 sprite 的 ForumCorePath 寫入。
+  const planeSubmerged = useState<number>('forum-plane-submerged', () => 0);
+  const setPlaneSubmerged = (v: number) => (planeSubmerged.value = clamp01(v));
+
   // 永續祝福逐格臉的捲動進度（0..1）：由 Blessing.vue 的 ScrollTrigger 於每次
   // update 讀 self.progress 寫入（無 scrub），故往回捲會自動倒帶。
   const blessingProgress = useState<number>('blessing-progress', () => 0);
@@ -316,11 +326,34 @@ function buildOrangeCoreProgress() {
     outroWhiteAt(mediaMotionArmed.value, blessingOutProgress.value),
   );
 
+  // 「變身」的比例：飛機進去多少、白方塊就長出多少 —— 這是使用者要的那個比例關係。
+  //
+  // **一個值餵三個視覺**（同 coverHandoff 原本的角色，但值換成量出來的幾何）：
+  //   ① 白方塊從接縫長出來的 scaleY（見 Blessing 的 .section3__face-seed）
+  //   ② 彗星尾的淡出（1 − 本值）
+  //   ③ 底色藍 → 橘的觸發（見下方 coverOrange）
+  // 飛機**自己的**下潛位移仍吃 coverHandoff：那是本值的成因之一，讓它回過頭來吃本值
+  // 就成了自我遞迴（見 ForumCorePath 的 writeCore）。
+  //
+  // 路徑沒建起來時（量不到幾何／某個斷點沒有線）退回原本的窗口曲線，行為與改動前完全相同 ——
+  // 少了這條退路，那些情形下白方塊會永遠停在 scaleY 0，整段 blessing 看不到交棒。
+  const coverGrow = computed(() =>
+    forumPathActive.value
+      ? planeSubmerged.value
+      : coverHandoffAt(coverProgress.value),
+  );
+
   // coverProgress → 色塊「橘的比例」（曲線見 coverOrangeAt）。
   // 標題與引言的 opacity 共用同一個值：它們是白字，色塊還是淺藍時必須藏著，
   // 而「底色變橘就看到白字標題」正是設計師的描述。
   // 刻意**不**吃 reduceMotion：它是綁在捲動上的換色、不是自走動畫（同 partnersOpacity）。
-  const coverOrange = computed(() => coverOrangeAt(coverProgress.value));
+  //
+  // ⚠️ 觸發點以 coverGrow 為準（機鼻碰到接縫的那一刻），不是 coverProgress 抵達
+  //    COVER_CONTACT（核心**定位點**抵達接縫，晚一整個機身）。後者留著當下限：
+  //    飛機沒出現／沒量到機身時照舊在 COVER_CONTACT 翻，只會早、不會晚。
+  const coverOrange = computed(() =>
+    coverGrow.value > 0 ? 1 : coverOrangeAt(coverProgress.value),
+  );
 
   // 白方塊走完「接縫 → 臉的第 01 格」的比例（曲線見 seedTravelAt）。
   const coverSeed = computed(() => seedTravelAt(coverProgress.value));
@@ -329,10 +362,7 @@ function buildOrangeCoreProgress() {
   // reduceMotion 時整個不出現 —— 那種情形逐格臉直接停在完成的笑臉（見 blessingFrame），
   // 沒有「第 01 格」可以交棒，方塊沉下去之後會看到完整笑臉硬換上來。
   const coverSeedVisible = computed(
-    () =>
-      !reduceMotion.value &&
-      coverProgress.value >= COVER_CONTACT &&
-      coverProgress.value < 1,
+    () => !reduceMotion.value && coverGrow.value > 0 && coverProgress.value < 1,
   );
 
   // 逐格臉的 svg 何時現身：cover 跑完（與白方塊交棒，兩者同格同色同位置 → 硬切）。
@@ -341,14 +371,14 @@ function buildOrangeCoreProgress() {
     () => reduceMotion.value || coverProgress.value >= 1,
   );
 
-  // 接觸點的變身進度（0..1，曲線見 coverHandoffAt）。
+  // 飛機下潛的進度（0..1，曲線見 coverHandoffAt）。**只餵下潛這一個視覺**。
   //
-  // **一個值餵三個視覺**，這是它們同步的唯一保證：
-  //   ① 飛機沿末端切線下潛的距離（× PLANE_DIVE_PX，見 ForumCorePath 的 writeCore）
-  //   ② 彗星尾的淡出（1 − 本值）—— 機身還在飛的時候尾巴不能先不見
-  //   ③ 白方塊從接縫長出來的 scaleY（見 Blessing 的 .section3__face-seed）
+  // ⚠️ 2026-08-25 之前它同時餵白方塊與尾跡（「一個值餵三個視覺」）。那個保證是假的：
+  //    它的窗口起點是「核心定位點抵達接縫」，而飛機是用**機鼻**碰到接縫的 ——
+  //    到窗口起跑時機身已經沒入 84%（pc 實測）。同步的職責已移交 coverGrow，
+  //    本值退回它真正管得到的那一件事：路徑跑完之後、飛機自己再往前鑽的那一段。
   //
-  // 逐幀會變，但三個消費端都只是 style binding、不是 class 條件，故不收成 boolean
+  // 逐幀會變，但消費端只是 style binding、不是 class 條件，故不收成 boolean
   //（同 forumSlashDraw 的理由）。
   const coverHandoff = computed(() => coverHandoffAt(coverProgress.value));
 
@@ -407,6 +437,8 @@ function buildOrangeCoreProgress() {
     setSymbolProgress,
     coverProgress,
     setCoverProgress,
+    planeSubmerged,
+    setPlaneSubmerged,
     blessingProgress,
     setBlessingProgress,
     blessingFrame,
@@ -417,6 +449,7 @@ function buildOrangeCoreProgress() {
     coverSeed,
     coverSeedVisible,
     coverFaceVisible,
+    coverGrow,
     coverHandoff,
     coverHandedOff,
     coverHoldArmed,

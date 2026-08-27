@@ -90,16 +90,20 @@ const props = defineProps({
   contrast: { type: Number, default: 1.4 },
   /** 負片：反轉明暗，決定人臉是「光雕」還是「陰影雕」 */
   invert: { type: Boolean, default: false },
-  /** 字重階數；1 ＝ 單一字重 */
-  weightSteps: { type: Number, default: 5 },
-  /** 暗部字重 */
+  /** 字重階數；1 ＝ 單一字重（只烘 weightMax 那一階，見 buildWeightLadder）。
+   *  2026-08-26 由 5 降到 1：那五階是**啞的**（下方 weightMax 的量測），
+   *  atlas 因此白付 96/120 格 —— 352×352 降到 160×160，畫面逐像素相同。
+   *  ⚠️ 要動回 >1 之前先確認烘字字型真的有那些字重，否則只是把貼圖放大 5 倍。 */
+  weightSteps: { type: Number, default: 1 },
+  /** 暗部字重。⚠️ weightSteps = 1 時**不會被讀到**（階梯只取 weightMax）。 */
   weightMin: { type: Number, default: 100 },
   /** 亮部字重。500 ＝ 設計師 preset；與 weightMin 100 搭 weightSteps 5 恰好是他的產生器
    *  在 100..500 間做 round(w/100)*100 的那 5 階。
-   *  ⚠️ 未驗證：atlas 烘字用 "Courier New", monospace（非可變字型，只有 regular/bold），
-   *     canvas 對 100–500 很可能一律選 regular ＝ 這五階畫出來一樣粗、字重滑桿是啞的。
+   *  ⚠️ 那五階是啞的（2026-08-26 實測）：atlas 烘字用 "Courier New", monospace ——
+   *     非可變字型，canvas 對 100–500 一律選 regular。以 32px cell 逐格量總 alpha，
+   *     100/200/300/400/500 五階完全相同（N 皆 85.4、U 皆 67.35），故 weightSteps 已降為 1。
    *     他的產生器用 monospace 也有同樣限制，故兩邊一致、不是我們這邊的 bug；
-   *     真的要連續字重得換成 variable mono font。 */
+   *     真的要連續字重得換成 variable mono font（換了才有理由把 weightSteps 調回 5）。 */
   weightMax: { type: Number, default: 500 },
   /** 漸層色標位置（0..1），長度需與 color 相同；空陣列＝等距 */
   colorStops: { type: Array as () => number[], default: () => [] },
@@ -141,6 +145,18 @@ const props = defineProps({
     type: Array as () => number[],
     default: () => [900, 520, 240],
   },
+  /** 散場態的 alpha 倍率（0..1，原本寫死 0.5 ＝ 半透明）。
+   *  1 ＝ 與集合態同濃度。只在 uDisperse 那一段生效，集合／匯聚不受影響。
+   *  ⚠️ 這一項的天花板就是 1（alpha 再高也只是不透明）；要比集合態**更亮**得靠
+   *     下面的 disperseLift —— 因為暗部粒子是「顏色本來就接近黑」，加濃度不會變亮。 */
+  disperseAlpha: { type: Number, default: 0.5 },
+  /** 散場態把取色位置往漸層亮端推的量（0..1，0 ＝ 現狀不推）。
+   *  漸層是 color / colorStops 那條（正式站 #000 → #77c6e0 → #d1f4ff → #fff），
+   *  取色位置平時 ＝ 該格亮度（aBright）→ 人臉暗部的符號在黑底上幾乎看不見。
+   *  這一項把每顆的取色位置 mix 向 1.0（＝漸層最亮端），故**每顆都會變亮**、
+   *  且暗部拉升最多；1 ＝ 散場時整片收斂成漸層最亮端的單色。
+   *  ⚠️ 只吃 uDisperse，集合態的人臉明暗不受影響（不然臉就平掉了）。 */
+  disperseLift: { type: Number, default: 0 },
   /** 匯聚成點時那顆點的螢幕邊長（CSS px）。
    *  預設 ＝ CORE.dotSize（見 ~/utils/orange-core-config）：converge 終點要與 ForumCore 的
    *  橘方塊硬切交棒（FORUM_HANDOFF.coreIn），兩者同尺寸才不會在接棒那刻跳大小。
@@ -293,8 +309,14 @@ const props = defineProps({
   /** 下滑提示的說明文字（空字串＝不渲染這顆按鈕）。設計稿 Figma 2065:139741。
    *  圖示本體、漂移動態與「點了往下捲一屏」都在 <UBtnScrollHint>，本元件只給版位。
    *  ⚠️ 有文案**不等於**會出現：顯示時機是三個條件的交集（2026-08-23 定案，見 scrollHintOn）
-   *     —— 本層在場 ＋ 停超過十秒沒捲動 ＋ 手機版互動提示不在畫面上。 */
+   *     —— 本層在場 ＋ 停超過十秒沒捲動 ＋ 手機版互動提示不在畫面上。
+   *     第二個條件可由 scrollHintPinned 整個跳過。 */
   scrollHint: { type: String, default: '' },
+  /** 下滑提示是否**常駐**：true ＝ 跳過「停十秒沒捲動」那道閘門，只要在場就顯示。
+   *  正式站傳 `symbolScrollHintPinnedAt(symbolProgress)`（＝開場三行文案起播 → 粒子開始集合，
+   *  見 ~/utils/orange-core-config），也就是「三行文字那一段常駐、進入 face 才開始十秒規則」。
+   *  另外兩個條件（在場、手機提示互斥）不受影響 —— 這顆只關掉計時器那一道。 */
+  scrollHintPinned: { type: Boolean, default: false },
   /** 提示是否「整個生命週期只出現一次」。
    *  false（預設）＝ 每次**重新完整集合**都再出現一次；游標碰到人像仍立即收起，
    *    但那次收起只對這一輪集合有效（見 faceFormed 的 watch）。
@@ -594,8 +616,15 @@ watch(faceFormed, (formed) => {
 // ---------- 下滑提示 ----------
 // 三個條件同時成立才出現（2026-08-23 定案，取代原本「有文案就常駐」）：
 //   ① onStage    ── 本層在場（＝ rAF 的執行閘門 shouldRun：active ＋ inView ＋ 分頁在前景）
-//   ② scrollIdle ── 連續 SCROLL_IDLE_MS 沒有捲動
+//   ② scrollIdle ── 連續 SCROLL_IDLE_MS 沒有捲動，**或** props.scrollHintPinned
 //   ③ !mobHintOn ── 手機版互動提示不在畫面上
+//
+// ⚠️ ② 的那個 or 是 2026-08-27 加的：開場三行文案那一段（disperse 拍）改成常駐，
+//    十秒規則從**進入 face 那一拍**才開始。理由（三行不會自己消失、畫面上沒別的東西
+//    指引往下捲）與窗口的兩個端點寫在 symbolScrollHintPinnedAt —— 窗口本身由驅動端
+//    算好傳進來，本元件不認得 symbolProgress（同 convergeAmount 那幾個 prop 的分工）。
+//    pinned 期間計時器照跑：離開窗口那一刻必然伴隨一次捲動事件（armIdleTimer 會重排），
+//    所以「十秒」是從進入 face 起算，不是沿用文案那段的殘值。
 //
 // ⚠️ ① 刻意用執行閘門、不是 faceFormed：這顆是「還有下文」的指引，使用者停在散開／匯聚
 //    那兩拍一樣需要它；faceFormed 是上面兩組「這裡可以互動」提示的判準，語意不同。
@@ -643,7 +672,7 @@ const scrollHintOn = computed(
   () =>
     !!props.scrollHint &&
     onStage.value &&
-    scrollIdle.value &&
+    (props.scrollHintPinned || scrollIdle.value) &&
     !mobHintOn.value,
 );
 
@@ -1091,6 +1120,9 @@ onMounted(() => {
         uProgress: { value: 0 },
         uTime: { value: 0 },
         uDisperse: { value: 0 },
+        // 散場態的濃度／提亮：與 uDisperse（進度）分家 —— 進度歸 mode 補間，這兩個是設定值。
+        uDisperseAlpha: { value: clampAmount(cfg.disperseAlpha) ?? 0.5 },
+        uDisperseLift: { value: clampAmount(cfg.disperseLift) ?? 0 },
         uConverge: { value: 0 },
         uConvergePx: { value: cfg.convergeSize },
         // clamp 到 0.9：1.0 會讓 per-particle 的 smoothstep 窗寬變 0（見 convergeStagger prop）
@@ -1136,6 +1168,8 @@ onMounted(() => {
         uniform float uProgress;
         uniform float uTime;
         uniform float uDisperse;
+        uniform float uDisperseAlpha;
+        uniform float uDisperseLift;
         uniform float uConverge;
         uniform float uConvergePx;
         uniform float uConvergeStagger;
@@ -1271,9 +1305,14 @@ onMounted(() => {
 
           float twinkle = (1.0 - uTwinkleAmp) + uTwinkleAmp * sin(uTime * 2.2 + aSeed * 40.0);
           // 不透明（gemini 邊緣銳利）；只保留 reveal(local) 與散場的淡入淡出
-          vAlpha = local * twinkle * mix(1.0, 0.5, uDisperse);
+          vAlpha = local * twinkle * mix(1.0, uDisperseAlpha, uDisperse);
           // 取色位置：tone=依亮度（亮→漸層右端＝高光色）/ random=每顆隨機
           vT = mix(aBright, hash(aSeed * 53.7), uColorRandom);
+          // 散場提亮：把取色位置往漸層最亮端推（見 disperseLift prop）。
+          // 亮度是「顏色」而不只是 alpha —— 暗部粒子的 vT≈0 ＝ 漸層左端的黑，
+          // 在黑底上不管 alpha 多高都看不見，故要動的是取色位置。
+          // 乘 uDisperse ＝ 只在散場態生效，集合態的人臉明暗維持原樣。
+          vT = mix(vT, 1.0, uDisperseLift * uDisperse);
           // 實心化後所有粒子必須同色：alpha=1 的疊畫是後畫的覆蓋前面，各顆顏色不同的話
           // 那顆方塊會變成「buffer 裡最後一顆」的顏色（換 cols / 換圖就換色）。
           // 這裡先把取色位置收斂到漸層最亮端，最終顏色再由 fragment 的 uSolidColor 蓋掉
@@ -1945,7 +1984,8 @@ onMounted(() => {
     </div>
 
     <!-- 互動提示：圓環圖示錨在人像右下臉頰（位置由 JS 投影寫成 --hint-x/y，對位交給 CSS），
-         游標/手指真的碰到人像後收起。圖示照 Figma 2065:139734 的三個同心圓，三個斷點共用；
+         游標/手指真的碰到人像後收起。圖示照 Figma 2065:139734 的三個同心圓（中／外兩圈
+         實作成向外擴散的漣漪，見 .hint__wave），三個斷點共用；
          說明文字 pc／平板排在圖示右邊（.hint__text，兩者文案不同見 hintText）、
          手機排在人像下方（.hint-mob）。 -->
     <div
@@ -1963,22 +2003,9 @@ onMounted(() => {
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
-        <circle
-          cx="44"
-          cy="44"
-          r="43.75"
-          stroke="white"
-          stroke-opacity="0.5"
-          stroke-width="0.5"
-        />
-        <circle
-          cx="44"
-          cy="44"
-          r="23.5"
-          stroke="white"
-          stroke-opacity="0.75"
-        />
-        <circle cx="44" cy="44" r="8" fill="white" fill-opacity="0.85" />
+        <circle class="hint__wave" cx="44" cy="44" r="43.75" />
+        <circle class="hint__wave hint__wave--late" cx="44" cy="44" r="43.75" />
+        <circle class="hint__dot" cx="44" cy="44" r="8" />
       </svg>
       <p class="hint__text">{{ hintText }}</p>
     </div>
@@ -2084,6 +2111,77 @@ $hint-icon-size: 88px;
   flex: 0 0 auto;
   width: $hint-icon-size;
   height: $hint-icon-size;
+}
+
+// 漣漪：與 HeroStart 的音效提示同一套做法（見 .hero-start__sound-wave）——
+// 設計稿那張「中圈 ＋ 外圈」的定格，實作成同一顆最外圈（r=43.75）的兩份副本，
+// 各自由圓心擴到最外圈、相位差半個週期，故畫面上同時看得到一內一外兩圈。
+// ⚠️ 這兩個秒數與 HeroStart 的 PULSE_DURATION / PULSE_STAGGER 是同一組節奏，
+//    分屬 scss 與 ts 無法共用，改一邊要記得跟著改另一邊。
+$hint-pulse-dur: 1.5s;
+$hint-pulse-stagger: 0.75s;
+
+// scale 0.1829 = 8 / 43.75（設計稿實心點 → 最外圈的半徑比）
+@keyframes hint-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.1829);
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  60% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+.hint__wave {
+  fill: none;
+  stroke: #fff;
+  stroke-opacity: 0.75; // 設計稿中圈的值 ＝ 漣漪最亮的那一段；擴到最外圈時已在淡出
+  stroke-width: 0.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  // 這組提示沒有固定次數（收場由「碰到人像」決定，見 script 的 dismissHint），故 infinite；
+  // fill-mode: both 讓 delay 期間也套 0% 那格（透明），第二圈才不會先閃一下靜止的滿版外圈。
+  animation: hint-pulse $hint-pulse-dur ease-out infinite both;
+  // 平時暫停、整組亮起才跑。用 paused 而不是「亮起時才掛 animation」：整組淡出的那 0.4s
+  // （.hint 的 transition）若把動畫拿掉，會先跳回靜止的滿版外圈再淡掉；暫停則是原地凍住。
+  animation-play-state: paused;
+
+  &--late {
+    animation-delay: $hint-pulse-stagger;
+  }
+}
+
+.hint--on .hint__wave {
+  animation-play-state: running;
+}
+
+.hint__dot {
+  fill: #fff;
+  fill-opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  // 不擴散：直接定在設計稿的靜態三層（中圈 23.5/43.75、外圈原尺寸且較淡）。
+  // 顯隱照舊由 .hint--on 的 opacity 過渡負責，故提示該在的時候還是在。
+  .hint__wave {
+    animation: none;
+    transform: scale(0.5371);
+
+    &--late {
+      stroke-opacity: 0.5;
+      transform: none;
+    }
+  }
 }
 
 // pc 稿的橫排說明：Noto Sans TC Light 13 / 26、字距 1.3、白色（主字體由 base.scss 全域指定）。

@@ -13,16 +13,30 @@
           用 0.6s 淡掉（Hero.scss 的 .loader-fade-leave-active）；本層瞬間就位，於是橘塊
           由白底原地浮現、落點與尺寸恰好等於那格留白，接著 "start" 字才淡入（見 LABEL_*）。
     等待  同心圓呼吸 PULSE_COUNT 次後提示收掉。
-    退場  按下 start：白底與音效區淡出讓影片透出，橘塊**只縮不淡** —— 維持實色縮到 26×26，
-          那正是影片之後接手的橘核心尺寸（CORE.dotSize，見 OrangeCore.vue），故縮完的那顆
-          與核心對得起來。白底因此用 background-color 的 alpha 淡、不用 opacity（否則會乘到
-          橘塊身上），音效區則自己補一條淡出（見各自的 SCSS 註解）。
+    退場  按下 start：白底與音效區淡出讓影片透出，橘塊**只縮不淡** —— 維持實色縮到
+          「影片首幀那顆橘塊在畫面上的邊長」（exitSize，由 Hero 量出來後傳進來），實色縮完
+          正好疊上去，本層被移除時看不出接手。白底因此用 background-color 的 alpha 淡、
+          不用 opacity（否則會乘到橘塊身上），音效區則自己補一條淡出（見各自的 SCSS 註解）。
+          ⚠ 2026-08-26 之前這裡縮到寫死的 26px（CORE.dotSize），註解也主張「影片開場中央
+            本來就有一顆同尺寸的橘塊」—— 那是**錯的**：影片那顆是各自剪輯的 64 source px
+            × fit 放大倍率，畫面上是 32–85px 且隨視窗變，沒有任何視窗尺寸會等於 26。
+            實測落差 1.2–3.3 倍，理由與量測值見 ~/utils/hero-video-config 的
+            HERO_INTRO_CORE_ANCHOR。
 
   為什麼需要這道閘門：有聲自動播放會被瀏覽器封鎖，必須綁在一次使用者手勢上。
   按下 start 的那一下同時「解鎖播放」與「套用當前音效選擇」，故 hero 影片可直接有聲播。
 -->
 <script setup lang="ts">
 import str from '@/locales/section1.json';
+
+const props = defineProps<{
+  /**
+   * 退場時 cube 要縮到的邊長（px）＝ 影片首幀那顆橘塊在畫面上的邊長，由 Hero 量出來
+   * （見該處的 measureStartExitSize 與 ~/utils/hero-video-config 的 HERO_INTRO_CORE_ANCHOR）。
+   * 0 / 未傳 ＝ 量不到（metadata 還沒到）→ 退回 CORE.dotSize，與 2026-08-26 之前同行為。
+   */
+  exitSize?: number;
+}>();
 
 const emit = defineEmits<{ start: [] }>();
 
@@ -63,10 +77,14 @@ const styleVars = {
   // 故兩個目標邊長在這裡先換算成「相對 --cube-size 的比例」，CSS 那側不必再抄一次數字。
   '--cube-hover-dur': `${HOVER_DURATION}s`,
   '--cube-hover-scale': String(HOVER_CUBE / HANDOFF_CUBE),
-  // 退場縮到 CORE.dotSize（26px）—— 影片播完後接手的橘核心就是這個大小（OrangeCore.vue
-  // 的 SCSS 寫死同值），cube 先縮到同尺寸，交接才不會看到「跳一下」。
-  '--cube-exit-scale': String(CORE.dotSize / HANDOFF_CUBE),
 };
+
+// 退場的目標邊長 → 相對 --cube-size 的比例。獨立一份（而不是併進上面那塊）有兩個理由：
+// 它是唯一會變的值（隨視窗重量），而 CSS 的 calc **不能把兩個長度相除**成無單位比例，
+// 所以這個除法一定得在 JS 這側做。
+const exitVars = computed(() => ({
+  '--cube-exit-scale': String((props.exitSize || CORE.dotSize) / HANDOFF_CUBE),
+}));
 
 // 提示是否還在場（同心圓＋文字共用同一個開關，一起淡出）
 const hintOn = ref(true);
@@ -96,126 +114,129 @@ const onSoundClick = () => {
 </script>
 
 <template>
-  <div class="hero-start" :style="styleVars">
-    <!-- 舞台：與影片層 / 載入層共用的尺寸上限（見 base.scss 的 --hero-stage-max-*），置中。
-         舞台自己置中 ⇒ 舞台中心恆等於視窗正中心，故 cube 與音效區的落點與加上限之前
-         完全相同（音效區的 50% 也是量這個舞台）。三層同心，交棒鏈才對得起來。 -->
-    <div class="hero-start__stage">
-      <!-- start：按下才開始播影片（emit 由 Hero 轉成 heroStarted）。
-         只有 cube 在 flow 內 → cube 中心＝舞台正中心＝視窗正中心，延續載入層橘塊的位置。
-         ⚠ emit 必須留在 click 內**同步**發出，不可等退場動畫跑完再送：有聲播放綁在這一次
-           使用者手勢上，延後 play() 會被 Safari 判為非手勢而靜音/封鎖。故「影片開播」與
-           「本層退場」是並行的 —— 影片在淡出的白底後面已經在播了（見 .hero-start-exit-*）。 -->
-      <button
-        class="hero-start__cube"
-        type="button"
-        :aria-label="str.start.startAria"
-        @click="emit('start')"
-      >
-        <span class="hero-start__cube-label">{{ str.start.label }}</span>
-      </button>
-
-      <!-- 音效開關：狀態存在全域（useAppSound），影響後續所有影片 -->
-      <div class="hero-start__sound">
+  <div class="hero-start" :style="[styleVars, exitVars]">
+    <!-- 尺：與影片舞台同一把（top: 0 ＋ 高 vh(1)），負責置中 —— 見下方 SCSS 註解。 -->
+    <div class="hero-start__ruler">
+      <!-- 舞台：與影片層 / 載入層共用的尺寸上限（見 base.scss 的 --hero-stage-max-*）。
+           舞台在尺內置中 ⇒ 舞台中心恆等於「尺」的中心，故 cube 與音效區的落點與加上限
+           之前完全相同（音效區的 50% 也是量這個舞台）。三層同心，交棒鏈才對得起來。 -->
+      <div class="hero-start__stage">
+        <!-- start：按下才開始播影片（emit 由 Hero 轉成 heroStarted）。
+           只有 cube 在 flow 內 → cube 中心＝舞台正中心＝視窗正中心，延續載入層橘塊的位置。
+           ⚠ emit 必須留在 click 內**同步**發出，不可等退場動畫跑完再送：有聲播放綁在這一次
+             使用者手勢上，延後 play() 會被 Safari 判為非手勢而靜音/封鎖。故「影片開播」與
+             「本層退場」是並行的 —— 影片在淡出的白底後面已經在播了（見 .hero-start-exit-*）。 -->
         <button
-          class="hero-start__sound-btn"
+          class="hero-start__cube"
           type="button"
-          :aria-pressed="soundOn"
-          :aria-label="soundOn ? str.start.soundOnAria : str.start.soundOffAria"
-          @click="onSoundClick"
+          :aria-label="str.start.startAria"
+          @click="emit('start')"
         >
-          <!--
-            呼吸提示：設計稿 1774:61097（96×96）匯出的三層同心圓 —— 實心點 r=8.726、
-            中圈 r=25.678（描邊 1）、外圈 r=47.743（描邊 0.5）。描邊「由內而外變細」正好等於
-            同一顆 r=47.743 圓被 scale 縮小時的視覺結果（描邊寬度 ∝ 1/scale），故兩圈擴散波
-            用 scale 0.1828→1 就能重現設計稿那張定格。
-          -->
-          <Transition name="hero-start-fade">
+          <span class="hero-start__cube-label">{{ str.start.label }}</span>
+        </button>
+
+        <!-- 音效開關：狀態存在全域（useAppSound），影響後續所有影片 -->
+        <div class="hero-start__sound">
+          <button
+            class="hero-start__sound-btn"
+            type="button"
+            :aria-pressed="soundOn"
+            :aria-label="soundOn ? str.start.soundOnAria : str.start.soundOffAria"
+            @click="onSoundClick"
+          >
+            <!--
+              呼吸提示：設計稿 1774:61097（96×96）匯出的三層同心圓 —— 實心點 r=8.726、
+              中圈 r=25.678（描邊 1）、外圈 r=47.743（描邊 0.5）。描邊「由內而外變細」正好等於
+              同一顆 r=47.743 圓被 scale 縮小時的視覺結果（描邊寬度 ∝ 1/scale），故兩圈擴散波
+              用 scale 0.1828→1 就能重現設計稿那張定格。
+            -->
+            <Transition name="hero-start-fade">
+              <svg
+                v-if="hintOn"
+                class="hero-start__sound-pulse"
+                viewBox="0 0 95.9863 95.9863"
+                aria-hidden="true"
+              >
+                <circle
+                  class="hero-start__sound-dot"
+                  cx="47.9943"
+                  cy="47.9943"
+                  r="8.72603"
+                />
+                <circle
+                  class="hero-start__sound-wave"
+                  cx="47.9932"
+                  cy="47.9932"
+                  r="47.7432"
+                />
+                <circle
+                  class="hero-start__sound-wave hero-start__sound-wave--late"
+                  cx="47.9932"
+                  cy="47.9932"
+                  r="47.7432"
+                />
+              </svg>
+            </Transition>
+
+            <!-- icon：設計稿 instance 1774:61083（50×40 外框，leaf 34px 高、置於 left 2 / top 3）。
+                 有聲＝Default 變體（喇叭＋兩段音波）／靜音＝Close 變體（喇叭＋兩條斜槓）。 -->
             <svg
-              v-if="hintOn"
-              class="hero-start__sound-pulse"
-              viewBox="0 0 95.9863 95.9863"
+              v-if="soundOn"
+              class="hero-start__sound-icon"
+              viewBox="0 0 50 40"
               aria-hidden="true"
             >
-              <circle
-                class="hero-start__sound-dot"
-                cx="47.9943"
-                cy="47.9943"
-                r="8.72603"
-              />
-              <circle
-                class="hero-start__sound-wave"
-                cx="47.9932"
-                cy="47.9932"
-                r="47.7432"
-              />
-              <circle
-                class="hero-start__sound-wave hero-start__sound-wave--late"
-                cx="47.9932"
-                cy="47.9932"
-                r="47.7432"
-              />
-            </svg>
-          </Transition>
-
-          <!-- icon：設計稿 instance 1774:61083（50×40 外框，leaf 34px 高、置於 left 2 / top 3）。
-               有聲＝Default 變體（喇叭＋兩段音波）／靜音＝Close 變體（喇叭＋兩條斜槓）。 -->
-          <svg
-            v-if="soundOn"
-            class="hero-start__sound-icon"
-            viewBox="0 0 50 40"
-            aria-hidden="true"
-          >
-            <g
-              transform="translate(2 3)"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="3"
-            >
-              <path
-                d="M22.5 31.2539L9.58789 22.9629L9.21777 22.7246H1.5V11.2754H9.21777L9.58789 11.0371L22.5 2.74512V31.2539Z"
-              />
-              <path d="M30 23C32.7614 23 35 20.3137 35 17C35 13.6863 32.7614 11 30 11" />
-              <path d="M30 31C36.6274 31 42 24.732 42 17C42 9.26801 36.6274 3 30 3" />
-            </g>
-          </svg>
-          <svg
-            v-else
-            class="hero-start__sound-icon"
-            viewBox="0 0 50 40"
-            aria-hidden="true"
-          >
-            <g transform="translate(2 3)">
-              <path
-                d="M22.5 31.2539L9.58789 22.9629L9.21777 22.7246H1.5V11.2754H9.21777L9.58789 11.0371L22.5 2.74512V31.2539Z"
+              <g
+                transform="translate(2 3)"
                 fill="none"
                 stroke="currentColor"
                 stroke-width="3"
-              />
-              <rect
-                x="44.4053"
-                y="9.12012"
-                width="22.1854"
-                height="2.8"
-                transform="rotate(128.159 44.4053 9.12012)"
-                fill="currentColor"
-              />
-              <rect
-                width="22.1854"
-                height="2.8"
-                transform="matrix(0.617851 0.786295 0.786295 -0.617851 28 9.12012)"
-                fill="currentColor"
-              />
-            </g>
-          </svg>
-        </button>
+              >
+                <path
+                  d="M22.5 31.2539L9.58789 22.9629L9.21777 22.7246H1.5V11.2754H9.21777L9.58789 11.0371L22.5 2.74512V31.2539Z"
+                />
+                <path d="M30 23C32.7614 23 35 20.3137 35 17C35 13.6863 32.7614 11 30 11" />
+                <path d="M30 31C36.6274 31 42 24.732 42 17C42 9.26801 36.6274 3 30 3" />
+              </g>
+            </svg>
+            <svg
+              v-else
+              class="hero-start__sound-icon"
+              viewBox="0 0 50 40"
+              aria-hidden="true"
+            >
+              <g transform="translate(2 3)">
+                <path
+                  d="M22.5 31.2539L9.58789 22.9629L9.21777 22.7246H1.5V11.2754H9.21777L9.58789 11.0371L22.5 2.74512V31.2539Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="3"
+                />
+                <rect
+                  x="44.4053"
+                  y="9.12012"
+                  width="22.1854"
+                  height="2.8"
+                  transform="rotate(128.159 44.4053 9.12012)"
+                  fill="currentColor"
+                />
+                <rect
+                  width="22.1854"
+                  height="2.8"
+                  transform="matrix(0.617851 0.786295 0.786295 -0.617851 28 9.12012)"
+                  fill="currentColor"
+                />
+              </g>
+            </svg>
+          </button>
 
-        <!-- 提示：與同心圓同進同退（呼吸完就不再建議） -->
-        <Transition name="hero-start-fade">
-          <p v-if="hintOn" class="hero-start__sound-hint">
-            {{ str.start.soundHint }}
-          </p>
-        </Transition>
+          <!-- 提示：與同心圓同進同退（呼吸完就不再建議） -->
+          <Transition name="hero-start-fade">
+            <p v-if="hintOn" class="hero-start__sound-hint">
+              {{ str.start.soundHint }}
+            </p>
+          </Transition>
+        </div>
       </div>
     </div>
   </div>
@@ -228,10 +249,9 @@ const onSoundClick = () => {
   position: fixed;
   inset: 0;
   z-index: 1500; // 高於轉場層(10)/Header(1000)、低於 HeroLoader(2000)
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background-color: #fff;
+  // 置中改由 .hero-start__ruler 負責（見該處）。本層只剩「滿版白底」這一個職責 ——
+  // inset: 0 要留著，白底必須蓋滿**看得到的**範圍。
 
   // 退場：白底淡出 → 後面已經在播的影片透出來。
   // 進場刻意「沒有」transition —— 本層瞬間就位，由 HeroLoader 淡掉來揭露（見檔頭時序表）。
@@ -254,10 +274,40 @@ const onSoundClick = () => {
   }
 }
 
+// 尺：**與影片舞台完全同一把**（`.sec1__hero-stage` 是 `inset: 0 0 auto 0` ＋ `height: vh(1)`）。
+//
+// 為什麼需要這一層（2026-08-26 修，實機 Android Chrome 抓到）：本層的父層是
+// `fixed; inset: 0` ＝ 活視窗（網址列展開時的可視高），而影片舞台是 `vh(1)` ＝ `--vh`
+// ＝ CSS 100vh ＝ large viewport（凍結，見 plugins/viewport-height.client.ts）。兩邊都
+// 「置中」，但除的是不同的高 ⇒ 中心差 `--chrome-inset / 2`。而開場期間捲動鎖住、手機
+// 網址列**永遠不會收合**（見 .claude/memory/hero-body-lock-rules.md #5），所以那個偏移
+// 在手機上是必然的：實測 1080×2424 的機器上 cube 與影片首幀那顆橘塊的中心差 37 CSS px。
+//
+// ⚠️ 修法刻意是「把本層搬到 --vh 這把尺上」，**不是**把影片往上移，也**不是**在這裡補
+//    `translateY(calc(var(--chrome-inset) / 2))`：
+//      ・`--chrome-inset` 是**活值**（每次 resize 都跟上）。綁在影片上的話，解鎖那一刻
+//        網址列收合、inset 歸零 ⇒ 影片畫面當場跳 37px，而那時影片還在畫面上溶解。
+//        載入層／start 閘門在解鎖前就被移除了，掛在凍結的尺上沒有這個風險。
+//      ・交棒後的 DOM core 落點本來就在這把尺上（恆 vhPx(0.5)，見
+//        .claude/memory/hero-core-screen-locked.md）—— 站錯尺的一直只有這兩層。
+//      ・補償式的 translateY 等於賭「fixed 的 inset: 0 到底等於哪個 viewport」，
+//        各家瀏覽器不一致；改成同一把尺是構造上正確，不必賭。
+// ⚠️ 本層**不可以**套 --hero-stage-max-h：套了之後 vh > 1440 時本層只有 1440 高、又錨在
+//    top: 0 ⇒ 中心變成 720，而影片畫面中心仍是 vhPx(0.5)，又錯開。上限只屬於「內容盒」，
+//    故留在下方的 __stage（影片那側也是這樣分兩層：舞台吃 vh(1)、`<video>` 自己吃上限）。
+.hero-start__ruler {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: vh(1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 // 舞台：三層共用的尺寸上限（見 base.scss 的 --hero-stage-max-*，pc 2560×1440；其餘斷點
-// none ＝ 滿版）。本層自己置中，故舞台中心 ≡ 視窗正中心 —— cube（flex 置中）與音效區
-// （absolute，量的就是本層的 50%）的落點都與加上限之前相同，加上限不會動到交棒鏈。
-// position: relative 是音效區的定位基準（原本是 .hero-start）。
+// none ＝ 滿版）。舞台在「尺」內置中，故舞台中心 ≡ 尺的中心 ≡ 影片畫面中心 —— cube
+// （flex 置中）與音效區（absolute，量的就是本層的 50%）的落點都與加上限之前相同。
+// position: relative 是音效區的定位基準。
 .hero-start__stage {
   position: relative;
   display: flex;
@@ -293,12 +343,14 @@ const onSoundClick = () => {
     transform: scale(var(--cube-hover-scale));
   }
 
-  // 退場：往正中心縮到 26×26（--cube-exit-scale ＝ CORE.dotSize / HANDOFF_CUBE），
-  // 也就是影片播完後 OrangeCore 接手那顆的尺寸；transform-origin 預設 center → 原地縮掉。
+  // 退場：往正中心縮到 --cube-exit-scale，也就是**影片首幀那顆橘塊在畫面上的邊長**
+  // （由 exitSize 量出來，見 script 的 exitVars）；transform-origin 預設 center → 原地縮掉。
   // leave class 掛在本層 root 上，故用 & 反向選；寫在 :hover 之後才壓得過它（同特異度）。
   // ⚠ 橘塊**只縮不淡**（刻意沒有 opacity）：白底淡出讓影片透出的同時，橘塊維持實色一路縮到
-  //   核心尺寸 —— 影片開場中央本來就有一顆同尺寸的橘塊，實色縮完正好疊上去，本層被移除時
-  //   看不出接手。這也是 root 只能淡 background-color、不能淡 opacity 的原因（見 .hero-start）。
+  //   影片那顆的尺寸，實色縮完正好疊上去，本層被移除時看不出接手。這也是 root 只能淡
+  //   background-color、不能淡 opacity 的原因（見 .hero-start）。
+  //   影片首幀那顆在 t=0–0.4s 完全靜止、0.45s 才開始長大，剛好蓋住 --exit-dur 的 0.45s ——
+  //   EXIT_DURATION 再加長就會「cube 還在縮、影片那顆已經在膨脹」（見檔頭）。
   .hero-start-exit-leave-active & {
     transition: transform var(--exit-dur) cubic-bezier(0.4, 0, 0.2, 1);
   }

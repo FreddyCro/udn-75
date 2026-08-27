@@ -123,13 +123,17 @@
             "name": {
               "text": "Dr. Mario García",
               "art": {
-                "pc": { "src": "/img/forum/forum1-name-pc-1.svg", "w": 396, "h": 38.8359 }
+                "pc": { "src": "/img/forum/forum1-name-pc-1.svg", "w": 396, "h": 38.8359 },
+                "pad": { "src": "/img/forum/forum1-name-pad-1.svg", "w": 303, "h": 30 },
+                "mob": { "src": "/img/forum/forum1-name-mob-1.svg", "w": 289, "h": 27.9823 }
               }
             },
             "nameZh": {
               "text": "馬力歐・賈西亞博士",
               "art": {
-                "pc": { "src": "/img/forum/forum1-name-pc-2.svg", "w": 396, "h": 35.8329 }
+                "pc": { "src": "/img/forum/forum1-name-pc-2.svg", "w": 396, "h": 35.8329 },
+                "pad": { "src": "/img/forum/forum1-name-pad-2.svg", "w": 303, "h": 24.7246 },
+                "mob": { "src": "/img/forum/forum1-name-mob-2.svg", "w": 289, "h": 22.3707 }
               }
             },
             "photoNo": "01",
@@ -161,14 +165,6 @@
         "gaTerm": "tsmc01",
         "layout": "stair",
         "tag": "青年對談（一）",
-        "brand": {
-          "text": "台積電文教基金會",
-          "art": {
-            "pc": { "src": "/img/forum/forum4-brand-pc-1.svg", "w": 430.0036, "h": 43.9853 },
-            "pad": { "src": "/img/forum/forum4-brand-pad-1.svg", "w": 302.0028, "h": 30.9896 },
-            "mob": { "src": "/img/forum/forum2-brand-mob-1.svg", "w": 259, "h": 26.5189 }
-          }
-        },
         "title": [
           {
             "text": "跨世代共問",
@@ -187,10 +183,11 @@
             }
           }
         ],
-        "body": "站在AI時代的轉捩點，聯合報系攜手各界領袖凝聚共識，從國家韌性、數位轉型、公平教育到高齡安老，全面回應AI浪潮的結構變革，實踐安全、信任、多元的前瞻台灣。",
+        "body": "站在AI浪潮的起點，聯合報系攜手各界意見領袖展開跨界對談，從職涯發展、人生實踐，到產業升級與國家社會的永續發展，透過多元觀點的交流，共同探索迎向AI浪潮的前瞻道路。",
         "cta": "立即報名",
         "ctaId": "forum-event2-signup",
         "ctaGaTerm": "forum2_signup",
+        "ctaHidden": true,
         "year": "2026",
         "date": "09/15",
         "slash": "core",
@@ -210,9 +207,9 @@
           }
         ],
         "time": {
-          "text": "2－6PM",
+          "text": "2:00–4:00PM",
           "art": {
-            "pc": { "src": "/img/forum/forum2-time-pc-1.svg", "w": 413.547, "h": 38.9932 }
+            "pc": { "src": "/img/forum/forum2-time-pc-1.svg", "w": 413.547, "h": 40.0605 }
           }
         },
         "speakerLabel": "講者介紹",
@@ -304,45 +301,49 @@
         "gaTerm": "tsmc02",
       "layout": "youth",
       "tag": "青年對談（二）",
-      "brand": {
-        "text": "台積電文教基金會",
-        "art": {
-          "pc": { "src": "/img/forum/forum4-brand-pc-1.svg", "w": 430.0036, "h": 43.9853 },
-          "pad": { "src": "/img/forum/forum4-brand-pad-1.svg", "w": 302.0028, "h": 30.9896 }
-        }
-      },
       "title": [
         {
-          "text": "青年永續築夢論壇",
+          "text": "跨世代共問",
           "art": {
-            "pc": { "src": "/img/forum/forum4-title-pc-1.svg", "w": 785.0073, "h": 79.9987 },
-            "pad": { "src": "/img/forum/forum4-title-pad-1.svg", "w": 552.0056, "h": 56.2552 }
+            "pc": { "src": "/img/forum/forum2-title-pc-1.svg", "w": 513.2843, "h": 82.6996 },
+            "pad": { "src": "/img/forum/forum2-title-pad-1.svg", "w": 333.4, "h": 54.0009 },
+            "mob": { "src": "/img/forum/forum2-title-mob-1.svg", "w": 237.0263, "h": 38.0301 }
+          }
+        },
+        {
+          "text": "AI時代共答",
+          "art": {
+            "pc": { "src": "/img/forum/forum2-title-pc-2.svg", "w": 520.001, "h": 82.8816 },
+            "pad": { "src": "/img/forum/forum2-title-pad-2.svg", "w": 339.0041, "h": 54.0011 },
+            "mob": { "src": "/img/forum/forum2-title-mob-2.svg", "w": 240.9985, "h": 38.1127 }
           }
         }
       ],
-      "body": "邀請到台積電文教基金會等產官學研界代表齊聚，透過跨世代對話與標竿分享，探討在AI浪潮與急遽變遷的時代下，如何賦能青年扎根在地、跨域創新，共同擘畫兼具環境韌性與社會共好的永續未來藍圖。",
+      "body": "站在AI浪潮的起點，聯合報系攜手各界意見領袖展開跨界對談，從職涯發展、人生實踐，到產業升級與國家社會的永續發展，透過多元觀點的交流，共同探索迎向AI浪潮的前瞻道路。",
       "cta": "立即報名",
       "ctaId": "forum-event4-signup",
       "ctaGaTerm": "forum4_signup",
+      "ctaHidden": true,
       "year": "2026",
-      "date": "09/30",
+      "date": "10/29",
       "slash": true,
-      "weekday": "三",
+      "weekday": "四",
       "venue": [
         {
-          "text": "成功大學國際會議中心",
+          "text": "國立成功大學",
           "art": {
-            "pc": { "src": "/img/forum/forum4-venue-pc-1.svg", "w": 457.76, "h": 35.777 },
-            "pad": { "src": "/img/forum/forum4-venue-pad-1.svg", "w": 367, "h": 28.6828 }
+            "pc": { "src": "/img/forum/forum4-venue-pc-1.svg", "w": 466, "h": 46.0759 },
+            "pad": { "src": "/img/forum/forum4-venue-pad-1.svg", "w": 347.253, "h": 34.4174 },
+            "mob": { "src": "/img/forum/forum4-venue-mob-1.svg", "w": 362, "h": 24.9465 }
           }
         }
       ],
       "time": {
-        "text": "12PM.－5PM.",
+        "text": "2:00－4:00PM",
         "art": {
-          "pc": { "src": "/img/forum/forum4-time-pc-1.svg", "w": 457.76, "h": 42.063 },
-          "pad": { "src": "/img/forum/forum4-time-pad-1.svg", "w": 367, "h": 33.724 },
-          "mob": { "src": "/img/forum/forum4-time-mob-1.svg", "w": 356.003, "h": 18.531 }
+          "pc": { "src": "/img/forum/forum4-time-pc-1.svg", "w": 466, "h": 41.4248 },
+          "pad": { "src": "/img/forum/forum4-time-pad-1.svg", "w": 347.253, "h": 31.001 },
+          "mob": { "src": "/img/forum/forum4-time-mob-1.svg", "w": 362, "h": 23.4258 }
         }
       },
       "speakerLabel": "講者介紹",
@@ -357,14 +358,14 @@
       ],
       "dateArt": [
         {
-          "pc": { "src": "/img/forum/forum4-date-pc-1.svg", "w": 457.76, "h": 70.7148 },
-          "pad": { "src": "/img/forum/forum4-date-pad-1.svg", "w": 367, "h": 56.6934 },
-          "mob": { "src": "/img/forum/forum4-date-mob-1.svg", "w": 356.003, "h": 39.8965 }
+          "pc": { "src": "/img/forum/forum4-date-pc-1.svg", "w": 466, "h": 70.495 },
+          "pad": { "src": "/img/forum/forum4-date-pad-1.svg", "w": 347.253, "h": 52.5168 },
+          "mob": { "src": "/img/forum/forum4-date-mob-1.svg", "w": 362, "h": 39.8962 }
         },
         {
-          "pc": { "src": "/img/forum/forum4-date-pc-2.svg", "w": 457.76, "h": 75.5852 },
-          "pad": { "src": "/img/forum/forum4-date-pad-2.svg", "w": 367, "h": 60.5994 },
-          "mob": { "src": "/img/forum/forum4-date-mob-2.svg", "w": 356.003, "h": 42.625 }
+          "pc": { "src": "/img/forum/forum4-date-pc-2.svg", "w": 466, "h": 75.9824 },
+          "pad": { "src": "/img/forum/forum4-date-pad-2.svg", "w": 347.253, "h": 56.6045 },
+          "mob": { "src": "/img/forum/forum4-date-mob-2.svg", "w": 362, "h": 43.001 }
         }
       ]
     }
@@ -390,9 +391,9 @@
           },
           {
             "time": "14:00",
-            "title": "《AI時代 跨世代永續與未來生活大調查》發布 勾勒未來行動藍圖",
+            "title": ["《AI時代 跨世代永續與未來生活大調查》", "發布 勾勒未來行動藍圖"],
             "notes": [
-              "聯合線上 官振萱總經理、Kantar凱度洞察 王曉娟董事總經理"
+              "聯合線上 官振萱總經理、Kantar凱度台灣 胡傳玉首席研究總監"
             ]
           }
         ]
@@ -440,7 +441,7 @@
         "rows": [
           {
             "time": "15:20",
-            "title": "AI 時代 社會韌性與地方共好",
+            "title": "AI時代 社會韌性與地方共好",
             "notes": [
               "主持人：聯合報 王茂臻總編輯",
               "與談人：陳美伶 × 孫一仕 × 許敦凱"
@@ -453,7 +454,7 @@
         "rows": [
           {
             "time": "16:00",
-            "title": "AI時代 重新定義教育與人才",
+            "title": "「逆分工」時代，如何成為「梳子型」人才",
             "notes": [
               "台灣大哥大 林之晨總經理"
             ]
@@ -496,16 +497,18 @@
         "id": "forum-agenda-download",
         "gaTerm": "agenda_download",
         "label": "下載完整議程",
-        "href": "/meta.jpg",
+        "href": "/img/udn75_agenda.jpg",
         "variant": "outline",
-        "download": "udn75-完整議程.jpg"
+        "download": "udn75-完整議程.jpg",
+        "target": "_blank"
       },
       {
         "id": "forum-agenda-signup",
         "gaTerm": "agenda_signup",
         "label": "立即報名",
         "href": "https://udn.com/upf/ubrand/2026_data/udn75-sustainability-signup/",
-        "variant": "primary"
+        "variant": "primary",
+        "target": "_blank"
       }
     ]
   },
@@ -519,11 +522,12 @@
       "id": "forum-report-cta",
       "gaTerm": "generation_report",
       "label": "AI時代 <br/>跨世代永續與未來生活大調查",
-      "href": "https://udn.com/upf/ubrand/2026_data/udn75-sustainability/"
+      "href": "https://udn.com/upf/ubrand/2026_data/udn75-sustainability/",
+      "target": "_blank"
     }
   },
   "highlights": {
-    "heading": "聯合七五 智慧未來 系列論壇 現場精彩活動",
+    "heading": ["「聯合七五 智慧未來」", "系列論壇 精彩活動"],
     "items": [
       {
         "img": "/img/udn75_pic02_01",

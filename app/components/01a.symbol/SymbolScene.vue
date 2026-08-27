@@ -55,8 +55,9 @@ const sceneHeight = vhLength(SYMBOL_VH);
 //
 //   step  mode / 事件                              progress      累計距離（起→迄）        該段距離
 //   ①     disperse 分散（前段疊開場三行文案）        0 → 33.53%    0    → 112vh   (0→1210px)     112vh
-//         └ 文案 8vh 起播 → 自走 6.4s 時間軸（2.0s 三行到位／停留 3.0s／1.4s 依序退場）
-//           104vh 保底清場（越過就強制淡出）。門檻在 SYMBOL_INTRO、節奏在 INTRO_TIMELINE
+//         └ 文案 8vh 起播 → 自走 2.0s 時間軸把三行送到位，之後**停在全亮不動**；
+//           80vh 開始逐行退場、104vh 全空 —— 退場吃捲動距離（scrub、可逆），
+//           不是時間軸。門檻在 SYMBOL_INTRO、進場節奏在 INTRO_TIMELINE
 //   ②     face 集合（人像）＝最長的一拍              33.53 → 74.25%  112 → 248vh (1210→2678px)  136vh
 //   ③     converge 收攏成一顆**白** core（底色仍黑） 74.25 → 91.02%  248 → 304vh (2678→3283px)   56vh
 //         └ 途中 284vh 處接縫（`.sec2` 頂端）**越過視窗底緣**開始升進畫面。看不見 ——

@@ -1,7 +1,8 @@
 // 亂碼跑動的共用定義。
 // ⚠️ 這裡只定義「亂碼長什麼樣」，不定義「什麼時候跑」—— 兩個呼叫端的時鐘不同，不要合併：
 //    ・SymbolFace 的宮格彩蛋：時間軸（游標換格觸發，480ms 內跑完，與捲動無關）
-//    ・SymbolIntro 的開場三行：捲動 scrub（reveal 由 symbolProgress 換算，往回捲自動倒退）
+//    ・SymbolIntro 的開場三行：時間軸（捲到門檻觸發，進場 2.0s 內落定）。
+//      ⚠️ 那一段的**退場**吃捲動 scrub，但退場不跑亂碼（reveal 恆為 1），故與本檔無關。
 
 export const SCRAMBLE_CHARS = 'AMFOBI7501<>/\\[]{}#%&@十人工智慧能力未來';
 

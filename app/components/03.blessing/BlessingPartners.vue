@@ -1,14 +1,15 @@
 <script setup lang="ts">
-// 永續祝福的夥伴清單面板（Figma 祝福詞0818：
+// 永續祝福的夥伴清單面板（Figma 祝福詞0824：
 // pc 3450:107574 / pad 3511:34196 / mob 3451:112446）。
 //
 // 白底面板、內部垂直捲動、自訂捲軸（軌 #bcbcbc / 把手 #686868、寬 8）。
 // 列的排列：pc / pad 是「logo 左 ＋ 語錄右對齊」，mob 改成「logo 上 / 語錄下」，
 // 文字框置中但**框內**語錄靠左、企業名置中（見 __text / __name 的 tablet 段）。
 //
-// 🚧 各夥伴的正式 logo 檔尚未提供 —— section3.json 的 logo 欄位目前一律指向同一支
-//    udn75_logo03_01.svg（設計稿原生尺寸 232×64，與 pc 的 logo 框等寬高）。
-//    檔案到齊後只要逐列改 JSON 的 logo 路徑即可，元件不需再動。
+// logo 放 public/img/blessing/partner-*.svg，一律是設計稿的 232×64 框（紳裝那張稿上是
+// 232×80，靠 __logo 的 object-fit: contain 等比縮進 64 的框，不變形）。含點陣圖、或路徑
+// 太碎以致 SVG 反而比點陣大的那 8 張（yungtay／dijing／fuyuland／just／ctbc／tcbbank／
+// ypu／darmo）改存 .png，尺寸取 4 倍（928×256）以應付高解析螢幕。
 //
 // url／quote 皆可為空字串（客戶尚未提供）：空 url 該列就渲染成 <div> 而非 <a>，
 // 空 quote 整行不輸出——空的 <p> 會佔掉一行行高、把該列撐高。欄位一律保留而不省略，
@@ -48,8 +49,8 @@ const { play } = useSfx();
             :href="item.url || undefined"
             :target="item.url ? '_blank' : undefined"
             :rel="item.url ? 'noopener' : undefined"
-            @mouseenter="play('sfx01')"
-            @click="play('sfx01'); item.gaTerm && gaClickButton('partner', item.gaTerm)"
+            @mouseenter="play('sfx01Short')"
+            @click="play('sfx01Short'); item.gaTerm && gaClickButton('partner', item.gaTerm)"
           >
             <!-- 外框尺寸固定為設計稿的 logo 框，圖以 contain 內縮，換不同比例的 logo 也不變形 -->
             <img
@@ -237,9 +238,9 @@ const { play } = useSfx();
   }
 
   // mob（3451:112446）的語錄與企業名是兩個**等寬 210 的文字框**，靠 __row 的
-  // align-items: center 置中；框內對齊左右不同 —— 語錄靠左、企業名置中（見 __name）。
-  // 故這裡是 stretch（讓兩個框都撐滿 210）而非 center（那會 shrink-to-fit，
-  // 框寬等於字寬，text-align 就再也看不出差別）。
+  // align-items: center 置中，框內兩者都置中（稿上兩個 <p> 都是 text-center w-210）。
+  // 故這裡是 stretch（讓兩個框都撐滿 210）而非 center（那會 shrink-to-fit）——
+  // 兩個框等寬，短的企業名才會跟語錄共用同一條中軸線。
   //
   // 210 是稿寬：稿子畫在 414 的框上，列寬 310 扣掉左右各 50。用 max-width 夾住而不
   // 寫死 width —— 窄機（375／360／320）的列內容寬分別是 271／256／216，都還大於 210，
@@ -248,7 +249,7 @@ const { play } = useSfx();
     align-items: stretch;
     width: 100%;
     max-width: 210px;
-    text-align: left;
+    text-align: center;
   }
 }
 
@@ -292,11 +293,10 @@ const { play } = useSfx();
     }
   }
 
-  // text-align 蓋掉 __text 的 left：mob 只有語錄靠左，企業名仍置中（3451:112446）。
+  // 置中不必在這裡再寫一次 —— 已由 __text 的 tablet 段一起給（語錄、企業名同樣置中）。
   @include rwd-max('tablet') {
     font-size: var(--text-caption); // 15 / 24
     line-height: 24px;
-    text-align: center;
   }
 }
 </style>

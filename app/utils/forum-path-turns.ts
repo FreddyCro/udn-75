@@ -25,6 +25,9 @@ export type ForumTurn = {
   /** len / pathLen（forumPath 軌的 0..1）。**只給 dashboard 顯示用** ——
    *  與路徑事件的門檻同一個座標系，兩區的 % 才對得起來。 */
   mark: number;
+  /** 這一聲是「貼邊」入選的（角度不夠、但核心擦到容器左右緣）嗎。
+   *  **只給 dashboard 與量測腳本用** —— 出聲與擠壓對兩種入選方式一視同仁。 */
+  wall?: boolean;
 };
 
 /**
@@ -76,14 +79,86 @@ export const FORUM_TURN_MIN_ANGLE_DEG = 90;
  *
  *  ⚠ 這道閘門不是可有可無的：髮夾彎的**回程點**也是大轉角（pc 的 W4 實測 98.4°），
  *    而它距頂點 W3 只有約 107px 弧長 —— 沒有間隔限制就會在同一個彎裡連響兩聲。
- *  單位與 FORUM_PLANE.morphLen / forum-path-events 的 dLen 相同（px 弧長）。 */
-export const FORUM_TURN_MIN_GAP_LEN = 300;
+ *  單位與 FORUM_PLANE.morphLen / forum-path-events 的 dLen 相同（px 弧長）。
+ *
+ *  2026-08-26：300 → 200。設計師回報「手機版撞擊到牆壁也要有聲音」，實測（Playwright
+ *  沿驅動線每 2px 取樣、撈出所有 ≥60° 的局部尖峰，再與 pickTurns 的結果對照）：
+ *
+ *    斷點   前段硬轉角   原本入選   被本閘門擋掉
+ *    pc     11          11        —          （最小間隔 303px，只差 3px 就會被擋）
+ *    pad    7           7         —          （最小間隔 642px）
+ *    mob    6           5         **1**      （len 6306、115.4°，距前一個轉折 272px）
+ *
+ *  mob 漏掉的那個是 x 由 293 跳到 98 的硬左轉 ＝ 撞上左牆，正是設計師聽不到的那一下。
+ *  三個斷點裡只有 mob 中彈：它的節點表只有 14 個，彎與彎因此擠得比 pc / pad 近。
+ *
+ *  ⚠ 200 的區間是**兩邊夾出來的**，不是隨手取的整數：
+ *    ・下限 107（pc 的 W3 → W4 回程點）—— 必須仍被擋掉，否則同一個髮夾彎連響兩聲。
+ *    ・上限 272（mob 那個撞牆）—— 必須被放進來。
+ *    200 距兩端各有 93px / 72px 餘裕。要再動它，先照上表重量一次三個斷點：
+ *    往上調會把 mob 的撞牆再弄丟，往下調則會在 pc 的髮夾彎裡連響兩聲，
+ *    而兩種症狀都只有耳朵聽得出來、畫面上完全正常。 */
+export const FORUM_TURN_MIN_GAP_LEN = 200;
+
+/** 節點到容器左右緣多近算「貼邊」（px）。
+ *
+ *  為什麼需要**第二條**入選規則、光靠角度不夠：mob／pad 的線會用一段**大弧**把核心
+ *  甩到畫面邊緣再拉回來。那一下在畫面上就是「撞到牆」（核心整顆抵著邊緣走過去），
+ *  但它的切線轉角很緩 —— 2026-08-26 實測 mob 的 P5／P6／P7 只有 51.0° / 36.8° / 37.4°、
+ *  pad 的 Q10 只有 43.5°，全都遠低於 FORUM_TURN_MIN_ANGLE_DEG 的 90，因此一個都沒出聲
+ *  （設計師回報「手機版碰到邊的轉折也要音效」講的就是這四個）。
+ *  用角度去撈它們是走不通的：門檻得壓到 35 以下，那會把整條線上每一個緩彎都收進來。
+ *
+ *  16 的來歷 ＝ 核心半寬（CORE.dotSize 26 / 2 ＝ 13）再加 3px 餘裕：路徑中心離邊緣
+ *  13px 時，核心那顆方塊剛好貼平邊緣 —— 這是「撞到牆」在幾何上的定義，不是湊的整數。
+ *
+ *  ⚠ 實測的安全區間是 (5, 54)：貼邊節點量到 2px（mob P5/P6/P7）與 5px（pad Q10），
+ *    而**非**貼邊節點最近的也有 54px（mob P4）；pc 整條線最靠邊的節點距邊 152px，
+ *    故 pc 完全不受本規則影響。16 落在區間中間偏低，上下各有 11px / 38px 餘裕。
+ *    要改它得照上面那組數字重量三個斷點 —— 調大會開始收進不貼邊的緩彎，
+ *    調小會漏掉貼邊點，而兩種都只有耳朵聽得出來。 */
+export const FORUM_TURN_WALL_PAD = 16;
+
+/**
+ * 這個節點是不是「貼邊」——核心在此擦到容器的左緣或右緣。
+ *
+ * 三個 x 是**在節點弧長 ±FORUM_TURN_SAMPLE_LEN 處對路徑取樣**得到的，與 turnAngleDeg
+ * 吃的是同一組取樣點（量測留在 ForumCorePath，見該檔的 syncTurns）。
+ *
+ * 兩個條件都要成立：
+ *   ① 節點本身離某一側邊緣 ≤ pad。
+ *   ② 它是那一側的**局部極值** —— 靠左緣時 x 要是三點中最小、靠右緣時最大。
+ * 少了 ②，一段「沿著邊緣直行」的線會讓路過的每個節點都算撞牆；有了 ② 才是
+ * 「甩出去碰到牆、再拉回來」那一下。這與 turnAngleDeg 只看折了多少是互補的兩件事。
+ *
+ * 退化：width ≤ 0（還沒量到容器寬）回 false —— 那時整條線的座標都還不可信，
+ * 寧可少一聲也不要在幾何還沒穩定時噴一串（同 pickTurns 對 pathLen ≤ 0 的處理）。
+ */
+export function isWallContact(
+  xBefore: number,
+  xAt: number,
+  xAfter: number,
+  width: number,
+  pad: number = FORUM_TURN_WALL_PAD,
+): boolean {
+  if (!(width > 0)) return false;
+  if (xAt <= pad) return xAt <= xBefore && xAt <= xAfter; // 左緣：x 取局部最小
+  if (xAt >= width - pad) return xAt >= xBefore && xAt >= xAfter; // 右緣：局部最大
+  return false;
+}
 
 /** 轉折要播哪一支音效。三個斷點、每個轉折都是同一支（見 sound-manifest 的清單）。
  *
  *  型別綁 SoundKey → 打錯字或音效檔被移出清單時編譯期就報錯，不會變成靜默的 no-op
- *  （useSfx 的 play() 對不認識的 key 直接 return）。 */
-export const FORUM_TURN_SFX: SoundKey = 'sfx01';
+ *  （useSfx 的 play() 對不認識的 key 直接 return）。
+ *
+ *  2026-08-26：sfx01 → sfx01Short（0.27s 那支，見 sound-manifest）。撞擊是**事件**、
+ *  不是一段路程（同 FORUM_TURN_SQUASH 那段的論證），而現行 sfx01 是 2.11s ——
+ *  快速捲動時相鄰兩次撞擊可以只隔幾十毫秒（間隔下限 FORUM_TURN_MIN_GAP_LEN 是
+ *  200px 弧長），2.11s 的音會被下一次撞擊從頭打斷，聽起來是一團糊的長音而不是
+ *  「咚、咚」兩下。0.27s 短到每一次撞擊都能完整播完，與擠壓動畫（inDur 0.07s ＋
+ *  outDur）的尺度也對得上。 */
+export const FORUM_TURN_SFX: SoundKey = 'sfx01Short';
 
 /**
  * 撞擊擠壓的倍率：把「壓了多少」（amount）換算成方塊的 [scaleX, scaleY]。
@@ -114,6 +189,10 @@ export function squashScaleAt(
 /**
  * 挑出轉折。
  *
+ * 入選有兩條路（或的關係）：**角度夠**（minAngleDeg，硬轉角）或**貼邊**（wallHit，
+ * 大弧擦到容器邊緣）。後者是 2026-08-26 補的，理由與實測見 FORUM_TURN_WALL_PAD。
+ * 兩者之後都要過同一道間隔閘門（minGapLen）。
+ *
  * `order` 必須是**線上順序**的節點編號（＝節點表的順序，弧長遞增）：間隔要跟前一個入選的
  * 比，依賴這個順序。實務上傳 FORUM_FRONT_NODES[bp] 的 id（＝議程之前那一段），
  * 故不必再過濾弧長範圍。
@@ -138,6 +217,9 @@ export function pickTurns(args: {
   pathLen: number;
   minAngleDeg?: number;
   minGapLen?: number;
+  /** 這個節點是否貼邊（見 isWallContact）。由呼叫端注入 —— 判定要的容器寬與 x 取樣
+   *  都在元件裡。不傳 ＝ 只用角度判（既有行為，測試裡多數案例走這條）。 */
+  wallHit?: (id: string) => boolean;
 }): ForumTurn[] {
   const {
     order,
@@ -146,6 +228,7 @@ export function pickTurns(args: {
     pathLen,
     minAngleDeg = FORUM_TURN_MIN_ANGLE_DEG,
     minGapLen = FORUM_TURN_MIN_GAP_LEN,
+    wallHit,
   } = args;
   if (!(pathLen > 0)) return [];
 
@@ -160,11 +243,24 @@ export function pickTurns(args: {
   const out: ForumTurn[] = [];
   let lastLen: number | null = null;
   for (const cur of live) {
-    if (cur.angle < minAngleDeg) continue;
+    // 兩條入選路徑，**或**的關係：
+    //   ① 硬轉角（角度夠）—— 髮夾彎、撞牆的急折。
+    //   ② 貼邊（見 isWallContact）—— 大弧把核心甩到畫面邊緣擦一下，角度很緩但看得見。
+    // 兩者都是設計語彙裡的「撞擊」，出聲與擠壓對它們一視同仁（見 FORUM_TURN_WALL_PAD）。
+    const wall = cur.angle < minAngleDeg && !!wallHit?.(cur.id);
+    if (cur.angle < minAngleDeg && !wall) continue;
     // 與**前一個入選**比，不是與前一個節點比：連續三個大轉角時，中間那個被濾掉
     // 不該讓第三個因此通過（否則密集彎區還是會連響）。
+    // ⚠ 貼邊點也吃這道閘門，且**與硬轉角共用同一個 lastLen** —— 兩種入選方式混在
+    //   同一條時間線上，各記一個游標會讓「貼邊點緊接在硬轉角後面」連響兩聲。
     if (lastLen != null && cur.len - lastLen < minGapLen) continue;
-    out.push({ id: cur.id, angle: cur.angle, len: cur.len, mark: cur.len / pathLen });
+    out.push({
+      id: cur.id,
+      angle: cur.angle,
+      len: cur.len,
+      mark: cur.len / pathLen,
+      ...(wall ? { wall: true } : {}),
+    });
     lastLen = cur.len;
   }
   return out;

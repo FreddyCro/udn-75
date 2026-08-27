@@ -10,7 +10,7 @@ const { play } = useSfx();
 // 不特別繞過。理由：使用者剛要求安靜，再回他一聲是反效果。
 const onToggle = () => {
   toggleSound();
-  play('sfx01');
+  play('sfx01Short');
 };
 </script>
 
@@ -20,7 +20,7 @@ const onToggle = () => {
     type="button"
     :aria-label="soundOn ? '關閉音效' : '開啟音效'"
     :aria-pressed="soundOn"
-    @mouseenter="play('sfx01')"
+    @mouseenter="play('sfx01Short')"
     @click="onToggle"
   >
     <AppHeaderIcon :name="soundOn ? 'sound-on' : 'sound-off'" />

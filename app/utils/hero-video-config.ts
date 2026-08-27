@@ -9,7 +9,7 @@
 // 三個裝置各有一支剪輯，main / outro 都在同一支裡，長度實測皆為 40.73s
 // → 段落秒數三個裝置共用（下方 HERO_VIDEO_SEGMENTS_BY_DEVICE 不必覆寫）。
 // 畫面尺寸不同：pc 1920×1080（橫）、pad 1024×1364（直）、mob 720×1280（直）。
-// 實際會播到的只有 0–33 與 36–38.5 兩段（中間 3 秒與 38.5s 之後都不播，見下方段落表）。
+// 實際會播到的是 0–38.5 這一整段（順播、不跳段；38.5s 之後不播，見下方段落表）。
 
 import type { HeroCoreAnchor } from './hero-core-handoff';
 
@@ -77,16 +77,22 @@ export const HERO_VIDEO_END = Number.POSITIVE_INFINITY;
 //   outro outro.start → outro.end 退場段；到 end（或影片播完）→ 解鎖，等捲動溶解
 //
 // 2026-08-22（使用者裁決）：原本 main 只到 30、30–33 是「等使用者下滑」的 loop 循環段。
-// 新流程沒有等待階段 —— 正片一路播到 33（loop 段當正片尾巴播一次，不再循環），
-// 接著 seek 到 36 播退場，**整段都還鎖著**，退場播完才解鎖（見 ~/utils/hero-scroll-lock）。
-// 於是設計師「不要因為捲太快而看不到 outro」這條需求第一次真正成立。
+// 新流程沒有等待階段 —— 正片一路播到退場段，**整段都還鎖著**，退場播完才解鎖
+// （見 ~/utils/hero-scroll-lock）。於是設計師「不要因為捲太快而看不到 outro」這條需求
+// 第一次真正成立。
 //
-// ⚠️ main → outro 之間那 3 秒（33 → 36）**刻意不播**：這是剪輯要求（退場要從 36s 那一幀
-//    開始），不是漏填 —— 別「順手」把它改成相接。seek 由 HeroVideo 的 watch(heroState) 做。
+// 2026-08-25（使用者裁決）：**跳段功能移除，整支順播到底**。在此之前 main 只到 33、
+// 33 → 36 那 3 秒由 watch(heroState) seek 跳過（舊剪輯要求退場從 36s 那一幀開始）。
+// 現在 main.end 直接接上 outro.start ⇒ alignToSegment 判定「已在段內」而不 seek，
+// 影片從 0 一路播到 38.5s（見 HeroVideo 的 watch(heroState) 與 alignToSegment）。
 //
-// 秒數：正片 0–33（含原 loop 段）、退場 36–38.5 → gone（影片其餘部分不播）。影片全長 40.02s。
+// ⚠️ 這兩個值要**維持相接**：一旦讓它們產生落差，main → outro 就會又變回一次 seek
+//    （＝把剛移除的跳段功能默默裝回去）。要改退場起點就兩個一起改。
+//
+// 秒數：正片 0–36（含原 loop 段與原本跳過的 3 秒）、退場 36–38.5 → gone
+// （38.5s 之後不播）。影片全長約 40s。
 export const HERO_VIDEO_SEGMENTS: HeroVideoSegments = {
-  main: { start: 0, end: 33 },
+  main: { start: 0, end: 36 },
   outro: { start: 36, end: 38.5 },
 };
 
@@ -115,7 +121,7 @@ export function heroVideoSegments(device: HeroVideoDevice): HeroVideoSegments {
  * 淡出不另設秒數 —— 一離開正片（main → outro）就淡出，故跟著 main.end 走。
  *
  * 設計稿 #BN skip 標的是 3 秒；2026-08-22 使用者裁決改為 **2 秒**（開場的強制觀看時間
- * 隨順播延長到 35.5 秒，逃生口該更早出現）。
+ * 隨順播延長到 35.5 秒，逃生口該更早出現；2026-08-25 移除跳段後又延長到 38.5 秒）。
  */
 export const HERO_SKIP_APPEAR_AT = 2;
 
@@ -146,13 +152,44 @@ export const HERO_MAIN_STALL_FUSE_MS = 15000;
 //
 // 預設值＝畫面正中心、邊長換算後在 1280 寬視窗上剛好 26px（＝ orange-core-config 的
 // CORE.dotSize）。影片剪輯本來就把 core 收在正中心的話，這組預設不必動，交棒位移為 0。
+// ⚠️ 2026-08-26 逐格量過三支剪輯（方法見上方「怎麼量」），下面這組值與實測**不符**，
+//    但**刻意先不動** —— 因為它與 `outro.end` 是同一個決定，改一半只會換一種錯法：
+//
+//    ① 尾幀那顆的真實邊長是 pc 26/1920、pad 17/1024、mob 18/720，
+//       不是這裡三個裝置共用的 39/1920（那個值是「26 CSS px 在 1280 視窗上換算回 1920
+//       影片稿」，量的是 DOM core 而不是影片）⇒ 起點尺寸恆偏大 pc 1.50×、pad 1.22–1.32×。
+//    ② `y: 0.5` 只在影片**停定之後**成立：核心是由畫面下方往上收的，pc / pad 要到
+//       t≈38.8–38.9 才停在正中心，mob 停在 y=0.4711（＝ 603/1280，中心上方 37 frame px）。
+//       而 `outro.end` 是 38.5，且 `pause()` 掛在 timeupdate（~250ms 一次）⇒ **實際停格
+//       散在 38.50–38.75 之間、每次不同**，那段核心每 100ms 走約 7 frame px。
+//       也就是這個誤差有一半是隨機的，光改 anchor 修不掉。
+//
+//    正確的一步是先把 `outro.end` 推到停定之後（38.9 或直接播到 @ended），再把三組值換成：
+//      pc  { x: 0.5, y: 0.5,    size: 26 / 1920 }
+//      pad { x: 0.5, y: 0.5,    size: 17 / 1024 }
+//      mob { x: 0.5, y: 0.4711, size: 18 / 720  }
+//    代價是捲動鎖多 0.4 秒（退場播完才解鎖，見 ~/utils/hero-scroll-lock），故待裁決。
 export const HERO_OUTRO_CORE_ANCHOR: Record<HeroVideoDevice, HeroCoreAnchor> = {
   pc: { x: 0.5, y: 0.5, size: 39 / 1920 },
-  // pad / mob 是各自獨立的直式剪輯（非 pc 的轉檔），core 的落點與邊長理論上與 pc 不同，
-  // 但 size 的分母是各自的畫面寬 → 若剪輯都把 core 收在正中心、且橘塊佔畫面寬的比例相同，
-  // 這組預設就會是對的。TODO: 抽出 38.5s 那一幀確認（見上方「怎麼量」）。
   pad: { x: 0.5, y: 0.5, size: 39 / 1920 },
   mob: { x: 0.5, y: 0.5, size: 39 / 1920 },
+};
+
+// ── 進場交棒：影片**首幀**那顆 orange core 的落點 ─────────────────────────
+// start 閘門的 cube 按下後縮小、白底淡出讓影片透出。要「看不出交接」，cube 就得縮到
+// 影片首幀那顆橘塊在**畫面上**的邊長 —— 而那不是一個定值：三支剪輯都把它畫成 64 source px
+// （2026-08-26 實測，且 t=0–0.4s 完全靜止、0.45s 才開始長大，剛好蓋住 0.45s 的退場），
+// 畫面上的邊長 ＝ 64 × fit 放大倍率 ⇒ 隨視窗連續變化：
+//   1280×720 42.7px、1920×1080 64px、2560×1440 85.3px、768×1024 48px、390×844 34.7px
+// 改動前 cube 一律縮到寫死的 26px（CORE.dotSize），於是交接那一刻橘塊彈大 1.2–3.3 倍。
+//
+// 座標同 HERO_OUTRO_CORE_ANCHOR，是**影片畫面**的正規化比例；換算走
+// ~/utils/hero-core-handoff 的 videoAnchorToScreen，故換視窗／換斷點都不必重量。
+// 三支的中心都在畫面正中心，只有 size 的分母（各自的畫面寬）不同。
+export const HERO_INTRO_CORE_ANCHOR: Record<HeroVideoDevice, HeroCoreAnchor> = {
+  pc: { x: 0.5, y: 0.5, size: 64 / 1920 },
+  pad: { x: 0.5, y: 0.5, size: 64 / 1024 },
+  mob: { x: 0.5, y: 0.5, size: 64 / 720 },
 };
 
 // 交棒動畫：DOM core 從影片那顆的位置／尺寸滑回自己的位置／26px。

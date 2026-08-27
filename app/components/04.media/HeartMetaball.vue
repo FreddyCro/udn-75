@@ -152,10 +152,17 @@ const props = withDefaults(
     /** 閒置自動遊走的範圍（佔畫面短邊比例） */
     idleRoamRange?: number;
     /** 閒置遊走活動範圍（相對畫布的正規化矩形 0~1）：未提供＝整畫布置中、幅度
-     *  idleRoamRange；提供時 patch 叢集「含羽化外緣」被限制在矩形內（幅度內縮
-     *  **可見**半徑 1.1×headR，不是叢集名目半徑；帶塞不下時整體等比縮小），
-     *  不會壓到範圍外的內容 —— 但矩形**內**的內容會被壓到，由呼叫端決定範圍 */
+     *  idleRoamRange；提供時幅度內縮團塊的**可見**半徑（1.1×headR，不是叢集名目
+     *  半徑）。左右與**下緣**是硬邊界；帶高塞不下整團時不縮團塊，改把下緣切齊帶底、
+     *  垂直幅度歸零 → 只從**上緣**溢出。團塊大小只由半寬決定（塞不下才等比縮小）。
+     *  矩形內的內容會被壓到，由呼叫端決定範圍 */
     roamArea?: { x: number; y: number; width: number; height: number };
+    /** roamArea 分支（＝pad / mob）的團塊尺寸倍率，疊在自動內縮之上；橘色範圍
+     *  （orangeCells）一併等比縮，藍橘比例才不會走樣。
+     *  ⚠️ 這裡才是窄幅唯一有效的尺寸旋鈕：patchScale 會被「半寬容不下就內縮」
+     *  夾掉（mob 的最終倍率恆 = halfW / (clusterC × CELL)，與 patchScale 無關），
+     *  調 patchScale 在 mob 上完全沒有效果。內縮量 ext 同步變小 → 遊走幅度變大 */
+    roamScale?: number;
     /** 閒置遊走速度倍率 */
     idleRoamSpeed?: number;
     /** 拖尾章半徑下限（**佔 headR 持久球半徑**的倍數，非畫面短邊）
@@ -214,6 +221,7 @@ const props = withDefaults(
     follow: 0.08,
     tailAmount: 0.75,
     idleRoamRange: 0.1,
+    roamScale: 1,
     idleRoamSpeed: 1,
     // 以 headR 為基準的章半徑：0.5~0.85 搭配 STAMP_SPREAD 0.3 → 尾巴可及約
     // 1.01×headR、gate 起點 0.6×headR、本體外緣約 0.89×headR
@@ -243,7 +251,9 @@ onMounted(() => {
   const ACCENT_BLOCK = Math.max(1, Math.round(props.accentBlock));
   const SWITCH_PERIOD = Math.max(0.1, props.switchPeriod);
   const EDGE_PERIOD = Math.max(0.1, props.edgePeriod); // 邊緣呼吸週期（秒）
-  const ORANGE_R = props.orangeCells * CELL; // 變橘衰減終點（px）
+  // 變橘衰減終點（px）。乘 roamScale：橘色範圍是絕對格數，縮團塊時不一起縮的話
+  // 橘核會相對脹大、整團變成一坨橘（mob 0.7 倍實測 70% → 90% 橘）
+  const ORANGE_R = props.orangeCells * CELL * props.roamScale;
   const ORANGE_GAMMA = Math.max(0.1, props.orangeGamma); // 密度衰減指數
   const ORANGE_HOLE = Math.min(Math.max(props.orangeHole, 0), 1); // 挖空比例
   // 挖空層換抽週期：刻意與區塊層不可公度 → 兩層各自緩慢重抽、不同步
@@ -602,16 +612,15 @@ onMounted(() => {
       if (area) {
         const halfW = (width * area.width) / 2;
         const halfH = (height * area.height) / 2;
-        clusterScale = Math.min(1, halfW / CLUSTER_PX, halfH / CLUSTER_PX);
+        // 縮放只看半寬：帶高被呼叫端刻意壓成「約一顆團塊高」（見 Media.vue 的
+        // bgRoamArea），把 halfH 一起算進來會讓團塊隨視窗高變小（1024×768 的
+        // pad 上約剩一半）。垂直塞不下改由下方的錨定處理，不動尺寸。
+        clusterScale = Math.min(1, halfW / CLUSTER_PX) * props.roamScale;
         // 內縮量＝團塊**看得見**的半徑，不是叢集名目半徑（＝patch 聯集的外接
         // 矩形 CLUSTER_PX）。兩者差 1/0.748 ≈ 1.34 倍：遮罩是場的等值線
         // d = headR/√(th+0.16)，th ∈ [0.6,1.6]（見下方逐格迴圈）→ 外緣落在
         // 0.75~1.15 × headR，而 headR 本身只有 0.68 × CLUSTER_PX。
-        //
-        // ⚠️ 用名目半徑會讓振幅在窄軸上恆為 0，不是「調小了」而是「數學上歸零」：
-        //    clusterScale 由窄軸決定 ⇒ clusterScale = halfH/CLUSTER_PX
-        //    ⇒ ext = CLUSTER_PX × clusterScale ≡ halfH ⇒ ampY ≡ 0。
-        //    改用可見半徑後 ext = 0.748 × halfH，窄軸也留得下 25% 的振幅。
+        // ⚠️ 改回名目半徑會讓內縮量剛好吃滿窄軸半徑 ⇒ 該軸振幅數學上歸零。
         const headRNominal = CLUSTER_PX * 0.68 * props.coreScale * clusterScale;
         // 尾巴可及 ≈ headR × (STAMP_SPREAD + 0.84 × tailBlobMax) ≈ 0.72 × headR，
         // 小於本體的 1.1 × headR，實際不是限制因素；保留 max() 以防 tailBlobMax
@@ -623,9 +632,12 @@ onMounted(() => {
         // 1.1＝移動中的可見外緣（靜止約 0.89，最外圈毛邊 1.15）
         const ext = Math.max(headRNominal * 1.1, tailR);
         cx0 = width * (area.x + area.width / 2);
-        cy0 = height * (area.y + area.height / 2);
         ampX = Math.max(0, halfW - ext);
         ampY = Math.max(0, halfH - ext);
+        // 垂直錨在**帶底**（＝清單上緣）：塞得下時 cy0 仍等於帶中心（＝bottom
+        // − halfH，與水平同構）；塞不下時 ampY 已為 0、團塊下緣切齊帶底，溢出
+        // 只發生在上緣 —— 寧可蓋到內文末行，也不侵入清單。
+        cy0 = height * (area.y + area.height) - ext - ampY;
       } else {
         clusterScale = 1;
         cx0 = width * 0.5;

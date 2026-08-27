@@ -47,6 +47,10 @@ const FIG_SIZE = [
 // 對錯圖示為 runtime 組出的動態路徑，須自行補資產前綴
 const assetUrl = useAssetUrl();
 
+// 兩顆作答鈕的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
+// 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
+const { play } = useSfx();
+
 const picked = ref(-1); // 使用者選的 index；-1 = 未作答
 const answered = computed(() => picked.value >= 0);
 const isCorrect = computed(() => props.options[picked.value]?.isAi === true);
@@ -88,7 +92,8 @@ function pick(i: number) {
         :class="{ 'ai-quiz__btn--picked': picked === i }"
         type="button"
         :aria-pressed="picked === i"
-        @click="pick(i)"
+        @mouseenter="play('sfx01Short')"
+        @click="play('sfx01Short'); pick(i)"
       >
         <!-- 圓鈕：hover 版（橘底白箭頭）疊在預設版上淡入，橘底不透明所以不必藏底下那張 -->
         <span v-if="i === 0" class="ai-quiz__btn-circle" aria-hidden="true">
@@ -212,12 +217,20 @@ function pick(i: number) {
   cursor: pointer;
   transition:
     color 0.25s ease,
-    border-color 0.25s ease;
+    border-color 0.25s ease,
+    background-color 0.25s ease;
 
-  // 選中後停在橘色（等同 hover 的橘，但不隨滑鼠移開消失）
+  // 選中後停在橘色（不隨滑鼠移開消失）：
+  // mob 對稿 click 態＝橘底盒＋白字白箭頭；pad 以上沒有盒（無底無框），維持橘字＋橘底圓鈕
   &--picked {
     border-color: var(--color-orange);
-    color: var(--color-orange);
+    background: var(--color-orange);
+    color: #fff;
+
+    @include rwd-min('tablet') {
+      background: none;
+      color: var(--color-orange);
+    }
   }
 
   &:last-child {
@@ -301,8 +314,9 @@ function pick(i: number) {
   -webkit-mask: url('/img/udn75_arrow_pixel.svg') no-repeat center / contain;
   transition: background-color 0.25s ease;
 
+  // 選中：橘底盒上的白箭頭（對稿 click 態）
   .ai-quiz__btn--picked & {
-    background: var(--color-orange);
+    background: #fff;
   }
 
   @include rwd-min('tablet') {
@@ -323,6 +337,13 @@ function pick(i: number) {
   line-height: 26px;
   font-weight: 300;
   letter-spacing: 0.1em;
+
+  // mob 對稿 click 態字重 Light → Regular（Button_S → Button_S_bold）；pad 以上字重不變
+  .ai-quiz__btn--picked & {
+    @include rwd-max('tablet') {
+      font-weight: 400;
+    }
+  }
 
   @include rwd-min('tablet') {
     font-size: var(--text-body);

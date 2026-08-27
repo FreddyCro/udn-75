@@ -31,10 +31,16 @@ const isActive = (url: string) =>
 /** scroll 模式的 href 指向同頁 hash —— 長按複製、開新視窗都還是有意義的網址 */
 const linkTo = (url: string) => (mode.value === 'scroll' ? `#${anchorSlug(url)}` : url);
 
+// 錨點的 hover／click 音效。useSfx() 一定要在 setup 期間取（見 useSfx.ts 檔頭）。
+const { play } = useSfx();
+
 function onClick(e: MouseEvent, url: string) {
   // ⚠️ GA 必須排在下面那道 return **之前**（同 SubpageAnchor 的理由）：route 模式會早退
   //    把導航交給 NuxtLink，埋在後面就只有連續閱讀頁的點擊會被記到。
   gaClickAnchor(anchorSlug(url));
+
+  // 修飾鍵點擊＝開新分頁，不出聲（同 SubpageAnchor.onClick／AppHeaderNav.onAwaySelect）。
+  if (!(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) play('sfx01Short');
 
   if (mode.value !== 'scroll') return; // route 模式：交給 NuxtLink 換頁
   e.preventDefault();
@@ -78,6 +84,7 @@ watch(activeSlug, () => nextTick(centerActive));
           class="subpage-anchor-bar__link"
           :class="{ 'subpage-anchor-bar__link--active': isActive(a.url) }"
           :to="linkTo(a.url)"
+          @mouseenter="play('sfx01Short')"
           @click="onClick($event, a.url)"
         >
           <span

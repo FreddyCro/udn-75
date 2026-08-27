@@ -44,7 +44,7 @@ const {
   coverSeed,
   coverSeedVisible,
   coverFaceVisible,
-  coverHandoff,
+  coverGrow,
   coverDone,
   outroWhite,
 } = useOrangeCoreProgress();
@@ -67,6 +67,26 @@ const {
 // 但這道防線同樣不該被當成唯一保障。
 const { cueOn } = useSfxCue();
 cueOn(() => blessingFrame.value >= 1, 'benedictionSmile');
+
+// 小飛機沒入橘色的那一下（設計標註「小飛機進入橘色」）。
+//
+// 取 coverOrange 而非 coverProgress 的門檻值：那顆 computed 已經是**二元**的、且已經
+// 把「機鼻碰到接縫」與「coverProgress 抵達 COVER_CONTACT」兩條路合成一個真值
+// （見 useOrangeCoreProgress 的 coverOrange）。從這裡出聲＝與底色藍→橘、白方塊現身
+// 同一刻，音與畫面因此不可能脫鉤 —— 同 ForumCorePath 把撞擊音與擠壓綁在同一個判定的理由。
+cueOn(() => coverOrange.value > 0, 'sfx01');
+
+// 橘色遮罩開始轉場到智慧新媒體（設計標註「橘色遮罩轉場到新媒體」）。
+//
+// outroWhite 翻正 ＝ media motion 拍 0（融合拍）起手：veil 與 morph 此刻同色同寬、
+// 由滿版橘開始收窄成色柱（見 useMediaIntroMotion 拍 0 那段）。它是二元的，
+// 且已經帶著 mediaMotionArmed 的閘門 —— reduced-motion／no-JS 不建 timeline 時
+// 恆為 0，那條降級路徑上沒有這段轉場，也就不該出聲。
+//
+// ⚠️ 與 SymbolScene 的粒子收攏共用 aiFaceBg（設計師指定同一支）。兩者同在
+//    LONG_SFX_KEYS 互斥組內、共用同一顆 Audio，故不可能疊在一起；而兩段相距
+//    01a → 03/04 三個 section，實務上也不會互相切斷。
+cueOn(() => outroWhite.value > 0, 'aiFaceBg');
 
 // 夥伴清單整塊的現身時機。
 //
@@ -555,14 +575,14 @@ onBeforeUnmount(() => {
               <!-- 白方塊：紙飛機沒入色塊後從接縫長出來的那一格 ＝ 逐格臉的第 01 格
                    （FACE_FRAMES[0] = [7,0,2,2]）。位置用網格比例寫死、不需量測；
                    只有位移的幅度要量（--face-cell-y，見 script）。
-                   --cover-grow ＝ 從接縫「長出來」的高度比例，與飛機下潛共用同一條
-                   曲線（coverHandoff）—— 兩者同一個 x、同一個窗口，是同一個變身。 -->
+                   --cover-grow ＝ 從接縫「長出來」的高度比例，值就是**飛機沒入色塊的比例**
+                   （coverGrow）—— 兩者同一個 x、同一個量，是同一個變身。 -->
               <span
                 v-if="coverSeedVisible"
                 class="section3__face-seed"
                 :style="{
                   '--cover-seed': coverSeed,
-                  '--cover-grow': coverHandoff,
+                  '--cover-grow': coverGrow,
                 }"
                 aria-hidden="true"
               />
@@ -987,8 +1007,11 @@ onBeforeUnmount(() => {
 // --cover-seed 由 seedTravelAt(coverProgress) 餵入，scrub 驅動故不加 transition。
 // fallback 0px：量到之前不動，不會亂飛。
 //
-// 「長出來」（2026-08-14）：--cover-grow 由 coverHandoff 餵入，scaleY 0 → 1。
+// 「長出來」（2026-08-14）：--cover-grow 餵入 scaleY 0 → 1。
 // 改版前它是以完整尺寸憑空出現的（使用者回饋「白方塊直接出現」）。
+// ⚠️ 餵的值 2026-08-25 從 coverHandoff（捲動窗口）換成 coverGrow（飛機實際沒入的比例）：
+//    前者的窗口從「核心定位點抵達接縫」起跑，而飛機是用機鼻碰到接縫的 —— 差一整個機身，
+//    白方塊開始長的時候飛機已經沒入 84%。理由見 orange-core-config 的 planeSubmergedAt。
 //
 // ⚠️ transform-origin 必須是 top：方塊的上緣在接觸點精準貼齊色塊上緣
 //    （2026-08-12 紀錄第八節實測 0.0px），以上緣為原點縮放才是「從接縫往下長出來」。

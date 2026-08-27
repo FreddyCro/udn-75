@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   coreHandoffBackY,
-  coverAnchorToScreen,
+  videoAnchorToScreen,
   isVerticallyOnScreen,
   unrotateDelta,
   type HeroCoreAnchor,
@@ -18,22 +18,22 @@ const box = (over: Partial<{ left: number; top: number; width: number; height: n
   ...over,
 });
 
-describe('coverAnchorToScreen', () => {
+describe('videoAnchorToScreen', () => {
   it('畫面正中心永遠落在元素正中心（不論被裁的是哪一邊）', () => {
     // 影片比元素寬 → 左右被裁
-    const wide = coverAnchorToScreen(box(), 2000, 1000, CENTER)!;
+    const wide = videoAnchorToScreen(box(), 2000, 1000, CENTER)!;
     expect(wide.x).toBeCloseTo(500);
     expect(wide.y).toBeCloseTo(500);
 
     // 影片比元素高 → 上下被裁
-    const tall = coverAnchorToScreen(box(), 1000, 2000, CENTER)!;
+    const tall = videoAnchorToScreen(box(), 1000, 2000, CENTER)!;
     expect(tall.x).toBeCloseTo(500);
     expect(tall.y).toBeCloseTo(500);
   });
 
   it('偏離中心的 anchor 會依 cover 放大倍率換算，不是元素比例', () => {
     // frame 2000×1000 進 1000×1000 的框：scale=1，畫面橫跨 −500..1500
-    const p = coverAnchorToScreen(box(), 2000, 1000, { x: 0.25, y: 0.5, size: 0.02 })!;
+    const p = videoAnchorToScreen(box(), 2000, 1000, { x: 0.25, y: 0.5, size: 0.02 })!;
     expect(p.x).toBeCloseTo(0); // 畫面 1/4 處剛好被裁到元素左緣
     // 若誤用「元素比例」會得到 250 —— 差 250px，正是這個函式要防的錯
     expect(p.x).not.toBeCloseTo(250);
@@ -41,7 +41,7 @@ describe('coverAnchorToScreen', () => {
 
   it('size 依畫面寬的放大倍率換算', () => {
     // frame 1920×1080 進 1280×720 的框：scale = 1280/1920，畫面寬放大後仍為 1280
-    const p = coverAnchorToScreen(
+    const p = videoAnchorToScreen(
       box({ width: 1280, height: 720 }),
       1920,
       1080,
@@ -50,21 +50,55 @@ describe('coverAnchorToScreen', () => {
     expect(p.size).toBeCloseTo(26); // ＝ CORE.dotSize
   });
 
+  // ── contain（pad / mob，見 HeroVideo 的 .sec1__hero-video-el）────────────
+  // 2026-08-26 之前這裡只有 cover：換算寫死 Math.max，而 SCSS 早已把 pad / mob 改成
+  // contain ⇒ 兩處交棒在那兩個斷點一路算錯。這組案例就是釘住「fit 有跟上」。
+  it('contain 的放大倍率取 min（不是 max），中心仍落在元素中心', () => {
+    const args = [box({ width: 390, height: 844 }), 720, 1280] as const;
+    const anchor = { x: 0.5, y: 0.5, size: 18 / 720 };
+
+    const contain = videoAnchorToScreen(...args, anchor, { fit: 'contain' })!;
+    expect(contain.x).toBeCloseTo(195);
+    expect(contain.y).toBeCloseTo(422); // 留白上下等分 → 畫面中心仍是元素中心
+    expect(contain.size).toBeCloseTo(18 * (390 / 720)); // 9.75
+
+    // 同一個框用 cover 算會放大 22%（＝改動前 mob 交棒起點偏大的那個量）
+    const cover = videoAnchorToScreen(...args, anchor)!;
+    expect(cover.size).toBeCloseTo(18 * (844 / 1280)); // 11.87
+    expect(cover.size / contain.size).toBeCloseTo(1.217, 2);
+  });
+
+  it('contain 時偏離中心的 anchor 依「留白後的畫面高」換算', () => {
+    // mob 尾幀那顆實測停在 y = 603/1280 ＝ 中心上方 37 frame px
+    const p = videoAnchorToScreen(
+      box({ width: 390, height: 844 }),
+      720,
+      1280,
+      { x: 0.5, y: 603 / 1280, size: 18 / 720 },
+      { fit: 'contain' },
+    )!;
+    // 畫面高 1280 × (390/720) ＝ 693.33，上下各留白 75.33
+    expect(p.y).toBeCloseTo(75.33 + (603 / 1280) * 693.33, 1);
+    expect(422 - p.y).toBeCloseTo(20, 0); // 螢幕上在中心之上 20px
+  });
+
   it('元素本身的螢幕位移要計入（頁面捲動 / 元素不在原點時）', () => {
-    const p = coverAnchorToScreen(box({ left: 100, top: -300 }), 1000, 1000, CENTER)!;
+    const p = videoAnchorToScreen(box({ left: 100, top: -300 }), 1000, 1000, CENTER)!;
     expect(p.x).toBeCloseTo(600);
     expect(p.y).toBeCloseTo(200);
   });
 
   it('object-position 非 center 時裁切分配跟著改', () => {
     // frame 2000×1000 進 1000×1000：溢出 1000px 全部裁右邊 → 畫面左緣貼齊元素左緣
-    const p = coverAnchorToScreen(box(), 2000, 1000, CENTER, { x: 0, y: 0 })!;
+    const p = videoAnchorToScreen(box(), 2000, 1000, CENTER, {
+      objectPosition: { x: 0, y: 0 },
+    })!;
     expect(p.x).toBeCloseTo(1000); // 畫面中心在元素座標 1000
   });
 
   it('metadata 還沒到（videoWidth/Height 為 0）回 null，呼叫端就退回單純淡入', () => {
-    expect(coverAnchorToScreen(box(), 0, 0, CENTER)).toBeNull();
-    expect(coverAnchorToScreen(box({ width: 0, height: 0 }), 1920, 1080, CENTER)).toBeNull();
+    expect(videoAnchorToScreen(box(), 0, 0, CENTER)).toBeNull();
+    expect(videoAnchorToScreen(box({ width: 0, height: 0 }), 1920, 1080, CENTER)).toBeNull();
   });
 });
 

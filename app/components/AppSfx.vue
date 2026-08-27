@@ -5,7 +5,7 @@
  * 播放請用 useSfx()（見 composables/useSfx.ts），不要透過這個元件的 ref：
  *
  *   const { play } = useSfx();
- *   play('sfx01');
+ *   play('sfx01Short');
  *
  * 為什麼要有這一層、而不是讓 useSfx() 自己 lazy 建 Audio：
  *   ・預載時機 —— 掛載時就把音效抓下來，第一次 play() 不必等下載。

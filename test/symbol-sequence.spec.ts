@@ -5,6 +5,7 @@ import {
   CORE_WARM_START,
   CORE_WARM_VH,
   FORUM_HANDOFF,
+  INTRO_EXIT_STAGGER_RATIO,
   INTRO_LINE_SHIFT,
   INTRO_REVEAL_SPAN,
   INTRO_TIMELINE,
@@ -21,13 +22,14 @@ import {
   coreWarmAt,
   headerTintAt,
   symbolBgLightAt,
-  symbolIntroClear,
+  symbolIntroExitAt,
+  symbolIntroExitK,
   symbolIntroGate,
   symbolIntroLineAt,
   symbolIntroLineState,
-  symbolIntroOutPhase,
   symbolIntroRunning,
   symbolIntroTotal,
+  symbolScrollHintPinnedAt,
   type SymbolIntroState,
 } from '../app/utils/orange-core-config';
 
@@ -79,31 +81,58 @@ describe('符號段序列門檻', () => {
     expect(SYMBOL_RAIL_VH).toBeCloseTo(sum, 9);
   });
 
-  // 改吃時間軸後，「文字在粒子集合前淡乾淨」不再由 progress 自動保證
-  // （時間軸不知道捲動位置），全靠 out 這道保底清場的閘門補回 ——
-  // 所以這條關係比改版前更重要，不是比較不重要。
-  it('開場文案的保底清場必須早於進入 face', () => {
-    expect(SYMBOL_INTRO.in).toBeLessThan(SYMBOL_INTRO.out);
+  // 三個門檻要依序落在第一拍內。這條只是必要條件（真正該守的性質見下一條），
+  // 但它壞掉時的錯誤訊息最直接，故單獨留一支。
+  it('開場文案的三個門檻依序落在第一拍內', () => {
+    expect(SYMBOL_INTRO.in).toBeLessThan(SYMBOL_INTRO.exit);
+    expect(SYMBOL_INTRO.exit).toBeLessThan(SYMBOL_INTRO.out);
     expect(SYMBOL_INTRO.out).toBeLessThan(SYMBOL_STOPS[0]!.until);
   });
 
-  // ⚠️ 上面那條 `out < until` **本身不足以**保證「文字在人像集合前淡乾淨」——
-  // 清場改成吃時間（clearDur）之後，越過 out 那一刻文字還在，要再 0.3s 才淡完，
-  // 而這段時間使用者仍在往下捲。真正該守的是**距離換算成時間後還夠不夠清完**：
-  //   marginVh / ASSUMED_READING_VH_PER_S ≥ clearDur
-  // 這條會在有人「把 clearDur 調長」或「把 out 往後推 / 把 until 往前拉」時大聲壞掉，
-  // 而 `out < until` 在那兩種情況下都還是綠的 —— 那正是它給假保證的地方。
-  it('out 到人像集合的距離，換算成閱讀捲速下的秒數要夠跑完清場', () => {
-    const marginVh = (SYMBOL_STOPS[0]!.until - SYMBOL_INTRO.out) * SYMBOL_RAIL_VH * 100;
-    const marginSec = marginVh / ASSUMED_READING_VH_PER_S;
-    // 容差 1e-9：吸收 0.28 − 0.26 的 IEEE754 誤差，不是放寬門檻。
-    expect(marginSec).toBeGreaterThanOrEqual(INTRO_TIMELINE.clearDur / 1000 - 1e-9);
+  // 下滑提示的常駐窗口（2026-08-27）。守的同樣是「關係」不是值：
+  // 起點要壓在文案起播上（不能提早涵蓋 hero 轉場）、終點要壓在 disperse→face 的交界上
+  // （＝進入 face 才開始十秒規則）。理由見 symbolScrollHintPinnedAt。
+  it('下滑提示常駐窗口 ＝ 三行文案起播 → 粒子開始集合', () => {
+    // 端點：起點含、終點不含（face 那一拍立刻交回十秒規則）
+    expect(symbolScrollHintPinnedAt(SYMBOL_INTRO.in)).toBe(true);
+    expect(symbolScrollHintPinnedAt(SYMBOL_STOPS[0]!.until)).toBe(false);
+
+    // hero 轉場（本尺還沒起跑，p 恆 0）與文案起播之前：不常駐
+    expect(symbolScrollHintPinnedAt(0)).toBe(false);
+    expect(symbolScrollHintPinnedAt(SYMBOL_INTRO.in / 2)).toBe(false);
+
+    // 文案的全亮期與退場期都在窗口內 —— 停著不動時提示要一直在
+    expect(symbolScrollHintPinnedAt(SYMBOL_INTRO.exit)).toBe(true);
+    expect(symbolScrollHintPinnedAt(SYMBOL_INTRO.out)).toBe(true);
+
+    // face 之後（含 converge 與段尾）一律交回十秒規則
+    for (const p of [SYMBOL_STOPS[1]!.until, FORUM_HANDOFF.coreIn, 1]) {
+      expect(symbolScrollHintPinnedAt(p)).toBe(false);
+    }
   });
 
-  // 「清場一定比自然退場快」是整個保底機制的前提：清場的意義就是把最壞情況從
-  // 「一行一行退完」壓成單一次整組淡出。這條翻過來的話，越過 out 反而變慢。
-  it('清場比自然退場快（clearDur < outDur）', () => {
-    expect(INTRO_TIMELINE.clearDur).toBeLessThan(INTRO_TIMELINE.outDur);
+  // 這條才是「文字要在粒子集合成人像之前淡乾淨」的本體。
+  //
+  // ⚠️ 2026-08-12～08-26 之間它只能是**條件保證** —— 清場吃時間（clearDur），
+  //    越過 out 那一刻文字還在，得看捲速夠不夠慢才淡得完，故當時守的是
+  //    「marginVh / ASSUMED_READING_VH_PER_S ≥ clearDur」這條換算關係。
+  //    退場改吃捲動距離後它回到**構造上**成立：越過 out 之後不論捲多快、
+  //    時間軸停在哪、是不是 reduce-motion，最終 opacity 都恆為 0 ——
+  //    所以這裡把那幾個維度整個掃一遍，而不是再驗一次換算。
+  it('越過 out 之後三行必然全空，與捲速、時間軸位置、reduce-motion 無關', () => {
+    const COUNT = 3;
+    for (const p of [SYMBOL_INTRO.out, SYMBOL_STOPS[0]!.until, 1]) {
+      for (const elapsed of [null, 0, 123, symbolIntroTotal(COUNT)]) {
+        for (let i = 0; i < COUNT; i++) {
+          for (const reduceMotion of [false, true]) {
+            expect(
+              symbolIntroLineState({ elapsed }, p, i, COUNT, reduceMotion)
+                .opacity,
+            ).toBe(0);
+          }
+        }
+      }
+    }
   });
 
   // 論壇主標與議程那 0.4s 的淡入要在**轉場層還蓋著**的時候跑完。
@@ -371,13 +400,12 @@ describe('coreWarmAt / symbolBgLightAt（白 core → 橘 ＋ 底色翻白的窗
   });
 });
 
-// 這三支守的是「依序」「重疊一半」「窗由行數推導」這些關係，不是常數的絕對值 ——
-// 6.4s 這個節奏本來就該能自由微調。
-describe('symbolIntroLineAt（逐行進場 / 逐行退場的時間軸）', () => {
+// 這幾支守的是「依序」「重疊一半」「窗由行數推導」這些關係，不是常數的絕對值 ——
+// 節奏（進場 2.0s、退場 24vh）本來就該能自由微調。
+describe('symbolIntroLineAt（逐行進場的時間軸）', () => {
   const COUNT = 3;
-  const line = (t: number, i: number) => symbolIntroLineAt(t, i, COUNT);
-  const ALL_IN = (COUNT - 1) * INTRO_TIMELINE.inStagger + INTRO_TIMELINE.inDur;
-  const TOTAL = symbolIntroTotal(COUNT);
+  const line = (t: number, i: number) => symbolIntroLineAt(t, i);
+  const ALL_IN = symbolIntroTotal(COUNT);
 
   it('t = 0 時三行都還沒開始，且都在下方 INTRO_LINE_SHIFT px', () => {
     for (let i = 0; i < COUNT; i++) {
@@ -387,16 +415,12 @@ describe('symbolIntroLineAt（逐行進場 / 逐行退場的時間軸）', () =>
     }
   });
 
-  it('退場起點＝三行到位再加上全亮停留期', () => {
-    expect(symbolIntroOutPhase(COUNT)).toBe(ALL_IN + INTRO_TIMELINE.hold);
-  });
-
-  it('全亮停留期間三行都到位、不位移、字已落定', () => {
-    for (const t of [ALL_IN, ALL_IN + INTRO_TIMELINE.hold / 2]) {
+  // 這是 2026-08-26 改版的核心：時間軸**沒有退場段**，停留沒有上限。
+  // 舊版在 allIn + hold 之後會開始自己退場 —— 那正是這次要拿掉的行為。
+  it('三行到位之後就停在全亮，時間軸再怎麼跑都不會自己退場', () => {
+    for (const t of [ALL_IN, ALL_IN * 10, 600_000]) {
       for (let i = 0; i < COUNT; i++) {
-        expect(line(t, i).opacity).toBe(1);
-        expect(line(t, i).shift).toBe(0);
-        expect(line(t, i).reveal).toBe(1);
+        expect(line(t, i)).toEqual({ opacity: 1, shift: 0, reveal: 1 });
       }
     }
   });
@@ -411,33 +435,10 @@ describe('symbolIntroLineAt（逐行進場 / 逐行退場的時間軸）', () =>
     expect(line(INTRO_TIMELINE.inDur, 2).opacity).toBe(0);
   });
 
-  it('退場同順序（第一行先退），且位移為負＝繼續往上離場', () => {
-    const out0 = symbolIntroOutPhase(COUNT);
-    for (const t of [out0 + 200, out0 + 500, out0 + 800]) {
-      expect(line(t, 0).opacity).toBeLessThanOrEqual(line(t, 1).opacity);
-      expect(line(t, 1).opacity).toBeLessThanOrEqual(line(t, 2).opacity);
-    }
-    expect(line(out0 + 200, 0).shift).toBeLessThan(0);
-  });
-
-  it('退場不跑亂碼（reveal 恆為 1）', () => {
-    const out0 = symbolIntroOutPhase(COUNT);
-    for (let i = 0; i < COUNT; i++) {
-      expect(line(out0 + 200, i).reveal).toBe(1);
-      expect(line(TOTAL, i).reveal).toBe(1);
-    }
-  });
-
-  it('total 之後三行全數退場完畢、停在上方 INTRO_LINE_SHIFT px', () => {
-    for (let i = 0; i < COUNT; i++) {
-      expect(line(TOTAL, i).opacity).toBe(0);
-      expect(line(TOTAL, i).shift).toBe(-INTRO_LINE_SHIFT);
-    }
-  });
-
   it('reveal 早於 opacity 收尾（最後一段是已可讀的整行升到定位）', () => {
     // 取「亂碼已落定、但整行還沒升到定位」那段的中點
-    const t = INTRO_TIMELINE.inDur * (INTRO_REVEAL_SPAN + (1 - INTRO_REVEAL_SPAN) / 2);
+    const t =
+      INTRO_TIMELINE.inDur * (INTRO_REVEAL_SPAN + (1 - INTRO_REVEAL_SPAN) / 2);
     expect(line(t, 0).reveal).toBe(1);
     expect(line(t, 0).opacity).toBeLessThan(1);
   });
@@ -445,52 +446,25 @@ describe('symbolIntroLineAt（逐行進場 / 逐行退場的時間軸）', () =>
   // 守「重疊一半」這條關係要看**行為**，不是把常數的算式抄一遍（`inStagger * 2 === inDur`
   // 只是把設定值重寫成斷言，改設定就一起改，守不住任何東西）。
   // smoothstep 在窗的正中央恰為 0.5 ⇒ 下一行起跑那一刻，前一行剛好升到一半。
-  it('相鄰兩行重疊一半：後一行起跑時前一行正好半亮（進場）', () => {
+  it('相鄰兩行重疊一半：後一行起跑時前一行正好半亮', () => {
     expect(line(INTRO_TIMELINE.inStagger, 0).opacity).toBeCloseTo(0.5);
     expect(line(INTRO_TIMELINE.inStagger, 1).opacity).toBe(0); // 這一刻才起跑
   });
 
-  it('相鄰兩行重疊一半：後一行開始退場時前一行正好半亮（退場）', () => {
-    const t = symbolIntroOutPhase(COUNT) + INTRO_TIMELINE.outStagger;
-    expect(line(t, 0).opacity).toBeCloseTo(0.5);
-    expect(line(t, 1).opacity).toBe(1); // 這一刻才開始退
-  });
-
-  // 進場／停留分支與退場分支在自己那條接縫上必須接得起來，否則越過那一幀會跳一下。
-  // ⚠️ 退場分支在 k = 0 時 shift 是 **−0**，而 expect(-0).toBe(0) 會失敗
-  //    （Object.is(-0, 0) 為 false）—— 故用 toBeCloseTo。
-  it('進場→退場的接縫不跳（每行在自己的退場起點兩側值相同）', () => {
-    for (let i = 0; i < COUNT; i++) {
-      const seam = symbolIntroOutPhase(COUNT) + i * INTRO_TIMELINE.outStagger;
-      const holdEnd = line(seam - 1, i); // 停留段末值
-      const exitStart = line(seam, i); //   退場段首值
-      expect(holdEnd).toEqual({ opacity: 1, shift: 0, reveal: 1 });
-      expect(exitStart.opacity).toBe(holdEnd.opacity);
-      expect(exitStart.shift).toBeCloseTo(holdEnd.shift);
-      expect(exitStart.reveal).toBe(holdEnd.reveal);
-    }
-  });
-
-  it('換行數時退場起點與 total 跟著推導，不寫死', () => {
+  it('換行數時整段長度跟著推導，不寫死', () => {
     for (const count of [1, 2, 4, 5]) {
-      const allIn = (count - 1) * INTRO_TIMELINE.inStagger + INTRO_TIMELINE.inDur;
-      expect(symbolIntroOutPhase(count)).toBe(allIn + INTRO_TIMELINE.hold);
       expect(symbolIntroTotal(count)).toBe(
-        allIn +
-          INTRO_TIMELINE.hold +
-          (count - 1) * INTRO_TIMELINE.outStagger +
-          INTRO_TIMELINE.outDur,
+        (count - 1) * INTRO_TIMELINE.inStagger + INTRO_TIMELINE.inDur,
       );
-      // 最後一行在 allIn 這一刻正好到位，在那之前還沒到（窗真的有寬度）
-      expect(symbolIntroLineAt(allIn, count - 1, count).opacity).toBe(1);
-      expect(
-        symbolIntroLineAt(allIn - 1, count - 1, count).opacity,
-      ).toBeLessThan(1);
+      // 最後一行在 total 這一刻正好到位，在那之前還沒到（窗真的有寬度）
+      const total = symbolIntroTotal(count);
+      expect(symbolIntroLineAt(total, count - 1).opacity).toBe(1);
+      expect(symbolIntroLineAt(total - 1, count - 1).opacity).toBeLessThan(1);
     }
   });
 
   it('超出範圍的輸入不會回傳 NaN', () => {
-    for (const t of [-1000, TOTAL * 10]) {
+    for (const t of [-1000, ALL_IN * 10]) {
       const r = line(t, 1);
       expect(Number.isNaN(r.opacity)).toBe(false);
       expect(Number.isNaN(r.shift)).toBe(false);
@@ -499,30 +473,103 @@ describe('symbolIntroLineAt（逐行進場 / 逐行退場的時間軸）', () =>
   });
 });
 
-describe('symbolIntroClear（保底清場的整組乘數）', () => {
-  it('觸發當下仍為 1，clearDur 之後為 0', () => {
-    expect(symbolIntroClear(0)).toBe(1);
-    expect(symbolIntroClear(INTRO_TIMELINE.clearDur)).toBe(0);
+describe('symbolIntroExitK（捲動進度 → 退場的正規化進度）', () => {
+  const { exit, out } = SYMBOL_INTRO;
+
+  it('exit 之前恆為 0、out 之後恆為 1（兩端 clamp，不外溢）', () => {
+    expect(symbolIntroExitK(0)).toBe(0);
+    expect(symbolIntroExitK(exit / 2)).toBe(0);
+    expect(symbolIntroExitK(exit)).toBe(0);
+    expect(symbolIntroExitK(out)).toBe(1);
+    expect(symbolIntroExitK(1)).toBe(1);
   });
 
-  it('單調遞減、中段不外溢', () => {
-    const a = symbolIntroClear(INTRO_TIMELINE.clearDur * 0.3);
-    const b = symbolIntroClear(INTRO_TIMELINE.clearDur * 0.7);
-    expect(a).toBeLessThan(1);
-    expect(b).toBeLessThan(a);
-    expect(b).toBeGreaterThan(0);
-  });
-
-  it('超出範圍的輸入不會回傳 NaN 或負值', () => {
-    expect(symbolIntroClear(-1)).toBe(1);
-    expect(symbolIntroClear(INTRO_TIMELINE.clearDur * 10)).toBe(0);
+  // 線性是刻意的：緩動歸每行自己那扇窗，外層再緩一次會把中段壓平
+  // （畫面上是三行在區間正中央一起頓一下）。
+  // ⚠️ 中點測不出差別 —— smoothstep 在中點也是 0.5。要取 1/4 點才分得開
+  //    （同一位置 smoothstep 為 0.15625）。
+  it('區間內是線性，不是 smoothstep', () => {
+    expect(symbolIntroExitK(exit + (out - exit) / 4)).toBeCloseTo(0.25, 6);
+    expect(symbolIntroExitK(exit + (out - exit) / 2)).toBeCloseTo(0.5, 6);
+    expect(symbolIntroExitK(exit + ((out - exit) * 3) / 4)).toBeCloseTo(0.75, 6);
   });
 });
 
-// 閘門是這次改動唯一新增的「狀態機」，四條規則各有一個會靜默壞掉的失效模式，
-// 故每一條都有測試（回傳同一個 reference ＝ 沒變，元件靠這件事跳過重繪）。
-describe('symbolIntroGate（閘門：progress → 狀態轉換）', () => {
+describe('symbolIntroExitAt（逐行退場：錯開住在捲動距離上）', () => {
   const COUNT = 3;
+  const ex = (k: number, i: number) => symbolIntroExitAt(k, i, COUNT);
+  // 第 i 行的退場窗在 k 空間的起點（以「一扇窗 ＝ 1」換算回 0..1，見實作）
+  const SPAN = 1 + (COUNT - 1) * INTRO_EXIT_STAGGER_RATIO;
+  const windowStart = (i: number) => (i * INTRO_EXIT_STAGGER_RATIO) / SPAN;
+
+  it('k = 0 ＝ 還沒開始退：三行都是全亮乘數、零位移', () => {
+    for (let i = 0; i < COUNT; i++) {
+      expect(ex(0, i).opacity).toBe(1);
+      // ⚠️ k = 0 時 shift 是 **−0**，而 expect(-0).toBe(0) 會失敗
+      //    （Object.is(-0, 0) 為 false）—— 故用 toBeCloseTo。
+      expect(ex(0, i).shift).toBeCloseTo(0);
+    }
+  });
+
+  it('k = 1 ＝ 已全空：三行 opacity 全 0、停在上方 INTRO_LINE_SHIFT px', () => {
+    for (let i = 0; i < COUNT; i++) {
+      expect(ex(1, i).opacity).toBe(0);
+      expect(ex(1, i).shift).toBe(-INTRO_LINE_SHIFT);
+    }
+  });
+
+  it('依序退場：任一刻前面的行不慢於後面的行，且位移為負＝繼續往上離場', () => {
+    for (const k of [0.2, 0.4, 0.6, 0.8]) {
+      expect(ex(k, 0).opacity).toBeLessThanOrEqual(ex(k, 1).opacity);
+      expect(ex(k, 1).opacity).toBeLessThanOrEqual(ex(k, 2).opacity);
+    }
+    expect(ex(0.2, 0).shift).toBeLessThan(0);
+  });
+
+  it('單調遞減：捲得越多退得越乾淨（往回捲則相反，這就是可逆）', () => {
+    for (let i = 0; i < COUNT; i++) {
+      let prev = ex(0, i).opacity;
+      for (const k of [0.1, 0.3, 0.5, 0.7, 0.9, 1]) {
+        const now = ex(k, i).opacity;
+        expect(now).toBeLessThanOrEqual(prev);
+        prev = now;
+      }
+    }
+  });
+
+  // 同進場那條：守**行為**（後一行起退時前一行剛好半亮），不是把 ratio 的算式抄一遍。
+  it('相鄰兩行重疊一半：後一行開始退時前一行正好半亮', () => {
+    const k = windowStart(1);
+    expect(ex(k, 0).opacity).toBeCloseTo(0.5);
+    expect(ex(k, 1).opacity).toBe(1); // 這一刻才開始退
+  });
+
+  // 退場要把整段距離用好用滿：第一行從 k = 0 就起退、最後一行剛好在 k = 1 退完。
+  // 收不乾淨（> 0）就會有文字被帶進人像那一拍；提早收完則是白白浪費捲動距離。
+  it('不論幾行，第一行從 k = 0 起退、最後一行剛好在 k = 1 退完', () => {
+    for (const count of [1, 2, 3, 4, 5]) {
+      expect(symbolIntroExitAt(1e-6, 0, count).opacity).toBeLessThan(1);
+      expect(symbolIntroExitAt(1, count - 1, count).opacity).toBe(0);
+      expect(
+        symbolIntroExitAt(1 - 1e-6, count - 1, count).opacity,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it('超出範圍的輸入不會回傳 NaN', () => {
+    for (const k of [-1, 5]) {
+      expect(Number.isNaN(ex(k, 1).opacity)).toBe(false);
+      expect(Number.isNaN(ex(k, 1).shift)).toBe(false);
+    }
+  });
+});
+
+// 閘門只管**進場時間軸**的狀態（退場沒有狀態，那正是它可逆的原因）。
+// 三條規則各有一個會靜默壞掉的失效模式，故每一條都有測試
+//（回傳同一個 reference ＝ 沒變，也是冪等性可以直接用 toBe 測的原因）。
+describe('symbolIntroGate（閘門：progress → 進場時間軸的狀態轉換）', () => {
+  const COUNT = 3;
+  const TOTAL = symbolIntroTotal(COUNT);
   const gate = (s: SymbolIntroState, p: number) => symbolIntroGate(s, p, COUNT);
   const before = SYMBOL_INTRO.in / 2;
   const inside = (SYMBOL_INTRO.in + SYMBOL_INTRO.out) / 2;
@@ -534,89 +581,62 @@ describe('symbolIntroGate（閘門：progress → 狀態轉換）', () => {
   });
 
   it('越過 in 就起播（elapsed 歸 0）', () => {
-    expect(gate(SYMBOL_INTRO_IDLE, inside)).toEqual({
-      elapsed: 0,
-      clearElapsed: null,
-    });
+    expect(gate(SYMBOL_INTRO_IDLE, inside)).toEqual({ elapsed: 0 });
   });
 
   it('已起播後停在窗內不會重播（同一個 state）', () => {
-    const playing = { elapsed: 1234, clearElapsed: null };
+    const playing = { elapsed: 1234 };
     expect(gate(playing, inside)).toBe(playing);
   });
 
   it('退回 in 之前就重置成未播狀態（下次進來從頭播）', () => {
-    expect(gate({ elapsed: 1234, clearElapsed: null }, before)).toEqual(
-      SYMBOL_INTRO_IDLE,
-    );
-    expect(gate({ elapsed: 6000, clearElapsed: 100 }, before)).toEqual(
-      SYMBOL_INTRO_IDLE,
-    );
+    expect(gate({ elapsed: 1234 }, before)).toEqual(SYMBOL_INTRO_IDLE);
+    expect(gate({ elapsed: TOTAL }, before)).toEqual(SYMBOL_INTRO_IDLE);
     // 重置後再進來＝重播
-    expect(gate(SYMBOL_INTRO_IDLE, inside)).toEqual({
-      elapsed: 0,
-      clearElapsed: null,
-    });
+    expect(gate(SYMBOL_INTRO_IDLE, inside)).toEqual({ elapsed: 0 });
   });
 
-  it('越過 out：演到一半的話啟動保底清場（clearElapsed 從 0 起跑）', () => {
-    expect(gate({ elapsed: 1234, clearElapsed: null }, after)).toEqual({
-      elapsed: 1234,
-      clearElapsed: 0,
-    });
+  // 2026-08-26 反轉：越過 out 不再是「啟動保底清場」——「越過 out 就看不見」
+  // 已由退場的 scrub 構造上保證。這條現在管的是**可逆**與**不空轉**。
+  it('越過 out：演到一半的話直接跳到進場終點（不是清場、也不是重播）', () => {
+    expect(gate({ elapsed: 1234 }, after)).toEqual({ elapsed: TOTAL });
   });
 
-  // 2026-08-13 反轉：原本「已進入退場段就讓它自己跑完」的例外已移除。
-  // 那個例外讓最壞情況多留 outDur + (count−1)·outStagger ＝ 1.4s 的尾巴，
-  // 而 out 到人像集合只有 8vh（約 0.42–0.5s @16–19vh/s）—— 於是最常見的閱讀捲速
-  // 反而是唯一會撞到人像集合的一段。清場乘數乘在逐行 opacity 之上，兩條都是
-  // 兩端導數為 0 的遞減 smoothstep，疊起來仍然平滑，只是收得更快 —— 而收得更快正是 out 的目的。
-  it('越過 out：即使已進入退場段也照樣啟動清場（不留 1.4s 的尾巴）', () => {
-    const exiting = { elapsed: symbolIntroOutPhase(COUNT), clearElapsed: null };
-    const next = gate(exiting, after);
-    expect(next).not.toBe(exiting);
-    expect(next).toEqual({ elapsed: symbolIntroOutPhase(COUNT), clearElapsed: 0 });
+  it('越過 out：從未起播（如重新整理落在段落中段）也是跳到終點，不從 0 起播', () => {
+    // 從 0 起播的話畫面上會無故閃一下文字（progress 初值是 0，
+    // ScrollTrigger refresh 後才寫入真值）
+    expect(gate(SYMBOL_INTRO_IDLE, after)).toEqual({ elapsed: TOTAL });
   });
 
-  // 退場段更後面（只剩最後一行在退）也一樣要清場
-  it('越過 out：退場段末尾也啟動清場', () => {
-    const late = { elapsed: symbolIntroTotal(COUNT) - 1, clearElapsed: null };
-    expect(gate(late, after)).toEqual({
-      elapsed: symbolIntroTotal(COUNT) - 1,
-      clearElapsed: 0,
-    });
+  it('已在終點就不再動（同一個 state，rAF 不會被叫醒）', () => {
+    const done = { elapsed: TOTAL };
+    expect(gate(done, after)).toBe(done);
   });
 
-  it('越過 out：從未起播（如重新整理落在段落中段）直接跳到清場終點，不閃文字', () => {
-    expect(gate(SYMBOL_INTRO_IDLE, after)).toEqual({
-      elapsed: null,
-      clearElapsed: INTRO_TIMELINE.clearDur,
-    });
+  // 可逆是本次改版的重點：從下方往回捲進窗內時狀態要留在終點（＝全亮），
+  // 讓退場的 scrub 把三行帶回來 —— 不是重置、更不是重播一次落字動畫。
+  it('從 out 之外往回捲進窗內：維持在終點，讓 scrub 把文字帶回來', () => {
+    const done = { elapsed: TOTAL };
+    expect(gate(done, inside)).toBe(done);
   });
 
-  it('清場已在進行中就不重新啟動（同一個 state）', () => {
-    const clearing = { elapsed: 1234, clearElapsed: 50 };
-    expect(gate(clearing, after)).toBe(clearing);
+  // 退場沒有狀態 —— exit 這個門檻完全不參與狀態轉換。
+  // 有人把退場也塞回狀態機時這條會壞掉。
+  it('exit 門檻不參與狀態轉換', () => {
+    const held = { elapsed: TOTAL };
+    expect(gate(held, SYMBOL_INTRO.exit)).toBe(held);
+    expect(gate(held, SYMBOL_INTRO.exit + 0.001)).toBe(held);
   });
 
-  it('清場後往前捲回窗內不會重播（要退到 in 之前才重置）', () => {
-    const cleared = { elapsed: 1234, clearElapsed: INTRO_TIMELINE.clearDur };
-    expect(gate(cleared, inside)).toBe(cleared);
-  });
-
-  // 兩個門檻都是 `>=`，上面的案例卻刻意取嚴格內／外側 —— 邊界值本身也要守，
+  // 兩個門檻都用 `>=`，上面的案例卻刻意取嚴格內／外側 —— 邊界值本身也要守，
   // 否則有人改成 `>` 這批測試全部照樣綠。
   it('門檻邊界：p 恰等於 in 就起播', () => {
-    expect(gate(SYMBOL_INTRO_IDLE, SYMBOL_INTRO.in)).toEqual({
-      elapsed: 0,
-      clearElapsed: null,
-    });
+    expect(gate(SYMBOL_INTRO_IDLE, SYMBOL_INTRO.in)).toEqual({ elapsed: 0 });
   });
 
-  it('門檻邊界：p 恰等於 out 就清場', () => {
-    expect(gate({ elapsed: 1234, clearElapsed: null }, SYMBOL_INTRO.out)).toEqual({
-      elapsed: 1234,
-      clearElapsed: 0,
+  it('門檻邊界：p 恰等於 out 就跳到終點', () => {
+    expect(gate({ elapsed: 1234 }, SYMBOL_INTRO.out)).toEqual({
+      elapsed: TOTAL,
     });
   });
 });
@@ -633,80 +653,113 @@ describe('symbolIntroRunning（還要不要再排下一個 rAF）', () => {
     expect(running(SYMBOL_INTRO_IDLE)).toBe(false);
   });
 
-  it('已起播、時間軸中段 → true', () => {
-    expect(running({ elapsed: TOTAL / 2, clearElapsed: null })).toBe(true);
+  it('已起播、進場中段 → true', () => {
+    expect(running({ elapsed: TOTAL / 2 })).toBe(true);
   });
 
-  it('elapsed 已到 total → false', () => {
-    expect(running({ elapsed: TOTAL, clearElapsed: null })).toBe(false);
+  // 退場不需要 rAF：它逐幀跟著 symbolProgress，由 watch 重繪。
+  // 有人把退場搬回 rAF 時這條會壞掉（迴圈會從 total 一路空轉到捲動結束）。
+  it('elapsed 已到 total → false（之後停在全亮，退場不靠 rAF）', () => {
+    expect(running({ elapsed: TOTAL })).toBe(false);
+    expect(running({ elapsed: TOTAL * 10 })).toBe(false);
   });
 
-  it('清場中（clearElapsed < clearDur）→ true', () => {
-    expect(
-      running({ elapsed: TOTAL / 2, clearElapsed: INTRO_TIMELINE.clearDur / 2 }),
-    ).toBe(true);
-  });
-
-  // ⚠️ 這是 Finding 1 的 bug：清場已跑完是**終態**，不論 elapsed 停在哪都該停 rAF——
-  // 舊的判斷（`clearElapsed !== null && clearElapsed < clearDur` 才 return true，
-  // 否則落到 elapsed < total）在這個 case 會誤判成 true，讓迴圈對著一個已經
-  // opacity 0 的元素空轉到 total（實測約多跑 4.9 秒 ≈ 290 幀）。
-  it('清場已完成（clearElapsed === clearDur）但 elapsed 還在時間軸中段 → false（終態，不空轉）', () => {
-    expect(
-      running({ elapsed: TOTAL / 4, clearElapsed: INTRO_TIMELINE.clearDur }),
-    ).toBe(false);
-  });
-
-  it('reduce-motion ＋ 已起播 ＋ 未清場 → false（兩態切換沒有補間要跑）', () => {
-    expect(running({ elapsed: 1234, clearElapsed: null }, true)).toBe(false);
-  });
-
-  it('reduce-motion ＋ 清場中 → true（清場本身不受 reduce-motion 影響）', () => {
-    expect(
-      running(
-        { elapsed: 1234, clearElapsed: INTRO_TIMELINE.clearDur / 2 },
-        true,
-      ),
-    ).toBe(true);
+  it('reduce-motion → 恆為 false（兩態切換沒有補間要跑）', () => {
+    expect(running(SYMBOL_INTRO_IDLE, true)).toBe(false);
+    expect(running({ elapsed: 0 }, true)).toBe(false);
+    expect(running({ elapsed: TOTAL / 2 }, true)).toBe(false);
   });
 });
 
-describe('symbolIntroLineState（逐行當前值，含 reduce-motion 退化）', () => {
+describe('symbolIntroLineState（進場 × 退場的合成，含 reduce-motion 退化）', () => {
   const COUNT = 3;
+  const TOTAL = symbolIntroTotal(COUNT);
+  const HELD: SymbolIntroState = { elapsed: TOTAL }; // 三行到位、還沒開始退
+  const MID_EXIT = (SYMBOL_INTRO.exit + SYMBOL_INTRO.out) / 2;
 
-  it('reduce-motion ＋ elapsed === null → 未起播的藏狀態', () => {
-    expect(symbolIntroLineState(SYMBOL_INTRO_IDLE, 0, COUNT, true)).toEqual({
+  // 這支就是使用者要的行為本身：不捲就不消失。
+  it('到位之後、還沒捲到 exit → 三行全亮不動（不會自己消失）', () => {
+    for (const p of [0, SYMBOL_INTRO.in, SYMBOL_INTRO.exit]) {
+      for (let i = 0; i < COUNT; i++) {
+        const r = symbolIntroLineState(HELD, p, i, COUNT, false);
+        expect(r.opacity).toBe(1);
+        expect(r.shift).toBeCloseTo(0);
+        expect(r.reveal).toBe(1);
+      }
+    }
+  });
+
+  it('退場中：opacity 是兩條相乘、shift 是兩條相加、reveal 只由進場決定', () => {
+    const k = symbolIntroExitK(MID_EXIT);
+    for (let i = 0; i < COUNT; i++) {
+      const enter = symbolIntroLineAt(TOTAL, i);
+      const exit = symbolIntroExitAt(k, i, COUNT);
+      const r = symbolIntroLineState(HELD, MID_EXIT, i, COUNT, false);
+      expect(r.opacity).toBeCloseTo(enter.opacity * exit.opacity, 12);
+      expect(r.shift).toBeCloseTo(enter.shift + exit.shift, 12);
+      expect(r.reveal).toBe(enter.reveal); // 退場不跑亂碼
+    }
+  });
+
+  // 捲很快的人會撞上這個 case，而改版前它不存在（時間軸的進場與退場是互斥的兩段）。
+  // 兩條疊起來仍要連續 —— 不連續的話畫面上是「還在浮上來的字突然跳一下」。
+  //
+  // ⚠️ 取樣點要挑得讓兩條**都真的在半途**（第 1 行：進場窗過 3/4、退場窗過一半），
+  //    否則測試會靜默退化成只在驗單邊 —— 故下面先斷言兩個因子都嚴格落在 (0, 1)。
+  it('進場還沒跑完就被捲進退場區間：兩條疊起來仍然連續', () => {
+    const LINE = 1;
+    const s: SymbolIntroState = {
+      elapsed: LINE * INTRO_TIMELINE.inStagger + INTRO_TIMELINE.inDur * 0.75,
+    };
+    const enter = symbolIntroLineAt(s.elapsed!, LINE);
+    const exit = symbolIntroExitAt(symbolIntroExitK(MID_EXIT), LINE, COUNT);
+    for (const factor of [enter.opacity, exit.opacity]) {
+      expect(factor).toBeGreaterThan(0);
+      expect(factor).toBeLessThan(1);
+    }
+
+    const a = symbolIntroLineState(s, MID_EXIT, LINE, COUNT, false);
+    const b = symbolIntroLineState(s, MID_EXIT + 1e-6, LINE, COUNT, false);
+    expect(a.opacity).toBeCloseTo(enter.opacity * exit.opacity, 12);
+    expect(Math.abs(b.opacity - a.opacity)).toBeLessThan(0.01);
+  });
+
+  it('reduce-motion ＋ 未起播 → 未起播的藏狀態', () => {
+    expect(symbolIntroLineState(SYMBOL_INTRO_IDLE, 0, 0, COUNT, true)).toEqual({
       opacity: 0,
       shift: INTRO_LINE_SHIFT,
       reveal: 0,
     });
   });
 
-  it('reduce-motion ＋ 已起播 → 全亮，且與 elapsed 的值無關', () => {
+  it('reduce-motion ＋ 已起播 ＋ 還沒捲到 exit → 全亮，且與 elapsed 的值無關', () => {
     const expected = { opacity: 1, shift: 0, reveal: 1 };
-    expect(
-      symbolIntroLineState({ elapsed: 0, clearElapsed: null }, 1, COUNT, true),
-    ).toEqual(expected);
-    expect(
-      symbolIntroLineState(
-        { elapsed: 999999, clearElapsed: null },
-        1,
-        COUNT,
-        true,
-      ),
-    ).toEqual(expected);
+    for (const elapsed of [0, 999999]) {
+      expect(
+        symbolIntroLineState({ elapsed }, SYMBOL_INTRO.exit, 1, COUNT, true),
+      ).toEqual(expected);
+    }
   });
 
-  it('非 reduce-motion → 與 symbolIntroLineAt(elapsed ?? 0, i, count) 逐欄相等', () => {
-    const s = { elapsed: 850, clearElapsed: null };
-    expect(symbolIntroLineState(s, 2, COUNT, false)).toEqual(
-      symbolIntroLineAt(s.elapsed ?? 0, 2, COUNT),
-    );
+  // 退場本身是捲動驅動、不受 WCAG 2.2.2 管，故仍保留淡出（否則文字會硬生生消失），
+  // 但去掉逐行錯開與位移。
+  it('reduce-motion 的退場：整組一起淡、無位移、三行完全同步', () => {
+    const first = symbolIntroLineState(HELD, MID_EXIT, 0, COUNT, true);
+    expect(first.opacity).toBeGreaterThan(0);
+    expect(first.opacity).toBeLessThan(1);
+    expect(first.shift).toBe(0);
+    for (let i = 1; i < COUNT; i++) {
+      expect(symbolIntroLineState(HELD, MID_EXIT, i, COUNT, true)).toEqual(
+        first,
+      );
+    }
   });
 
-  it('非 reduce-motion ＋ elapsed === null → 視為 0', () => {
-    expect(symbolIntroLineState(SYMBOL_INTRO_IDLE, 0, COUNT, false)).toEqual(
-      symbolIntroLineAt(0, 0, COUNT),
-    );
+  it('非 reduce-motion ＋ elapsed === null → 進場視為 t = 0（全透明）', () => {
+    for (let i = 0; i < COUNT; i++) {
+      expect(
+        symbolIntroLineState(SYMBOL_INTRO_IDLE, 0, i, COUNT, false),
+      ).toEqual(symbolIntroLineAt(0, i));
+    }
   });
 });

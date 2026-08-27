@@ -43,6 +43,8 @@ export const SYMBOL_CONFIG_KEYS: string[] = [
   'revealDuration',
   'disperseDuration',
   'disperseSpread',
+  'disperseAlpha',
+  'disperseLift',
   'convergeSize',
   'convergeStagger',
   'inkGamma',

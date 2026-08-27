@@ -119,15 +119,21 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
            盒子與配色由 <UBtn> 畫，本檔的 .forum-event__cta 只給尺寸與版位。
            點擊音效：帶 cta 的場次目前是論壇二與論壇四，兩者共用這顆按鈕 —— 不按場次分，
            頁面上五顆 CTA（本顆 ×2、議程 ×2、報導 ×1）行為一致。UBtn 沒宣告 emits，
-           故 @click 會落在真正的 <a> 上（同 Agenda／AgendaReport 的寫法）。 -->
+           故 @click 會落在真正的 <a> 上（同 Agenda／AgendaReport 的寫法）。
+           ctaHidden：報名未開放時佔位隱藏（見 types/forum.ts 的欄位說明）。
+           aria-hidden ＋ tabindex="-1" 是配套 —— visibility: hidden 已經把它移出無障礙樹
+           與定位順序，這兩個屬性只是明寫意圖；fallthrough attrs 會落在真正的 <a> 上。 -->
       <UBtn
         v-if="event.cta"
         :id="event.ctaId"
         variant="primary"
         class="forum-event__cta"
+        :class="{ 'forum-event__cta--hidden': event.ctaHidden }"
+        :aria-hidden="event.ctaHidden ? 'true' : undefined"
+        :tabindex="event.ctaHidden ? -1 : undefined"
         href="#"
-        @mouseenter="play('sfx01')"
-        @click="play('sfx01'); gaClickButton('signup', event.ctaGaTerm ?? '')"
+        @mouseenter="play('sfx01Short')"
+        @click="play('sfx01Short'); gaClickButton('signup', event.ctaGaTerm ?? '')"
       >
         {{ event.cta }}
       </UBtn>
@@ -367,12 +373,19 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
   }
 
-  // 論壇四：日期只有兩行（2026／09-30，第二行往右錯開 --stair-x1），時間與地點接在下面，
-  // 整組切齊右緣；講者卡與論壇二完全相同，故那幾條規則用選擇器共用、不重寫。
-  // --date-base / --date-lh 由稿反推：pc 的 2026 與 09/30 兩行間距 98.7 → lh 98（與論壇一同值）。
+  // 論壇四：日期只有兩行（2026／10-29，第二行往右錯開），地點與時間接在下面，整組切齊
+  // 右緣；講者卡與論壇二完全相同，故那幾條規則用選擇器共用、不重寫。
+  //
+  // --date-lh 由稿的**兩行墨跡間距**反推（<UArtLine> 把墨跡置中於行盒）：
+  //     行高 ＝ 間距 ＋ (上行墨跡高 ＋ 下行墨跡高) ÷ 2
+  //   pc  間距 27.5 ＋ (70.495  + 75.9824) / 2 = 100.8 → 101
+  //   pad 間距 20.5 ＋ (52.5168 + 56.6045) / 2 =  75.1 → 75
+  //   mob 間距 15.6 ＋ (39.8962 + 43.001 ) / 2 =  57.0 → 57
+  // ⚠️ --date-base 與畫布寬無關（素材寬 ＝ --art-w ÷ --art-base × 1em，而
+  //    --art-base ≡ --date-base ≡ 字級 → 恆等於畫布的 px 寬），它只決定活文字退場時的字級。
   &--youth {
     --date-base: 105;
-    --date-lh: 98px;
+    --date-lh: 101px;
     --stair-x1: 115px;
 
     // 816 → 1018：同論壇二，pc 的 padding-top 就是稿的講者塊頂端（稿 2652:55136 的
@@ -381,21 +394,22 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 
     @include rwd-max('pc') {
       --date-base: 82;
-      --date-lh: 79px;
+      --date-lh: 75px;
       --stair-x1: 92px;
 
       padding: 200px 80px 80px;
     }
 
-    // padding-bottom 180 ＝ mob 稿「CTA 盒底 → 精彩活動標題盒頂」的總間距
-    // （稿把它拆成論壇四段尾 80 ＋ 精彩活動段首 100；實作全部掛在這裡）。
-    // ⚠️ 日後若替精彩活動補上自己的 padding-top，這個值要同步扣掉，否則會疊兩份。
+    // padding-bottom 80 ＝ mob 稿的論壇四段尾留白。稿的「CTA 盒底 → 精彩活動標題盒頂」
+    // 共 180，另外那 100 是精彩活動的段首，現已掛在 <ForumHighlights> 自己身上
+    // （pc 32 / pad 64 / mob 100，見該檔的 .highlights）。
+    // ⚠️ 兩邊是一組的：這裡改回 180 就會與那邊疊兩份。
     @include rwd-max('tablet') {
       --date-base: 58;
-      --date-lh: 56px;
+      --date-lh: 57px;
       --stair-x1: 66px;
 
-      padding: 112px 26px 180px;
+      padding: 112px 26px 80px;
     }
   }
 }
@@ -475,6 +489,11 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 // ⚠️ 論壇四 pad 稿的 brand 反推字級約 38（素材 302 寬 ÷ 8 字 ＝ 37.75、字高 30.99），
 //    與這裡的 49 不符 —— 稿與程式的既有落差，同標眉那條註解記的情形。
 //    素材會照稿寬渲染，但行盒仍是 49 撐出來的 58.8，故幾何不變。
+// ⚠️ 2026-08-26 起**沒有任何一場填 brand** —— 論壇二／四的「台積電文教基金會」照客戶要求拿掉，
+//    其餘兩場本來就沒有。元件端的 v-if 與這組樣式刻意留著（文案是會改回來的東西），
+//    素材 forum4-brand-{pc,pad}-1.svg／forum2-brand-mob-1.svg 也一併留在 public/。
+//    要改回來只需把 brand 物件寫回 locales/section2.json，同時把下方 __title 的 margin-top
+//    與 __body 的 padding-bottom 兩處補償一起還原（見那兩處的註解）。
 .forum-event__brand {
   // 稿字形素材的寬度基準（見 <UArtLine>）：無單位，恆等於同一區塊的 font-size。
   --art-base: 56;
@@ -558,9 +577,17 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
   }
 
+  // 2026-08-26：論壇二／四的品牌行（「台積電文教基金會」）拿掉之後，大標直接接在標眉下方。
+  // pc 的 14 ＝ 稿的標眉盒底 38 → 大標墨跡頂 70，再扣掉半行距 17.65（(118 − 82.7) ÷ 2）。
+  // pad／mob 維持 0：那兩個斷點的間距由標眉自己的 margin-bottom 28 撐開（稿是 20，差 8 ——
+  // 那條 margin 四場共用，動它會連帶偏掉論壇一／三，故不動）。
   .forum-event--stair &,
   .forum-event--youth & {
-    margin-top: 0;
+    margin-top: 14px;
+
+    @include rwd-max('pc') {
+      margin-top: 0;
+    }
   }
 
   .forum-event--right & {
@@ -625,6 +652,47 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     font-size: 18px;
   }
 
+  // 品牌行（「台積電文教基金會」）2026-08-26 移除後，讓出來的高度要原地補回去 ——
+  // 稿是整落往上收，但那會把 CTA 連同其後的日期／講者一起拉高，而 CTA 是橘核心設計線
+  // W12／R3／S3 的量測錨點（見 ~/utils/forum-node-path）。
+  //
+  // 補的量 ＝ 舊的「標眉盒底 → 大標盒頂」距離 − 新的距離：
+  //   pc  74.2 ＝ (21 上邊距 ＋ 56×1.2 行盒) − 14（大標新的 margin-top）
+  //   pad 82.8 ＝ (49×1.2 行盒 ＋ 24 下邊距) − 0；標眉的 28 前後都在，故不計
+  //   mob 62   ＝ (35×1.2 行盒 ＋ 20 下邊距) − 0
+  // ⚠ mob 的 __head 是 display: contents（見上方）→ 這幾個都是 flex 子項、**邊距不合併**；
+  //   pc／pad 是一般流，故上面才要算合併後的值。
+  //
+  // 論壇二 pc／pad 的那一份**不在這裡** —— 空位夾在內文與「立即報名」之間太顯眼，
+  // 已改掛到 .forum-event__cta 的 margin-bottom（按鈕貼回內文、空位落到按鈕之後）。
+  // mob 留在這裡：那個斷點的 CTA 被 order: 1 排到講者組之後，補在按鈕上救不回
+  // 日期／講者的位置。
+  .forum-event--stair & {
+    @include rwd-max('tablet') {
+      padding-bottom: 62px;
+    }
+  }
+
+  // 論壇四同日再改一次：大標從一行換成兩行（「跨世代共問／AI時代共答」，與論壇二同一組
+  // 素材），第二行自己就吃掉了品牌行讓出的空間，故補償要按斷點各自扣回去：
+  //   pc  74.2 − 118（第二行 ＝ 1 個 118 行盒）＜ 0 → 歸零。缺的 43.8 由 CTA 往下吸收，
+  //       落點回到稿的 466（實作 468，那 2 是 __body 的 margin-top 16 對稿 14 的既有差）。
+  //       ⚠ pc 的 __head 是絕對定位 → 段落總高不變，位移的只有 CTA 一顆（設計線的 R3）。
+  //   pad 82.8 − 78（78 ＝ pad 的行盒）＝ 4.8 → CTA 以下完全不動。
+  //   mob 維持 62：舊的「青年永續築夢論壇」在 338 的內容欄本來就折成兩行（2×56 ＝ 112），
+  //       換成兩行素材後高度一模一樣，沒有多出來的量要扣。
+  .forum-event--youth & {
+    padding-bottom: 0;
+
+    @include rwd-max('pc') {
+      padding-bottom: 4.8px;
+    }
+
+    @include rwd-max('tablet') {
+      padding-bottom: 62px;
+    }
+  }
+
   // 論壇四的內文比論壇二寬：pc 785（稿）、pad／mob 則是內容欄滿寬。
   // ⚠ pad／mob 一定要把 width 寫回 auto —— 這一層的特異度（0,2,0）比基底的 rwd 區塊
   //   （0,1,0）高，不覆寫的話 pc 的 785px 會一路帶到窄斷點去爆版。
@@ -684,6 +752,34 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       --u-btn-w: 440px;
     }
   }
+
+  // 論壇二：品牌行讓出的高度掛在**按鈕下方**（原本補在 __body 的 padding-bottom，
+  // 2026-08-26 改到這裡）。這樣「立即報名」貼回內文，空位落在按鈕之後 ——
+  // __head 的總高不變，故 CTA 以下的日期／地點／講者全部留在原位。
+  // 量值與 __body 那組同源（見該處推導）：pc 74.2、pad 82.8。
+  // ⚠ mob 不在此列：CTA 在那個斷點被 order: 1 排到講者組之後，補在這裡會把空位加到
+  //   整段的尾巴、救不回日期／講者，故 mob 的那 62 仍留在 __body。
+  // ⚠ __head 在 pad 是 flex 子項（獨立的格式化脈絡）→ 這個 margin 不會塌出 __head 之外，
+  //   高度確實補得回來；pc 的 __head 是絕對定位，本來就不影響任何東西。
+  .forum-event--stair & {
+    @include rwd-min('pc') {
+      margin-bottom: 74.2px;
+    }
+
+    @include rwd-min('tablet') {
+      @include rwd-max('pc') {
+        margin-bottom: 82.8px;
+      }
+    }
+  }
+}
+
+// 佔位隱藏（報名未開放）：只關掉可見性，盒子與所有 margin 照舊 ——
+// ForumCorePath 的 W12／R3／S3 量得到同一個 rect，論壇二掛在按鈕下方的
+// margin-bottom 也還在，故橘核心設計線與 CTA 以下的版位完全不動。
+// visibility 同時讓它不可點、不可 focus，故不必再補 pointer-events。
+.forum-event__cta--hidden {
+  visibility: hidden;
 }
 
 // 定位層本身不佔高度，內部三組各自吃設計稿座標。
@@ -858,16 +954,33 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
   }
 
-  // 論壇四：維持基底的兩行格線（2026 ／ 09-30 三），第二行往右錯開（pc 115／pad 92.2，
-  // 烤在素材畫布裡）。刻意不走 --stair 那組規則 —— 那會把「09」與「30」拆成兩行。
+  // 論壇四：維持基底的兩行格線（2026 ／ 10-29 四），第二行往右錯開（pc 116.5／pad 86.9／
+  // mob 66，烤在素材畫布裡）。刻意不走 --stair 那組規則 —— 那會把「10」與「29」拆成兩行。
+  //
+  // pc 的 left 706 ＝ 內容欄右界 1172 − 畫布寬 466（稿的整組就是右切齊）。
+  // ⚠️ top 702 沿用改版前的值 —— 新稿的節點座標是容器相對的，量不到它在 1280 稿上的絕對 y。
+  //    行高 98 → 101 讓第一行墨跡在盒內下移 1.6px，整組位置不動（本層 pc 是絕對定位）。
   .forum-event--youth & {
     top: 702px;
-    left: 714px;
+    left: 706px;
 
     // pad／mob：整組切齊右緣（稿的日期組右緣 ＝ 內容欄右界）。
     @include rwd-max('pc') {
       inset: auto; // 見上方 position:relative 的說明
       margin-left: auto;
+    }
+
+    // mob 的畫布寬 362 ＝ 414 稿的滿內容欄，視窗一窄就撐出欄外。
+    // ⚠️ 基底的 `width: max-content` ＋ `max-content` 欄寬會讓 <UArtLine> 的
+    //    `max-width: 100%` **咬不住** —— 那個 100% 是 grid area（恆等於素材原生寬 362），
+    //    不是內容欄。實測 375 手機：素材右緣落在 388，「10/29 四」的尾巴被切掉。
+    //    改成「格線填滿內容欄 ＋ 單一 minmax(0, 1fr) 欄」後 100% 才等於內容欄，
+    //    素材依 aspect-ratio 等比縮（375 → 89%、320 → 70%），且畫布右緣本來就是欄右緣
+    //    → 縮完仍自動切齊右緣，不必再補水平對齊。
+    //    414 真機（無實體捲軸）內容欄正好 362 → 不觸發，維持 100%。
+    @include rwd-max('tablet') {
+      width: auto;
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 }
@@ -973,8 +1086,12 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   }
 
   .forum-event--stair & {
-    // 同 --quote 的說明。pad／mob 稿的場地名與 pc 不同（pad「集思台大會議中心／
-    // 國際會議廳」但斷行不同、mob 拆成「集思／台大會議中心」），故只有 pc 有素材。
+    // 同 --quote 的說明。pad／mob 稿的地點組與 pc 不同，故只有 pc 有素材：
+    //   pad 稿 —— 場地名拆成「集思台大／會議中心」兩行，字級約 41（墨跡四字 179 寬）。
+    //   mob 稿 —— 場地名同樣拆兩行、字級約 31，廳名與時間另成一組小字（墨跡高
+    //             16.7／15.8 ⇒ 約 19）；本層是「三行同一字級」，兩者對不起來。
+    // （2026-08-25 校對定版稿時實測；照稿做要先把 venue 改成逐斷點文案，見
+    //   ForumEvent type 的 venue 說明。）
     // ⚠️ 稿的列距實測 63、這裡是 62 —— 既有的 1px 落差，同 mob 大標那組。不改：
     //    動 line-height 會改行盒高度、帶偏 forum-node-path 的 dy。
     --art-base: 47;
@@ -998,6 +1115,15 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     @include rwd-max('tablet') {
       font-size: 28px;
       line-height: 39px;
+    }
+
+    // 窄機（320–374.98）：稿的「地點釘右上、日期階梯在左下」交錯版式在這個寬度撞在
+    // 一起 —— 320 實測兩者垂直重疊 67px（地點 10360–10477、日期 10410–10629）。
+    // 交錯本來就靠「內容欄夠寬、階梯第一階夠窄」成立，寬度一縮就沒有空隙可讓。
+    // 改成排在日期之後、維持右切齊（max-width 8.2em 沿用上一層，斷行不變）。
+    @include rwd-max(375px) {
+      position: static;
+      margin: 12px 0 0 auto;
     }
   }
 
@@ -1034,48 +1160,56 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 
   // 論壇四：接在日期兩行之下，整組切齊右緣。字級由稿反推 —— pc 的地點 10 個字寬 438.85
   // → 43.9/字；行距取兩行的實際間距（pc 70、pad 56、mob 35）。
+  // 論壇四：地點（國立成功大學）與時間（2:00－4:00PM）接在日期兩行之下，三個斷點都有素材。
+  //
+  // 素材與日期共用同一張畫布（pc 466／pad 347.253／mob 362），墨跡在畫布內的 x 就是稿的
+  // 位置 —— 稿的地點／時間是切齊「整組的左緣」而不是內容欄左緣（pad 內縮 3.4、pc 內縮 1），
+  // 共用畫布才對得起來，故本層不另外做水平對齊（flex-end 對定寬子項無作用）。
+  //
+  // 行距同樣由稿的兩行墨跡間距反推（公式見 .forum-event--youth 的 --date-lh）：
+  //   pc  22.9 ＋ (46.0759 + 41.4248) / 2 = 66.7 → 67
+  //   pad 20.9 ＋ (34.4174 + 31.001 ) / 2 = 53.6 → 54
+  //   mob 13.1 ＋ (24.9465 + 23.4258) / 2 = 37.2 → 37
+  //
+  // 與日期組的距離（稿量「日期第一行墨跡頂 → 地點墨跡頂」，扣掉兩邊墨跡在行盒內的內縮）：
+  //   pc  203.98 − 2×101 − (67−46.0759)/2 + (101−70.495 )/2 =   6.8 → top 911（702 + 209）
+  //   pad 152.24 − 2×75  − (54−34.4174)/2 + ( 75−52.5168)/2 =   3.7 → margin-top 4
+  //   mob 163.26 − 2×57  − (37−24.9465)/2 + ( 57−39.8962)/2 =  51.8 → margin-top 52
   .forum-event--youth & {
-    // 同 --quote 的說明。mob 刻意沒有 —— mob 稿把地點拆成兩行、且兩行字級不同
-    // （「成功大學」字高 28.9、「國際會議中心」20.6），與這裡的單一 span 對不起來；
-    // 時間那一行在 mob 有素材，它吃的是下面 tablet 區塊的 --art-base。
     --art-base: 44;
 
-    top: 904px;
+    top: 911px;
     right: 108px;
     align-items: flex-end;
     font-size: 44px;
-    line-height: 70px;
+    line-height: 67px;
     text-align: right;
 
     @include rwd-max('pc') {
       --art-base: 35;
 
       position: static;
-      margin: 12px 0 0 auto;
+      margin: 4px 0 0 auto;
       font-size: 35px;
-      line-height: 56px;
+      line-height: 54px;
     }
 
     @include rwd-max('tablet') {
       --art-base: 28;
 
+      margin-top: 52px;
       font-size: 28px;
-      line-height: 35px;
+      line-height: 37px;
     }
   }
 }
 
-// 論壇四的 pc／pad 稿把時間排在地點之上（其餘三場都在之下）。__venue 是 flex column，
-// 故用 order 換位即可，不必為此改 template 的順序。
-// ⚠️ mob 稿相反 —— 時間在地點下方（成功大學／國際會議中心／12－5PM），故限定在 pc 以上。
-// pad 沒有可查的稿，沿用 pc 的排法（改動前三個斷點都吃到這條）。
-.forum-event__time {
-  .forum-event--youth & {
-    @include rwd-min('tablet') {
-      order: -1;
-    }
-  }
-}
+// 時間一律排在地點之下 ＝ DOM 順序，故本層不需要任何規則。
+//
+// ⚠️ 2026-08-25 之前這裡有一條 `.forum-event--youth & { @include rwd-min('tablet')
+//    { order: -1 } }`，把論壇四 pc／pad 的時間提到地點之上（當時的 pc 稿如此、mob 稿相反）。
+//    新稿（2671:81939 / 2671:82584 / 2652:53055）三個斷點都是「國立成功大學 → 2:00－4:00PM」，
+//    那條規則整個移除。要復原就是把它加回來，不必動 template。
 
 // 講者組：論壇一設計稿 x=463 寬 709，論壇二 x=455 寬 528、論壇四 x=108 寬 567。
 //
@@ -1209,6 +1343,14 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       font-size: 20px;
       line-height: 34px;
     }
+
+    // 窄機（320–374.98）：退回流排版，成為講者組的第一行（見 __speaker 的說明）。
+    // 本層是 __speakers 的子項、照片在 __speaker 之內，兩者不同層 → 無法用 order
+    // 互換，故順序是「講者介紹 → 照片 → 頭銜 → 姓名」。
+    @include rwd-max(375px) {
+      position: static;
+      margin-bottom: 16px;
+    }
   }
 }
 
@@ -1254,6 +1396,16 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     @include rwd-max('tablet') {
       min-height: 180px;
       padding: 68px 0 0 204px;
+    }
+
+    // 窄機（320–374.98）：稿只畫到 414，那個 204 的左內距在這裡會把文字欄壓到
+    // 320 − 26×2 − 204 ＝ **48.7px** —— 頭銜折成 8 行兩字、姓名（nowrap）直接溢出、
+    // 標籤與頭銜疊 22px（實測 320 寬）。改成直排：照片與文字各自吃滿內容欄。
+    // 版位同步改的還有 __photo-box（改流排版）與 __speaker-label（改 static）。
+    // 稿沒有這個尺寸，這裡只求可讀，不對稿。
+    @include rwd-max(375px) {
+      min-height: 0;
+      padding: 0;
     }
   }
 }
@@ -1315,6 +1467,13 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     @include rwd-max('tablet') {
       width: 180px;
     }
+
+    // 窄機（320–374.98）：退回流排版，排在標籤之後、頭銜之前（見 __speaker 的說明）。
+    // ⚠️ 不必重設 top／left —— base 的 0 / 0 在 relative 下就是「不位移」。
+    @include rwd-max(375px) {
+      position: relative;
+      margin-bottom: 24px;
+    }
   }
 }
 
@@ -1373,7 +1532,8 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 // padding-top，見該處說明）。卡片版式改排在頭銜之後（設計稿是頭銜在上）。
 .forum-event__speaker-name {
   // 稿字形素材的寬度基準（見 <UArtLine>）：無單位，恆等於同一區塊的 font-size。
-  // 只有論壇一有姓名素材（pc），pad／mob 尚未匯出，故那兩層不掛。
+  // 只有論壇一有姓名素材，且**逐斷點各一份**（見下方 --quote）—— 論壇二／四沒有素材，
+  // 這個變數在它們身上是空轉的。
   --art-base: 42;
 
   display: flex;
@@ -1383,14 +1543,37 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   font-weight: 300;
   line-height: 56px;
 
+  // 論壇一：姓名兩行都是稿字形素材（英文名 ＋ 中文名）。素材共用一張畫布（pc 396／
+  // pad 303／mob 289 ＝ 稿上兩行墨跡的聯集寬），英文行的左側留白烤在 viewBox 的
+  // 負 x 裡（pc −4／mob −2.2444），所以兩行直接靠左疊就等於稿。
+  //
+  // ⚠️ **三個斷點的 line-height 都刻意不動**（2026-08-25 補 pad／mob 素材時的決定）。
+  //    素材斷點下行高唯一的視覺作用是「兩行墨跡的間距」（真文字已 visually-hidden）：
+  //        間距 ＝ 行高 − (上行墨跡高 ＋ 下行墨跡高) ÷ 2  （<UArtLine> 把墨跡置中於行盒）
+  //    照稿反推的行高與現值差一截，但**改了就要重調設計線**：
+  //
+  //      | 斷點 | 稿間距 | 現行行高 | 實測間距 | 照稿的行高 |
+  //      | pc   | 22     | 56       | 18.7     | 59.3       |
+  //      | pad  | 18     | 48       | 20.6     | 45.4       |
+  //      | mob  | 15.6   | 44       | 18.8     | 40.8       |
+  //
+  //    pad／mob 動行高 → 姓名塊高度變 → `.forum-event__speakers` 高度變 →
+  //      pad Q6（fraction 0.5781）／Q7（bottom +102）、mob P6（fraction 0.4704）全部偏。
+  //    pc 動行高 → 墨跡在行盒內的內縮從 8.58 變 10.08 → 與 `.forum-event__speaker`
+  //      那個 padding-top 102（＝「字面落在講者組頂端下方 112.7」）對不上，整組下移 1.5。
+  //    ⇒ 保留 ≤3.3px 的間距落差，換設計線零改動。要對到稿就得連上面那些一起重推。
   .forum-event--quote & {
     @include rwd-max('pc') {
+      --art-base: 32;
+
       order: 3;
       font-size: 32px;
       line-height: 48px;
     }
 
     @include rwd-max('tablet') {
+      --art-base: 29;
+
       font-size: 29px;
       line-height: 44px;
     }

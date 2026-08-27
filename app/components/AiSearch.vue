@@ -43,6 +43,10 @@ const props = withDefaults(
 /** 單字淡入時長（ms）：與 SCSS 的 ai-search-char-in 時長一致 */
 const CHAR_FADE_MS = 300;
 
+// 搜尋框、AI摘要 標題列與 CTA 的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
+// 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
+const { play } = useSfx();
+
 const rootRef = ref<HTMLElement | null>(null);
 const foldRef = ref<HTMLElement | null>(null);
 const current = ref(0); // 輪播中的關鍵字 index
@@ -185,7 +189,8 @@ onBeforeUnmount(() => {
       class="ai-search__bar"
       type="button"
       :aria-expanded="expanded"
-      @click="expand"
+      @mouseenter="play('sfx01Short')"
+      @click="play('sfx01Short'); expand()"
     >
       <span class="ai-search__term-clip" aria-live="polite">
         <Transition name="ai-search-roll">
@@ -208,7 +213,8 @@ onBeforeUnmount(() => {
         class="ai-search__head"
         type="button"
         :aria-expanded="expanded"
-        @click="toggle"
+        @mouseenter="play('sfx01Short')"
+        @click="play('sfx01Short'); toggle()"
       >
         <span class="ai-search__spark" aria-hidden="true" />
         <span>AI摘要</span>
@@ -278,7 +284,8 @@ onBeforeUnmount(() => {
         :href="ctaUrl"
         target="_blank"
         rel="noopener"
-        @click="gaClickButton('button', 'vip')"
+        @mouseenter="play('sfx01Short')"
+        @click="play('sfx01Short'); gaClickButton('button', 'vip')"
       >
         深入體驗聯合報數位版
       </a>

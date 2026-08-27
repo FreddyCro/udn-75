@@ -5,14 +5,20 @@
 範圍：`01a.symbol`（開場文案、序列門檻）／`01.hero`（轉場層 slot，文字實際渲染處）／
 `02.forum`（門檻交接）。
 
-> ⚠️ **進場／退場行為已改版兩次**：
+> ⚠️ **進場／退場行為已改版三次**：
 > 1. 2026-08-12 三行改成依序上浮 ＋ 逐字亂碼落定
 >    （`architecture/2026-08-12-symbol-intro-stagger-design.md`）。
 > 2. 同日再改成**不綁捲動、吃時間軸**：`symbolProgress` 只當觸發器，
 >    `SYMBOL_INTRO` 收成 `{ in, out }`，曲線改成 `symbolIntroLineAt()` / `symbolIntroClear()`，
 >    新增閘門 `symbolIntroGate()`（`architecture/2026-08-12-symbol-intro-timeline-design.md`）。
+> 3. **2026-08-26 退場改回綁捲動、且三行不再自動消失**：進場仍吃時間軸、停留無限長，
+>    退場改成 `exit → out` 上的 scrub。`SYMBOL_INTRO` 成為 `{ in, exit, out }`，
+>    新增 `symbolIntroExitK()` / `symbolIntroExitAt()` / `INTRO_EXIT_STAGGER_RATIO`；
+>    保底清場整套刪除（`clearElapsed` / `symbolIntroClear()` / `INTRO_TIMELINE.clearDur`），
+>    `INTRO_TIMELINE` 只剩進場的 `inDur` / `inStagger`
+>    （`architecture/2026-08-26-symbol-intro-scroll-exit-design.md`）。
 >
-> 上述兩次改版不影響本文第四節的序列節奏。
+> 上述三次改版不影響本文第四節的序列節奏。
 >
 > ⚠️ **但第四節的數字已於 2026-08-13 被取代**（`converge` 88 → 56vh、`handoff` 64 → 40vh、
 > `SYMBOL_VH` 4.0 → **3.44**），且門檻改由 `SYMBOL_BEAT_VH` 推導、不再手寫小數。
@@ -29,7 +35,7 @@ pad 768 `2065:124197`（`2065:124199`）／mob 414 `2065:120218`（`2065:120221`
 
 | 檔案 | 角色 |
 | --- | --- |
-| `app/utils/orange-core-config.ts` | `SYMBOL_INTRO`、`INTRO_TIMELINE`、`symbolIntroLineAt()`、`symbolIntroClear()`、`symbolIntroGate()`、`symbolIntroLineState()`、`symbolIntroRunning()`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`SEQUENCE` |
+| `app/utils/orange-core-config.ts` | `SYMBOL_INTRO`、`INTRO_TIMELINE`、`INTRO_EXIT_STAGGER_RATIO`、`symbolIntroLineAt()`、`symbolIntroExitK()`、`symbolIntroExitAt()`、`symbolIntroGate()`、`symbolIntroLineState()`、`symbolIntroRunning()`、`SYMBOL_STOPS`、`SYMBOL_VH`、`FORUM_HANDOFF`、`SEQUENCE` |
 | `app/components/01a.symbol/SymbolIntro.vue` | 開場文案元件（渲染於 `01.hero` 的轉場層 slot） |
 | `app/components/01a.symbol/SymbolScene.vue` | 符號段捲動尺；檔內的「symbolProgress 時序表」是第三節數字的來源 |
 | `app/locales/section1.json` | `symbol.intro`（三行文案） |

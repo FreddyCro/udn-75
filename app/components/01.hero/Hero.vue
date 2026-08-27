@@ -16,15 +16,17 @@ import {
   refreshScrollTriggers,
 } from '@/utils/scroll-trigger';
 import {
-  coverAnchorToScreen,
   isVerticallyOnScreen,
   unrotateDelta,
+  videoAnchorToScreen,
+  type VideoFit,
 } from '@/utils/hero-core-handoff';
 import {
   HERO_CORE_DROP_IN,
   HERO_CORE_HANDOFF,
   HERO_DISSOLVE_VH,
   HERO_INTRO_AUTO_SCROLL,
+  HERO_INTRO_CORE_ANCHOR,
   HERO_INTRO_READ_AT,
   HERO_INTRO_REVEAL,
   HERO_OUTRO_CORE_ANCHOR,
@@ -96,11 +98,19 @@ const {
   transitionProgress,
   setTransitionProgress,
   symbolMode,
+  symbolProgress,
   symbolLayerDone,
   symbolConvergeAmount,
   symbolCoreWarm,
   symbolBgLight,
 } = useOrangeCoreProgress();
+
+// 下滑提示要不要常駐：開場三行文案那一段是，進入 face 那一拍改回十秒規則。
+// 窗口與理由都在 symbolScrollHintPinnedAt（純函式，有單元測試）—— 本處只是把它接上去，
+// 同 symbolConvergeAmount 那幾個「值在 config 算好、元件只收數字」的分工。
+const symbolScrollHintPinned = computed(() =>
+  symbolScrollHintPinnedAt(symbolProgress.value),
+);
 
 // ── 符號人臉的縮放：手機要再小一號 ──────────────────────────────────
 // SymbolFace 的 world→px 換算只綁**視窗高**（uWorldToPx = 視窗高 / 559.6，見該元件的
@@ -368,6 +378,17 @@ onMounted(() => {
   mq.addEventListener('change', onMqChange);
   onBeforeUnmount(() => mq.removeEventListener('change', onMqChange));
 
+  // start 閘門的退場尺寸：掛載時補一次（閘門已在場的路徑），其後只在閘門還在場時跟著
+  // resize 重量 —— 開場期間頁面鎖著、手機網址列不會收合，故實際上只有桌機拉視窗與轉螢幕。
+  if (startGateUp.value) measureStartExitSize();
+  const onStartGateResize = () => {
+    if (startGateUp.value) measureStartExitSize();
+  };
+  window.addEventListener('resize', onStartGateResize, { passive: true });
+  onBeforeUnmount(() =>
+    window.removeEventListener('resize', onStartGateResize),
+  );
+
   // hydration 那一輪擋不掉（理由見上方 bypassLoader）：補在這裡，仍搶在 applyScrollLock 之前。
   // 重入由 bypassForEntry() 自己的 entryHandled 擋掉（client-side 導航時 setup 已經跑過）。
   if (initialHash) bypassForEntry();
@@ -582,6 +603,41 @@ onBeforeUnmount(() => {
   introScrollTween = null;
 });
 
+// `<video>` 的 object-fit 一律從 computed style 讀，**不要**照斷點在 JS 再寫一份：
+// SCSS 那側是 pc cover ／ ≤1023.98 contain（見 HeroVideo 的 .sec1__hero-video-el），
+// 兩邊各留一份就會出現「SCSS 改了、換算沒跟上」—— 2026-08-26 之前換算寫死 cover，
+// 而 pad / mob 早已改成 contain，兩處交棒的尺寸一路算錯（mob 390×844 差 22%）。
+const videoFit = (el: HTMLVideoElement): VideoFit =>
+  getComputedStyle(el).objectFit === 'contain' ? 'contain' : 'cover';
+
+// ── start 閘門的退場尺寸（進場側的交棒）────────────────────────────────
+// cube 縮到「影片**首幀**那顆橘塊在畫面上的邊長」而不是寫死的 26px —— 那顆是各支剪輯的
+// 64 source px，畫面上的邊長隨 fit 放大倍率變（32–85px），寫死會讓交接那一刻橘塊彈大
+// 1.2–3.3 倍。量測值與理由見 ~/utils/hero-video-config 的 HERO_INTRO_CORE_ANCHOR。
+// 量不到（metadata 還沒到）就留 0 → HeroStart 退回 CORE.dotSize，與改動前同行為。
+const startGateUp = computed(() => loaderDone.value && !heroStarted.value);
+const startExitSize = ref(0);
+
+function measureStartExitSize() {
+  const video = heroVideoRef.value?.videoEl;
+  if (!video) return;
+  const p = videoAnchorToScreen(
+    video.getBoundingClientRect(),
+    video.videoWidth,
+    video.videoHeight,
+    HERO_INTRO_CORE_ANCHOR[getDeviceTypeByResolution()],
+    { fit: videoFit(video) },
+  );
+  startExitSize.value = p?.size ?? 0;
+}
+
+// 閘門出現的那一刻量（此時 videoReady 必然已成立 ⇒ metadata 到了）。
+// 閘門「已經在場」才掛載的情形（loaderDone / heroStarted 是跨導航存活的 useState）
+// 由 onMounted 那一次補上。
+watch(startGateUp, (up) => {
+  if (up) measureStartExitSize();
+});
+
 // ── core 的進場（gone 的那一刻）────────────────────────────────────────
 // core 的落點由 OrangeCorePath 驅動（恆在視窗正中央，見
 // .claude/memory/hero-core-screen-locked.md）；這裡只決定「它從哪裡滑過來」，
@@ -625,11 +681,12 @@ function runCoreEntrance(fromOutro: boolean) {
   if (onScreen && !fromOutro) return; // SKIP
 
   const fromVideo = onScreen
-    ? coverAnchorToScreen(
+    ? videoAnchorToScreen(
         videoBox,
         video.videoWidth,
         video.videoHeight,
         HERO_OUTRO_CORE_ANCHOR[getDeviceTypeByResolution()],
+        { fit: videoFit(video) },
       )
     : null;
   // 影片在畫面上卻讀不到 metadata（例如載入失敗直接進 gone）→ 沒有可對齊的目標，
@@ -735,7 +792,8 @@ function applyScrollLock() {
     -->
     <Transition name="hero-start-exit">
       <HeroStart
-        v-if="loaderDone && !heroStarted"
+        v-if="startGateUp"
+        :exit-size="startExitSize"
         @start="heroStarted = true"
       />
     </Transition>
@@ -834,6 +892,15 @@ function applyScrollLock() {
         active 由轉場層以 slot prop 交出（＝該層自己的顯隱條件），SymbolFace 據此停/續 rAF：
         轉場開始前與交棒之後，那顆滿版 canvas 是看不見的，不該還在跑幾千顆粒子的
         物理積分 + buffer 上傳 + draw call。
+
+        ⚠️ weight-steps 是 1 而不是 preset 的 5（2026-08-26 改）：Courier New 沒有 100–500
+           變體，那五階烘出來逐像素相同 ＝ atlas 白付 96/120 格（352×352 → 160×160）。
+           量測與還原點見 SymbolFace 的 weightMax 註解；weight-min 在 steps=1 時不會被讀到，
+           留著是為了將來換可變 mono 字型時能直接調回去。
+
+        disperse-alpha / disperse-lift 是「散開態專屬」的亮度（只吃 uDisperse，集合／匯聚不受影響）：
+        alpha 1 ＝ 不再半透明（元件預設 0.5），lift 0.35 ＝ 取色位置往漸層亮端推 35%，
+        讓人臉暗部那些接近黑的符號在黑底上也看得見。兩者的取值範圍與原理見 SymbolFace 的 prop 註解。
       -->
       <template #default="{ active: symbolLayerActive }">
         <SymbolFace
@@ -847,6 +914,7 @@ function applyScrollLock() {
           :hint-pad="str.symbol.hintPad"
           :hint-mob="str.symbol.hintMob"
           :scroll-hint="str.symbol.scrollHint"
+          :scroll-hint-pinned="symbolScrollHintPinned"
           :hole-radius="25"
           :hole-spread="50"
           :return-ease="1.5"
@@ -868,12 +936,14 @@ function applyScrollLock() {
           :invert="false"
           :size-min="0.4"
           :size-max="0.8"
-          :weight-steps="5"
+          :weight-steps="1"
           :weight-min="100"
           :weight-max="500"
           :glitch-items="SYMBOL_GLITCH_ITEMS"
           :float-amp="18"
           :float-micro="0.5"
+          :disperse-alpha="1"
+          :disperse-lift="0.35"
         />
 
         <!--

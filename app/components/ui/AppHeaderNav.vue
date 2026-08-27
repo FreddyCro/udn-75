@@ -40,7 +40,7 @@ function onHomeSelect(anchor: HeaderAnchor, e: MouseEvent) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
   emit('select', anchor.target);
-  play('sfx01');
+  play('sfx01Short');
   gaClickMenu(anchor.ga);
 }
 
@@ -49,7 +49,7 @@ function onHomeSelect(anchor: HeaderAnchor, e: MouseEvent) {
 // ⌘/Ctrl 點擊＝開新分頁，不算本頁互動，不出聲。
 function onAwaySelect(anchor: HeaderAnchor, e: MouseEvent) {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  play('sfx01');
+  play('sfx01Short');
   gaClickMenu(anchor.ga);
 }
 </script>
@@ -67,7 +67,7 @@ function onAwaySelect(anchor: HeaderAnchor, e: MouseEvent) {
         class="app-header-nav__link"
         :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
         :href="`#${anchor.target}`"
-        @mouseenter="play('sfx01')"
+        @mouseenter="play('sfx01Short')"
         @click="onHomeSelect(anchor, $event)"
       >
         <span class="app-header-nav__art" :style="artStyle(anchor.art.pc)" />
@@ -84,7 +84,7 @@ function onAwaySelect(anchor: HeaderAnchor, e: MouseEvent) {
         class="app-header-nav__link"
         :class="{ 'app-header-nav__link--active': activeTarget === anchor.target }"
         :to="`/#${anchor.target}`"
-        @mouseenter="play('sfx01')"
+        @mouseenter="play('sfx01Short')"
         @click="onAwaySelect(anchor, $event)"
       >
         <span class="app-header-nav__art" :style="artStyle(anchor.art.pc)" />

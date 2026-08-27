@@ -28,8 +28,10 @@ const { play } = useSfx();
       variant="gray"
       class="agenda-report__cta"
       :href="cta.href"
-      @mouseenter="play('sfx01')"
-      @click="play('sfx01'); gaClickButton('button', cta.gaTerm)"
+      :target="cta.target"
+      :rel="cta.target === '_blank' ? 'noopener' : undefined"
+      @mouseenter="play('sfx01Short')"
+      @click="play('sfx01Short'); gaClickButton('button', cta.gaTerm)"
     >
       <!-- 文案含「mob 才斷行」的 <br/>（見 locales 的 cta.label 與下方 :deep(br)），
            故走 v-html —— 同 subpage 各頁 sp-h3／sp-lead 的既有慣例。

@@ -11,6 +11,7 @@
 - [Page route naming](page-route-naming.md) — 六子頁路由↔單位對應與閱讀順序（下一篇鏈）；JSON 改名史
 - [Hero body lock rules](hero-body-lock-rules.md) — hero 開場捲動鎖逐拍規則（2026-08-22 起：正片 ＋ 還沒播完的退場段都鎖，退場播完才解鎖；配兩根防死結保險絲）；.is-scroll-locked 必須同時掛 html 與 body 否則完全無效
 - [Hero core screen-locked](hero-core-screen-locked.md) — hero orange core 螢幕上完全不動（恆 50vh），是文字捲上去穿過它；程式註解本身會誤導。含「進度 clamp 在端點就收不到 onUpdate」這個 scrub 通用坑
+- [Hero video core geometry](hero-video-core-geometry.md) — 三支開場影片裡橘核心的實測幾何（首幀 64 source px／尾幀停格時機）＋「hero 各層一律站在 --vh 這把尺上」與 object-fit 要從 computed style 讀
 - [Hero outro core handoff](hero-outro-core-handoff.md) — 影片裡的 core → DOM core 交棒：anchor 在 config、cover 換算與旋轉補償在 hero-core-handoff.ts；含層序陷阱（sticky 建立堆疊脈絡 ⇒ core／引言其實畫在影片之上，遮擋靠 opacity）
 - [Symbol rail vs section height](symbol-rail-vs-section-height.md) — 符號段尺長≠段高（尺多 50vh）；交棒時接縫的位置只由 handoff 那一拍決定，調總長是無效的
 - [Forum RWD](forum-rwd.md) — 動 02.forum 版面前先讀 architecture/forum-node-path.md；desktop-first 例外的理由、特異度陷阱
@@ -20,3 +21,6 @@
 - [Forum slash core alignment](forum-slash-core-alignment.md) — 論壇二 09/15 那一撇是核心畫出來的：撇的位置（CSS）與驅動線必須同一個真值；pad/mob 節點錨在撇上綁死、pc 只有守衛，動 pc 的 d 或 --coreslash-x/y 一定要回頭驗
 - [WebKit flex scroll intrinsic width](webkit-flex-scroll-intrinsic-width.md) — iOS 對 flex 裡的橫向捲動列寬度算錯（Chromium 看不出來）；寬度寫死、置中用首尾 auto margin、驗證用 Playwright WebKit
 - [GSAP refresh measures pinned DOM](gsap-refresh-measures-pinned-dom.md) — refreshInit 早於 revert pin：在 pin 生效／跑完時量 pin 內的元素會多算一整段 pin 距離（hero core 掉出視窗、轉場沒劃開的根因）
+- [Playwright fallback when MCP locked](playwright-fallback-when-mcp-locked.md) — MCP 瀏覽器被佔住時改用 npx cache 的 playwright ＋ 系統 Chrome；canvas 視覺用讀像素算 bbox 來驗
+- [Symbol face atlas mip instability](symbol-face-atlas-mip-instability.md) — 額頭「破掉」的根因：atlas 固定 32px cell vs sprite 3.7–28px，mip 交界隨視窗高×DPR 漂到臉上；含已排除項與重現腳本
+- [Symbol weight ladder rollback](symbol-weight-ladder-rollback.md) — weightSteps 5→1 的還原點：commit e98ba75 ＋ temp/rollback-2026-08-26/ 備份；只還原那三個檔案

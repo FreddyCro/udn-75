@@ -2,6 +2,7 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { Ref } from 'vue';
 import { killScrollTriggers } from '~/utils/scroll-trigger';
+import { MEDIA_EXPAND_SFX, crossedForward } from '~/utils/sfx-cue';
 
 /** MediaTitle 分件元素（getEls() 回傳；任一缺件時為 null，motion 降級不播） */
 export interface MediaTitleEls {
@@ -62,6 +63,11 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
   // 與 01 → 02 共用同一支（見 ~/composables/useHeaderBand）—— 那邊傳 'dark'、這邊傳
   // 'orange'，header 端不必認得是誰在驅動。兩段轉場在捲動軸上不重疊，故不會互搶。
   const { syncHeaderBand } = useHeaderBand();
+  // 兩次「展開」的音效。不走 useSfxCue：那支判的是布林上升緣，而這裡要判的是
+  // 「scrub 的播放頭跨過 timeline 上的某個時刻」—— 同 Agenda.vue 自己接判定的理由。
+  // useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，見 useSfx.ts 檔頭）；
+  // 本 composable 由 Media.vue 的 setup 呼叫，故這裡就是 setup 期間。
+  const { play } = useSfx();
   // scrub 行程（px）＝ HOLD_BUFFER（sticky 定住距離＝buffer 高度）＋ 融合拍的跑道。
   //
   // HOLD_BUFFER 只涵蓋拍 1 之後：拍 0（融合拍）跑在 sticky engage **之前**那段跑道上，
@@ -400,6 +406,16 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       //    寬，整個拍 1 的收窄被它遮住。
       .set(veil, { autoAlpha: 0 }, NARROW_DUR);
 
+    // ── 兩次「展開」的音效地標 ────────────────────────────────────────────
+    // 由 label 推導、不寫死時刻：上面 shiftChildren(NARROW_DUR, true) 已把 label 連同
+    // 每一拍右移，所以這裡讀到的就是插入拍 0 之後的值；日後加減拍數也不必回來改。
+    // ⚠️ 必須在 shiftChildren 之後讀。移到它前面會拿到少了 NARROW_DUR 的舊時刻，
+    //    症狀是兩聲都提早響（而畫面上看不出是音效錯了，只覺得「怪」）。
+    const expandTimes = [tl.labels.text ?? 0, tl.labels.quotes ?? 0];
+    // 上一幀播放頭的位置（timeline 時刻）。null ＝ 尚未定錨，下一次 onUpdate 只記位置、
+    // 不出聲 —— 同 ForumCorePath 的 lastTurnLen。
+    let lastBeatTime: number | null = null;
+
     // trigger 掛 in-flow 的 section（sticky 的 hold 不可當 trigger）。
     //
     // start / end 都吃 runwayPx（上面已凍結的 px 值），不重新算 BLESSING_OUT_VH *
@@ -480,6 +496,26 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
         // 才翻 light；那一刻窗外本來就已經是白的了（見拍 0 的底色硬切）。
         const next = lightPhase || bandLeft > 1 ? 'light' : 'orange';
         if (section.dataset.headerTheme !== next) section.dataset.headerTheme = next;
+
+        // ── 兩次「展開」的音效（設計標註「新媒體第一次／第二次展開」）────────
+        // 播放頭時刻同樣由 self.progress 換算，不讀 tl.time()：理由同上面的 lightPhase。
+        // 判定與撞擊音共用同一條規則（見 ~/utils/sfx-cue 的 crossedForward）——
+        // 前進才響、倒退靜音、來回捲會再響。
+        const dur = tl?.duration() ?? 0;
+        if (dur > 0) {
+          const nowTime = self.progress * dur;
+          crossedForward(lastBeatTime, nowTime, expandTimes).forEach((i) => {
+            const key = MEDIA_EXPAND_SFX[i];
+            if (key) play(key); // null ＝ 音檔還沒到，見 MEDIA_EXPAND_SFX
+          });
+          lastBeatTime = nowTime;
+        }
+      },
+      // 幾何重建後把定錨清掉：refresh（視窗改變、字體載入、其他段落 refresh）可能讓
+      // progress 跳一段，拿舊值比大小會噴出不該有的一聲。同 ForumCorePath 每次 build
+      // 都把 lastTurnLen 歸 null 的理由 —— 那邊的註解寫「refresh 在本專案很常發生」。
+      onRefresh: () => {
+        lastBeatTime = null;
       },
       // 兩端的兜底：越過整段 motion 之後底紋必定已淡入、退回起點之前必定還沒。
       // timeline 的 onStart/onReverseComplete 在 refresh 的 revert 之後可能不會

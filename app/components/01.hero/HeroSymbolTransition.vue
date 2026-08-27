@@ -151,8 +151,21 @@ function apply(p: number) {
     const w = w0 + (vw - w0) * pX;
 
     // clip-path inset：以 core 中心為錨、上下左右對稱長大（負值會被視為無效，故夾 0）。
-    const top = Math.max(0, cy - h / 2);
-    const bottom = Math.max(0, vh - (cy + h / 2));
+    //
+    // ⚠️ 拉長段跑完（pY ＝ 1）之後垂直方向**寫死滿高**，不由 cy 反推 —— 同下面 pX >= 1
+    //    「直接寫死滿版」那個分支的理由，只是換一根軸：core 只要稍微偏心，cy - h/2 就不
+    //    是 0，而**這一根軸上那條縫是有後果的** —— header 反白的閘門正是 top <= 0
+    //    （見 ~/composables/useHeaderBand：亮列用水平 gradient 挖洞、表達不了垂直邊界，
+    //    故窗還沒蓋滿 header 那一列就一律不反白）。差 0.2px 就整個展開段都不反白 ⇒
+    //    base 那條 rgb(255 255 255 / 0.7) + blur(2px) 原封不動糊在粒子場上，變成使用者
+    //    回報的那條灰霧帶（正是 .has-band 的遮罩存在的理由，見 AppHeader 的註解）。
+    //    偏心不是假想：視窗高帶小數（DPR 縮放／瀏覽器縮放）時就會發生 —— 實測 pad 斷點
+    //    1160×875.33，cy 437.867 對 vh/2 437.667，差 0.2001953125px，整個展開段都中。
+    //    夾 max(0, …) 擋不住：它擋的是負值，這裡殘留的是**正**的 0.2px。
+    //    也因此症狀看起來「時好時壞」：視窗高剛好是整數時 cy 正好等於中心，就沒事。
+    const vFull = pY >= 1;
+    const top = vFull ? 0 : Math.max(0, cy - h / 2);
+    const bottom = vFull ? 0 : Math.max(0, vh - (cy + h / 2));
     const left = Math.max(0, cx - w / 2);
     const right = Math.max(0, vw - (cx + w / 2));
     field.style.clipPath = `inset(${top.toFixed(1)}px ${right.toFixed(1)}px ${bottom.toFixed(1)}px ${left.toFixed(1)}px)`;
