@@ -45,6 +45,12 @@ const { syncHeaderBand } = useHeaderBand();
 // p>0 且尚未交棒才可見：p=0 時整層透明，避免在 core 移動途中疊一層同色方塊。
 const active = computed(() => !props.done && props.progress > 0);
 
+// 告訴 header「背後有一張滿版、逐幀重畫的 canvas」→ 它會放掉 backdrop-filter。
+// 條件與 active 同一個：本層在場 ＝ slot 內那顆 canvas 正在跑 rAF（見 slot 的 active）。
+// 為什麼要有這一條、以及為什麼判斷不能放在 header 那側，見 useHeaderCanvasBehind 的檔頭。
+const { syncHeaderCanvasBehind } = useHeaderCanvasBehind();
+watch(active, (on) => syncHeaderCanvasBehind(on), { immediate: true });
+
 // 方塊遮罩轉場的起手音（設計標註「方塊遮罩轉場音效」）。
 // 觸發點取 p 由 0 翻正的那一刻 ＝ 橘方塊開始長大；整段 scrub 只響這一次。
 // 往回捲不響（規則見 ~/composables/useSfxCue）。
@@ -230,6 +236,7 @@ onBeforeUnmount(() => {
   // ⚠️ bandTheme 是 useState，**跨 client-side 導航存活**（同 useAnchorClaim 的老問題）：
   //    在轉場途中點 logo 進子頁的話，本層卸載但反白層會永遠留在那裡。
   syncHeaderBand(null);
+  syncHeaderCanvasBehind(false); // 同上：旗標留著會讓子頁的 header 永久沒有 blur
 });
 </script>
 

@@ -47,6 +47,7 @@ export const SYMBOL_CONFIG_KEYS: string[] = [
   'disperseLift',
   'convergeSize',
   'convergeStagger',
+  'convergeKeep',
   'inkGamma',
   'twinkleAmp',
   'breathAmp',
