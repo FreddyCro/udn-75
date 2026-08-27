@@ -135,7 +135,8 @@ const onSoundClick = () => {
           <span class="hero-start__cube-label">{{ str.start.label }}</span>
         </button>
 
-        <!-- 音效開關：狀態存在全域（useAppSound），影響後續所有影片 -->
+        <!-- 音效開關：狀態存在全域（useAppSound）。影響範圍是 hero 影片與音效（sfx）
+             —— 其他影片（UVid）一律靜音、不吃這個開關，理由見 UVid.vue 的檔頭 -->
         <div class="hero-start__sound">
           <button
             class="hero-start__sound-btn"
