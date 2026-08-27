@@ -235,8 +235,15 @@ function awaitLandingDecision(deadline: number) {
   //    /subpage#service，navigateTo 被呼叫了卻**永遠不完成** —— 網址沒變、六節還在 DOM 裡。
   //    這是邊緣情境（桌機開到手機版網址），不值得跟 router 的初始生命週期纏鬥。
   //    resolve().href 會帶上 baseURL（本站部署在子路徑，見 nuxt.config 的 app.baseURL）。
+  // ⚠️ 路徑的**尾斜線不能拿掉**（`/${slug}/`）：正式站有一條「沒有尾斜線就 301」的規則，
+  //    而它不只補斜線 —— 會換 host、換路徑前綴、還從 https 降級成 http：
+  //      /newmedia/2026/udn75/data  → 301 → http://newmedia.udn.com.tw/2026/udn75/data/
+  //    落地後 build 內的 baseURL 對不上那台的掛載路徑，_nuxt 與 img 全 404、頁面不 hydrate。
+  //    全站只有這一處是硬導航才會踩到（NuxtLink 不打伺服器；prerender 的靜態 href 由
+  //    nitro 自動改寫成尾斜線形式，而這條網址是 runtime 才組出來的，改寫不到）。
+  //    守門測試：test/subpage-pc-redirect-trailing-slash.spec.ts
   if (window.innerWidth >= TABLET_BREAKPOINTS) {
-    location.replace(router.resolve(`/${slug || SLUGS[0]}`).href);
+    location.replace(router.resolve(`/${slug || SLUGS[0]}/`).href);
     return;
   }
 
