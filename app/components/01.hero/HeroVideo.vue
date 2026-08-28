@@ -51,6 +51,7 @@ const {
   heroStarted,
   currentTime,
   scrubArmed,
+  introAutoScrolling,
   skipOpening,
   openingSkipped,
   outroSpent,
@@ -429,7 +430,19 @@ function applyDissolve(p: number) {
   //    這類 hash 進站的人 openingSkipped 為 true、舞台被壓著隱藏，而**捲回 page top 會
   //    在這裡把它清掉**，影片於是回到畫面上；同一刻 dissolveState 把狀態判成 main
   //    （restart），使用者看到的就是從 0s 開始的完整影片。
-  const returnedToTop = p < DISSOLVE_LEAVE && lastDissolveP >= DISSOLVE_LEAVE;
+  //
+  // ⚠️ 2026-08-28（iPhone 無限重播）：跨越還要**是使用者捲的**才算。兩種不是的情形：
+  //   ① ScrollTrigger.isRefreshing —— refresh 途中 pinned trigger 的量測會 scrollTo(0) 再
+  //      還原，iOS 的 scroll 事件非同步派送，onRefresh／緊接的 onUpdate 可能拿到 p ＝ 0。
+  //      refresh 送來的 p 是量測值，不是行為；這裡照樣記進 lastDissolveP（下一次真正的
+  //      onUpdate 才不會又算成一次跨越），但不當事件。
+  //   ② introAutoScrolling —— 退場播完後那段自動捲到引言的 tween 正在跑，捲軸不在使用者手上。
+  //   解鎖時 body 的 overflow／padding-right 一變、Safari 工具列一收合，body 高度就變，
+  //   refreshOnContentResize 的 ResizeObserver 會排一次 refresh —— 正好落在 ② 期間。
+  //   狀態層另有 dissolveState 的 `outroSpent` 前提兜底（沒到過 gone 就沒有「回來」）。
+  const crossedTop = p < DISSOLVE_LEAVE && lastDissolveP >= DISSOLVE_LEAVE;
+  const returnedToTop =
+    crossedTop && !ScrollTrigger.isRefreshing && !introAutoScrolling.value;
   lastDissolveP = p;
   // 清掉後下方 alpha 才算得出 1（同一次呼叫內影片就淡回來，不必等下一個捲動事件）。
   if (returnedToTop && scrubArmed.value) openingSkipped.value = false;
@@ -461,12 +474,14 @@ function applyDissolve(p: number) {
   if (scrubArmed.value && !openingSkipped.value) {
     // 跨回頂端 ＝ 重新武裝：這一趟重播要再看到完整的退場段。
     // （設起的點在 setState('gone')，見 useHeroVideo 的 outroSpent。）
-    // ⚠️ 必須排在 dissolveState 之前：那條「已交棒過就維持 gone」的規則會蓋掉重播。
-    if (returnedToTop) outroSpent.value = false;
+    // ⚠️ 2026-08-28 起改排在 dissolveState **之後**：重播的前提正是「已交棒過」
+    //    （見 hero-dissolve 的 outroSpent 說明），得先讓它讀到 true 才判得出 main，
+    //    判成 main 之後再清掉、讓這一趟重播能再看到完整退場段。
     const next = dissolveState(p, heroState.value, {
       returnedToTop,
       outroSpent: outroSpent.value,
     });
+    if (returnedToTop && next === 'main') outroSpent.value = false;
     if (next !== heroState.value) setState(next);
   }
 

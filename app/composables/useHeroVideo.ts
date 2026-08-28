@@ -109,6 +109,12 @@ export function useHeroVideo() {
   // 使用者看到影片抽搐。故由 Hero.vue 在落點確定後才 arm。
   const scrubArmed = useState('hero-scrub-armed', () => false);
 
+  // 「退場播完 → 自動捲到引言」的 ScrollTo tween 正在跑（由 Hero.vue 的
+  // scrollToIntroReading 設起、tween 完成或被殺時清掉）。
+  // HeroVideo 的 applyDissolve 在這期間**不接受 returnedToTop**：那段捲動不是使用者的手，
+  // 途中任何 p 回到 0 的訊號（iOS 上的 ScrollTrigger.refresh / 橡皮筋）都不能算「回到頂端」。
+  const introAutoScrolling = useState('hero-intro-auto-scrolling', () => false);
+
   // 「不經 scrub 抵達 gone」發生過沒。
   // SKIP、影片載入失敗、帶 hash 進站都會在 scrollY 0 直接進 gone —— 此時 p 是 0，
   // stage 的 opacity 若純綁 1 − p，影片會賴在畫面上不走。故這個旗標要蓋過 scrub：
@@ -209,6 +215,7 @@ export function useHeroVideo() {
     heroStarted,
     currentTime,
     scrubArmed,
+    introAutoScrolling,
     restartIntent,
     skipOpening,
     openingSkipped,
