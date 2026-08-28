@@ -24,6 +24,7 @@ import {
   convergeAmountAt,
   convergeLightAt,
   coreWarmAt,
+  disperseAmountAt,
   headerTintAt,
   symbolBgLightAt,
   coverHandoffAt,
@@ -182,8 +183,18 @@ function buildOrangeCoreProgress() {
   // symbolProgress → 目標 mode / enter（供 SymbolScene watch 後指派 symbolMode；enter 目前僅 dev 顯示）。
   const symbolTarget = computed(() => resolveSymbol(symbolProgress.value));
 
-  // 匯聚那一拍的收攏量（0..1）。**本段唯一一個綁 scrub 的視覺** —— 其餘（disperse↔face
-  // 的散開／集合）仍是 mode 觸發的定時補間，見 convergeAmountAt 那段為什麼只有這一拍要改。
+  // 散開量（1 ＝ 完全散開、0 ＝ 已組成人臉）。2026-08-28 起這一拍也綁 scrub
+  // （改版理由是 iPhone 上的掉幀閃爍，見 disperseAmountAt / FACE_GATHER_VH）。
+  // 消費端是 Hero 傳給 <SymbolFace> 的 disperse-amount（只吃 uDisperse）。
+  //
+  // ⚠ mode 照舊翻面、也照舊由 SymbolScene 指派 —— faceFormed 與彩蛋都還讀它，
+  //   改掉的只是「uDisperse 由誰寫」（同 converge-amount 那組的分工）。
+  const symbolDisperseAmount = computed(() =>
+    disperseAmountAt(symbolProgress.value),
+  );
+
+  // 匯聚那一拍的收攏量（0..1）。與上面的散開量同一套做法（progress 的純函式），
+  // 這一拍是 2026-08-13 先改的，見 convergeAmountAt 那段的推導。
   // 消費端是 Hero 傳給 <SymbolFace> 的 converge-amount（uConverge ＋ 整片底色都吃它）。
   //
   // ⚠ 每幀都變，但它是餵給一個 prop 的數字、不是 class 條件，故不必像 forumPathRiding
@@ -411,6 +422,7 @@ function buildOrangeCoreProgress() {
     symbolMode,
     symbolProgress,
     symbolTarget,
+    symbolDisperseAmount,
     symbolConvergeAmount,
     symbolCoreWarm,
     symbolBgLight,

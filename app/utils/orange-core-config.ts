@@ -257,6 +257,34 @@ export function symbolProgressAt(vh: number): number {
   return vh / SYMBOL_RAIL_VH;
 }
 
+// ── 集合窗口：face 那一拍的**開頭** ────────────────────────────────────────
+// 「散開的粒子飛回來組成人臉」要捲多久。其後（face 這一拍剩下的距離）是一張已組好、
+// 可互動的臉在那裡等著（宮格彩蛋、PC 提示都以 faceFormed 為前提）。
+//
+// 2026-08-28 從「mode 觸發的 2.2s gsap 補間」改成 progress 的純函式（曲線見
+// disperseAmountAt），與 2026-08-13 對 converge 做過的同一件事、同一個理由的另一半：
+//   定時補間吃的是**時間**，掉幀時 gsap 依真實時間推進 ⇒ 5,981 顆粒子一次跳過一大段
+//   位移。在 120Hz ProMotion 上（rAF 8.33ms、每幀預算砍半）這變成 iPhone 上肉眼可見的
+//   「不自然閃爍」—— 使用者回報的正是這一段。改吃捲動之後掉幀只會讓動作**慢下來**，
+//   不會跳；順帶而來的是「往回捲沿原路散回去」，與 converge 那一拍的手感終於一致。
+//
+// **0.55 是換算來的、不是喜好**：舊行為是 disperseDuration ＝ 2.2s 的補間，而本專案
+// 對「閱讀捲速」有單一假設 ASSUMED_READING_VH_PER_S ＝ 25vh/s ⇒ 2.2 × 25 ＝ 55vh。
+// 也就是說在假設捲速下，改版前後**看起來一樣長**；只有快捲／慢捲／回捲才看得出差別
+// （而那正是要修的）。face 這一拍 136vh，故其後仍留 81vh 給那張組好的臉。
+//
+// ⚠️ 上限來自「那張臉要有停留」：組好之後才輪到彩蛋與提示（faceFormed 讀的是
+//    uDisperse 已回到 0），窗口吃掉整拍就等於沒有可互動的人臉。
+// ⚠️ 下限來自「別退化成瞬間出現」：這是整段唯一一次人臉現身，太短就沒有「飛回來」可言。
+//    改版前那 2.2s 是設計師定的節奏，換算後的 55vh 就是它在捲動軸上的長度。
+export const FACE_GATHER_VH = 0.55;
+
+/** 集合窗口的終點（symbolProgress）＝ 人臉組好、可以互動的那一刻。
+ *  也就是 disperseAmountAt 的終點；用運算式而不是另寫一個數字，故不會與起點分家。 */
+export const FACE_GATHER_END = symbolProgressAt(
+  BEAT_END_VH.disperse + FACE_GATHER_VH,
+);
+
 // ── 「白 core → 橘」窗口：converge 那一拍的尾端 ───────────────────────────
 // 這段捲動距離內同時發生兩件事（曲線見 coreWarmAt / symbolBgLightAt）：
 //   ① 已凝成實心的那顆 core 由**白**轉橘（改版前這是實心化的附帶效果，沒有獨立窗口）
@@ -624,6 +652,32 @@ export function symbolScrollHintPinnedAt(p: number): boolean {
   return p >= SYMBOL_INTRO.in && p < SYMBOL_STOPS[0]!.until;
 }
 
+/** 散開量（1 ＝ 粒子完全散開漂浮、0 ＝ 已組成人臉）。SymbolFace 的 uDisperse 吃這一個值。
+ *
+ *  窗口 ＝ disperse 那一拍的終點（112vh）→ FACE_GATHER_END（167vh），見 FACE_GATHER_VH。
+ *  窗口之前恆 1（整段 hero 轉場與 disperse 那一拍），之後恆 0（face 剩下的 81vh、
+ *  converge、handoff）—— converge 由 convergeAmountAt 另外接手，兩者不重疊。
+ *
+ *  **改版的理由是掉幀，不是回捲**（與 convergeAmountAt 那次相反，見 FACE_GATHER_VH）：
+ *  定時補間吃真實時間，掉一幀就跳一段位移；吃捲動則掉幀只是慢下來。回捲對稱是附帶的好處。
+ *
+ *  ⚠️ 端點必須**精確**是 1 與 0：
+ *    ・起點的 1 —— 少一點就是「disperse 那一拍的粒子沒有完全散開」，開場三行文案
+ *      （SYMBOL_INTRO）疊在上面時背後會是一張半組好的臉。
+ *    ・終點的 0 —— faceFormed 的條件之一是 uDisperse ≤ 0.001（見 SymbolFace），
+ *      差一點點就永遠不成立 ⇒ 宮格彩蛋與 PC 提示整拍都不會出現。
+ *    smoothstep 自帶夾邊，故區間外也安全。
+ *
+ *  ⚠️ 用 smoothstep 而不是線性：與 convergeAmountAt 同一個理由 —— 改版前那 2.2s 補間
+ *     吃 power2.inOut（兩端慢中間快），smoothstep 是同一種手感的無參數版本。
+ *
+ *  純函式、不依賴 DOM —— 曲線由 test/symbol-sequence.spec.ts 守著。 */
+export function disperseAmountAt(p: number): number {
+  return (
+    1 - smoothstep(symbolProgressAt(BEAT_END_VH.disperse), FACE_GATHER_END, p)
+  );
+}
+
 /** 匯聚那一拍的收攏量（0 ＝ 還是完整人像、1 ＝ 已收成一顆點）。
  *  SymbolFace 的 uConverge 吃這一個值。
  *
@@ -632,7 +686,8 @@ export function symbolScrollHintPinnedAt(p: number): boolean {
  *     縮到 CORE_WARM_START —— 粒子必須在窗口**開始前**就全部到位，
  *     窗口內才會是一顆不動的白 core 在轉橘，而不是邊收邊轉色。
  *
- *  **這是本段唯一一個「值由捲動決定」而不是「由門檻觸發補間」的視覺**，2026-08-13 改的。
+ *  **這是本段第一個「值由捲動決定」而不是「由門檻觸發補間」的視覺**，2026-08-13 改的
+ *  （2026-08-28 起 disperse→face 也走同一條路，見 disperseAmountAt ⇒ 本段已無定時補間）。
  *  改版前 converge 是 mode 翻面後跑一段固定 2.2s 的 gsap 補間（disperseDuration），
  *  而固定時長的補間永遠貼在區段的**前緣** —— 門檻是照「往下滑」排的，於是：
  *    順著滑 converge 那 56vh 的開頭就被補間填滿；

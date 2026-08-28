@@ -138,7 +138,11 @@ const props = defineProps({
   convergeBgColor: { type: String, default: '#ffffff' },
   /** 組合（reveal）動畫秒數 */
   revealDuration: { type: Number, default: 3 },
-  /** 散場（disperse）動畫秒數 */
+  /** 散場（disperse）動畫秒數。
+   *  ⚠️ 2026-08-28 起正式站**走不到這個值**：disperse ↔ face 與 converge 都由外部逐幀
+   *     餵進來（見 disperseAmount / convergeAmount），它只剩「沒有捲動可綁的用法」
+   *     那條路徑在用（mode 一翻就跑一次補間），以及 syncBg 的 mode 分支。
+   *     它同時是 FACE_GATHER_VH 的換算來源（2.2s × 25vh/s ＝ 55vh），故留著仍有意義。 */
   disperseDuration: { type: Number, default: 2.2 },
   /** 散場擴散範圍 [x, y, z] */
   disperseSpread: {
@@ -189,8 +193,27 @@ const props = defineProps({
    *     驅動值（bgLightAmount / warmAmount），因為那兩件事已經搬到收攏**之後**的窗口
    *     去發生了，見 orange-core-config 的 CORE_WARM_VH。
    *     ——「只接管一半會脫鉤」那條警告仍然成立，只是現在有三個一半，正式站三個都要傳。
-   *  ⚠️ disperse ↔ face 不受影響，仍走 mode ＋ disperseDuration。 */
+   *  ⚠️ 2026-08-28 起 disperse ↔ face 也有了自己的驅動值（disperseAmount，見下一項）——
+   *     那是**第四個**一半，正式站四個都要傳。 */
   convergeAmount: { type: Number as PropType<number | null>, default: null },
+  /** 散開量（1 ＝ 完全散開漂浮、0 ＝ 已組成人臉）由外部**逐幀**餵進來；
+   *  null ＝ 沿用 mode 觸發的 disperseDuration 補間。只接管 uDisperse。
+   *
+   *  正式站傳 `symbolDisperseAmount`（＝ disperseAmountAt(symbolProgress)，見
+   *  ~/utils/orange-core-config 的 FACE_GATHER_VH）。
+   *
+   *  ⚠️ 這一項的改版理由與 convergeAmount **不同**：那一拍是為了「往回捲要能倒帶」，
+   *     這一拍是為了**掉幀**。定時補間吃真實時間，gsap 在掉幀時依實際經過的時間推進
+   *     ⇒ 5,981 顆粒子一次跳過一大段位移。iPhone（120Hz ProMotion、每幀預算 8.33ms）
+   *     上這被讀成「散開到集合的過程不自然閃爍」。吃捲動之後掉幀只會讓動作慢下來。
+   *     倒帶對稱是附帶的好處，不是動機。
+   *
+   *  ⚠️ mode 仍照舊翻面、也仍由外部指派：faceFormed（彩蛋／提示的前提）讀的是
+   *     mode ＝ face **且** uDisperse 已回到 0，兩者都需要。接管的只是「uDisperse 由誰寫」。
+   *
+   *  null ＝ 走元件自己的定時補間：沒有捲動可綁的用法（單純掛著切 mode）只有這條
+   *  看得到動作，故兩條路都要留著（同 convergeAmount）。 */
+  disperseAmount: { type: Number as PropType<number | null>, default: null },
   /** 那顆已實心的 core 由白轉橘的量（0..1），由外部**逐幀**餵進來；
    *  null ＝ 沿用 mode 觸發的補間（與 uConverge 同一組 duration / ease，
    *  ＝ 改版前「實心化的同時就是橘的」那個行為）。
@@ -470,24 +493,26 @@ watch(mode, () => {
 const clampAmount = (a: number | null | undefined) =>
   a === null || a === undefined ? null : a < 0 ? 0 : a > 1 ? 1 : a;
 
+const scrubbedDisperse = () => clampAmount(props.disperseAmount);
 const scrubbedConverge = () => clampAmount(props.convergeAmount);
 const scrubbedWarm = () => clampAmount(props.warmAmount);
 /** 底色的驅動量：沒傳 bgLightAmount 就退回吃 convergeAmount（＝ 2026-08-17 之前的行為）。 */
 const scrubbedBgLight = () =>
   clampAmount(props.bgLightAmount) ?? scrubbedConverge();
 
-// 外部接管時的逐幀寫入點。三個值各自獨立：收攏、白→橘、底色翻白在正式站是**三段
-// 不同的窗口**（見 convergeAmount prop），共用一個入口只會讓其中兩個被多寫幾次。
-// 逐幀會被捲動打到，故這裡不做任何配置 —— 見各自的本體。
+// 外部接管時的逐幀寫入點。四個值各自獨立：集合、收攏、白→橘、底色翻白在正式站是**四段
+// 不同的窗口**（見 disperseAmount / convergeAmount prop），共用一個入口只會讓其餘幾個
+// 被多寫幾次。逐幀會被捲動打到，故這裡不做任何配置 —— 見各自的本體。
 //
-// ⚠️ 這三支**不掛 watch**（2026-08-28 拆掉），改由 animate() 每幀各叫一次。理由有兩層：
+// ⚠️ 這幾支**不掛 watch**（2026-08-28 拆掉），改由 animate() 每幀各叫一次。理由有兩層：
 //   ① 原本三個 watcher 各排一次 effect flush，而 applyConvergeFn 內部又會再呼叫 syncBg
 //      一次 → 底色每幀被寫兩遍。改成單一讀取點之後每幀恰好各一次。
-//   ② 這三個值是**逐幀**被捲動打到的，watcher 的排程成本要乘以幀數；而它們唯一的作用
+//   ② 這些值是**逐幀**被捲動打到的，watcher 的排程成本要乘以幀數；而它們唯一的作用
 //      對象是 uniform，只有「下一次 render 之前」寫進去才有意義 —— 那正是 animate()。
-//   沒有接管時三支都會自己早退（scrubbed*() 回 null），故 animate() 不必分流。
+//   沒有接管時每一支都會自己早退（scrubbed*() 回 null），故 animate() 不必分流。
 //   ⚠️ 副作用：rAF 停著（本層不在場）時 props 變動不再立刻寫 uniform。這無妨 ——
-//      那段時間不會 render，而 startLoop 之後的第一幀就會把三個值補齊。
+//      那段時間不會 render，而 startLoop 之後的第一幀就會把值補齊。
+let applyDisperseFn: (() => void) | null = null;
 let applyConvergeFn: (() => void) | null = null;
 let applyWarmFn: (() => void) | null = null;
 
@@ -496,8 +521,9 @@ let applyWarmFn: (() => void) | null = null;
 // 故不是每幀觸發 re-render），迴圈停下時一律為 false（見 stopLoop）。
 //
 // ⚠️ 不能改用 mode 判斷 —— mode 是「指令」不是「狀態」：翻成 face 的那一刻粒子還散在
-//    半個畫面，要 disperseDuration(2.2s) 補間才聚攏；首次進場另有 revealDuration(3s)
-//    的 uProgress 0→1。彩蛋與 PC 提示都是「臉已經在那裡」才成立的互動邀請，
+//    半個畫面，要等 uDisperse 回到 0 才算聚攏（正式站 ＝ 捲完 FACE_GATHER_VH 那 55vh，
+//    見 disperseAmount prop；沒接管時 ＝ disperseDuration 的補間跑完）；首次進場另有
+//    revealDuration(3s) 的 uProgress 0→1。彩蛋與 PC 提示都是「臉已經在那裡」才成立的邀請，
 //    集合途中就出現等於指著一團還在飛的粒子說「移動游標」。
 const faceFormed = ref(false);
 
@@ -908,6 +934,24 @@ onMounted(() => {
   };
 
   const onMove = (e: PointerEvent) => {
+    // ── 觸控的 pointermove ＝ 拖曳捲動，不是互動意圖（2026-08-28）──────────────
+    // 這一段畫面本身是靠捲動推進的，手指在螢幕上滑就是在捲頁。原本無條件
+    // targetInfluence = 1 的後果有三層，全部發生在 face 那一拍手指按著的時候：
+    //   ① 視覺 —— holeRadius 25 ＋ holeSpread 50 ＝ 75 world 的斥力洞，在手機
+    //      （worldScale 0.6 ⇒ 人臉約 321 CSS px 寬）相當於**117 CSS px 半徑**。
+    //      使用者只是要捲動，臉卻被反覆撕開又彈回，讀起來就是「抖／閃」。
+    //   ② 成本 —— canHit 為真會把 dispSettled 那道閘門一直打開（見該處），於是每幀
+    //      跑完整 pCount 顆 CPU 積分並上傳約 70 KB 的 aDisp，整拍都在付。
+    //   ③ 語意 —— tap 版的真空洞本來就該由 onTap 建立（那邊自己寫 mouse ＋ targetInfluence，
+    //      見該處），「手指為了捲動掃過人臉」不該算互動 —— 與 dismissHint 讓開 tap 版
+    //      是同一條規則。tap 版的提示文案也正是「點擊人臉…」，沒有「拖曳」這個互動。
+    //
+    // ⚠️ 彩蛋開著時**也擋**（不留 eggHolding 例外）：彩蛋在 tap 之後會自己開著 3 秒
+    //    （startEggAuto），期間使用者往下捲就又會撕開人臉 —— 那正是要修的情形。
+    //    擋掉之後 mouse 從頭到尾停在 eggAnchor，洞與文字不會錯開，onLeave 那個
+    //    「抬指前滑了一段就把座標拉回錨點」的例外退化成保險（仍然正確，只是用不到了）。
+    //    代價：手機上手指拖曳不再帶著洞跑。tap 版沒有這個互動的設計依據，故不是損失。
+    if (isTapMode && e.pointerType === 'touch') return;
     toNdc(e.clientX, e.clientY);
     raycaster.setFromCamera(ndc, camera);
     if (raycaster.ray.intersectPlane(plane, hit)) {
@@ -1497,8 +1541,21 @@ onMounted(() => {
     // gsap 的 root timeline 找目標，而這兩支是逐幀被捲動打到的）。故上鎖：
     //   ・鎖宣告在這個區塊裡 → 重建粒子時整段重跑，鎖自動打開（新的 mat、新的補間）
     //   ・disperseFn 是唯一還會排 mode 補間的地方，它自己把鎖打開
+    let disperseTweenKilled = false;
     let convergeTweenKilled = false;
     let warmTweenKilled = false;
+
+    // 外部接管 uDisperse 時的寫入點（見 disperseAmount prop）。與下面兩支同一套寫法
+    // 與同一個上鎖理由 —— 差別只在窗口：這一支在 112→167vh 被逐幀打到，那兩支在其後。
+    applyDisperseFn = () => {
+      const scrub = scrubbedDisperse();
+      if (scrub === null || !mat) return;
+      if (!disperseTweenKilled) {
+        gsap.killTweensOf(mat.uniforms.uDisperse);
+        disperseTweenKilled = true;
+      }
+      mat.uniforms.uDisperse!.value = scrub;
+    };
 
     applyConvergeFn = () => {
       const scrub = scrubbedConverge();
@@ -1529,15 +1586,24 @@ onMounted(() => {
     // 三態互斥：分散→uDisperse=1、匯聚→uConverge=1、集合→兩者皆 0。
     disperseFn = (animated = true) => {
       if (!mat) return;
-      // 這支是唯一還會在 uConverge / uWarm 上排 mode 補間的地方 → 把 applyConvergeFn /
-      // applyWarmFn 的「已殺過」鎖打開，下一次接管會再殺一次（見那兩支的說明）
+      // 這支是唯一還會排 mode 補間的地方 → 把三支 apply*Fn 的「已殺過」鎖打開，
+      // 下一次接管會再殺一次（見那幾支的說明）
+      disperseTweenKilled = false;
       convergeTweenKilled = false;
       warmTweenKilled = false;
-      const dTarget = mode.value === 'disperse' ? 1 : 0;
       const opts = { duration: cfg.disperseDuration, ease: 'power2.inOut' };
-      gsap.killTweensOf(mat.uniforms.uDisperse);
-      if (animated) gsap.to(mat.uniforms.uDisperse, { value: dTarget, ...opts });
-      else mat.uniforms.uDisperse.value = dTarget;
+
+      // uDisperse：外部接管時**完全不碰**（同下方 uWarm / uConverge），交給
+      // applyDisperseFn 依捲動寫入。否則 mode 翻面（112vh 那一刻，兩種驅動方式都會發生）
+      // 排下的 2.2s 補間會與捲動搶同一個 uniform —— 症狀與 converge 那邊記載的一樣：
+      // 往回捲時先倒退幾幀又被捲動拉回去，看起來像抖動。
+      if (scrubbedDisperse() !== null) applyDisperseFn?.();
+      else {
+        const dTarget = mode.value === 'disperse' ? 1 : 0;
+        gsap.killTweensOf(mat.uniforms.uDisperse);
+        if (animated) gsap.to(mat.uniforms.uDisperse, { value: dTarget, ...opts });
+        else mat.uniforms.uDisperse.value = dTarget;
+      }
 
       // uWarm：外部接管時**完全不碰**（同下方 uConverge）。沒接管時跟著 uConverge 一起補間 ——
       // 顏色本來就只作用在已實心的粒子上（warm ＝ solid × uWarm），故外部沒接管時切到「匯聚」
@@ -1798,9 +1864,10 @@ onMounted(() => {
     }
     lastFrameMs = nowMs;
 
-    // 外部接管的三個 scrub 值：**每幀讀一次**，不掛 watch（理由見 applyConvergeFn 上方）。
-    // 順序無關（三者寫的是不同 uniform），但 syncBg 要在 applyConverge 之後 ——
+    // 外部接管的四個 scrub 值：**每幀讀一次**，不掛 watch（理由見 applyConvergeFn 上方）。
+    // 順序無關（四者寫的是不同 uniform），但 syncBg 要在 applyConverge 之後 ——
     // 沒傳 bgLightAmount 時它退回吃 convergeAmount，讀的就是上一行剛寫進去的那個值。
+    applyDisperseFn?.();
     applyConvergeFn?.();
     applyWarmFn?.();
     syncBgFn?.(false);
@@ -1824,17 +1891,49 @@ onMounted(() => {
     }
     // 與幀率無關的指數緩動係數
     const k = 1 - Math.exp(-cfg.mouseEase * dt);
-    if (influence < 0.001 && targetInfluence > 0) {
-      smoothMouse.copy(mouse); // 首次接觸：位置直接到位，靠 influence 淡入強度（不橫掃畫面）
-    } else {
-      smoothMouse.lerp(mouse, k); // 移動中：座標平滑跟隨
-    }
+    // 首次接觸：位置直接到位，靠 influence 淡入強度（不橫掃畫面）。
+    // 收成變數是因為下方的游標速度要認得這一幀 —— 那是**傳送**、不是位移，見那裡。
+    const snapped = influence < 0.001 && targetInfluence > 0;
+    if (snapped) smoothMouse.copy(mouse);
+    else smoothMouse.lerp(mouse, k); // 移動中：座標平滑跟隨
     influence += (targetInfluence - influence) * k;
     if (mat) {
       mat.uniforms.uTime!.value = t;
       mat.uniforms.uMouse!.value.copy(smoothMouse);
       mat.uniforms.uMouseInfluence!.value = influence;
     }
+
+    // 游標移動速度（world/秒）→ 沿移動方向甩出粒子（拖曳發散）；靜止 hover 則 ≈0。
+    // 分母是本幀的 dt，分子是 smoothMouse 的**一幀**位移（它一幀只 lerp 一次），故量綱正確。
+    //
+    // ⚠️ 2026-08-28 搬到這裡（原本連同 prevM* 的更新一起住在下面 dispSettled 那道閘門
+    //    **內部**）。舊位置是個爆衝來源：物理休眠期間 prevM* 不會更新，而游標／手指照樣
+    //    在動 —— 於是閘門被 canHit 叫醒的**第一幀**，分子是「休眠了幾幀就累積幾幀」的
+    //    位移，分母卻只有一幀 ⇒ 速度被高估休眠幀數倍。cap 4000 擋得住無限大，但擋不住
+    //    這件事本身：4000 world/s × velocityFollow 0.1 ＝ 每顆瞬間吃到 400 world/s，
+    //    也就是每一次重新接觸都先來一發單幀噴射。搬到迴圈頂層之後 delta 恆為一幀。
+    // ⚠️ 不再夾 canHit：唯讀端（下方的 velFollow）本來就在 canHit 內，值算了不用無妨；
+    //    而 prevM* **必須**每幀更新，那才是這次修的東西。
+    // ⚠️ snapped 的那一幀不算速度：那是「首次接觸讓座標直接到位」的**傳送**（見上方），
+    //    分子是使用者上次放手的位置到這次觸碰的位置 —— 半個畫面都有可能，而它不對應
+    //    任何真實的移動。不擋的話每一次重新接觸都會先被甩一發（cap 4000 也還是一發）。
+    // prevMx < 9000 ＝ 有上一幀的有效座標（9999 是「尚未接觸」的哨兵，見 startLoop）。
+    let mvx = 0;
+    let mvy = 0;
+    if (prevMx < 9000 && !snapped) {
+      const idt = 1 / Math.max(dt, 1e-3);
+      mvx = (smoothMouse.x - prevMx) * idt;
+      mvy = (smoothMouse.y - prevMy) * idt;
+      const sp = Math.hypot(mvx, mvy);
+      const cap = 4000;
+      if (sp > cap) {
+        const s = cap / sp;
+        mvx *= s;
+        mvy *= s;
+      }
+    }
+    prevMx = smoothMouse.x;
+    prevMy = smoothMouse.y;
 
     // ---- 慣性物理：附加位移的「動量 + 指數 ease」積分（撞散→帶動量四散→平順歸位，不 overshoot）----
     // 每顆粒子維持 disp(位移)+vel(速度)：速度只保留動量並靠 friction 衰減（負責往外散）；
@@ -1865,24 +1964,8 @@ onMounted(() => {
       const sprayZ = cfg.impulseSprayZ;
       const velFollow = cfg.velocityFollow;
       const maxV2 = cfg.maxSpeed * cfg.maxSpeed;
-      // 游標移動速度（world/秒）→ 沿移動方向甩出粒子（拖曳發散）；靜止 hover 則 ≈0。
-      // prevMx<9000 確保有上一幀有效座標，避免從 9999 起跳造成爆衝；並夾住上限。
-      let mvx = 0;
-      let mvy = 0;
-      if (canHit && prevMx < 9000) {
-        const idt = 1 / Math.max(dt, 1e-3);
-        mvx = (mx - prevMx) * idt;
-        mvy = (my - prevMy) * idt;
-        const sp = Math.hypot(mvx, mvy);
-        const cap = 4000;
-        if (sp > cap) {
-          const s = cap / sp;
-          mvx *= s;
-          mvy *= s;
-        }
-      }
-      prevMx = mx;
-      prevMy = my;
+      // 游標移動速度（mvx / mvy）在迴圈頂層算好了 —— 它必須每幀更新，不能住在這道
+      // 閘門裡面（推導見那裡）。這裡只是使用端。
       for (let i = 0; i < pCount; i++) {
         const i3 = i * 3;
         // 動量：速度只做 friction 衰減，不加彈簧回復力 → 不會 overshoot/bounce（回位改由下方位置 ease 處理）
@@ -2115,9 +2198,28 @@ onMounted(() => {
   // 投影中心與 DOM 中心又差 0.17px —— 這段修正本來就是在追像素對位，不該自己再引入誤差。
   const applySize = (w: number, h: number) => {
     if (w <= 0 || h <= 0) return;
+    // 快取的 canvas 左上角一律作廢（見 toNdc）—— 放在守門**之前**：這只是把一個布林
+    // 拉起來，而框變了（哪怕只有次像素）左上角就可能跟著動，沒有理由賭它。
+    invalidateRect();
+    // ── 相等守門（2026-08-28）──────────────────────────────────────────────
+    // 比的是「換算到 device px 之後」的整數，不是 contentRect 的原值：setSize 內部
+    // 本來就會 floor(w × pixelRatio)，故次像素的抖動換不到任何一個真實像素，
+    // 卻會付掉下面那次 drawing buffer 重配（DPR 2 滿版 ≈ 11 MB）＋ 一幀空白（見下方）。
+    // 而 iOS 網址列收合正是「一連串次像素高度」的來源。
+    // ⚠️ viewW/viewH 也一起早退是刻意的：它們是 contentRect 的未取整值（見上方註解），
+    //    但既然投影與 hint 錨點在 device px 的解析度下不會有差別，就不該為了小數點
+    //    再跑一遍 updateHintAnchor。
+    // ⚠️ 首次 RO 回呼**不會**被擋掉：viewW/viewH 的初值來自 clientWidth/Height（整數），
+    //    contentRect 帶小數 ⇒ 兩者的 device px 通常不同 —— 那 0.17px 的修正照樣套得上。
+    const pr = renderer.getPixelRatio();
+    if (
+      Math.floor(w * pr) === Math.floor(viewW * pr) &&
+      Math.floor(h * pr) === Math.floor(viewH * pr)
+    ) {
+      return;
+    }
     viewW = w;
     viewH = h;
-    invalidateRect(); // 尺寸變了，快取的 canvas 左上角也要重量（見 toNdc）
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
@@ -2125,6 +2227,24 @@ onMounted(() => {
     // world 單位的字級要跟著視窗高度重算，否則縮放視窗時字與格距的比例會跑掉
     if (mat) mat.uniforms.uWorldToPx!.value = worldToPx(h);
     updateHintAnchor(); // 視窗尺寸變了 → 投影出來的螢幕位置要跟著重算
+
+    // ── 就地補畫一幀（2026-08-28）──────────────────────────────────────────
+    // 沒有這一行的話，每一次 resize 都等於**一幀全空的合成結果**。幀內順序是
+    //   rAF（我們的 render，畫進舊尺寸的 buffer）→ style/layout → ResizeObserver 派送
+    //   （＝ 本函式，上面那句 setSize 賦值 canvas.width ⇒ buffer 重配並清空）→ paint
+    // 所以 paint 合成的是剛被清掉的那顆 buffer，下一幀才會被畫對。
+    //
+    // 這在桌機幾乎看不到（resize 是人手拖的、偶發一次），但在 iOS 上是**捲動中的常態**：
+    // 本層是 fixed inset:0 ＝ dynamic viewport（見 HeroSymbolTransition 的 .stage），
+    // 網址列收合會連續改變高度（實測差距可達 57px，見 ~/utils/viewport-height 的
+    // chromeInset）⇒ 一連串 RO ⇒ 一連串黑閃。使用者回報的 iPhone「不自然閃爍」有這一份。
+    //
+    // ⚠️ 這裡是 RO 回呼、還在 paint 之前，所以就地 render 是有效的（不是排下一幀）。
+    // ⚠️ 這一次 render **不**經過 animate() 的靜止幀判定，故一定畫得出來；上面那句
+    //    stillOn = false 管的是**下一幀**（見 stillOn 宣告處）。兩者各修一半，都要有。
+    // ⚠️ 迴圈停著（本層不在場）時照樣補畫：那顆 buffer 剛被清空，而 stopLoop 之後沒有
+    //    人會再畫它 —— 不補的話從此就是一片空白，直到 startLoop。
+    if (mat) renderer.render(scene, camera);
   };
   const resizeObs = new ResizeObserver((entries) => {
     const box = entries[0]?.contentRect;
