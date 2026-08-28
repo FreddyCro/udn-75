@@ -35,7 +35,7 @@ const props = defineProps<{
 const fieldRef = ref<HTMLElement | null>(null);
 const stageRef = ref<HTMLElement | null>(null);
 
-const { growY, colorSpan, faceIn, dark } = SYMBOL_TRANSITION;
+const { growY, colorSpan, faceIn, dark, barSfxAt } = SYMBOL_TRANSITION;
 const { orange } = CORE;
 
 // 開窗的座標交給 header：窗內那一段 header 反白（設計稿 2065:142710 的 `Mask group` 裡
@@ -56,6 +56,19 @@ watch(active, (on) => syncHeaderCanvasBehind(on), { immediate: true });
 // 往回捲不響（規則見 ~/composables/useSfxCue）。
 const { cueOn } = useSfxCue();
 cueOn(() => props.progress > 0, 'aiFaceText');
+
+// 黑色窄長條站定的那一聲（設計師 2026-08-28 以 dashboard 位址 `hero.transition.32%`
+// ＋截圖指定）。門檻讀 barSfxAt 而不是寫死 0.32 —— 那是聽覺上挑的點、預期會再微調，
+// 旋鈕放 orange-core-config 與 growY 那些擺在一起（見該檔 SYMBOL_TRANSITION）。
+//
+// 與 media 拍 1 結束那根 28px 橘色長條共用 sfx01：同一個視覺母題的兩次出現
+// （本層的長條寬 ＝ CORE.dotSize 26px），見 ~/utils/sfx-cue 的 MEDIA_BEAT_SFX。
+//
+// ⚠️ 這一聲會**切斷**上面那支起手音 aiFaceText —— 兩支都在 LONG_SFX_KEYS 互斥組內，
+//    而它們相距 barSfxAt × TRANSITION_VH ＝ 38vh（閱讀捲速下約 1.5s），短於
+//    aiFaceText 的 2.3s。這是設計選擇不是缺陷（長條站定那一聲是主音），
+//    完整取捨見 ~/utils/sfx-cue 檔頭 LONG_SFX_KEYS 的說明。
+cueOn(() => props.progress >= barSfxAt, 'sfx01');
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);

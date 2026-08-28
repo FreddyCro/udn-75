@@ -109,8 +109,14 @@ const planeFrame = ref(0);
 // 橘方塊變身成紙飛機的那一刻響一聲（使用者裁決：只響變身這一下，
 // 不是紙飛機那一段的每個撞擊點 —— 撞擊點另有 FORUM_TURN_SFX 那條線）。
 // planeFrame 0 → 1 ＝ 弧長跨過 swapLen（見下方 morphFrame）。
+//
+// ⚠️ 2026-08-28 由 sfx01（2.11s）改成 sfx01Short（0.27s，設計師指定）——
+//    與 FORUM_TURN_SFX 變成同一支。兩條線仍是各自的判定（這裡是變身、那裡是撞擊），
+//    只是共用同一顆 Audio：緊接在 swapLen 之後的第一個轉折會把這一聲從頭重播
+//    （play() 是 currentTime 歸零，見 useSfx）。0.27s 播得完，聽感上就是連兩下，
+//    不會像 2.11s 那樣被切成半截。
 const { cueOn } = useSfxCue();
-cueOn(() => planeFrame.value > 0, 'sfx01');
+cueOn(() => planeFrame.value > 0, 'sfx01Short');
 
 // 路徑核心的外觀與 ForumCore 的橘點共用同一份設定：交棒點兩顆重合，尺寸或顏色不同會看到縮一下。
 const coreStyle = computed(() => {

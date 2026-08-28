@@ -46,6 +46,15 @@ export const SYMBOL_TRANSITION = {
   faceIn: 0.5, // <SymbolFace> 粒子場在「展開段」的前這個比例內淡入（分鏡 ⑤ 展開中已見粒子）
   // 深色目標：必須等於 SymbolFace 的 bgColor，否則粒子場淡入時會有色階跳動。
   dark: [0, 0, 0] as [number, number, number],
+  // sfx01 的觸發點（本軌 0..1）—— 設計師 2026-08-28 以 dashboard 位址
+  // `hero.transition.32%` 指定，附截圖：畫面上是一根黑色窄長條站在空白中央。
+  //
+  // 這是**聽覺上挑的點，不是幾何地標** —— 它不等於 growY（展開段起點）、也不等於
+  // colorSpan（轉色完成，0.55 × 0.35 ＝ 0.19）。落在拉長段中段，此時長條約 58% 視窗高。
+  // 設計上它與 media 拍 1 結束那根 28px 橘色長條是同一個母題的兩次出現
+  // （這裡的長條寬 ＝ 下方 CORE.dotSize 26px），兩處共用 sfx01，見 ~/utils/sfx-cue
+  // 的 MEDIA_BEAT_SFX。要對音請調這個數字，不要改 growY —— 那條會連動整段轉場的節奏。
+  barSfxAt: 0.32,
 };
 
 // 註：以下常數已於 2026-08-03 隨 date 段 / pinST / 星空斜角轉場一併移除，需要時從 git 取回：

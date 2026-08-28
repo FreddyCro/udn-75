@@ -16,17 +16,21 @@ import type { SoundKey } from './sound-manifest';
  * ⚠️ sfx01Short（0.27s）刻意不在組內：按鈕聲與撞擊聲要能疊在動畫音之上，
  *    不然使用者一點按鈕就會把正在跑的氛圍音切斷。
  *
- * ⚠️ sfx01（2.11s）也不在組內，而它其實**夠長到會互相打斷**。這是個已知的缺口：
- *    2026-08-25 的 `efc4b81` 把 sfx01 的音檔由 0.27s 換成 2.11s（檔名沒變，
- *    見 sound-manifest），本段原本寫的「sfx01（0.4s）」因此失效。
- *    2026-08-26 把按鈕與撞擊改吃 sfx01Short 之後，sfx01 只剩三個段落級的呼叫端
- *    （紙飛機變身／小飛機進入橘色／議程箭頭），三者在捲動軸上彼此隔得很開，
- *    實務上撞不到 —— 故**維持現狀不入組**。
- *    要動它之前先確認：入組會讓這三聲去切斷正在跑的 2–3 秒動畫音，
- *    而那三個時機恰好都貼著動畫段（變身在論壇路徑上、進入橘色在覆蓋過場、
- *    箭頭在議程），切斷的機率比它們互相重疊高得多。
+ * sfx01（2.11s）於 2026-08-28 入組（設計師指定）。它的歷史是：2026-08-25 的
+ * `efc4b81` 把音檔由 0.27s 換成 2.11s（檔名沒變，見 sound-manifest），本段原本
+ * 寫的「sfx01（0.4s）」因此失效；同月 26／28 兩次改動把它的舊呼叫端全部換掉，
+ * 一度歸零；28 日再以兩個新時機重新啟用（見 MEDIA_BEAT_SFX 與 SYMBOL_TRANSITION
+ * 的 barSfxAt）。
+ *
+ * ⚠️ 入組的**已知代價**：hero 轉場的兩聲會互相切斷。起手音 aiFaceText（2.3s）在
+ *    transition 軌 p>0 響，sfx01 在 p≥0.32 響 —— 相距 0.32 × 120vh ＝ 38vh，
+ *    閱讀捲速下約 1.5s，短於 2.3s，所以 aiFaceText 每一次都會被切掉尾巴。
+ *    這是選擇的結果而不是缺陷：長條站定那一聲是設計師要的主音，該由它蓋過去。
+ *    不想切就把 sfx01 移出本組（兩支會改成疊著播），或把 barSfxAt 往後調。
+ *    另一個掛點（media 拍 1 結束）距前一支 aiFaceBg 約一個視窗高，正常捲速下播得完。
  */
 export const LONG_SFX_KEYS: readonly SoundKey[] = [
+  'sfx01',
   'aiFaceBg',
   'aiFaceText',
   'benedictionLine',
@@ -81,18 +85,33 @@ export function crossedForward(
 }
 
 /**
- * media 開場 motion 兩次「展開」各播哪一支（索引 0 ＝ 第一次、1 ＝ 第二次）。
+ * media 開場 motion 的三個音效拍，各播哪一支。
  *
- * 對應的兩拍見 useMediaIntroMotion：
- *   ① 'text'   —— 短棒縮成點、「智慧」「媒體」由中線滑開到中停
- *   ② 'quotes' —— 直線分裂成兩個引號、文字同拍撐開到定位
+ * 索引與 useMediaIntroMotion 交給 crossedForward 的 marks **一一對應**，順序即時序：
+ *   ⓪ 拍 1 結束 —— 橘色色塊左右收成 28px 直條，站在空白畫面中央
+ *   ① 'text'    —— 短棒縮成點、「智慧」「媒體」由中線滑開到中停
+ *   ② 'quotes'  —— 直線分裂成兩個引號、文字同拍撐開到定位
  *
- * ⚠️ null ＝ **音檔還沒到**。設計師（2026-08-26）指定了這兩個時機，但沒有附檔案，
- *    所以觸發點先接好、鑰匙留空 —— play 端遇到 null 直接跳過，不會有靜默的錯誤。
- *    檔案一到只要兩步：把檔丟進 public/sounds/ 並在 SOUND_MANIFEST 加一行，
+ * ⚠️ 改長度時兩邊要一起改。marks 多一個而本表沒跟上，那一拍會靜靜地不出聲
+ *    （play 端讀到 undefined 直接跳過），畫面上不會有任何東西壞掉喊出來。
+ *    長度由 test/sfx-cue.spec.ts 守著。
+ *
+ * ⓪ 用 sfx01：設計師 2026-08-28 附截圖指定（dashboard 位址讀作 blessing.outro.100%
+ *    —— 那是位址飽和的假象，media 不在 SEQUENCE 裡，整段 media motion 都讀成 100%；
+ *    真正的時刻由截圖裡那根 28px 橘色長條釘住，也就是拍 1 結束）。
+ *    同一支音也掛在 hero 轉場的黑色窄長條上（見 SYMBOL_TRANSITION 的 barSfxAt）——
+ *    兩處是同一個視覺母題的兩次出現：一根約 28px 寬的長條站在空白中央。
+ *
+ * ⚠️ ① ② 的 null ＝ **音檔還沒到**。設計師（2026-08-26）指定了這兩個時機，但沒有
+ *    附檔案，所以觸發點先接好、鑰匙留空 —— play 端遇到 null 直接跳過，不會有靜默的
+ *    錯誤。檔案一到只要兩步：把檔丟進 public/sounds/ 並在 SOUND_MANIFEST 加一行，
  *    再把這裡的 null 換成那個 key。**不要**拿 sfx01Short 之類的既有短音暫代：
  *    那是互動音，掛在這兩拍上會讓人以為音效已經定案。
  *
  * 型別綁 SoundKey → 打錯字或音效檔被移出清單時編譯期就報錯（同 FORUM_TURN_SFX 的理由）。
  */
-export const MEDIA_EXPAND_SFX: readonly (SoundKey | null)[] = [null, null];
+export const MEDIA_BEAT_SFX: readonly (SoundKey | null)[] = [
+  'sfx01',
+  null,
+  null,
+];

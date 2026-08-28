@@ -11,8 +11,21 @@
 // 清單與 public/sounds/ 的實際檔案由 test/sound-manifest.spec.ts 雙向對照 ——
 // 檔名打錯、或丟了檔卻忘了登記，都會被測試擋下來。
 export const SOUND_MANIFEST = {
-  /** 2.11s。剩三個呼叫端：紙飛機變身（ForumCorePath）、小飛機進入橘色（Blessing）、
-   *  議程箭頭換組（Agenda）—— 都是「一個段落級的事件」，撐得起 2 秒的音。
+  /** 2.11s：**窄長條站定**的那一聲。兩個呼叫端，都是同一個視覺母題的兩次出現 ——
+   *  一根約 28px 寬的長條站在空白畫面中央：
+   *    ・hero → symbol 轉場的黑色長條（HeroSymbolTransition，寬 ＝ CORE.dotSize 26px）
+   *    ・media 拍 1 結束的橘色長條（useMediaIntroMotion，寬 ＝ 28px）
+   *  兩處的門檻分別見 SYMBOL_TRANSITION.barSfxAt 與 ~/utils/sfx-cue 的 MEDIA_BEAT_SFX。
+   *
+   *  歷史（同一天內來回過，別被舊註解誤導）：2026-08-28 先依設計師指定把它原本三個
+   *  時機全數退掉（「小飛機進入橘色」→ aiFaceBg、「orange core 變身紙飛機」與
+   *  「議程箭頭換組」→ sfx01Short），一度沒有任何呼叫端；同日再以上面那兩個新時機
+   *  重新啟用，並加入 LONG_SFX_KEYS 互斥組。
+   *
+   *  ⚠️ 設計師 2026-08-28 交來的 `udn75_sfx_newmedia_text_open.aac` 與本檔
+   *     **是同一段音**（解成 PCM 後逐樣本相關 1.0、同為 101,376 個 48kHz 取樣）。
+   *     那支 aac 只是同音不同格式，確認後已刪、未登記進本清單 —— 記在這裡是為了
+   *     日後再收到同名檔時不必重驗一次。
    *
    *  ⚠️ 這支在 2026-08-25 的 `efc4b81` 被換過內容 —— **檔名沒變、音檔換了**：
    *  0.27s／96 kbps／3.2 KB → 2.11s／196 kbps／51 KB（ffprobe 實測）。
@@ -21,13 +34,18 @@ export const SOUND_MANIFEST = {
   sfx01: 'udn75_sfx01_01.mp3',
   /** 0.27s：`efc4b81` 之前的 sfx01，自 0.7.0 還原（blob cf7edb70）。
    *
-   *  **全站的互動音**：按鈕與連結的 hover／click（55 處）＋ orange core 的路徑撞擊
-   *  （FORUM_TURN_SFX）。選它而不是 sfx01 的理由是長度 —— 這兩類都是密集、可連發的
+   *  **全站唯一還在用的短音**：按鈕與連結的 hover／click（55 處）＋ orange core 的
+   *  路徑撞擊（FORUM_TURN_SFX）＋ orange core 變身紙飛機那一下＋議程箭頭換組
+   *  （後兩者 2026-08-28 由 sfx01 改來，設計師指定）。
+   *  變身與撞擊同支、時機緊鄰，聽感是連兩下而不是被切半截；議程箭頭則本來就會連發
+   *  （activeSlot 逐格追趕、刻意不節流），0.27s 正是它需要的長度。
+   *  選它而不是 sfx01 的理由是長度 —— 這幾類都是密集、可連發的
    *  事件（滑過一排 icon、快速捲過連續轉折），而 play() 對同一支是 currentTime 歸零
    *  重播（見 useSfx）：2.11s 的音會被下一次觸發從頭打斷，糊成一團；0.27s 每一下都
    *  播得完。 */
   sfx01Short: 'udn75_sfx01_01_short.mp3',
-  /** 2.8s：符號段粒子收攏（converge）。 */
+  /** 2.8s：符號段粒子收攏（converge）、小飛機進入橘色（Blessing）、
+   *  橘色遮罩轉場到新媒體（Blessing）—— 三處由設計師指定共用同一支。 */
   aiFaceBg: 'udn75_sfx_ai_face_bg.mp3',
   /** 2.3s：符號段的文字亂碼跳動與方塊遮罩轉場。 */
   aiFaceText: 'udn75_sfx_ai_face_text.mp3',

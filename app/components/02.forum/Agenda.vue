@@ -103,6 +103,9 @@ const activeSlot = ref(-1);
 // 不用 useSfxCue 的 cueOn：那支判的是布林上升緣，而這裡要的是「值變了就響」。
 // 也刻意**不節流** —— activeSlot 以 STEP_MS 一次走一格去追目標，快速捲動時
 // 會連發，但那個逐格追趕本來就是刻意設計成看得見的（見 STEP_MS 的說明）。
+// 2026-08-28 依設計師指定由 sfx01（2.11s）改成 sfx01Short（0.27s），這個「不節流」
+// 才真的成立：play() 對同一支是 currentTime 歸零重播（見 useSfx），2 秒的音在連發下
+// 每一下都被下一下打斷、糊成一團，0.27s 則每一下都播得完（同 sound-manifest 的說明）。
 //
 // 方向守衛（next <= prev 不響）：捲動音效一律前進觸發、倒退靜音（同 risingEdge
 // 的規則，見 ~/utils/sfx-cue 檔頭）。這支不是用 cueOn，得自己補這道閘門 ——
@@ -115,7 +118,7 @@ const activeSlot = ref(-1);
 watch(activeSlot, (next, prev) => {
   if (next <= prev) return;
   if (next < 0 || next >= groups.length) return;
-  play('sfx01');
+  play('sfx01Short');
 });
 
 // 各組的累積邊界（相對議程頂端）與議程頂端抵達視窗中央時的 scrollY。
