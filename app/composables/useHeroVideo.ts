@@ -88,11 +88,23 @@ export function useHeroVideo() {
   // —— 兩者都是「重新開始一趟」，下次順播要再看到完整的退場段。
   const outroSpent = useState('hero-outro-spent', () => false);
 
+  // 這一趟使用者有沒有**往下讀過至少一個視窗高**（scrollY ≥ vh(1)）。
+  // 「回到 page top 就重播」的前提（2026-08-28 使用者裁決）：沒有「去過」就沒有「回來」。
+  // 動機是 iPhone 無限重播 —— 退場播完解鎖、自動捲到引言的途中，Safari 導覽列收合會
+  // 讓捲動位置短暫回到 0，被判成「跨回頂端」→ restart → 播完又解鎖 → 又回 0…。
+  // 自動捲動的落點只有 vh(HERO_INTRO_READ_AT + …) ≈ 0.85vh，不可能武裝這面旗子；
+  // 帶 hash 進站的人落點都在 1vh 以下，一樣會武裝，設計師要的「捲回頂端就重看」照舊。
+  // 由 HeroVideo 的 foldST 設起、進 main（restart）時清掉。
+  const readPastFold = useState('hero-read-past-fold', () => false);
+
   const setState = (s: HeroState) => {
     if (s === 'gone') outroSpent.value = true;
     // 進 main ＝ 重新開始一趟（首訪、restart 重播都是）：退場的保護要跟著回來，
     // 否則重播播到退場那一刻不會再上鎖，捲太快照樣看不到（也就是這次改動的目的）。
-    if (s === 'main') outroWatched.value = false;
+    if (s === 'main') {
+      outroWatched.value = false;
+      readPastFold.value = false;
+    }
     state.value = s;
   };
 
@@ -108,12 +120,6 @@ export function useHeroVideo() {
   // 會先讀到一個很大的 p → 判 gone、把影片 seek 到退場段 → 下一 tick 被拉回又 seek 一次，
   // 使用者看到影片抽搐。故由 Hero.vue 在落點確定後才 arm。
   const scrubArmed = useState('hero-scrub-armed', () => false);
-
-  // 「退場播完 → 自動捲到引言」的 ScrollTo tween 正在跑（由 Hero.vue 的
-  // scrollToIntroReading 設起、tween 完成或被殺時清掉）。
-  // HeroVideo 的 applyDissolve 在這期間**不接受 returnedToTop**：那段捲動不是使用者的手，
-  // 途中任何 p 回到 0 的訊號（iOS 上的 ScrollTrigger.refresh / 橡皮筋）都不能算「回到頂端」。
-  const introAutoScrolling = useState('hero-intro-auto-scrolling', () => false);
 
   // 「不經 scrub 抵達 gone」發生過沒。
   // SKIP、影片載入失敗、帶 hash 進站都會在 scrollY 0 直接進 gone —— 此時 p 是 0，
@@ -215,11 +221,11 @@ export function useHeroVideo() {
     heroStarted,
     currentTime,
     scrubArmed,
-    introAutoScrolling,
     restartIntent,
     skipOpening,
     openingSkipped,
     outroSpent,
     outroWatched,
+    readPastFold,
   };
 }

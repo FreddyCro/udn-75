@@ -51,10 +51,10 @@ const {
   heroStarted,
   currentTime,
   scrubArmed,
-  introAutoScrolling,
   skipOpening,
   openingSkipped,
   outroSpent,
+  readPastFold,
   outroWatched,
 } = useHeroVideo();
 
@@ -383,6 +383,7 @@ watch(soundOn, (on) => {
 // ── 退場：sticky 保持影片在畫面上，這條 ST 只讀進度 ──────────────────
 // 不 pin（理由寫在 .sec1__hero 的 SCSS 註解：兩種 pinType 在這個 DOM 結構下都會抖）。
 let dissolveST: ScrollTrigger | null = null;
+let foldST: ScrollTrigger | null = null;
 // 上一次 applyDissolve 收到的 p：用來辨識「回捲跨過 DISSOLVE_LEAVE」那一刻（見下方）。
 let lastDissolveP = 0;
 
@@ -405,6 +406,19 @@ function buildDissolveST() {
     onLeave: () => applyDissolve(1),
     onLeaveBack: () => applyDissolve(0),
     onRefresh: (self) => applyDissolve(self.progress),
+  });
+  // 「往下讀過一個視窗高」的偵測（見 useHeroVideo 的 readPastFold）。獨立一支 ST 而不
+  // 併進 dissolveST：後者的 end 在 vh(0.6)，越過之後就沒有 onUpdate，量不到 1vh。
+  // onRefresh 也要看：帶 hash 進站的人是「落」在 1vh 以下，不是「捲」進去的，沒有 onEnter。
+  foldST = ScrollTrigger.create({
+    start: () => vhPx(1),
+    end: 'max',
+    onEnter: () => {
+      readPastFold.value = true;
+    },
+    onRefresh: (self) => {
+      if (self.isActive) readPastFold.value = true;
+    },
   });
 }
 
@@ -431,18 +445,12 @@ function applyDissolve(p: number) {
   //    在這裡把它清掉**，影片於是回到畫面上；同一刻 dissolveState 把狀態判成 main
   //    （restart），使用者看到的就是從 0s 開始的完整影片。
   //
-  // ⚠️ 2026-08-28（iPhone 無限重播）：跨越還要**是使用者捲的**才算。兩種不是的情形：
-  //   ① ScrollTrigger.isRefreshing —— refresh 途中 pinned trigger 的量測會 scrollTo(0) 再
-  //      還原，iOS 的 scroll 事件非同步派送，onRefresh／緊接的 onUpdate 可能拿到 p ＝ 0。
-  //      refresh 送來的 p 是量測值，不是行為；這裡照樣記進 lastDissolveP（下一次真正的
-  //      onUpdate 才不會又算成一次跨越），但不當事件。
-  //   ② introAutoScrolling —— 退場播完後那段自動捲到引言的 tween 正在跑，捲軸不在使用者手上。
-  //   解鎖時 body 的 overflow／padding-right 一變、Safari 工具列一收合，body 高度就變，
-  //   refreshOnContentResize 的 ResizeObserver 會排一次 refresh —— 正好落在 ② 期間。
-  //   狀態層另有 dissolveState 的 `outroSpent` 前提兜底（沒到過 gone 就沒有「回來」）。
-  const crossedTop = p < DISSOLVE_LEAVE && lastDissolveP >= DISSOLVE_LEAVE;
+  // ⚠️ 2026-08-28：還要 `readPastFold` —— 這一趟往下讀過至少 1vh 才有「回來」可言。
+  //    iPhone 上退場播完、自動捲到引言途中 Safari 導覽列收合會讓捲動位置短暫回到 0，
+  //    單看「跨越」會判成 restart → 重播 → 播完又解鎖 → 又回 0…**無限重播**。
+  //    自動捲動落點 ≈ 0.85vh，永遠武裝不了這面旗子；使用者得自己再往下讀才算。
   const returnedToTop =
-    crossedTop && !ScrollTrigger.isRefreshing && !introAutoScrolling.value;
+    p < DISSOLVE_LEAVE && lastDissolveP >= DISSOLVE_LEAVE && readPastFold.value;
   lastDissolveP = p;
   // 清掉後下方 alpha 才算得出 1（同一次呼叫內影片就淡回來，不必等下一個捲動事件）。
   if (returnedToTop && scrubArmed.value) openingSkipped.value = false;
@@ -474,14 +482,12 @@ function applyDissolve(p: number) {
   if (scrubArmed.value && !openingSkipped.value) {
     // 跨回頂端 ＝ 重新武裝：這一趟重播要再看到完整的退場段。
     // （設起的點在 setState('gone')，見 useHeroVideo 的 outroSpent。）
-    // ⚠️ 2026-08-28 起改排在 dissolveState **之後**：重播的前提正是「已交棒過」
-    //    （見 hero-dissolve 的 outroSpent 說明），得先讓它讀到 true 才判得出 main，
-    //    判成 main 之後再清掉、讓這一趟重播能再看到完整退場段。
+    // ⚠️ 必須排在 dissolveState 之前：那條「已交棒過就維持 gone」的規則會蓋掉重播。
+    if (returnedToTop) outroSpent.value = false;
     const next = dissolveState(p, heroState.value, {
       returnedToTop,
       outroSpent: outroSpent.value,
     });
-    if (returnedToTop && next === 'main') outroSpent.value = false;
     if (next !== heroState.value) setState(next);
   }
 
@@ -611,8 +617,9 @@ onBeforeUnmount(() => {
   heroIO = null;
   // kill(false)：換頁時舊頁還在畫面上淡出，revert 會把畫面打回起始態而被看見
   // （見 utils/scroll-trigger 的 killScrollTriggers）
-  killScrollTriggers(dissolveST);
+  killScrollTriggers(dissolveST, foldST);
   dissolveST = null;
+  foldST = null;
 });
 </script>
 

@@ -73,15 +73,7 @@ export function dissolveState(
   // 從子頁進站的人（落在 gone）再也看不到影片」——「回到頂端就把影片還給使用者」的
   // 機制本來就在（applyDissolve 會在同一刻清掉 openingSkipped），這裡只是把還的東西
   // 從 loop 段換成從 0s 的完整影片。
-  //
-  // ⚠️ 2026-08-28：加上 `outroSpent` 這道前提 ——「回來」的前提是「去過」（抵達過 gone）。
-  //    iPhone 上退場播完解鎖、自動捲到引言的途中（狀態仍是 outro、p < 1），
-  //    ScrollTrigger.refresh（pinned trigger 量測時會 scrollTo(0) 再還原，而 iOS 的
-  //    scroll 事件是非同步派送）或頂端橡皮筋會送來一次 p ＝ 0；單看「跨越」會把它判成
-  //    restart → 上鎖重播 → 播完又解鎖 → 又 refresh…**無限重播**。那一趟根本沒到過 gone。
-  //    帶 hash 進站 / SKIP / 自然播完全都經過 setState('gone') 而設起 outroSpent，
-  //    設計師要的「捲走的人回到頂端重看」不受影響。
-  if (returnedToTop && outroSpent) return 'main';
+  if (returnedToTop) return 'main';
   if (p >= 1) return 'gone';
   // 已交棒過就維持 gone：往回捲**不重播退場**（使用者裁決「回捲不要看到 outro」）。
   // 影片此時停在 frame 0（進 gone 時就 seek 回去了），故舞台淡回畫面上顯示的是第一幀。

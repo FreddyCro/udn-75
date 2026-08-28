@@ -179,7 +179,6 @@ const {
   restartOpening,
   skipOpening,
   scrubArmed,
-  introAutoScrolling,
   outroWatched,
   restartIntent,
 } = useHeroVideo();
@@ -518,20 +517,11 @@ function scrollToIntroReading() {
     window.scrollTo({ top: target, behavior: 'auto' });
     return;
   }
-  // introAutoScrolling：讓 HeroVideo 的 applyDissolve 知道這段捲動不是使用者的手
-  // （iOS 上途中的 ScrollTrigger.refresh 會送 p ＝ 0，不能算「回到頂端」而觸發重播）。
-  // onInterrupt 涵蓋 autoKill（使用者一動）與所有 kill() 呼叫點，故不必在各處手動清。
-  const endAutoScroll = () => {
-    introAutoScrolling.value = false;
-  };
-  introAutoScrolling.value = true;
   introScrollTween = gsap.to(window, {
     scrollTo: { y: target, autoKill: true },
     duration: HERO_INTRO_AUTO_SCROLL.duration,
     ease: HERO_INTRO_AUTO_SCROLL.ease,
     overwrite: 'auto',
-    onComplete: endAutoScroll,
-    onInterrupt: endAutoScroll,
   });
 }
 

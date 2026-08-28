@@ -46,24 +46,12 @@ describe('dissolveState', () => {
     // 動機：帶 hash 從子頁進站的人落在 gone，等於再也看不到影片。回到頂端把影片
     // 還給他們的機制本來就在（applyDissolve 會在同一刻清掉 openingSkipped），
     // 這裡只是把還的東西換成「從 0s 的完整影片」。
-    //
-    // 2026-08-28：重播**必須**已交棒過（outroSpent）—— 「回來」的前提是「去過」。
-    // 帶 hash 進站、SKIP、自然播完都經過 setState('gone') 而設起 outroSpent，故都算。
+    expect(dissolveState(0, 'gone', { returnedToTop: true })).toBe('main');
+    expect(dissolveState(0, 'outro', { returnedToTop: true })).toBe('main');
+    // 已交棒過（outroSpent）也不影響：重播優先。
     expect(
       dissolveState(0, 'gone', { returnedToTop: true, outroSpent: true }),
     ).toBe('main');
-    expect(
-      dissolveState(0, 'outro', { returnedToTop: true, outroSpent: true }),
-    ).toBe('main');
-  });
-
-  it('還沒交棒過就「跨回」頂端不算重播 —— iOS 無限重播的修法', () => {
-    // 退場播完解鎖、自動捲到引言的途中（狀態仍是 outro、p < 1），iOS 上
-    // ScrollTrigger.refresh（pin 量測會 scrollTo(0) 再還原）或頂端橡皮筋會送來一次
-    // p ＝ 0，被判成 returnedToTop → main → 重播 → 播完又解鎖 → 又 refresh…無限迴圈。
-    // 那一趟根本沒抵達過 gone，沒有「回來」可言。
-    expect(dissolveState(0, 'outro', { returnedToTop: true })).toBe('outro');
-    expect(dissolveState(0, 'gone', { returnedToTop: true })).toBe('gone');
   });
 
   it('**停在**頂端不算重播 —— 這是順播不會無限重播的關鍵', () => {
