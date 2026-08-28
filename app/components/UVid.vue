@@ -66,6 +66,15 @@ interface Props {
   preload?: string;
   classname?: string;
   ariaLabel?: string;
+  /**
+   * pc 素材的下界（含）。不傳 ＝ 沿用 ~/utils/get-device 的預設 1024。
+   *
+   * 為什麼要能覆寫：**素材的界線由那組影片當初照什麼尺寸剪的決定**，不是全站一個數字。
+   * hero 影片是照 768 / 1024 剪的（見 HeroVideo.vue），子頁引言媒體要與版型的 pc 斷點
+   * 對齊 ⇒ 傳 PC_BREAKPOINTS（1280）、pad 涵蓋 768–1279（見 SubpageIntroMedia）。
+   * ⚠️ 只動 pad/pc 的分界，mob 的 767 界線不受影響。
+   */
+  pcFrom?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -108,8 +117,11 @@ watch(
 );
 
 function onResize() {
-  deviceType.value = getDeviceTypeByResolution();
+  deviceType.value = getDeviceTypeByResolution(props.pcFrom);
 }
+
+// pcFrom 改變（RWD 用不到，但父層可以是 computed）時要重新解一次，否則會沿用舊界線。
+watch(() => props.pcFrom, onResize);
 
 onMounted(() => {
   onResize();

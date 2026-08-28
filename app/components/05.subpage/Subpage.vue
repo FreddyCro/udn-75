@@ -13,9 +13,11 @@ import {
 import { TABLET_BREAKPOINTS } from '@/utils/constants';
 import {
   HIDE_Y,
+  MEDIA_ONLY_PIN_VH,
   blockState,
   deferredStopStillApplies,
   mediaFadeAlpha,
+  shouldRunMediaPin,
   shouldRunStage,
   stageBeats,
   stageLines,
@@ -166,6 +168,30 @@ const flowLayout = ref(false);
  */
 const mediaActive = ref(true);
 
+/**
+ * 手機版：滿版媒體單獨 pin 了嗎（見 subpage-stage-beats 的 shouldRunMediaPin）。
+ *
+ * ⚠️ 與 stagePinned／flowLayout **三面旗子各管各的**，不要合併：
+ *   ・`stagePinned` 仍恆為 false —— 這條路徑沒有三拍舞台，hero／引言照文件流滑過。
+ *   ・`flowLayout` 仍恆為 true —— hero／引言的 GA section_view 還是走 template 的
+ *     v-ga-view（IntersectionObserver）。合併旗子會把那兩個上報點整組換掉，而
+ *     這次改動的範圍是「只改手機的媒體」。
+ *
+ * 唯一的消費端是 `.subpage__media--pinned`（抬過 header／錨點列的疊層，見 SCSS）。
+ * ⚠️ 那條疊層**非得由本旗子把關、不能只用斷點**：手機 ＋ reduced-motion 走不到
+ *    shouldRunMediaPin（無障礙否決），那時媒體沒有被 pin —— 若還抬著 1100，照片捲過
+ *    頂條時頂條與錨點列會消失一屏，而且沒有「停在原地蓋住」這件事來合理化它。
+ *    有 pin 才有資格蓋，這面旗子就是「有沒有 pin」。
+ */
+const mediaPinned = ref(false);
+
+// 手機版媒體 pin 的距離要用 vhPx 而非 window.innerHeight：後者在行動裝置上隨網址列
+// 收合而變，而 `.subpage__media` 的高是 SCSS 的 vh(1) ＝ **凍結的** --vh。兩邊必須同一把
+// 尺，否則 pin 距離與那一屏的版型會差一個 --chrome-inset（同 Hero 的 end: vhPx(...)）。
+// ⚠️ 在 setup 頂層取，不能搬進 setupMediaPin —— 它內部是 useState，在 await 之後呼叫
+//    會丟失 Nuxt instance context。
+const { vhPx } = useViewportHeight();
+
 // hero 進場：由下往上、透明度 0→100%，0.8s（藝術字已內嵌，可放心拉長不怕素材遲到）
 const REVEAL = { autoAlpha: 0, y: 200, duration: 0.8, ease: 'power2.out' };
 
@@ -230,6 +256,38 @@ function makeFade(targets: HTMLElement[], { shift = true } = {}) {
   return { show, hide, reveal };
 }
 
+/**
+ * 手機版：滿版媒體單獨 pin MEDIA_ONLY_PIN_VH 屏。hero／引言完全不碰 —— 它們照文件流
+ * 滑過，這支只認 mediaRef。
+ *
+ * ⚠️ **沒有任何淡入淡出**（2026-08-28 設計師追加：「pin 住前後都維持 opacity 1」）。
+ *    所以這支不寫 autoAlpha、不碰 mediaActive、也不需要 onUpdate／onRefresh ——
+ *    整段 pin 期間畫面上唯一的變化是輪播自己（由 SubpageIntroMedia 的 IO 播放閘管，
+ *    滿屏 pin 期間恆在視窗內）。剩下的就只是「釘住」這一件事。
+ *    ⇒ 也沒有內文上拉：理由見 subpage-stage-beats 那段與下方 SCSS。
+ */
+async function setupMediaPin() {
+  const media = mediaRef.value;
+  if (!media) return; // 該頁沒有 introMedia（v-if 沒渲染）→ 沒有可 pin 的東西
+
+  mediaPinned.value = true;
+  await nextTick(); // 等 class 套完再建 trigger（同 stagePinned 的理由）
+
+  triggers.push(
+    ScrollTrigger.create({
+      trigger: media,
+      start: 'top top',
+      end: () => `+=${vhPx(MEDIA_ONLY_PIN_VH)}`,
+      pin: true,
+      anticipatePin: 1,
+    }),
+  );
+
+  // pin-spacer 此刻才插進 DOM ⇒ 立即全體重算，讓內文各 pin 以最終版面取得起點
+  // （同舞台那條的理由，sort 保證由上到下）。
+  refreshScrollTriggers();
+}
+
 onMounted(async () => {
   gsap.registerPlugin(ScrollTrigger);
 
@@ -245,16 +303,21 @@ onMounted(async () => {
   // ⚠️ **只在載入時判斷，不監聽 resize**：沿用 pages/subpage.vue 的 pad/pc 導回所立的
   //    同一個決策 —— 把讀到一半的人因為縮視窗就換一套版型（還要重建六份 pin），
   //    比版型在轉向後不完美更糟。
-  if (
-    !shouldRunStage({
-      reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)')
-        .matches,
-      narrow: window.matchMedia(
-        `(max-width: ${TABLET_BREAKPOINTS - 0.02}px)`,
-      ).matches,
-    })
-  ) {
+  // 兩條路徑共用**同一次**量測結果：各自再查一次 media query 的話，兩者有機會在斷點
+  // 邊界各自得到不同答案（同一個引擎但兩次呼叫之間視窗可能剛好被拖過邊界）⇒
+  // 「舞台不跑、媒體 pin 也不跑」或「兩條都跑」。
+  const reducedMotion = window.matchMedia(
+    '(prefers-reduced-motion: reduce)',
+  ).matches;
+  const narrow = window.matchMedia(
+    `(max-width: ${TABLET_BREAKPOINTS - 0.02}px)`,
+  ).matches;
+
+  if (!shouldRunStage({ reducedMotion, narrow })) {
     flowLayout.value = true;
+    // 手機版：hero／引言維持 flow，但滿版媒體要單獨定住（見 shouldRunMediaPin）。
+    // reduced-motion 的寬螢幕走不到這裡面 —— 那條真值表只認窄螢幕。
+    if (shouldRunMediaPin({ reducedMotion, narrow })) await setupMediaPin();
     return;
   }
 
@@ -496,6 +559,8 @@ onBeforeUnmount(() => {
   //    一開始就呼叫 beforeUnmount），而 `--pinned` 與 `--under-stage` 是 Vue 旗子驅動的、
   //    不會跟著消失 —— 佔位沒了、`margin-top: vh(-0.65)` 的上拉還在，內文就整段跳到
   //    0.35 屏處疊在 hero 上（實測 1446×1155：contentTop 3933 → 468，16 幀全程可見）。
+  //    手機版的媒體 pin-spacer 吃同一個保護（那邊沒有上拉，只差佔位被拔掉這一項：
+  //    佔位一消失，還沒淡出的舊頁會看到照片與內文同時往上跳兩屏）。
   killScrollTriggers(...triggers);
   triggers = [];
   tweens.forEach((t) => t.kill());
@@ -578,7 +643,12 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="introMedia" ref="mediaRef" class="subpage__media">
+      <div
+        v-if="introMedia"
+        ref="mediaRef"
+        class="subpage__media"
+        :class="{ 'subpage__media--pinned': mediaPinned }"
+      >
         <SubpageIntroMedia
           fill
           :active="mediaActive"
@@ -839,6 +909,46 @@ onBeforeUnmount(() => {
 .subpage__media {
   height: vh(1);
 }
+
+// ── 手機版：滿版媒體單獨釘住那一段（2026-08-28）──────────────────────────────
+// 設計師改口要「定住」＝ 推翻上面那句設計稿的「一樣滾動離開」。只有這一項改，
+// hero／引言仍走 flow（見 subpage-stage-beats 的 shouldRunMediaPin）。
+//
+// 疊層：設計師要求滿版媒體在手機上**恆在** header（1000）與子頁錨點列（960）之上
+// （2026-08-28「改回在 header 和子頁錨點之上」）。故這裡沒有「只在釘住那段才抬」的
+// 狀態閘 —— pin 前、pin 中、pin 後一路抬著。
+//
+// ⚠️ 已知且**經設計師指名要求**的代價：pin 之前媒體還在文件流裡往上捲一整屏，那段期間
+//    頂條與底部錨點列會被蓋掉。SubpageIntroMedia 把 `--fill` 的 1100 關在
+//    `rwd-min('tablet')` 內原本正是為了避免這件事（見該處註解）—— 現在這是要的行為。
+//    ⇒ 那條規則**仍然不動**（它管 ≥768），改的是本檔這一條。兩處要一起看。
+// ⚠️ 抬的是 `.subpage__media` 自己，**不是**裡層 `.intro-media--fill` 那個 z-index: 1100：
+//    pin 期間本元素是 position: fixed ⇒ 自成疊層脈絡，裡面再高也出不去
+//    （SubpageIntroMedia 第 315 行記著同一件事，那也是桌機為什麼抬整個舞台而非媒體）。
+//    所以「改回抬過 header」只能在這一層做，改 SubpageIntroMedia 沒有用。
+// ⚠️ 掛在 `--pinned`（＝ 有 pin）而不是只看斷點：手機 ＋ reduced-motion 沒有 pin，
+//    那時不該蓋 —— 完整理由見 script 側 mediaPinned 的宣告處。
+// ⚠️ 再包一層 rwd-max('tablet') 是**不動桌機**的保險：≥768 的疊層由
+//    `.subpage__stage--media` 抬整個舞台負責（見上方），這裡插一個 z-index 會在媒體上
+//    多開一個疊層脈絡。目前旗子只在窄螢幕為真，故這層是防未來、不是必要條件。
+// ⚠️ pointer-events: none 是 z-index 的配套：這一屏蓋住頂條與底部錨點列，不放行就全部
+//    點不到。本區塊沒有可互動元素，整層放行不犧牲功能；捲動不受 pointer-events 影響。
+//    在 pin 期間它是保險（媒體住在 pin-spacer 裡，`:deep(.pin-spacer)` 已經給了 none），
+//    但 pin **之外**那兩段就是唯一來源 —— 而那正是這次擴大範圍後新增的部分。
+.subpage__media--pinned {
+  @include rwd-max('tablet') {
+    z-index: 1100;
+    pointer-events: none;
+  }
+}
+
+// ⚠️ 手機版**刻意沒有**桌機那種 `--under-stage` 上拉。初版有（照抄桌機），在設計師追加
+//    「pin 住前後都維持 opacity 1」之後拿掉 —— 那條上拉存在的唯一理由是「照片淡掉時
+//    內文已經在後面接著」；沒有淡出還拉的話，不透明的照片會直接壓在內文上，等於把
+//    文章的前 0.65 屏藏在照片底下。
+//    拿掉之後 unpin 那一刻照片正好填滿視窗、內文接在它下緣 ⇒ 照片往上捲走、內文跟著
+//    升上來，就是設計稿原本那句「一樣滾動離開」，中間也不會空一屏。
+//    ⇒ 哪天要把淡出加回來，這條上拉必須跟著回來，兩者是一組的。
 
 .subpage__hero {
   position: relative;

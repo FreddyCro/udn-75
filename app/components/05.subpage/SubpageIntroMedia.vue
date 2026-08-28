@@ -29,6 +29,8 @@
  *     }"
  *   />
  */
+import { PC_BREAKPOINTS } from '@/utils/constants';
+
 /** Ken Burns 位移種類；未指定時依張數循環套用（見 DEFAULT_EFFECTS） */
 export type IntroMediaEffect = 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'none';
 
@@ -234,6 +236,15 @@ onBeforeUnmount(() => {
   >
     <div class="intro-media__viewport">
       <!-- 影片模式：單支影片填滿 16:9 框 -->
+      <!--
+        pc-from：pc 素材從 1280 起（＝ PC_BREAKPOINTS，與版型的 pc 斷點同一個數字），
+        故 pad 涵蓋 768–1279。
+        ⚠️ UVid 不傳這個時預設 1024（hero 影片的三支變體是照那條線剪的，見 get-device）
+           —— 那條界線與本區塊的版型不一致：768–1279 明明還在 pad 版型裡，卻會去抓 pc 那支
+           1920×1080 的影片（比 pad 版大 1.5 倍的檔）。這裡對齊之後兩者同一把尺。
+        ⚠️ 傳的是常數不是字面值 1280：SCSS 的 $breakpoints('pc') 也是 PC_BREAKPOINTS，
+           兩邊由同一個來源出，不會有一天只改到一邊。
+      -->
       <UVid
         v-if="isVideo && video"
         :src="video.src"
@@ -241,6 +252,7 @@ onBeforeUnmount(() => {
         classname="intro-media__video"
         :aria-label="video.ariaLabel"
         :autoplay="isInPlay"
+        :pc-from="PC_BREAKPOINTS"
         preload="metadata"
       />
 

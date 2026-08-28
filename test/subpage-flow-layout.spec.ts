@@ -123,3 +123,74 @@ describe('手機版的滿版媒體不蓋 header／底部錨點列', () => {
     expect(tablet).toMatch(/pointer-events:\s*none/);
   });
 });
+
+// ── 手機版媒體單獨 pin（2026-08-28）──────────────────────────────────────────
+// 設計師改口要「定住」。上面那一組的**前提因此改了一半**：手機版的滿版媒體現在確實會
+// 蓋掉 header —— 但只在真的釘住那一屏。這一組與上面那組必須一起讀（SubpageIntroMedia
+// 的註解說的「兩處要一起看」現在是三處）。
+describe('手機版媒體單獨 pin 時才蓋 header', () => {
+  const code = stripComments(read('app/components/05.subpage/Subpage.vue'));
+
+  /**
+   * 設計師指名要求「恆在 header 和子頁錨點之上」（2026-08-28），所以這裡**沒有**
+   * 「只在釘住那段才抬」的狀態閘，pin 前後都抬著。
+   *
+   * ⚠️ 但它必須掛在 `--pinned`（＝ 有 pin）上，**不能只看斷點**：手機 ＋ reduced-motion
+   *    走不到 shouldRunMediaPin（無障礙否決），那時媒體沒被 pin —— 若還抬著 1100，
+   *    照片捲過頂條時 header（1000）與底部錨點列（960）會消失一屏，而且沒有
+   *    「停在原地蓋住」這件事來合理化它。這是**靜默**的錯，值得一支測試。
+   */
+  it('疊層掛在 --pinned（有 pin 才蓋），不是只看斷點', () => {
+    const pinned =
+      code.match(/\.subpage__media--pinned \{[\s\S]*?\n\}/)?.[0] ?? '';
+    expect(pinned, '找不到 .subpage__media--pinned 規則').not.toBe('');
+    expect(pinned).toMatch(/z-index:\s*1100/);
+    expect(pinned).toMatch(/pointer-events:\s*none/); // 抬過 header 的配套
+    // 桌機保險：≥768 的疊層由 .subpage__stage--media 負責，這裡不該生效
+    expect(pinned).toMatch(/@include rwd-max\('tablet'\)/);
+    // class 由旗子驅動，且旗子只在 shouldRunMediaPin 成立時被寫入
+    expect(code).toMatch(/'subpage__media--pinned':\s*mediaPinned/);
+    // 沒有裸的 `.subpage__media { z-index }` —— 那會連 reduced-motion 也蓋
+    const base = code.match(/\n\.subpage__media \{[\s\S]*?\n\}/)?.[0] ?? '';
+    expect(base).not.toMatch(/z-index/);
+  });
+
+  /**
+   * 沒有淡出（設計師追加：pin 前後都維持 opacity 1）⇒ **也不能有內文上拉**。
+   * 上拉存在的唯一理由是「照片淡掉時內文已經在後面接著」；沒有淡出還拉的話，
+   * 不透明的照片會直接壓住文章的前 0.65 屏。兩者是一組的，加回來也要一起。
+   */
+  it('沒有淡出，所以也沒有內文上拉（兩者是一組）', () => {
+    expect(code).not.toMatch(/under-media/);
+    // 手機路徑不寫 autoAlpha —— 唯一的 mediaFadeAlpha 呼叫屬於桌機第三拍
+    expect(code.match(/mediaFadeAlpha\(/g) ?? []).toHaveLength(1);
+    // 桌機那條上拉仍在（這次改動不碰桌機）
+    expect(code).toMatch(
+      /\.subpage__content--under-stage \{\s*margin-top:\s*vh\(-0\.65\)/,
+    );
+  });
+
+  /**
+   * 抬的必須是 `.subpage__media` 自己。pin 期間它是 position: fixed ⇒ 自成疊層脈絡，
+   * 裡層 `.intro-media--fill` 的 1100 出不去（SubpageIntroMedia 記著同一件事，那也是
+   * 桌機為什麼抬整個舞台而非媒體）。所以 SubpageIntroMedia 一行都不該被改到。
+   */
+  it('抬的是 .subpage__media 自己，SubpageIntroMedia 不必改', () => {
+    const media = stripComments(
+      read('app/components/05.subpage/SubpageIntroMedia.vue'),
+    );
+    expect(media).not.toMatch(/subpage__media--pinned/);
+  });
+
+  /**
+   * 兩條路徑共用同一次 matchMedia 量測。各自再查一次的話，兩者有機會在斷點邊界
+   * 得到不同答案 ⇒「舞台不跑、媒體 pin 也不跑」或「兩條都跑」。
+   */
+  it('shouldRunStage 與 shouldRunMediaPin 吃同一組量測值，不各查一次 media query', () => {
+    // 整份元件只允許出現兩次 matchMedia（reduced-motion 與 max-width 各一次）
+    const calls = code.match(/matchMedia\(/g) ?? [];
+    expect(calls.length).toBe(2);
+    expect(code).toMatch(/shouldRunStage\(\{\s*reducedMotion,\s*narrow\s*\}\)/);
+    expect(code).toMatch(/shouldRunMediaPin\(\{\s*reducedMotion,\s*narrow\s*\}\)/);
+  });
+});
