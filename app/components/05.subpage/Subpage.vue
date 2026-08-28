@@ -10,11 +10,13 @@ import {
   killScrollTriggers,
   refreshScrollTriggers,
 } from '@/utils/scroll-trigger';
+import { TABLET_BREAKPOINTS } from '@/utils/constants';
 import {
   HIDE_Y,
   blockState,
   deferredStopStillApplies,
   mediaFadeAlpha,
+  shouldRunStage,
   stageBeats,
   stageLines,
   type StageBlockState,
@@ -141,9 +143,21 @@ const mediaRef = ref<HTMLElement | null>(null);
 
 /**
  * 舞台是否啟用 pin 模式（hero／引言／媒體疊在同一屏）。
- * SSR／no-JS／reduced-motion 維持 false：各塊照文件流各佔一屏、全程可見，不疊不藏。
+ * SSR／no-JS／reduced-motion／<768 維持 false：各塊照文件流依序滑過，不疊不藏。
  */
 const stagePinned = ref(false);
+
+/**
+ * flow 版型已確認（手機版／reduced-motion／no-JS 之外的降級）。
+ *
+ * ⚠️ 這**不是** `!stagePinned`：SSR 與 hydration 當下兩者都是 false ——「還不知道要走哪條」。
+ *    mount 之後才恰有一個為 true。分成兩面旗子是為了 GA（見 template 的 v-ga-view）：
+ *    section_view 在 flow 版型改由 IntersectionObserver 回報，而「還沒決定」的那一刻
+ *    絕對不能先掛上去 —— IO 的首次回呼是非同步的，若以 `!stagePinned` 當條件，pin 版型
+ *    在 mount 到 stagePinned 寫入之間會有一個窗口把元素註冊進 IO，之後屬性雖被移除但
+ *    元素仍在觀測中，`{slug}_keyvisual_lower` 就可能在使用者還沒捲到引言時先報出去。
+ */
+const flowLayout = ref(false);
 
 /**
  * 第三拍的媒體是否「輪到它演」。pin 模式下它整段都在視窗內、只是靠透明度藏著，
@@ -219,9 +233,30 @@ function makeFade(targets: HTMLElement[], { shift = true } = {}) {
 onMounted(async () => {
   gsap.registerPlugin(ScrollTrigger);
 
-  // 降級：不 pin、不藏內容，三塊照文件流各佔一屏全程可見 —— 什麼都不用接。
+  // flow 版型（手機版／reduced-motion）：不 pin、不藏內容，三塊照文件流依序滑過 ——
+  // 什麼都不用接，GA 交給 template 的 v-ga-view。
   // （原本這裡有一條只為錨點顯隱而存在的 trigger，錨點改成全程顯示後就不需要了。）
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  //
+  // ⚠️ 斷點判定用 matchMedia 而**不是** window.innerWidth：innerWidth 含傳統捲軸寬、
+  //    CSS media query 不含 ⇒ 兩者在邊界有 1～15px 的不一致區間，那個區間裡 JS 會建 pin
+  //    而 CSS 已套 flow 版型（`.subpage__intro` 的分界寫在 rwd-min('tablet')），直接破版。
+  //    matchMedia 與 SCSS 走同一個引擎、同一個數字（TABLET_BREAKPOINTS，對帳測試見
+  //    test/subpage-flow-layout.spec.ts）。0.02 的減量與 mixins.scss 的 rwd-max 一致。
+  // ⚠️ **只在載入時判斷，不監聽 resize**：沿用 pages/subpage.vue 的 pad/pc 導回所立的
+  //    同一個決策 —— 把讀到一半的人因為縮視窗就換一套版型（還要重建六份 pin），
+  //    比版型在轉向後不完美更糟。
+  if (
+    !shouldRunStage({
+      reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)')
+        .matches,
+      narrow: window.matchMedia(
+        `(max-width: ${TABLET_BREAKPOINTS - 0.02}px)`,
+      ).matches,
+    })
+  ) {
+    flowLayout.value = true;
+    return;
+  }
 
   // 切到 pin 版型（引言改為疊在 hero 上的同屏 overlay），等 DOM 套完再量測
   stagePinned.value = true;
@@ -480,7 +515,17 @@ onBeforeUnmount(() => {
       }"
     >
       <header ref="heroRef" class="subpage__hero">
-        <div ref="heroInnerRef" class="subpage__col--hero subpage__hero-inner">
+        <!-- GA section_view：flow 版型才掛 IO（v-ga-view）。pin 版型不能用 IO ——
+             hero 與引言都住在被 pin 的舞台裡、釘住期間恆在視窗內，IO 會在舞台一接手時
+             就同時判定兩者都看到了；那條路徑改由進度線在 applyStage() 裡報。
+             ⚠️ 條件是 flowLayout 而不是 !stagePinned，理由見 flowLayout 的宣告處。 -->
+        <div
+          ref="heroInnerRef"
+          v-ga-view="
+            flowLayout ? `${content.slug}_keyvisual_upper` : undefined
+          "
+          class="subpage__col--hero subpage__hero-inner"
+        >
           <!-- 文字組與 KV 圖拆成兩個 flex 子項，間距由 gap 直接標稿值（48/80/120）。
                ⚠️ 六頁要疊得起來（用右側 rail 切頁時 KV 不上下跳）的前提是**文字組總高
                   六頁一致** —— 而主／副標是 inline SVG，高度得由 CSS 的字帶比例定死，
@@ -517,7 +562,14 @@ onBeforeUnmount(() => {
       </header>
 
       <div class="subpage__intro">
-        <div ref="introInnerRef" class="subpage__col subpage__col--wide">
+        <!-- GA：同 hero，理由見上 -->
+        <div
+          ref="introInnerRef"
+          v-ga-view="
+            flowLayout ? `${content.slug}_keyvisual_lower` : undefined
+          "
+          class="subpage__col subpage__col--wide"
+        >
           <p
             class="subpage__intro-text"
             :class="{ 'subpage__intro-text--br-tablet': content.introBreakFrom === 'tablet' }"
@@ -683,9 +735,11 @@ onBeforeUnmount(() => {
   }
 }
 
-// hero＋引言舞台。預設（SSR／no-JS／reduced-motion）為文件流，兩塊各佔一屏、全程可見；
-// --pinned（JS 啟用動畫後）收成一屏，hero 與引言改為絕對定位疊在同層，
-// 由 ScrollTrigger pin 住、滾動進度觸發兩者交接（見 script 的 onUpdate）。
+// hero＋引言舞台。預設（SSR／no-JS／reduced-motion／**<768 手機版**）為文件流，三塊依序
+// 各佔自己的高度、全程可見；--pinned（≥768 啟用動畫後）收成一屏，hero 與引言改為絕對定位
+// 疊在同層，由 ScrollTrigger pin 住、滾動進度觸發兩者交接（見 script 的 onUpdate）。
+// ⚠️ 手機版走文件流之後，本區塊的所有規則（含下方 --media 的 z-index 與 in-app 瀏覽器的
+//    --chrome-overscan 補丁）在 <768 一律不生效 —— 那些症狀的前提是「有 pin」。
 .subpage__stage--pinned {
   position: relative;
   height: vh(1);
@@ -773,6 +827,15 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+// 滿版引言媒體恆為一屏高 —— **兩種版型都是**。手機版 flow 只拿掉動態（淡入／scrub 淡出），
+// 沒有拿掉「定住一屏」的版型（設計稿：「滿版圖和影片還是要定住一屏，影片退場淡出動態刪除，
+// 一樣滾動離開」）。所以這條不分斷點。
+//
+// ⚠️ 手機版的滿版媒體**不蓋** header 與底部錨點列：SubpageIntroMedia 的
+//    `.intro-media--fill` 那組 `z-index: 1100` ＋ `pointer-events: none` 已關在
+//    `rwd-min('tablet')` 內。少了那道，flow 版型（<768 沒有 pin ⇒ 一路到 body 都沒有
+//    疊層脈絡把 1100 關住）會變成「照片捲過頂條時頂條與錨點列消失約一屏」——
+//    那是 pin 版型「停在原地蓋住」的語彙，捲動經過時讀起來只是閃一下。兩處要一起看。
 .subpage__media {
   height: vh(1);
 }
@@ -919,22 +982,29 @@ onBeforeUnmount(() => {
   }
 }
 
-// 引言滿版一屏（pin 模式時 = 舞台那一屏）：mob/pad 垂直置中 —— 但置中的是
-// 「扣掉 fixed header 之後」的剩餘區域（上 padding 多加一個 --header-height，
-// flex 置中的內容區就從 header 下緣起算），不是整個視窗；
+// 引言。**兩種版型的分界就在這個 class**（見 script 的 shouldRunStage 註解）：
+//
+// <768（手機版 flow，設計稿 分頁_414mob）：**不定住一屏、不垂直置中** —— 照文件流接在
+// 首屏後面直接下滾。上 16／下 64 是稿值。
+// ⚠️ 這裡**不加 --header-height**（≥768 那檔有）：加它的理由是「垂直置中的是扣掉 fixed
+//    header 之後的剩餘區域」，而 flow 下引言根本不從視窗頂端起算，也沒有置中要修正 ——
+//    照加就是在引言上方憑空多出一個 header 高的空隙。
+//
+// ≥768：仍是 pin 舞台的一層，滿版一屏、垂直置中（置中的是扣掉 fixed header 之後的剩餘
+// 區域，上 padding 多加一個 --header-height，flex 置中的內容區就從 header 下緣起算）。
+// 96px 是內容超過一屏時（放大字級）的最小留白：自然撐高，不裁切（pin 模式改由 overflow 裁）。
 // pc 對稿不置中，改「靠下 + vh 等比底距」（80/720 = 120/1080，pc 與 ultra 同比例），
 // 底距跟著視窗高度縮放，視窗高度離開 720/1080 也不失準。
+//
 // 本層沒有背景（透明），故右側 rail（SubpageAnchor，全程顯示）從它底下透出來，
 // 不需要在這裡排 z-index —— 會蓋住 rail 的只有滿屏引言媒體那一拍。
 .subpage__intro {
-  display: flex;
-  align-items: center;
-  min-height: vh(1);
-  // 56px／96px 是內容超過一屏時（窄機／放大字級）的最小留白：自然撐高，不裁切
-  //（pin 模式改由 overflow 裁）
-  padding: calc(56px + var(--header-height)) 0 56px;
+  padding: 16px 0 64px;
 
   @include rwd-min('tablet') {
+    display: flex;
+    align-items: center;
+    min-height: vh(1);
     padding: calc(96px + var(--header-height)) 0 96px;
   }
   @include rwd-min('pc') {
@@ -945,20 +1015,22 @@ onBeforeUnmount(() => {
 
 .subpage__intro-text {
   margin: 0;
-  font-size: 22px;
-  line-height: 40px;
+  // <768 走 24/44（稿：分頁_414mob 的文字框 362×396 ÷ news 的 9 行 = 行高 44）。
+  //
+  // 沿革：這裡曾是 22/40，且另有一條 `rwd-max(376px)` 把字級壓到 18/32 隨 vw 等比 ——
+  // 那條的存在理由是「引言層只有一屏高（pin 舞台 overflow 裁切），底部又有 60px 錨點列」，
+  // 最長的 health 引言在 375×667 用 22/40 要 14 行、560px，尾段會被錨點列蓋住。
+  // 手機版改走 flow 之後引言**自然撐高、不再被裁**（`.subpage__intro` 已無 min-height／
+  // overflow），那條的前提整個消失，故連同它一起刪掉。
+  // ⚠️ 這個「<768 一定不 pin」是硬不變式，靠兩件事成立：① script 的 shouldRunStage 閘門；
+  //    ② /subpage 連續閱讀頁在 ≥768 會導回獨立子頁。要把 pin 放回 <768 的話，先把上面
+  //    那條裁切限制想清楚 —— 沒有它，最長的引言會被靜默截掉尾段。
+  font-size: 24px;
+  line-height: 44px;
   font-weight: 300;
   color: var(--color-gray);
   text-align: justify;
 
-  // ≤375（含 375，故斷點寫 376）字級降到 18/32 並隨 vw 等比：引言層只有一屏高（pin 舞台
-  // overflow 裁切），底部又有 60px 錨點列 —— 最長的 health 引言在 375×667 用 22/40 要 14 行、
-  // 560px，扣掉 header＋內距只剩 468px 可用，尾段整段被錨點列蓋住；18/32 約 12 行、384px 放得下，
-  // 320×568（可用 369px）亦然。
-  @include rwd-max(376px) {
-    font-size: calc(18 / 375 * 100vw);
-    line-height: calc(32 / 375 * 100vw);
-  }
   @include rwd-min('tablet') {
     font-size: var(--text-intro);
     line-height: var(--text-intro--line-height);

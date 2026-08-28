@@ -105,3 +105,28 @@ export function blockState(progress: number, inLine: number, outLine: number): S
 export function deferredStopStillApplies(stateNow: StageBlockState): boolean {
   return stateNow !== 'shown';
 }
+
+/**
+ * 舞台（pin ＋ 三塊交接）要不要啟用。回 false ＝ 走 flow 版型：hero／引言／媒體照
+ * 文件流依序滑過，什麼動態都不接（＝ Subpage.vue 的 onMounted 直接 return）。
+ *
+ * 兩個否決條件：
+ * - reducedMotion：使用者要求減少動態。
+ * - narrow：<768。設計稿（分頁_414mob）要求手機版走一般 layout flow ——
+ *   首屏與引言的淡入淡出刪除、引言不定住一屏、影片退場淡出刪除，順順滑下來。
+ *   （滿版圖／影片仍佔滿一屏，但那是版型，不是動態。）
+ *
+ * ⚠️ 抽成純函式只為了讓真值表進得了測試；**呼叫端只有一處**（Subpage.vue 的
+ *    onMounted）。判定用的斷點必須是 TABLET_BREAKPOINTS ＝ SCSS `rwd-min('tablet')`
+ *    的同一個數字，否則會出現「JS 建了 pin、CSS 套 flow 版型」的破版
+ *    —— 這條對帳由 test/subpage-flow-layout.spec.ts 守著。
+ */
+export function shouldRunStage({
+  reducedMotion,
+  narrow,
+}: {
+  reducedMotion: boolean;
+  narrow: boolean;
+}): boolean {
+  return !reducedMotion && !narrow;
+}

@@ -293,24 +293,32 @@ onBeforeUnmount(() => {
   &--fill {
     height: 100%;
 
-    // 疊在 AppHeader（z-index 1000）之上 —— 滿屏媒體要蓋掉常駐頂條。
-    // 1100 沿用本專案的疊層約定：> header(1000)，仍低於 HeroStart(1500) 與 HeroLoader(2000)。
-    // figure 預設 static，只給 z-index 不會進疊層比較 → 必須配 position: relative。
-    //
-    // ⚠️ 只給 --fill，**不給常態的 16:9 內文區塊** —— 內文那種會隨頁面捲到 header 底下，
-    //    抬上去就變成內文圖蓋住頂條。要蓋掉 header 的只有「滿屏那一拍」。
-    // ⚠️ 這裡的值**只在 Subpage 的降級版型（no-JS／reduced-motion）直接生效** ——
-    //    那時舞台是文件流，一路到 body 都沒有堆疊脈絡，1100 直接和 header 比。
-    //    pin 版型下祖先會把它關住：`.subpage__stage--pinned` 被 ScrollTrigger 設成
-    //    position: fixed ⇒ 自成堆疊脈絡，而它自己 z-index: auto，裡面再高也出不去。
-    //    那條路徑改由 `.subpage__stage--media` 抬整層，見 Subpage.vue
-    //    （兩處要一起改，數字刻意寫死好 grep）。
-    // ⚠️ 抬過 header 就要配 pointer-events: none，否則這一屏蓋住的頂條全部點不到
-    //    （理由與 Subpage.vue 的 .subpage__stage--media 相同，兩處一起改）。
-    //    本元件沒有可互動元素，整層放行不犧牲功能；捲動不受 pointer-events 影響。
+    // z-index: auto ＋ static 都不會進疊層比較，但本層的 `--fill` 在 ≥768 要抬過 header，
+    // 故基底就給 relative（z-index 為 auto 時它**不**建立疊層脈絡，flow 版型不受影響）。
     position: relative;
-    z-index: 1100;
-    pointer-events: none;
+
+    // ── 抬過 header：**只給 ≥768** ────────────────────────────────────────────
+    // 疊在 AppHeader（z-index 1000）之上 —— pin 版型的滿屏媒體要蓋掉常駐頂條。
+    // 1100 沿用本專案的疊層約定：> header(1000)，仍低於 HeroStart(1500) 與 HeroLoader(2000)。
+    // 抬過 header 就要配 pointer-events: none，否則這一屏蓋住的頂條全部點不到
+    //（理由與 Subpage.vue 的 .subpage__stage--media 相同，數字兩處要一起改）。
+    // 本元件沒有可互動元素，整層放行不犧牲功能；捲動不受 pointer-events 影響。
+    //
+    // ⚠️ **為什麼一定要關在 tablet 以上**：<768 的手機版走 flow 版型（見 Subpage.vue 的
+    //    shouldRunStage），那時舞台是文件流、一路到 body 都沒有疊層脈絡把 1100 關住 ⇒
+    //    這一屏會**跟著捲動經過** header（不像 pin 那樣停在原地），症狀是「照片捲過頂條時
+    //    頂條與底部錨點列消失約一屏、之後再回來」。手機版不要這個行為（設計確認），
+    //    所以整組只給 ≥768。
+    // ⚠️ 只給 --fill，**不給常態的 16:9 內文區塊** —— 內文那種會隨頁面捲到 header 底下，
+    //    抬上去就變成內文圖蓋住頂條。要蓋掉 header 的只有 pin 版型的「滿屏那一拍」。
+    // ⚠️ pin 版型下祖先其實會把它關住：`.subpage__stage--pinned` 被 ScrollTrigger 設成
+    //    position: fixed ⇒ 自成疊層脈絡，而它自己 z-index: auto，裡面再高也出不去。
+    //    那條路徑改由 `.subpage__stage--media` 抬整層，見 Subpage.vue。
+    //    這裡的 1100 因此只在 ≥768 的降級（no-JS／reduced-motion，舞台仍是文件流）生效。
+    @include rwd-min('tablet') {
+      z-index: 1100;
+      pointer-events: none;
+    }
 
     .intro-media__viewport {
       height: 100%;
