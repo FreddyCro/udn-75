@@ -54,6 +54,7 @@ const {
   skipOpening,
   openingSkipped,
   outroSpent,
+  readPastFold,
   outroWatched,
 } = useHeroVideo();
 
@@ -382,6 +383,7 @@ watch(soundOn, (on) => {
 // ── 退場：sticky 保持影片在畫面上，這條 ST 只讀進度 ──────────────────
 // 不 pin（理由寫在 .sec1__hero 的 SCSS 註解：兩種 pinType 在這個 DOM 結構下都會抖）。
 let dissolveST: ScrollTrigger | null = null;
+let foldST: ScrollTrigger | null = null;
 // 上一次 applyDissolve 收到的 p：用來辨識「回捲跨過 DISSOLVE_LEAVE」那一刻（見下方）。
 let lastDissolveP = 0;
 
@@ -404,6 +406,19 @@ function buildDissolveST() {
     onLeave: () => applyDissolve(1),
     onLeaveBack: () => applyDissolve(0),
     onRefresh: (self) => applyDissolve(self.progress),
+  });
+  // 「往下讀過一個視窗高」的偵測（見 useHeroVideo 的 readPastFold）。獨立一支 ST 而不
+  // 併進 dissolveST：後者的 end 在 vh(0.6)，越過之後就沒有 onUpdate，量不到 1vh。
+  // onRefresh 也要看：帶 hash 進站的人是「落」在 1vh 以下，不是「捲」進去的，沒有 onEnter。
+  foldST = ScrollTrigger.create({
+    start: () => vhPx(1),
+    end: 'max',
+    onEnter: () => {
+      readPastFold.value = true;
+    },
+    onRefresh: (self) => {
+      if (self.isActive) readPastFold.value = true;
+    },
   });
 }
 
@@ -429,7 +444,13 @@ function applyDissolve(p: number) {
   //    這類 hash 進站的人 openingSkipped 為 true、舞台被壓著隱藏，而**捲回 page top 會
   //    在這裡把它清掉**，影片於是回到畫面上；同一刻 dissolveState 把狀態判成 main
   //    （restart），使用者看到的就是從 0s 開始的完整影片。
-  const returnedToTop = p < DISSOLVE_LEAVE && lastDissolveP >= DISSOLVE_LEAVE;
+  //
+  // ⚠️ 2026-08-28：還要 `readPastFold` —— 這一趟往下讀過至少 1vh 才有「回來」可言。
+  //    iPhone 上退場播完、自動捲到引言途中 Safari 導覽列收合會讓捲動位置短暫回到 0，
+  //    單看「跨越」會判成 restart → 重播 → 播完又解鎖 → 又回 0…**無限重播**。
+  //    自動捲動落點 ≈ 0.85vh，永遠武裝不了這面旗子；使用者得自己再往下讀才算。
+  const returnedToTop =
+    p < DISSOLVE_LEAVE && lastDissolveP >= DISSOLVE_LEAVE && readPastFold.value;
   lastDissolveP = p;
   // 清掉後下方 alpha 才算得出 1（同一次呼叫內影片就淡回來，不必等下一個捲動事件）。
   if (returnedToTop && scrubArmed.value) openingSkipped.value = false;
@@ -596,8 +617,9 @@ onBeforeUnmount(() => {
   heroIO = null;
   // kill(false)：換頁時舊頁還在畫面上淡出，revert 會把畫面打回起始態而被看見
   // （見 utils/scroll-trigger 的 killScrollTriggers）
-  killScrollTriggers(dissolveST);
+  killScrollTriggers(dissolveST, foldST);
   dissolveST = null;
+  foldST = null;
 });
 </script>
 

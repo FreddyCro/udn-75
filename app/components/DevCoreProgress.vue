@@ -29,6 +29,13 @@ const {
   symbolProgress,
   symbolMode,
   symbolLayerDone,
+  // 符號段那四個「餵給 <SymbolFace> 的驅動量」。整段的視覺都由它們決定，而 symbolMode
+  // 只剩狀態指派（見 SymbolScene 的時序表 ⚠️）—— 儀表板只顯示 mode 的話，看不出畫面
+  // 現在到底演到哪裡，也看不出四段窗口有沒有按順序接上。
+  symbolDisperseAmount,
+  symbolConvergeAmount,
+  symbolCoreWarm,
+  symbolBgLight,
   forumCoreDotVisible,
   forumPathActive,
   forumPathRiding,
@@ -239,6 +246,21 @@ const flags = computed(() => [
 
       <div class="devseq__derive">
         symbolMode {{ symbolMode }} · blessingFrame {{ blessingFrame }}
+      </div>
+
+      <!-- 四段窗口依序接上：集合 → 收攏 → 白轉橘 ＋ 底色翻白（見 SymbolScene 的時序表）。
+           data-* 供外部量測腳本（Playwright）讀，同 ForumCorePath 的 ?pathdebug 掛法。 -->
+      <div
+        class="devseq__derive"
+        data-symbol-drive
+        :data-disperse="symbolDisperseAmount.toFixed(4)"
+        :data-converge="symbolConvergeAmount.toFixed(4)"
+        :data-warm="symbolCoreWarm.toFixed(4)"
+        :data-bglight="symbolBgLight.toFixed(4)"
+      >
+        disp {{ symbolDisperseAmount.toFixed(2) }} · conv
+        {{ symbolConvergeAmount.toFixed(2) }} · warm
+        {{ symbolCoreWarm.toFixed(2) }} · bg {{ symbolBgLight.toFixed(2) }}
       </div>
 
       <!-- 路徑事件：門檻由節點在每次 refresh 重算，故這裡的 % 是量出來的、不是設定值 -->

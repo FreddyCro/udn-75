@@ -2,6 +2,33 @@ import { basename } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import { dedupeFontFace } from './build/dedupe-font-face';
 import { aliasDemotedPageChunks } from './build/preload-page-chunks';
+import { textZoomNormalize } from './build/text-zoom-normalize';
+
+/**
+ * 量測 in-app 瀏覽器的 text zoom 倍率 s，寫進 `--tz-measured`。
+ * 完整緣由見 build/text-zoom-normalize.ts 的檔頭，消費端在 assets/styles/base.scss。
+ *
+ * ⚠️ 掛在 bodyOpen（不是 head）：量測需要 layout，而 <head> 階段還沒有 body ——
+ *    掛在 head 時探針只能塞進 <html>，那是規格未定的位置。bodyOpen 已經有 body、
+ *    但還在 SSR 內容之前，仍然早於首次繪製 → 不會看到字級跳動。
+ *
+ * 量法：`font-size: 100px; line-height: 1` 的區塊，高度 ＝ 1 × computed font size ＝ 100 × s。
+ * 這條路徑不經過字型度量，所以字型還沒載入也準（換字型不會改變答案）。
+ * 順手記下 10 個全形字的實寬（＝ 10em，需要 CJK 字型）當交叉檢查，寫進 data-tz 供 QA 目視。
+ */
+const TZ_PROBE = `(function(){try{
+var host=document.body||document.documentElement,p=document.createElement('div');
+p.style.cssText='position:absolute;left:-9999px;top:0;width:max-content;font-size:100px;line-height:1;white-space:pre;visibility:hidden';
+p.textContent='中中中中中中中中中中';
+host.appendChild(p);
+var box=p.getBoundingClientRect();host.removeChild(p);
+var byLine=box.height/100,byAdvance=box.width/1000;
+var s=byLine>0?byLine:1;if(s<1)s=1;if(s>2)s=2;
+var st=document.createElement('style');
+st.textContent=':root{--tz-measured:'+s+'}';
+document.head.appendChild(st);
+document.documentElement.setAttribute('data-tz',byLine.toFixed(3)+'/'+byAdvance.toFixed(3));
+}catch(e){}})();`;
 
 // `pages:extend` 蒐集到的頁面名（＝ app/pages/<name>.vue 的 <name>），
 // 給 `build:manifest` 驗證「這個 chunk 真的是某個頁面的」用 ——
@@ -78,6 +105,11 @@ export default defineNuxtConfig({
   },
 
   app: {
+    head: {
+      // in-app 字級量測，必須早於首次繪製 —— 見上方 TZ_PROBE 的說明。
+      script: [{ innerHTML: TZ_PROBE, tagPosition: 'bodyOpen' }],
+    },
+
     // 換頁轉場「fade through」：out-in 讓舊頁先完全淡出、再淡入新頁，
     // 兩段不重疊 → 不會有兩份頁面同時在 DOM 裡造成高度跳動與 GSAP 重複量測。
     // 對應 CSS 在 ~/assets/styles/base.scss（.page-enter-* / .page-leave-*）。
@@ -125,6 +157,18 @@ export default defineNuxtConfig({
         if (!/[\\/]pages[\\/][^\\/]+\.vue$/.test(page.file)) continue;
         pageNames.add(basename(page.file, '.vue'));
       }
+    },
+
+    // textZoomNormalize 掛在 PostCSS —— 那是唯一能同時涵蓋 SCSS 產出、Tailwind v4 產出，
+    // 且 dev 與 build 都生效的位置（Vite 在前處理器之後才跑 PostCSS）。
+    // ⚠️ 用 hook 附加而不是直接寫 `vite.css.postcss`：後者會整份覆蓋掉 Nuxt 預設放進來的
+    //    plugins（autoprefixer 等），等於默默關掉 prefix。
+    'vite:extendConfig': (config) => {
+      const mutable = config as { css?: { postcss?: string | { plugins?: unknown[] } } };
+      const css = (mutable.css ??= {});
+      if (typeof css.postcss === 'string') return; // 指向外部 postcss 設定檔時不介入（本專案沒有）
+      const postcss = (css.postcss ??= {}) as { plugins?: unknown[] };
+      postcss.plugins = [...(postcss.plugins ?? []), textZoomNormalize()];
     },
 
     'build:manifest': (manifest) => {

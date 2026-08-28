@@ -100,21 +100,20 @@ const gaViewTerm = computed(() => {
 
     // NmdAuthor 名字欄的寬度上限（它的 grid 第二欄是 minmax(auto, var(--maxWidth, 8em))）。
     // 對稿：mob 120px、pad / pc 180px。名單裡每個名字與「、」都是各自的 flex item，
-    // 所以這個寬度就直接決定斷行位置 —— 12em 剛好三個名字＋頓號、8em 剛好兩個。
+    // 所以這個寬度就直接決定斷行位置 —— 180px 剛好三個名字＋頓號、120px 剛好兩個。
     //
-    // ⚠️ 單位必須是 em，不可寫死 px。NmdAuthor 的字級固定 15px，8em / 12em 就是對稿的
-    //    120 / 180px，預設狀態下渲染結果與寫死 px 完全一樣；差別在字被放大時：
-    //    Android WebView 預設把系統的「字體大小」設定當 textZoom 套用（Chrome for
-    //    Android 有自己獨立的文字縮放偏好、預設 100%，故不受影響），而 LINE 這類
-    //    in-app 瀏覽器就是 WebView，且沒有呼叫 setTextZoom(100) 關掉它。
-    //    寫死 px 會變成「字放大、欄寬不動」：mob 兩個名字實寬 7 個全形字 ＝ 105px，
-    //    離 120px 只剩一個字的餘裕，系統字級往上調一格（約 115%）就擠不下 ——
-    //    斷成一行一個名字。改用 em，欄寬會跟著放大的字一起長，斷行位置不隨字級縮放而變。
-    //    （2026-08-27 修，Pixel 9a ╱ LINE in-app 回報。）
-    --maxWidth: 8em;
+    // ⚠️ 曾經改成 8em / 12em，想讓欄寬跟著 in-app 被放大的字一起長 —— 無效，已改回 px。
+    //    `em` 是從 **specified** font size 解析的（Blink 的
+    //    CSSToLengthConversionData::FontSizes），而 in-app 的 text zoom 乘在 **computed**
+    //    font size 上（FontBuilder::GetComputedSizeFromSpecifiedSize）→ 8em 在 LINE 裡
+    //    仍然是 8 × 15px ＝ 120px，與寫死 px 的結果完全一樣，斷行照樣擠爆。
+    //    真正的解法是全站把字級除掉量測到的倍率（`--tz`），見 build/text-zoom-normalize.ts；
+    //    字級回到設計值之後，這裡就該是單純的對稿 px。
+    //    （2026-08-27 Pixel 9a ╱ LINE 實機把 em / ch / text-size-adjust 逐一驗掉。）
+    --maxWidth: 120px;
 
     @include rwd-min('tablet') {
-      --maxWidth: 12em;
+      --maxWidth: 180px;
     }
 
     // NmdAuthor 自己的 padding-top 是 mob 60 / ≥1280 才 80，但 pad 稿也要 80。

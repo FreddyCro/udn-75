@@ -17,6 +17,11 @@
         "pad": "/img/visual/udn75_video05_01_pad",
         "pc": "/img/visual/udn75_video05_01_pc"
       },
+      "poster": {
+        "mob": "/img/visual/poster/udn75_video05_01_mob_preview",
+        "pad": "/img/visual/poster/udn75_video05_01_pad_preview",
+        "pc": "/img/visual/poster/udn75_video05_01_pc_preview"
+      },
       "caption": ""
     }
   },

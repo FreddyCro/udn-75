@@ -138,7 +138,11 @@ const props = defineProps({
   convergeBgColor: { type: String, default: '#ffffff' },
   /** 組合（reveal）動畫秒數 */
   revealDuration: { type: Number, default: 3 },
-  /** 散場（disperse）動畫秒數 */
+  /** 散場（disperse）動畫秒數。
+   *  ⚠️ 2026-08-28 起正式站**走不到這個值**：disperse ↔ face 與 converge 都由外部逐幀
+   *     餵進來（見 disperseAmount / convergeAmount），它只剩「沒有捲動可綁的用法」
+   *     那條路徑在用（mode 一翻就跑一次補間），以及 syncBg 的 mode 分支。
+   *     它同時是 FACE_GATHER_VH 的換算來源（2.2s × 25vh/s ＝ 55vh），故留著仍有意義。 */
   disperseDuration: { type: Number, default: 2.2 },
   /** 散場擴散範圍 [x, y, z] */
   disperseSpread: {
@@ -167,7 +171,7 @@ const props = defineProps({
   convergeSize: { type: Number, default: CORE.dotSize },
   /** 匯聚成點時那顆點的**最終**顏色。預設 ＝ CORE.orange（同 ForumCore 的橘方塊）。
    *  ⚠️ 只作用在**實心化之後**（vSolid，＝ uConverge 的最後 10%），且套用的量另外由
-   *     warmAmount 決定（vWarm ＝ solid × uWarm）—— 收攏途中粒子仍走原本的 color ramp。
+   *     warmAmount 決定（warm ＝ solid × uWarm）—— 收攏途中粒子仍走原本的 color ramp。
    *     所以順序是「那團符號收緊、凝成一顆**白**方塊，之後才由白轉橘」。
    *     白→橘讓接棒不需要 crossfade：兩顆同色同尺寸同位置，直接硬切。 */
   convergeColor: {
@@ -189,14 +193,33 @@ const props = defineProps({
    *     驅動值（bgLightAmount / warmAmount），因為那兩件事已經搬到收攏**之後**的窗口
    *     去發生了，見 orange-core-config 的 CORE_WARM_VH。
    *     ——「只接管一半會脫鉤」那條警告仍然成立，只是現在有三個一半，正式站三個都要傳。
-   *  ⚠️ disperse ↔ face 不受影響，仍走 mode ＋ disperseDuration。 */
+   *  ⚠️ 2026-08-28 起 disperse ↔ face 也有了自己的驅動值（disperseAmount，見下一項）——
+   *     那是**第四個**一半，正式站四個都要傳。 */
   convergeAmount: { type: Number as PropType<number | null>, default: null },
+  /** 散開量（1 ＝ 完全散開漂浮、0 ＝ 已組成人臉）由外部**逐幀**餵進來；
+   *  null ＝ 沿用 mode 觸發的 disperseDuration 補間。只接管 uDisperse。
+   *
+   *  正式站傳 `symbolDisperseAmount`（＝ disperseAmountAt(symbolProgress)，見
+   *  ~/utils/orange-core-config 的 FACE_GATHER_VH）。
+   *
+   *  ⚠️ 這一項的改版理由與 convergeAmount **不同**：那一拍是為了「往回捲要能倒帶」，
+   *     這一拍是為了**掉幀**。定時補間吃真實時間，gsap 在掉幀時依實際經過的時間推進
+   *     ⇒ 5,981 顆粒子一次跳過一大段位移。iPhone（120Hz ProMotion、每幀預算 8.33ms）
+   *     上這被讀成「散開到集合的過程不自然閃爍」。吃捲動之後掉幀只會讓動作慢下來。
+   *     倒帶對稱是附帶的好處，不是動機。
+   *
+   *  ⚠️ mode 仍照舊翻面、也仍由外部指派：faceFormed（彩蛋／提示的前提）讀的是
+   *     mode ＝ face **且** uDisperse 已回到 0，兩者都需要。接管的只是「uDisperse 由誰寫」。
+   *
+   *  null ＝ 走元件自己的定時補間：沒有捲動可綁的用法（單純掛著切 mode）只有這條
+   *  看得到動作，故兩條路都要留著（同 convergeAmount）。 */
+  disperseAmount: { type: Number as PropType<number | null>, default: null },
   /** 那顆已實心的 core 由白轉橘的量（0..1），由外部**逐幀**餵進來；
    *  null ＝ 沿用 mode 觸發的補間（與 uConverge 同一組 duration / ease，
    *  ＝ 改版前「實心化的同時就是橘的」那個行為）。
    *
    *  正式站傳 `symbolCoreWarm`（＝ coreWarmAt(symbolProgress)）。
-   *  ⚠️ 只作用在已實心化的粒子上（vWarm ＝ solid × uWarm），所以收攏途中把它推到 1
+   *  ⚠️ 只作用在已實心化的粒子上（warm ＝ solid × uWarm），所以收攏途中把它推到 1
    *     也不會讓半空中的符號變橘。 */
   warmAmount: { type: Number as PropType<number | null>, default: null },
   /** 整片底色由 bgColor 翻到 convergeBgColor 的量（0..1），由外部**逐幀**餵進來；
@@ -212,6 +235,24 @@ const props = defineProps({
    *  —— 終點全員對齊是硬需求（要與 ForumCore 的橘方塊同尺寸同位置硬切交棒）。
    *  ⚠️ 不可設到 1：窗寬會變 0，smoothstep 兩端相等＝除以 0。 */
   convergeStagger: { type: Number, default: 0.5 },
+  /** 收攏深處保留的粒子比例（0.02..1，1 ＝ 關閉本項、全部照畫）。
+   *
+   *  ⚠️ 這是**效能旋鈕**，不是視覺參數 —— 它存在的理由是一段可以算出來的病態 fill rate：
+   *     收攏終點每顆 sprite 的邊長是 convergeSize（26 CSS px）× pixelRatio(2) ＝ 52 device px
+   *     ＝ 2,704 px²，而 5,981 顆**全部落在同一個 52×52 的方塊上**
+   *     → 每幀 1,600 萬個 fragment、同一個像素被 alpha blend 5,981 次。
+   *     對照集合態（手機 sprite 約 6–11 device px）只有 0.38M —— 整整 42 倍，
+   *     且 blending 對同一像素必須保序、GPU 無法平行化。ProMotion 面板只有 8.3ms 預算，
+   *     這就是「收攏過程嚴重掉幀」的來源。
+   *
+   *  淘汰的判準是**每顆自己的** cConv（不是全域 uConverge）：cConv ≥ 0.8 ＝ 這顆已走完八成
+   *  路程、深在收緊的那團裡被其餘粒子完全遮蔽，不畫看不出來；還在半路上的一顆都不動。
+   *  （用全域進度的話，早出發與晚出發的會被一起淘汰 —— 而 convergeStagger 0.5 之下，
+   *    uConverge=0.72 時最慢那批才走完三成五，雲團外圍就會開洞。）
+   *  少畫之後那團會變薄，濃度由 vAlpha 的疊加補償還原，見 vertexShader 的 thicken。
+   *
+   *  0.06 ＝ 深處留約 360 顆。要退回「一顆都不淘汰」設 1。 */
+  convergeKeep: { type: Number, default: 0.06 },
 
   // ---------- 無互動時的整體漂浮 ----------
   /** 整體漂浮幅度（全部 symbol 同步隨機遊走，做出「整片在飄」） */
@@ -452,28 +493,37 @@ watch(mode, () => {
 const clampAmount = (a: number | null | undefined) =>
   a === null || a === undefined ? null : a < 0 ? 0 : a > 1 ? 1 : a;
 
+const scrubbedDisperse = () => clampAmount(props.disperseAmount);
 const scrubbedConverge = () => clampAmount(props.convergeAmount);
 const scrubbedWarm = () => clampAmount(props.warmAmount);
 /** 底色的驅動量：沒傳 bgLightAmount 就退回吃 convergeAmount（＝ 2026-08-17 之前的行為）。 */
 const scrubbedBgLight = () =>
   clampAmount(props.bgLightAmount) ?? scrubbedConverge();
 
-// 外部接管時的逐幀寫入點。三個值各自獨立：收攏、白→橘、底色翻白在正式站是**三段
-// 不同的窗口**（見 convergeAmount prop），共用一個 watch 只會讓其中兩個被多寫幾次。
-// 逐幀會被捲動打到，故這裡不做任何配置 —— 見各自的本體。
+// 外部接管時的逐幀寫入點。四個值各自獨立：集合、收攏、白→橘、底色翻白在正式站是**四段
+// 不同的窗口**（見 disperseAmount / convergeAmount prop），共用一個入口只會讓其餘幾個
+// 被多寫幾次。逐幀會被捲動打到，故這裡不做任何配置 —— 見各自的本體。
+//
+// ⚠️ 這幾支**不掛 watch**（2026-08-28 拆掉），改由 animate() 每幀各叫一次。理由有兩層：
+//   ① 原本三個 watcher 各排一次 effect flush，而 applyConvergeFn 內部又會再呼叫 syncBg
+//      一次 → 底色每幀被寫兩遍。改成單一讀取點之後每幀恰好各一次。
+//   ② 這些值是**逐幀**被捲動打到的，watcher 的排程成本要乘以幀數；而它們唯一的作用
+//      對象是 uniform，只有「下一次 render 之前」寫進去才有意義 —— 那正是 animate()。
+//   沒有接管時每一支都會自己早退（scrubbed*() 回 null），故 animate() 不必分流。
+//   ⚠️ 副作用：rAF 停著（本層不在場）時 props 變動不再立刻寫 uniform。這無妨 ——
+//      那段時間不會 render，而 startLoop 之後的第一幀就會把值補齊。
+let applyDisperseFn: (() => void) | null = null;
 let applyConvergeFn: (() => void) | null = null;
 let applyWarmFn: (() => void) | null = null;
-watch(() => props.convergeAmount, () => applyConvergeFn?.());
-watch(() => props.warmAmount, () => applyWarmFn?.());
-watch(() => props.bgLightAmount, () => syncBgFn?.(false));
 
 // 「完整集合」：mode 是 face、首次進場的 reveal 已跑完（uProgress=1）、且 uDisperse /
 // uConverge 都已回到 0。由 animate() 每幀依 uniform 實況推導（只在真的變動時才寫入，
 // 故不是每幀觸發 re-render），迴圈停下時一律為 false（見 stopLoop）。
 //
 // ⚠️ 不能改用 mode 判斷 —— mode 是「指令」不是「狀態」：翻成 face 的那一刻粒子還散在
-//    半個畫面，要 disperseDuration(2.2s) 補間才聚攏；首次進場另有 revealDuration(3s)
-//    的 uProgress 0→1。彩蛋與 PC 提示都是「臉已經在那裡」才成立的互動邀請，
+//    半個畫面，要等 uDisperse 回到 0 才算聚攏（正式站 ＝ 捲完 FACE_GATHER_VH 那 55vh，
+//    見 disperseAmount prop；沒接管時 ＝ disperseDuration 的補間跑完）；首次進場另有
+//    revealDuration(3s) 的 uProgress 0→1。彩蛋與 PC 提示都是「臉已經在那裡」才成立的邀請，
 //    集合途中就出現等於指著一團還在飛的粒子說「移動游標」。
 const faceFormed = ref(false);
 
@@ -797,7 +847,41 @@ onMounted(() => {
   // 沒有多邊形邊緣給 MSAA 平滑（字緣的柔邊來自 atlas 貼圖的 LinearFilter，見
   // symbol-atlas.ts）。開著等於在 DPR 2 的全螢幕 canvas 上常駐一份多重取樣緩衝，
   // 白付 fill rate 與 GPU 記憶體，畫面上換不到任何東西。
-  const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+  //
+  // ── 不透明 canvas（2026-08-28）─────────────────────────────────────────
+  // scene.background **從頭到尾都被指派**（bgColor 那顆 instance，syncBg 只就地 lerp 它的
+  // r/g/b、從不設回 null），故本 canvas 的輸出恆為不透明。而它在正式站是 fixed 滿版、
+  // 每一幀都在變 —— 帶著 alpha 通道等於每幀讓合成器多做一次「滿版半透明圖層 × 底下
+  // 內容」的混色，換不到任何東西。
+  //
+  // ⚠️ 但 `new WebGLRenderer({ alpha: false })` **拿不到**不透明 canvas：three 內部一律以
+  //    `alpha: true` 呼叫 getContext（見 three.module.js 的 contextAttributes），那個參數
+  //    只用來決定「沒有 scene.background 時要清成什麼 alpha」。故 context 得自己開，
+  //    再以 { canvas, context } 交給 three —— 它會從 getContextAttributes() 反推 _alpha，
+  //    兩邊不會不同調。
+  // ⚠️ 轉場層那句 `:deep(.stage) { background-color: transparent }` 清掉的是**那個 div 的
+  //    底色**，不是 canvas 的 —— 窗內要透出的色場靠 .stage 的 opacity 由 0 拉上來
+  //    （canvas 還沒淡入時就看得到），而 CSS opacity 對不透明圖層一樣有效。
+  //    也就是說那段交棒不依賴 canvas 自身的透明度。
+  // ⚠️ 其餘屬性要與 three 的預設一致，否則 renderer 內部的 _depth / _stencil 會與實際的
+  //    drawing buffer 不符（本專案 three 0.184：depth true、stencil false、
+  //    premultipliedAlpha true、preserveDrawingBuffer false）。
+  const glCanvas = document.createElement('canvas');
+  const glAttrs = {
+    alpha: false,
+    antialias: false,
+    depth: true,
+    stencil: false,
+    premultipliedAlpha: true,
+    preserveDrawingBuffer: false,
+  } as const;
+  const glContext = glCanvas.getContext('webgl2', glAttrs);
+  const renderer = new THREE.WebGLRenderer(
+    // 拿不到 webgl2 就退回讓 three 自己開（行為與改動前相同，只是少了不透明這項好處）
+    glContext
+      ? { canvas: glCanvas, context: glContext, ...glAttrs }
+      : { antialias: false },
+  );
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(width, height);
   wrap.appendChild(renderer.domElement);
@@ -850,6 +934,24 @@ onMounted(() => {
   };
 
   const onMove = (e: PointerEvent) => {
+    // ── 觸控的 pointermove ＝ 拖曳捲動，不是互動意圖（2026-08-28）──────────────
+    // 這一段畫面本身是靠捲動推進的，手指在螢幕上滑就是在捲頁。原本無條件
+    // targetInfluence = 1 的後果有三層，全部發生在 face 那一拍手指按著的時候：
+    //   ① 視覺 —— holeRadius 25 ＋ holeSpread 50 ＝ 75 world 的斥力洞，在手機
+    //      （worldScale 0.6 ⇒ 人臉約 321 CSS px 寬）相當於**117 CSS px 半徑**。
+    //      使用者只是要捲動，臉卻被反覆撕開又彈回，讀起來就是「抖／閃」。
+    //   ② 成本 —— canHit 為真會把 dispSettled 那道閘門一直打開（見該處），於是每幀
+    //      跑完整 pCount 顆 CPU 積分並上傳約 70 KB 的 aDisp，整拍都在付。
+    //   ③ 語意 —— tap 版的真空洞本來就該由 onTap 建立（那邊自己寫 mouse ＋ targetInfluence，
+    //      見該處），「手指為了捲動掃過人臉」不該算互動 —— 與 dismissHint 讓開 tap 版
+    //      是同一條規則。tap 版的提示文案也正是「點擊人臉…」，沒有「拖曳」這個互動。
+    //
+    // ⚠️ 彩蛋開著時**也擋**（不留 eggHolding 例外）：彩蛋在 tap 之後會自己開著 3 秒
+    //    （startEggAuto），期間使用者往下捲就又會撕開人臉 —— 那正是要修的情形。
+    //    擋掉之後 mouse 從頭到尾停在 eggAnchor，洞與文字不會錯開，onLeave 那個
+    //    「抬指前滑了一段就把座標拉回錨點」的例外退化成保險（仍然正確，只是用不到了）。
+    //    代價：手機上手指拖曳不再帶著洞跑。tap 版沒有這個互動的設計依據，故不是損失。
+    if (isTapMode && e.pointerType === 'touch') return;
     toNdc(e.clientX, e.clientY);
     raycaster.setFromCamera(ndc, camera);
     if (raycaster.ray.intersectPlane(plane, hit)) {
@@ -1066,6 +1168,12 @@ onMounted(() => {
     const floatPos = new Float32Array(count * 3);
     const order = new Float32Array(count);
     const seed = new Float32Array(count);
+    // 收攏末段的「代表粒子」旗標：全員完全重合、同尺寸同色之後只留這一顆，其餘在
+    // vertex shader 裡整顆裁掉（見該處的 cull 區塊）。只有 index 0 是 1。
+    // ⚠️ index 0 一定會完整到位：aOrder 上界 0.85（＋0.12 仍 < 1）→ uProgress=1 時 local=1；
+    //    cConv / solid 在 uConverge=1 時對所有粒子皆為 1，與 aSeed 無關。
+    const core = new Float32Array(count);
+    core[0] = 1;
 
     const FLOAT_X = cfg.disperseSpread[0] ?? 900;
     const FLOAT_Y = cfg.disperseSpread[1] ?? 520;
@@ -1094,6 +1202,7 @@ onMounted(() => {
     geom.setAttribute('aBright', new THREE.BufferAttribute(sample.brights, 1));
     geom.setAttribute('aGlyph', new THREE.BufferAttribute(sample.glyphs, 1));
     geom.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+    geom.setAttribute('aCore', new THREE.BufferAttribute(core, 1));
 
     // 慣性物理：附加位移 aDisp（初始 0），CPU 每幀積分後上傳
     dispArr = new Float32Array(count * 3);
@@ -1127,6 +1236,8 @@ onMounted(() => {
         uConvergePx: { value: cfg.convergeSize },
         // clamp 到 0.9：1.0 會讓 per-particle 的 smoothstep 窗寬變 0（見 convergeStagger prop）
         uConvergeStagger: { value: Math.min(Math.max(cfg.convergeStagger, 0), 0.9) },
+        // clamp 到 0.02..1：下限是 thicken 的除數（見 vertexShader），上限 1 ＝ 關閉淘汰。
+        uConvergeKeep: { value: Math.min(Math.max(cfg.convergeKeep, 0.02), 1) },
         // 白→橘的量（0 ＝ 白 core、1 ＝ uSolidColor）。與 uConverge 分開的理由見 warmAmount prop。
         uWarm: { value: 0 },
         uSolidColor: { value: srgbColor(cfg.convergeColor) },
@@ -1165,6 +1276,7 @@ onMounted(() => {
         attribute float aGlyph;
         attribute float aSeed;
         attribute float aBright;
+        attribute float aCore;
         uniform float uProgress;
         uniform float uTime;
         uniform float uDisperse;
@@ -1173,6 +1285,7 @@ onMounted(() => {
         uniform float uConverge;
         uniform float uConvergePx;
         uniform float uConvergeStagger;
+        uniform float uConvergeKeep;
         uniform float uWarm;
         uniform vec3 uMouse;
         uniform float uMouseInfluence;
@@ -1190,17 +1303,26 @@ onMounted(() => {
         uniform float uGroupNear;
         uniform float uGroupFar;
         uniform float uColorRandom;
+        // 顏色改在 vertex 端算完（見下方 vColor），故 ramp 的取樣與 solid 色搬上來。
+        // ⚠️ 這是 vertex texture fetch —— three r163 起已移除 WebGL1 後端（本專案 0.184），
+        //    WebGL2 規格保證 MAX_VERTEX_TEXTURE_IMAGE_UNITS ≥ 16，不必再備降級路徑。
+        //    uColorRamp 是 256×1 的 LinearFilter、**無 mipmap**（見 symbol-atlas 的
+        //    buildColorRamp），故 vertex 端沒有隱式導數也取得到與 fragment 端相同的值。
+        uniform sampler2D uColorRamp;
+        uniform vec3 uSolidColor;
         uniform int uGlitchCount;
         uniform vec3 uGlitchColor[${GLITCH_SLOTS}];
         uniform float uGlitchDensity[${GLITCH_SLOTS}];
         uniform float uGlitchFps[${GLITCH_SLOTS}];
         varying float vAlpha;
         varying float vGlyph;
-        varying float vT;
-        varying vec3 vGlitchColor;
-        varying float vGlitchOn;
         varying float vSolid;
-        varying float vWarm;
+        // 最終顏色（ramp × glitch × 白→橘）在 vertex 端算完，fragment 只負責 alpha。
+        // point primitive 只有**一個頂點** → 所有 varying 在整個 sprite 上是常數，
+        // 故凡是「只依賴 varying」的計算都可以搬上來：每顆算一次，而不是每個 fragment
+        // 算一次。收攏末段那 1,600 萬個 fragment（算式見 convergeKeep prop）原本每一個
+        // 都要對 uColorRamp 取樣一次，搬上來之後整段只剩 5,981 次。
+        varying vec3 vColor;
 
         float hash(float n) { return fract(sin(n) * 43758.5453123); }
 
@@ -1256,12 +1378,35 @@ onMounted(() => {
           float solid = smoothstep(0.9, 1.0, min(cConv, uConverge));
           vSolid = solid;
 
+          // ── 收攏深處的粒子淘汰（fill rate；算式見 convergeKeep prop）─────────────
+          // 兩道，取聯集：
+          //   ① 嚴格（恆開、**逐像素相同**）── solid ≥ 0.999 時全員的位置／尺寸／顏色／
+          //      alpha 完全一致（a 被 mix 成 1、取色位置被收斂成 1、glitch 被關掉），
+          //      畫 5,981 顆與畫 1 顆的輸出一模一樣。正式站在 uConverge=1 之後還有
+          //      CORE_WARM_VH（20vh）整段停在這裡「只有顏色在變」（見 orange-core-config），
+          //      那 20vh 原本每幀白付 1,600 萬個 fragment。
+          //   ② 漸次（convergeKeep < 1 時）── 依**每顆自己的** cConv 淘汰深處的粒子。
+          //      rank 由 aSeed 導出 ＝ 逐幀固定，且 keepP 隨 cConv 單調遞減 → 粒子只會
+          //      單向淡出、不會閃爍，往回捲時沿原路回來。
+          float lod = smoothstep(0.8, 1.0, cConv);
+          float keepP = mix(1.0, uConvergeKeep, lod);
+          float cull = (1.0 - aCore) *
+            max(step(0.999, solid), step(keepP, hash(aSeed * 7.31)));
+          if (cull > 0.5) {
+            // 推出 clip space，而**不是**只把 gl_PointSize 設 0 ——
+            // ALIASED_POINT_SIZE_RANGE 的下限通常是 1，size 0 不保證不產生 fragment。
+            // point 的裁切看的是**中心點**，故 x/w = 2 > 1 必然整顆被裁掉。
+            gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+            gl_PointSize = 0.0;
+            return; // 後面的 glitch 迴圈、ramp 取樣、投影全部省下來
+          }
+
           // 轉橘的量。**乘上 solid** 而不是直接用 uWarm：兩者是不同的窗口（收攏之後才輪到
           // 白→橘，見 orange-core-config 的 CORE_WARM_VH），少了這個乘數，往回捲到收攏
           // 中段時 uWarm 還沒退回 0，半空中的符號會整片泛橘。
           // ⚠️ 這一項與 vSolid 分家是 2026-08-17 改的：改版前顏色直接吃 vSolid，
           //    於是「凝成方塊」與「轉橘」是同一件事 —— 沒有白 core 這個狀態可言。
-          vWarm = solid * uWarm;
+          float warm = solid * uWarm;
 
           // 整體避讓：以游標到群中心(原點)的距離決定整群往反方向(遠離游標)的平移量，
           // uGroupNear 內(重疊)≈0 以保留中心環形真空、到 uGroupFar 達上限即停。
@@ -1281,8 +1426,8 @@ onMounted(() => {
 
           // glitch 跳色：每組各自的 fps 決定換幀速率，density 決定命中比例。
           // GLSL ES 1.0 迴圈上界必須是常數，故固定跑 GLITCH_SLOTS 次搭配 break。
-          vGlitchColor = vec3(0.0);
-          vGlitchOn = 0.0;
+          vec3 glitchColor = vec3(0.0);
+          float glitchOn = 0.0;
           for (int i = 0; i < ${GLITCH_SLOTS}; i++) {
             if (i >= uGlitchCount) break;
             if (uGlitchFps[i] > 0.0 && uGlitchDensity[i] > 0.0) {
@@ -1293,31 +1438,46 @@ onMounted(() => {
               float frame = mod(floor(uTime * uGlitchFps[i]), 251.0) * 0.017;
               float r = hash(aSeed * 17.13 + frame + float(i) * 2.71);
               if (r < uGlitchDensity[i]) {
-                vGlitchColor = uGlitchColor[i];
-                vGlitchOn = 1.0;
+                glitchColor = uGlitchColor[i];
+                glitchOn = 1.0;
                 break;
               }
             }
           }
           // 實心化後關掉 glitch：不然那顆方塊的顏色會隨「最後畫到的那顆有沒有中 glitch」
           // 每幀在漸層色與 glitch 色之間亂跳。
-          vGlitchOn *= (1.0 - solid);
+          glitchOn *= (1.0 - solid);
 
           float twinkle = (1.0 - uTwinkleAmp) + uTwinkleAmp * sin(uTime * 2.2 + aSeed * 40.0);
           // 不透明（gemini 邊緣銳利）；只保留 reveal(local) 與散場的淡入淡出
           vAlpha = local * twinkle * mix(1.0, uDisperseAlpha, uDisperse);
+          // 淘汰後的濃度補償（見 convergeKeep prop）：N 層 alpha a 疊起來是 1-(1-a)^N，
+          // 少畫到只剩 keep 比例之後那團會變薄。把留下來的每一顆補成 1-(1-a)^(1/keep)
+          // 就還原同樣的疊加結果。lod=0（還沒進入淘汰窗口）時指數為 1 ＝ 恆等式，
+          // 故集合態與散場態**逐位元不受影響**。
+          // ⚠️ 只補 alpha、**不動 solid** —— solid 還兼著「取色位置收斂成白 ＋ 關掉 glitch」，
+          //    提早它等於提早把半空中那團符號漂白；而 0.9 這個門檻是照「殘餘半徑只剩人像
+          //    半寬 10%」推出來的（見上方 solid 的註解），不該為了濃度去動它。
+          float thicken = mix(1.0, 1.0 / uConvergeKeep, lod);
+          vAlpha = 1.0 - pow(max(1.0 - vAlpha, 0.0), thicken);
           // 取色位置：tone=依亮度（亮→漸層右端＝高光色）/ random=每顆隨機
-          vT = mix(aBright, hash(aSeed * 53.7), uColorRandom);
+          float tone = mix(aBright, hash(aSeed * 53.7), uColorRandom);
           // 散場提亮：把取色位置往漸層最亮端推（見 disperseLift prop）。
-          // 亮度是「顏色」而不只是 alpha —— 暗部粒子的 vT≈0 ＝ 漸層左端的黑，
+          // 亮度是「顏色」而不只是 alpha —— 暗部粒子的 tone≈0 ＝ 漸層左端的黑，
           // 在黑底上不管 alpha 多高都看不見，故要動的是取色位置。
           // 乘 uDisperse ＝ 只在散場態生效，集合態的人臉明暗維持原樣。
-          vT = mix(vT, 1.0, uDisperseLift * uDisperse);
+          tone = mix(tone, 1.0, uDisperseLift * uDisperse);
           // 實心化後所有粒子必須同色：alpha=1 的疊畫是後畫的覆蓋前面，各顆顏色不同的話
           // 那顆方塊會變成「buffer 裡最後一顆」的顏色（換 cols / 換圖就換色）。
-          // 這裡先把取色位置收斂到漸層最亮端，最終顏色再由 fragment 的 uSolidColor 蓋掉
+          // 這裡先把取色位置收斂到漸層最亮端，最終顏色再由下面那道 uSolidColor 蓋掉
           // （收斂點要什麼顏色改 convergeColor prop，不是改這個 1.0）。
-          vT = mix(vT, 1.0, solid);
+          tone = mix(tone, 1.0, solid);
+          // 「凝成一顆白方塊 → 由白轉橘」：warm ＝ solid × uWarm，故收攏途中把 uWarm
+          // 推到 1 也不會讓半空中的符號變橘。交棒給 ForumCore 時兩邊同色 → 直接硬切。
+          vColor = mix(
+            mix(texture2D(uColorRamp, vec2(clamp(tone, 0.0, 1.0), 0.5)).rgb,
+                glitchColor, glitchOn),
+            uSolidColor, warm);
 
           vec4 mv = modelViewMatrix * vec4(pos, 1.0);
           gl_Position = projectionMatrix * mv;
@@ -1336,17 +1496,20 @@ onMounted(() => {
       fragmentShader: /* glsl */ `
         uniform sampler2D uAtlas;
         uniform vec2 uAtlasGrid;
-        uniform sampler2D uColorRamp;
         uniform float uInkGamma;
-        uniform vec3 uSolidColor;
         varying float vAlpha;
         varying float vGlyph;
-        varying float vT;
-        varying vec3 vGlitchColor;
-        varying float vGlitchOn;
         varying float vSolid;
-        varying float vWarm;
+        varying vec3 vColor;
         void main() {
+          // 實心化之後整個 sprite 是不透明的純色方塊 —— atlas 取樣與 pow 的結果會被
+          // 下面那道 mix 完全蓋掉，故直接早退。
+          // （淘汰的第①道已經把這一段縮到只剩一顆粒子，這裡是那一顆的省法，
+          //   也是 convergeKeep 設 1 時的保險。）
+          if (vSolid > 0.999) {
+            gl_FragColor = vec4(vColor, 1.0);
+            return;
+          }
           vec2 cell = vec2(mod(vGlyph, uAtlasGrid.x), floor(vGlyph / uAtlasGrid.x));
           vec2 uv = vec2(
             (cell.x + gl_PointCoord.x) / uAtlasGrid.x,
@@ -1359,13 +1522,8 @@ onMounted(() => {
           // 與 ForumCore 的橘方塊像素對齊。順手蓋掉 twinkle，核心不該閃。
           a = mix(a, 1.0, vSolid);
           if (a < 0.02) discard;
-          vec3 ramp = texture2D(uColorRamp, vec2(clamp(vT, 0.0, 1.0), 0.5)).rgb;
-          vec3 col = mix(ramp, vGlitchColor, vGlitchOn);
-          // 實心化之後才輪到顏色：vT 已被收斂到漸層最亮端（＝白），再依 vWarm 補到
-          // uSolidColor（＝ CORE.orange）。所以畫面上是「凝成一顆白方塊 → 由白轉橘」，
-          // 而交棒給 ForumCore 時兩邊同色 → 不需要 crossfade，直接硬切。
-          col = mix(col, uSolidColor, vWarm);
-          gl_FragColor = vec4(col, a);
+          // 顏色（ramp × glitch × 白→橘）已在 vertex 端算完，見那側 vColor 的註解。
+          gl_FragColor = vec4(vColor, a);
         }
       `,
     });
@@ -1383,8 +1541,21 @@ onMounted(() => {
     // gsap 的 root timeline 找目標，而這兩支是逐幀被捲動打到的）。故上鎖：
     //   ・鎖宣告在這個區塊裡 → 重建粒子時整段重跑，鎖自動打開（新的 mat、新的補間）
     //   ・disperseFn 是唯一還會排 mode 補間的地方，它自己把鎖打開
+    let disperseTweenKilled = false;
     let convergeTweenKilled = false;
     let warmTweenKilled = false;
+
+    // 外部接管 uDisperse 時的寫入點（見 disperseAmount prop）。與下面兩支同一套寫法
+    // 與同一個上鎖理由 —— 差別只在窗口：這一支在 112→167vh 被逐幀打到，那兩支在其後。
+    applyDisperseFn = () => {
+      const scrub = scrubbedDisperse();
+      if (scrub === null || !mat) return;
+      if (!disperseTweenKilled) {
+        gsap.killTweensOf(mat.uniforms.uDisperse);
+        disperseTweenKilled = true;
+      }
+      mat.uniforms.uDisperse!.value = scrub;
+    };
 
     applyConvergeFn = () => {
       const scrub = scrubbedConverge();
@@ -1394,9 +1565,9 @@ onMounted(() => {
         convergeTweenKilled = true;
       }
       mat.uniforms.uConverge!.value = scrub;
-      // 底色也在這裡刷一次：沒傳 bgLightAmount 時它退回吃 convergeAmount（見 scrubbedBgLight），
-      // 那條路徑沒有自己的 watch。有傳的話這只是多寫一次同一個值。
-      syncBg(false);
+      // ⚠️ 這裡**不**再叫 syncBg —— 底色由 animate() 自己那一行負責（見那裡的註解）。
+      //    以前要在這裡補一次，是因為「沒傳 bgLightAmount、退回吃 convergeAmount」那條
+      //    路徑沒有自己的 watch；改成逐幀讀之後兩條路徑都被同一行涵蓋。
     };
 
     // 外部接管 uWarm 時的寫入點（見 warmAmount prop）。與上面分開是因為兩者在正式站是
@@ -1415,18 +1586,27 @@ onMounted(() => {
     // 三態互斥：分散→uDisperse=1、匯聚→uConverge=1、集合→兩者皆 0。
     disperseFn = (animated = true) => {
       if (!mat) return;
-      // 這支是唯一還會在 uConverge / uWarm 上排 mode 補間的地方 → 把 applyConvergeFn /
-      // applyWarmFn 的「已殺過」鎖打開，下一次接管會再殺一次（見那兩支的說明）
+      // 這支是唯一還會排 mode 補間的地方 → 把三支 apply*Fn 的「已殺過」鎖打開，
+      // 下一次接管會再殺一次（見那幾支的說明）
+      disperseTweenKilled = false;
       convergeTweenKilled = false;
       warmTweenKilled = false;
-      const dTarget = mode.value === 'disperse' ? 1 : 0;
       const opts = { duration: cfg.disperseDuration, ease: 'power2.inOut' };
-      gsap.killTweensOf(mat.uniforms.uDisperse);
-      if (animated) gsap.to(mat.uniforms.uDisperse, { value: dTarget, ...opts });
-      else mat.uniforms.uDisperse.value = dTarget;
+
+      // uDisperse：外部接管時**完全不碰**（同下方 uWarm / uConverge），交給
+      // applyDisperseFn 依捲動寫入。否則 mode 翻面（112vh 那一刻，兩種驅動方式都會發生）
+      // 排下的 2.2s 補間會與捲動搶同一個 uniform —— 症狀與 converge 那邊記載的一樣：
+      // 往回捲時先倒退幾幀又被捲動拉回去，看起來像抖動。
+      if (scrubbedDisperse() !== null) applyDisperseFn?.();
+      else {
+        const dTarget = mode.value === 'disperse' ? 1 : 0;
+        gsap.killTweensOf(mat.uniforms.uDisperse);
+        if (animated) gsap.to(mat.uniforms.uDisperse, { value: dTarget, ...opts });
+        else mat.uniforms.uDisperse.value = dTarget;
+      }
 
       // uWarm：外部接管時**完全不碰**（同下方 uConverge）。沒接管時跟著 uConverge 一起補間 ——
-      // 顏色本來就只作用在已實心的粒子上（vWarm ＝ solid × uWarm），故外部沒接管時切到「匯聚」
+      // 顏色本來就只作用在已實心的粒子上（warm ＝ solid × uWarm），故外部沒接管時切到「匯聚」
       // 看到的仍是「收攏末段凝成核心的同時轉橘」，＝ 2026-08-17 之前的行為。
       const wTarget = mode.value === 'converge' ? 1 : 0;
       if (scrubbedWarm() !== null) applyWarmFn?.();
@@ -1593,6 +1773,32 @@ onMounted(() => {
   let raf = 0;
   let prevT = 0;
   let running = false;
+  // ---------- 幀率上限 ----------
+  // ProMotion 面板是 120Hz，且 iOS Safari 近幾版會把 rAF 一起提到 120 → 每幀預算從
+  // 16.6ms 砍半到 8.3ms。也就是**裝置越快、deadline 越嚴**：同一份工作量從「勉強及格」
+  // 變成「必掉」，而掉幀之後刷新率會在 120/60/40 之間跳，觀感比穩定 60 差很多。
+  // 故主動鎖 60 —— 這一段的動態（漂浮、twinkle、收攏）都是低頻的，看不出 60 與 120 的差別。
+  // 0 ＝ 不鎖，交還給面板刷新率。
+  const MAX_FPS = 60;
+  // 減 1ms 容差：120Hz 下 rAF 間隔是 8.33ms，門檻若剛好是 16.67 會有一半的幀「差一點點
+  // 跨不過去」而被跳掉 → 實際變成 40fps。
+  const FRAME_MS = MAX_FPS > 0 ? 1000 / MAX_FPS - 1 : 0;
+  let lastFrameMs = 0;
+  // ---------- 靜止幀跳過 render ----------
+  // uConverge = 1 之後畫面上只剩一顆方塊，而且：formed = 0（sway / micro / 斥力全歸零）、
+  // local = 1、size 走 uConvergePx 那一支（不吃 breath）、a 被 vSolid 蓋成 1（twinkle 失效）、
+  // glitch 被 solid 關掉 —— 也就是 orange-core-config 在 CORE_WARM_VH 寫的那句
+  // 「畫面上唯一在變的只有顏色」，在數學上就是「只有 uWarm 與底色會動」。
+  // 故手指停住時這一幀與上一幀**逐像素相同**，render 純屬白付（而那 20vh 正好是
+  // fill rate 的高原，見 convergeKeep prop）。
+  // ⚠️ 只跳 renderer.render()，前面的 faceFormed 推導與彩蛋定位照跑（那些不吃 GPU）。
+  // ⚠️ 不畫是安全的：preserveDrawingBuffer 為 false 時，drawing buffer 只會在「下一個
+  //    繪圖指令之前」才被清掉 —— 完全不下繪圖指令的話瀏覽器不會重新合成這一層，
+  //    畫面留著上一次合成的結果（靜態 WebGL 場景只 render 一次就能一直看到，同一條規則）。
+  // ⚠️ 尺寸變動會讓上一幀的內容失效 → applySize 內要把 stillOn 打掉。
+  let stillOn = false;
+  let stillWarm = -1;
+  let stillBg = -1;
   // 動畫時間：自行累積 dt 而非直接用 clock.getElapsedTime()。clock 在暫停期間照走，
   // 直接餵給 uTime 會讓恢復那一刻 sway / twinkle / breath / glitch 全部跳一大段。
   let simTime = 0;
@@ -1604,11 +1810,23 @@ onMounted(() => {
   let viewW = width;
   let viewH = height;
   /** 把 .egg 的中心對到某個 world 座標（桌機餵游標、手機餵最後點擊處）。 */
+  // 上一次寫進 .egg 的值。DOM 寫入即使值相同也會讓 Safari 走一遍 CSSOM／樣式失效，
+  // 而這兩支在**每一幀**都會被叫到（tap 模式下錨點根本不動、關閉時 opacity 恆為 '0'）。
+  let eggTransform = '';
+  let eggOpacity = '';
   const placeEgg = (el: HTMLElement, world: THREE.Vector3) => {
     proj.copy(world).project(camera);
     const sx = (proj.x * 0.5 + 0.5) * viewW;
     const sy = (-proj.y * 0.5 + 0.5) * viewH;
-    el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%)`;
+    const next = `translate(${sx}px, ${sy}px) translate(-50%, -50%)`;
+    if (next === eggTransform) return;
+    eggTransform = next;
+    el.style.transform = next;
+  };
+  const setEggOpacity = (el: HTMLElement, v: string) => {
+    if (v === eggOpacity) return;
+    eggOpacity = v;
+    el.style.opacity = v;
   };
   if (eggRef.value) eggRef.value.style.color = cfg.phraseColor;
 
@@ -1638,7 +1856,22 @@ onMounted(() => {
     hintMobPos.value = projectAnchor(0, -halfH);
   };
 
-  const animate = () => {
+  const animate = (nowMs = 0) => {
+    // 幀率上限（見 MAX_FPS）。早退在最前面 —— 這一幀什麼都不做，dt 由下一幀一併吃掉。
+    if (FRAME_MS && nowMs - lastFrameMs < FRAME_MS) {
+      raf = requestAnimationFrame(animate);
+      return;
+    }
+    lastFrameMs = nowMs;
+
+    // 外部接管的四個 scrub 值：**每幀讀一次**，不掛 watch（理由見 applyConvergeFn 上方）。
+    // 順序無關（四者寫的是不同 uniform），但 syncBg 要在 applyConverge 之後 ——
+    // 沒傳 bgLightAmount 時它退回吃 convergeAmount，讀的就是上一行剛寫進去的那個值。
+    applyDisperseFn?.();
+    applyConvergeFn?.();
+    applyWarmFn?.();
+    syncBgFn?.(false);
+
     const nowT = clock.getElapsedTime();
     const dt = Math.min(nowT - prevT, 0.1); // clamp 避免分頁切回時大跳
     prevT = nowT;
@@ -1658,17 +1891,49 @@ onMounted(() => {
     }
     // 與幀率無關的指數緩動係數
     const k = 1 - Math.exp(-cfg.mouseEase * dt);
-    if (influence < 0.001 && targetInfluence > 0) {
-      smoothMouse.copy(mouse); // 首次接觸：位置直接到位，靠 influence 淡入強度（不橫掃畫面）
-    } else {
-      smoothMouse.lerp(mouse, k); // 移動中：座標平滑跟隨
-    }
+    // 首次接觸：位置直接到位，靠 influence 淡入強度（不橫掃畫面）。
+    // 收成變數是因為下方的游標速度要認得這一幀 —— 那是**傳送**、不是位移，見那裡。
+    const snapped = influence < 0.001 && targetInfluence > 0;
+    if (snapped) smoothMouse.copy(mouse);
+    else smoothMouse.lerp(mouse, k); // 移動中：座標平滑跟隨
     influence += (targetInfluence - influence) * k;
     if (mat) {
       mat.uniforms.uTime!.value = t;
       mat.uniforms.uMouse!.value.copy(smoothMouse);
       mat.uniforms.uMouseInfluence!.value = influence;
     }
+
+    // 游標移動速度（world/秒）→ 沿移動方向甩出粒子（拖曳發散）；靜止 hover 則 ≈0。
+    // 分母是本幀的 dt，分子是 smoothMouse 的**一幀**位移（它一幀只 lerp 一次），故量綱正確。
+    //
+    // ⚠️ 2026-08-28 搬到這裡（原本連同 prevM* 的更新一起住在下面 dispSettled 那道閘門
+    //    **內部**）。舊位置是個爆衝來源：物理休眠期間 prevM* 不會更新，而游標／手指照樣
+    //    在動 —— 於是閘門被 canHit 叫醒的**第一幀**，分子是「休眠了幾幀就累積幾幀」的
+    //    位移，分母卻只有一幀 ⇒ 速度被高估休眠幀數倍。cap 4000 擋得住無限大，但擋不住
+    //    這件事本身：4000 world/s × velocityFollow 0.1 ＝ 每顆瞬間吃到 400 world/s，
+    //    也就是每一次重新接觸都先來一發單幀噴射。搬到迴圈頂層之後 delta 恆為一幀。
+    // ⚠️ 不再夾 canHit：唯讀端（下方的 velFollow）本來就在 canHit 內，值算了不用無妨；
+    //    而 prevM* **必須**每幀更新，那才是這次修的東西。
+    // ⚠️ snapped 的那一幀不算速度：那是「首次接觸讓座標直接到位」的**傳送**（見上方），
+    //    分子是使用者上次放手的位置到這次觸碰的位置 —— 半個畫面都有可能，而它不對應
+    //    任何真實的移動。不擋的話每一次重新接觸都會先被甩一發（cap 4000 也還是一發）。
+    // prevMx < 9000 ＝ 有上一幀的有效座標（9999 是「尚未接觸」的哨兵，見 startLoop）。
+    let mvx = 0;
+    let mvy = 0;
+    if (prevMx < 9000 && !snapped) {
+      const idt = 1 / Math.max(dt, 1e-3);
+      mvx = (smoothMouse.x - prevMx) * idt;
+      mvy = (smoothMouse.y - prevMy) * idt;
+      const sp = Math.hypot(mvx, mvy);
+      const cap = 4000;
+      if (sp > cap) {
+        const s = cap / sp;
+        mvx *= s;
+        mvy *= s;
+      }
+    }
+    prevMx = smoothMouse.x;
+    prevMy = smoothMouse.y;
 
     // ---- 慣性物理：附加位移的「動量 + 指數 ease」積分（撞散→帶動量四散→平順歸位，不 overshoot）----
     // 每顆粒子維持 disp(位移)+vel(速度)：速度只保留動量並靠 friction 衰減（負責往外散）；
@@ -1699,24 +1964,8 @@ onMounted(() => {
       const sprayZ = cfg.impulseSprayZ;
       const velFollow = cfg.velocityFollow;
       const maxV2 = cfg.maxSpeed * cfg.maxSpeed;
-      // 游標移動速度（world/秒）→ 沿移動方向甩出粒子（拖曳發散）；靜止 hover 則 ≈0。
-      // prevMx<9000 確保有上一幀有效座標，避免從 9999 起跳造成爆衝；並夾住上限。
-      let mvx = 0;
-      let mvy = 0;
-      if (canHit && prevMx < 9000) {
-        const idt = 1 / Math.max(dt, 1e-3);
-        mvx = (mx - prevMx) * idt;
-        mvy = (my - prevMy) * idt;
-        const sp = Math.hypot(mvx, mvy);
-        const cap = 4000;
-        if (sp > cap) {
-          const s = cap / sp;
-          mvx *= s;
-          mvy *= s;
-        }
-      }
-      prevMx = mx;
-      prevMy = my;
+      // 游標移動速度（mvx / mvy）在迴圈頂層算好了 —— 它必須每幀更新，不能住在這道
+      // 閘門裡面（推導見那裡）。這裡只是使用端。
       for (let i = 0; i < pCount; i++) {
         const i3 = i * 3;
         // 動量：速度只做 friction 衰減，不加彈簧回復力 → 不會 overshoot/bounce（回位改由下方位置 ease 處理）
@@ -1818,7 +2067,7 @@ onMounted(() => {
       if (isTapMode) {
         const open = activeEgg.value >= 0;
         if (open) placeEgg(eggEl, eggAnchor);
-        eggEl.style.opacity = open ? '1' : '0';
+        setEggOpacity(eggEl, open ? '1' : '0');
       } else {
         let idx = EGG_CLOSED;
         if (onFace && cfg.phrases.length) {
@@ -1834,11 +2083,31 @@ onMounted(() => {
         if (idx >= 0) {
           // 文字中心對齊真空中心（游標位置）
           placeEgg(eggEl, smoothMouse);
-          eggEl.style.opacity = String(Math.min(1, influence));
+          setEggOpacity(eggEl, String(Math.min(1, influence)));
         } else {
-          eggEl.style.opacity = '0';
+          setEggOpacity(eggEl, '0');
         }
       }
+    }
+
+    // 靜止幀跳過 render（見 stillOn 上方）。判定用**驅動值**而不是 bgColor 的 r/g/b ——
+    // 後者要組字串或逐項比對才比得出來，而這條路徑每幀都會走到。
+    if (
+      mat &&
+      mat.uniforms.uConverge!.value >= 0.999 &&
+      mat.uniforms.uProgress!.value >= 0.999
+    ) {
+      const w = mat.uniforms.uWarm!.value;
+      const b = scrubbedBgLight() ?? -1;
+      if (stillOn && w === stillWarm && b === stillBg) {
+        raf = requestAnimationFrame(animate);
+        return;
+      }
+      stillOn = true;
+      stillWarm = w;
+      stillBg = b;
+    } else {
+      stillOn = false;
     }
 
     renderer.render(scene, camera);
@@ -1857,6 +2126,8 @@ onMounted(() => {
     prevT = clock.getElapsedTime(); // 第一幀 dt = 0，不吃暫停期間累積的時間
     prevMx = 9999; // 不拿暫停前的座標算游標速度（mvx/mvy 會爆衝把粒子甩飛）
     prevMy = 9999;
+    lastFrameMs = 0; // 幀率上限的計時歸零 → 恢復後的第一幀一定畫得出來
+    stillOn = false; // 暫停期間畫面可能被別層蓋過／尺寸變過，不沿用上一輪的「靜止」結論
     targetInfluence = 0; // 暫停期間收不到 pointerleave → 強制從「無互動」重新淡入
     influence = 0;
     raf = requestAnimationFrame(animate);
@@ -1927,15 +2198,53 @@ onMounted(() => {
   // 投影中心與 DOM 中心又差 0.17px —— 這段修正本來就是在追像素對位，不該自己再引入誤差。
   const applySize = (w: number, h: number) => {
     if (w <= 0 || h <= 0) return;
+    // 快取的 canvas 左上角一律作廢（見 toNdc）—— 放在守門**之前**：這只是把一個布林
+    // 拉起來，而框變了（哪怕只有次像素）左上角就可能跟著動，沒有理由賭它。
+    invalidateRect();
+    // ── 相等守門（2026-08-28）──────────────────────────────────────────────
+    // 比的是「換算到 device px 之後」的整數，不是 contentRect 的原值：setSize 內部
+    // 本來就會 floor(w × pixelRatio)，故次像素的抖動換不到任何一個真實像素，
+    // 卻會付掉下面那次 drawing buffer 重配（DPR 2 滿版 ≈ 11 MB）＋ 一幀空白（見下方）。
+    // 而 iOS 網址列收合正是「一連串次像素高度」的來源。
+    // ⚠️ viewW/viewH 也一起早退是刻意的：它們是 contentRect 的未取整值（見上方註解），
+    //    但既然投影與 hint 錨點在 device px 的解析度下不會有差別，就不該為了小數點
+    //    再跑一遍 updateHintAnchor。
+    // ⚠️ 首次 RO 回呼**不會**被擋掉：viewW/viewH 的初值來自 clientWidth/Height（整數），
+    //    contentRect 帶小數 ⇒ 兩者的 device px 通常不同 —— 那 0.17px 的修正照樣套得上。
+    const pr = renderer.getPixelRatio();
+    if (
+      Math.floor(w * pr) === Math.floor(viewW * pr) &&
+      Math.floor(h * pr) === Math.floor(viewH * pr)
+    ) {
+      return;
+    }
     viewW = w;
     viewH = h;
-    invalidateRect(); // 尺寸變了，快取的 canvas 左上角也要重量（見 toNdc）
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+    stillOn = false; // 換過尺寸的 buffer 內容不能再當「上一幀」用（見 stillOn 上方）
     // world 單位的字級要跟著視窗高度重算，否則縮放視窗時字與格距的比例會跑掉
     if (mat) mat.uniforms.uWorldToPx!.value = worldToPx(h);
     updateHintAnchor(); // 視窗尺寸變了 → 投影出來的螢幕位置要跟著重算
+
+    // ── 就地補畫一幀（2026-08-28）──────────────────────────────────────────
+    // 沒有這一行的話，每一次 resize 都等於**一幀全空的合成結果**。幀內順序是
+    //   rAF（我們的 render，畫進舊尺寸的 buffer）→ style/layout → ResizeObserver 派送
+    //   （＝ 本函式，上面那句 setSize 賦值 canvas.width ⇒ buffer 重配並清空）→ paint
+    // 所以 paint 合成的是剛被清掉的那顆 buffer，下一幀才會被畫對。
+    //
+    // 這在桌機幾乎看不到（resize 是人手拖的、偶發一次），但在 iOS 上是**捲動中的常態**：
+    // 本層是 fixed inset:0 ＝ dynamic viewport（見 HeroSymbolTransition 的 .stage），
+    // 網址列收合會連續改變高度（實測差距可達 57px，見 ~/utils/viewport-height 的
+    // chromeInset）⇒ 一連串 RO ⇒ 一連串黑閃。使用者回報的 iPhone「不自然閃爍」有這一份。
+    //
+    // ⚠️ 這裡是 RO 回呼、還在 paint 之前，所以就地 render 是有效的（不是排下一幀）。
+    // ⚠️ 這一次 render **不**經過 animate() 的靜止幀判定，故一定畫得出來；上面那句
+    //    stillOn = false 管的是**下一幀**（見 stillOn 宣告處）。兩者各修一半，都要有。
+    // ⚠️ 迴圈停著（本層不在場）時照樣補畫：那顆 buffer 剛被清空，而 stopLoop 之後沒有
+    //    人會再畫它 —— 不補的話從此就是一片空白，直到 startLoop。
+    if (mat) renderer.render(scene, camera);
   };
   const resizeObs = new ResizeObserver((entries) => {
     const box = entries[0]?.contentRect;

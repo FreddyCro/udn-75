@@ -24,3 +24,4 @@
 - [Playwright fallback when MCP locked](playwright-fallback-when-mcp-locked.md) — MCP 瀏覽器被佔住時改用 npx cache 的 playwright ＋ 系統 Chrome；canvas 視覺用讀像素算 bbox 來驗
 - [Symbol face atlas mip instability](symbol-face-atlas-mip-instability.md) — 額頭「破掉」的根因：atlas 固定 32px cell vs sprite 3.7–28px，mip 交界隨視窗高×DPR 漂到臉上；含已排除項與重現腳本
 - [Symbol weight ladder rollback](symbol-weight-ladder-rollback.md) — weightSteps 5→1 的還原點：commit e98ba75 ＋ temp/rollback-2026-08-26/ 備份；只還原那三個檔案
+- [In-app text zoom verification](inapp-text-zoom-verification.md) — in-app 字級跑版不能用「把 font-size 乘大」模擬（會讓 em 方案假性通過）；桌機模擬設 --tz-measured、實機量 s 的兩種自我校準法

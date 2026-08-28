@@ -4,6 +4,8 @@ import {
   ASSUMED_READING_VH_PER_S,
   CORE_WARM_START,
   CORE_WARM_VH,
+  FACE_GATHER_END,
+  FACE_GATHER_VH,
   FORUM_HANDOFF,
   INTRO_EXIT_STAGGER_RATIO,
   INTRO_LINE_SHIFT,
@@ -20,6 +22,7 @@ import {
   convergeAmountAt,
   convergeLightAt,
   coreWarmAt,
+  disperseAmountAt,
   headerTintAt,
   symbolBgLightAt,
   symbolIntroExitAt,
@@ -198,6 +201,80 @@ describe('交棒那一刻的接縫位置（聚合完成就看得到論壇文字�
   it('交棒後的停留蓋得住轉場層那 0.35s 的淡出', () => {
     const holdVh = SYMBOL_BEAT_VH.handoff * 100;
     expect(holdVh / ASSUMED_READING_VH_PER_S).toBeGreaterThanOrEqual(0.35 - 1e-9);
+  });
+});
+
+// 2026-08-28：disperse→face 從「mode 觸發的 2.2s 補間」改成「progress 的純函式」。
+// 這一組守的是那個改動的**目的**（掉幀時動作只會慢下來、不會跳）與它的三條硬需求：
+// 端點精確、窗口是 face 那一拍的前綴（後面要留一張組好的臉）、與 converge 不重疊。
+describe('disperseAmountAt（集合那一拍：捲動 → 散開量）', () => {
+  const start = SYMBOL_STOPS[0]!.until; // disperse 那一拍的終點 ＝ 開始飛回來組臉
+  const end = FACE_GATHER_END; //         人臉組好、可以互動的那一刻
+
+  // 這支是整個改動的用意：值只由 progress 決定 ⇒ 掉幀不會讓它跳過一段，
+  // 往回捲也必然沿原路散回去。改版前那個定時補間兩件事都做不到。
+  it('同一個 progress 恆得同一個值（可逆、與捲動方向無關）', () => {
+    const forward: number[] = [];
+    for (let i = 0; i <= 20; i++)
+      forward.push(disperseAmountAt(start + ((end - start) * i) / 20));
+    const backward: number[] = [];
+    for (let i = 20; i >= 0; i--)
+      backward.unshift(disperseAmountAt(start + ((end - start) * i) / 20));
+    expect(backward).toEqual(forward);
+  });
+
+  // 起點的 1：少一點就是「disperse 那一拍的粒子沒有完全散開」，開場三行文案疊在上面時
+  // 背後會是一張半組好的臉。終點的 0：faceFormed 的條件之一是 uDisperse ≤ 0.001
+  // （見 SymbolFace），差一點點就永遠不成立 ⇒ 宮格彩蛋與 PC 提示整拍都不會出現。
+  it('端點精確：disperse 收尾時 1、集合窗口終點時 0', () => {
+    expect(disperseAmountAt(start)).toBe(1);
+    expect(disperseAmountAt(end)).toBe(0);
+  });
+
+  it('區間外夾住：之前恆 1（含整段 hero 轉場）、之後恆 0（含 converge 與段尾）', () => {
+    for (const p of [0, start / 2, start - 1e-6])
+      expect(disperseAmountAt(p)).toBe(1);
+    for (const p of [SYMBOL_STOPS[1]!.until, CORE_WARM_START, 1, 2])
+      expect(disperseAmountAt(p)).toBe(0);
+  });
+
+  it('區間內嚴格遞減', () => {
+    let prev = 2;
+    for (let i = 0; i <= 20; i++) {
+      const v = disperseAmountAt(start + ((end - start) * i) / 20);
+      expect(v).toBeLessThan(prev);
+      prev = v;
+    }
+  });
+
+  it('中點恰為 0.5（smoothstep 兩端一階導數為 0，起手與落點都是柔的）', () => {
+    expect(disperseAmountAt((start + end) / 2)).toBeCloseTo(0.5);
+  });
+
+  // 窗口必須是 face 那一拍的**前綴**：其後要留下一張已組好、可互動的臉，
+  // 吃掉整拍就等於彩蛋與提示都沒有成立的機會（faceFormed 讀 uDisperse 已回到 0）。
+  it('集合窗口是 face 那一拍的前綴，且其後仍有停留', () => {
+    expect(FACE_GATHER_VH).toBeGreaterThan(0);
+    expect(FACE_GATHER_VH).toBeLessThan(SYMBOL_BEAT_VH.face);
+    expect(end).toBeGreaterThan(SYMBOL_STOPS[0]!.until);
+    expect(end).toBeLessThan(SYMBOL_STOPS[1]!.until);
+  });
+
+  // 兩拍不重疊：集合跑完（uDisperse ＝ 0）之後才輪到收攏起跑（uConverge 由 0 開始）。
+  // 三態互斥是 shader 的前提（uDisperse / uConverge 同一時間至多一個為正，見 SymbolFace）。
+  it('與 convergeAmountAt 不重疊（同一時間至多一個為正）', () => {
+    for (let i = 0; i <= 100; i++) {
+      const p = i / 100;
+      const d = disperseAmountAt(p);
+      const c = convergeAmountAt(p);
+      expect(Math.min(d, c)).toBe(0);
+    }
+  });
+
+  it('超出範圍的輸入不會回傳 NaN', () => {
+    for (const p of [-10, 10, Number.MAX_SAFE_INTEGER]) {
+      expect(Number.isNaN(disperseAmountAt(p))).toBe(false);
+    }
   });
 });
 

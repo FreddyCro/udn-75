@@ -59,6 +59,8 @@ const sceneHeight = vhLength(SYMBOL_VH);
 //           80vh 開始逐行退場、104vh 全空 —— 退場吃捲動距離（scrub、可逆），
 //           不是時間軸。門檻在 SYMBOL_INTRO、進場節奏在 INTRO_TIMELINE
 //   ②     face 集合（人像）＝最長的一拍              33.53 → 74.25%  112 → 248vh (1210→2678px)  136vh
+//         └ 前 55vh（→167vh、50.00%）是粒子飛回來組臉，綁 scrub（可逆），門檻在
+//           FACE_GATHER_VH；其後 81vh 是一張已組好、可互動的臉（彩蛋 / 提示才成立）
 //   ③     converge 收攏成一顆**白** core（底色仍黑） 74.25 → 91.02%  248 → 304vh (2678→3283px)   56vh
 //         └ 途中 284vh 處接縫（`.sec2` 頂端）**越過視窗底緣**開始升進畫面。看不見 ——
 //           轉場層是不透明滿版，論壇內容整段躲在它底下升上來，見 ④
@@ -81,12 +83,16 @@ const sceneHeight = vhLength(SYMBOL_VH);
 //
 // 前一軌（hero 轉場）為 TRANSITION_VH = 1.2 ＝ 120vh，故 hero 轉場 ＋ 本尺合計 454vh。
 //
-// ⚠️ ① 與 ② 的交界（mode 切換）只是「觸發」SymbolFace 那 2.2s 的 gsap 補間
-//    （disperseDuration），本表只管門檻位置、不管補間跑多久。
-//    ③／③b **是例外**：2026-08-13 起綁 scrub —— 三個值都由 symbolProgress 的純函式
-//    逐幀決定（Hero 以 converge-amount / warm-amount / bg-light-amount 餵進去）。
-//    改的理由是往回捲：定時補間永遠貼在區段前緣，往回滑時 ③ 整拍靜止、補間要到離開
-//    這一拍才跑，於是 ③＋⑤＋⑦ 連續 96vh 一片白什麼都不動。推導見 convergeAmountAt。
+// ⚠️ 2026-08-28 起**本段已無任何定時補間**：②③③b 的視覺全部由 symbolProgress 的純函式
+//    逐幀決定（Hero 以 disperse-amount / converge-amount / warm-amount / bg-light-amount
+//    餵進去），mode 切換只剩「指派狀態」的角色（faceFormed 與彩蛋還讀它）。
+//    ③／③b 是 2026-08-13 先改的，理由是**往回捲**：定時補間永遠貼在區段前緣，往回滑時
+//    ③ 整拍靜止、補間要到離開這一拍才跑，於是 ③＋⑤＋⑦ 連續 96vh 一片白什麼都不動
+//    （推導見 convergeAmountAt）。
+//    ② 是後來改的，理由是**掉幀**：定時補間依真實時間推進，掉一幀就讓 5,981 顆粒子跳過
+//    一大段位移；iPhone 的 120Hz ProMotion 上每幀預算只有 8.33ms，於是這一段被讀成
+//    「不自然的閃爍」（使用者回報）。改吃捲動之後掉幀只會讓動作慢下來（推導見
+//    FACE_GATHER_VH）。附帶好處是它也跟著可逆了。
 //    ⚠️ ③ 與 ③b 是**兩段不接續的窗口**（2026-08-17 拆的）：收攏在 304vh 就跑完，
 //       其後那 20vh 粒子已全部到位、畫面上只有顏色在變。拆開的理由見 CORE_WARM_VH。
 // ⚠️ reveal（粒子淡入）不在本表內：它由 SymbolFace 的執行閘門啟動 ——
@@ -172,7 +178,9 @@ watch(symbolHeaderTint, (t) => syncHeaderTint(t), { immediate: true });
 onBeforeUnmount(() => syncHeaderTint(null));
 
 // scroll 主導：symbolProgress 解出的目標 → 指派 SymbolFace 的 mode 與轉場層的撤場旗標。
-// 分兩個 watch 只在「值真的改變」時觸發（mode 改變才會讓 SymbolFace 跑 2.2s 補間）。
+// 分兩個 watch 只在「值真的改變」時觸發。
+// ⚠️ 2026-08-28 起 mode 不再觸發任何視覺補間（四個 *Amount 接管了，見上方時序表的 ⚠️）——
+//    它現在只是「狀態指派」：faceFormed 的第一個條件、彩蛋與提示的前提。
 watch(() => symbolTarget.value.mode, (m) => (symbolMode.value = m), {
   immediate: true,
 });

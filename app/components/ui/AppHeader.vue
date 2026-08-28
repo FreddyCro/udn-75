@@ -452,6 +452,13 @@ const { bandTheme } = useHeaderBand();
 const { headerTinted } = useHeaderTint();
 const tinted = computed(() => headerTinted.value && !menuOpen.value);
 
+// header 背後正在跑滿版 canvas → 放掉 backdrop-filter（成本推導見
+// ~/composables/useHeaderCanvasBehind 的檔頭）。header 一樣不認得任何段落，只收布林。
+// ⚠️ 選單開著時不放手：那時 header 是 light、面板是白底，模糊的對象是頁面內容而不是
+//    canvas，該有的層次感還是要有。
+const { canvasBehind } = useHeaderCanvasBehind();
+const blurOff = computed(() => canvasBehind.value && !menuOpen.value);
+
 interface HeaderLayer {
   key: 'base' | 'band';
   theme: HeaderTheme;
@@ -489,6 +496,7 @@ const layers = computed<HeaderLayer[]>(() => {
         'is-menu-open': menuOpen,
         'has-band': !!bandTheme,
         'has-tint': tinted,
+        'has-canvas-behind': blurOff,
       },
     ]"
   >
@@ -771,6 +779,8 @@ const layers = computed<HeaderLayer[]>(() => {
    這個 class 只能定義一次：曾經拆成兩處（各自宣告 transition），後宣告的 shorthand 會整個
    覆蓋前者、把 transform 那段吃掉，變成滑入動畫失效、reduced-motion 的 transition:none 也
    同時被蓋掉。合併後 transition 要同時列出 transform 與 background-color 兩段。 */
+/* backdrop-filter 的關閉條件見 .app-header.has-canvas-behind（在本規則之後宣告，
+   靠來源順序決勝，同 --hd-bg 與主題底色那組的做法）。 */
 .app-header__bar-wrap {
   position: relative;
   display: flex;
@@ -782,6 +792,19 @@ const layers = computed<HeaderLayer[]>(() => {
     transform 0.3s ease,
     background-color var(--hd-color-dur) ease;
   transform: translateY(-100%);
+}
+
+/* 背後有滿版、逐幀重畫的 canvas 時放掉 backdrop-filter。
+   blur(2px) 每一幀都得把底下那塊區域回讀、模糊、再合成，而底下那塊只要有變動就無法
+   沿用上一幀的結果 —— 靜態頁面上這筆成本一輩子付一兩次，符號段那顆 fixed 滿版 canvas
+   卻是每幀都在重畫，於是整段下來每幀都要付一次滿版寬的 blur ＋ 一次回讀。
+   推導與宣告端見 ~/composables/useHeaderCanvasBehind。
+   ⚠️ 視覺上的差別：bar 後面那些符號不再被糊掉 2px、變成銳利的。底色（--hd-bg）不變，
+      故對比與可讀性不受影響。要退回原狀把宣告端那個 watch 拔掉即可。
+   ⚠️ 與 .--band 那層的 backdrop-filter: none 是**兩件不同的事**（那層是「底色都透明了
+      還糊一層只會把窗內的粒子糊掉」的視覺理由），故各自宣告、不要合併。 */
+.app-header.has-canvas-behind .app-header__bar-wrap {
+  backdrop-filter: none;
 }
 
 .app-header.is-visible {

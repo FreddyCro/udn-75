@@ -105,3 +105,96 @@ export function blockState(progress: number, inLine: number, outLine: number): S
 export function deferredStopStillApplies(stateNow: StageBlockState): boolean {
   return stateNow !== 'shown';
 }
+
+/**
+ * 舞台（pin ＋ 三塊交接）要不要啟用。回 false ＝ 走 flow 版型：hero／引言／媒體照
+ * 文件流依序滑過，什麼動態都不接（＝ Subpage.vue 的 onMounted 直接 return）。
+ *
+ * 兩個否決條件：
+ * - reducedMotion：使用者要求減少動態。
+ * - narrow：<768。設計稿（分頁_414mob）要求手機版走一般 layout flow ——
+ *   首屏與引言的淡入淡出刪除、引言不定住一屏、影片退場淡出刪除，順順滑下來。
+ *   （滿版圖／影片仍佔滿一屏，但那是版型，不是動態。）
+ *
+ * ⚠️ 抽成純函式只為了讓真值表進得了測試；**呼叫端只有一處**（Subpage.vue 的
+ *    onMounted）。判定用的斷點必須是 TABLET_BREAKPOINTS ＝ SCSS `rwd-min('tablet')`
+ *    的同一個數字，否則會出現「JS 建了 pin、CSS 套 flow 版型」的破版
+ *    —— 這條對帳由 test/subpage-flow-layout.spec.ts 守著。
+ */
+export function shouldRunStage({
+  reducedMotion,
+  narrow,
+}: {
+  reducedMotion: boolean;
+  narrow: boolean;
+}): boolean {
+  return !reducedMotion && !narrow;
+}
+
+// ── 手機版「只 pin 媒體」（2026-08-28）────────────────────────────────────────
+//
+// 設計師改口：滿版媒體在手機上也要**定住**。上面 shouldRunStage 引的那句設計稿
+// 「滿版圖和影片還是要定住一屏，影片退場淡出動態刪除，一樣滾動離開」，當時把
+// 「定住一屏」讀成**版型**（`.subpage__media { height: vh(1) }`）＋「一樣滾動離開」＝ 不 pin。
+// 這次要的是真的 pin ＋ scrub 淡出，也就是推翻那句的後半。
+//
+// ⚠️ 只推翻媒體那一項。設計稿其餘仍然有效：**hero／引言維持 flow**（首屏與引言的淡入
+//    淡出刪除、引言不定住一屏）。所以這條路徑與 shouldRunStage 那套三拍舞台是**互斥**的
+//    兩條路，不是同一套的開關（由 test/subpage-stage-beats.spec.ts 守著互斥）。
+// ⚠️ reducedMotion 照樣否決 —— 那是無障礙需求，不是設計偏好，不隨這次改口鬆綁。
+
+/** 手機版只 pin 媒體時的 pin 距離（× 一屏）＝ **定住感的旋鈕**。
+ *
+ *  沿革：
+ *   2026-08-28 初版取 1（＝ 舊行為 disperseDuration 2.2s × ASSUMED_READING_VH_PER_S
+ *     25vh/s ≈ 55vh，加上 0.25 屏淡出湊成一屏）。**那個錨定是錯的** —— 舊行為本來就不是
+ *     pin 而是「照片捲過去」，照一個非 pin 的時長換算，得到的必然是捲過去的感覺。
+ *     設計師實測回報「沒有感覺 pin 住」，屬實。
+ *   2026-08-28 改取 2（＝ 定住 2 屏 ≈ 8s @25vh/s；沒有淡出，見下方那段，整段都是定住）。
+ *     新的錨定是**畫面上真的有幾件事發生完**：定住期間 Ken Burns 與輪播一直在動
+ *     （interval 預設 2500ms），所以「被釘住」要能被讀出來，前提是這段時間長於
+ *     「換一張」的量級 —— 3s 只夠換一張（讀成一段影片在播），8s 換三張（讀成一組被
+ *     留在畫面上的輪播）。
+ *
+ *  ⚠️ 這是**感知量、只能實機目視定**，不能推導。它唯一的硬約束是拇指成本：每多一屏
+ *     就是多一次「滑到底再滑」。要調就只改這一個數字。
+ *  ⚠️ 若加長到 3 屏還是讀不出定住感，**下一個該動的不是距離**：一張持續位移／換張的照片
+ *     永遠不會讀成「凍住」。那時要動的是定住期間的 Ken Burns 與 interval（見
+ *     SubpageIntroMedia 的 --intro-media-anim 與 interval prop），不是繼續往下捲。
+ *
+ *  ⚠️ 影片那兩頁（service / visual）不受長度限制：兩支都是 12.62s，但 UVid 預設
+ *     loop: true 且本區塊沒關掉 ⇒ 任何 pin 長度都是連續畫面，不會播完卡住。
+ *  （附帶：2 屏 ≈ 8s，四張輪播 10s 仍跑不完。真要四張都露臉，手機傳 `:interval="1200"`
+ *   比繼續拉 pin 便宜得多 —— 拉 pin 是拇指成本、改 interval 不是。） */
+export const MEDIA_ONLY_PIN_VH = 2;
+
+// ── 手機版**沒有**淡入淡出（2026-08-28 設計師追加）──────────────────────────
+// 「pin 住前後都不需要淡入淡出，直接維持 opacity 1」。所以這條路徑：
+//   ・不寫 autoAlpha ⇒ 用不到 mediaFadeAlpha，也沒有「淡出起線」這個概念。
+//     （桌機第三拍仍然有，那是 stageLines 的 mediaFadeFrom，兩邊不再共用任何淡出參數。）
+//   ・**因此也沒有內文上拉**（初版的 `--under-media`）：那條上拉存在的唯一理由是
+//     「照片淡掉時內文已經在後面接著」。沒有淡出還拉的話，不透明的照片會直接壓在內文上。
+//     拿掉之後 unpin 那一刻照片正好填滿視窗、內文接在它下緣 ⇒ 照片往上捲走、內文跟著
+//     升上來，就是設計稿原本那句「一樣滾動離開」，中間也不會空一屏。
+// 於是整段 pin 都是「定住」，MEDIA_ONLY_PIN_VH 就是定住距離本身，不必再扣淡出。
+
+/**
+ * 手機版要不要「只 pin 媒體」（hero／引言仍走 flow）。
+ * 回 false ＝ 這條路徑整個不啟用（走原本的 flow 版型，什麼都不接）。
+ *
+ * 與 shouldRunStage **互斥**：寬螢幕由那套三拍舞台接手（媒體在它的第三拍裡已經會定住），
+ * 這裡只補窄螢幕那一半。兩者同時為真是矛盾狀態，測試會擋。
+ *
+ * ⚠️ 抽成純函式的理由同 shouldRunStage（讓真值表進得了測試），且**斷點必須是同一個
+ *    TABLET_BREAKPOINTS** —— 呼叫端與 shouldRunStage 共用同一次 matchMedia 量測結果，
+ *    不另外再查一次 media query，否則兩者會有機會在邊界各自得到不同答案。
+ */
+export function shouldRunMediaPin({
+  reducedMotion,
+  narrow,
+}: {
+  reducedMotion: boolean;
+  narrow: boolean;
+}): boolean {
+  return !reducedMotion && narrow;
+}

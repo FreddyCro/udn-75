@@ -1,4 +1,19 @@
 :root {
+  // ── in-app 字級正規化的總開關 ──────────────────────────────────
+  // Android WebView（LINE／FB／IG 的 in-app 瀏覽器）把系統「字體大小」當 text zoom 套用：
+  // 只放大字、版面 px 不動 → 跑版。build/text-zoom-normalize.ts 已把全站的字級改寫成
+  // `calc(<原值> / var(--tz, 1))`、把 em 長度改寫成 `calc(<原值> * var(--tz, 1))`，
+  // 這裡決定 --tz 取什麼值（完整緣由見那支 plugin 的檔頭）。
+  //
+  // --tz-measured 由 <head> 的 inline script 量測後寫在 <html> 的 inline style
+  // （見 nuxt.config.ts 的 app.head.script）。量不到就不會有這個變數 → fallback 1。
+  //
+  // ⚠️ 這條就是全站開關：改成 `--tz: 1` 即全站回到「字被放大」的現行行為，
+  //    改寫過的 calc 在 --tz: 1 下與原值等價，不需要 revert plugin。
+  //    要改成逐區塊套用：這裡寫 1，另開 `.tz-fix { --tz: var(--tz-measured, 1) }`
+  //    並在需要的區塊加 class。
+  --tz: var(--tz-measured, 1);
+
   // 頂部固定 header 的總高度（進度條 3px ＋ 頂部列 80px），
   // 供錨點捲動偏移補償使用；CSS 與 JS 皆從此變數取得。
   --header-height: 83px;
@@ -16,6 +31,13 @@
   // 完整理由見 ~/utils/viewport-height 的 chromeInset()。
   --chrome-inset: 0px;
 
+  // 上面那個值的**鏡像**：可視範圍比 --vh 反而多出來多少。預設 0，正常瀏覽器
+  // （含 iOS Safari）恆為 0 —— 只有 in-app 瀏覽器（原生導覽列隱藏後 webview 框變高、
+  // 100vh 跟著變高，而 --vh 已凍在小值）才會是正數，此時滿版區塊比可視範圍**矮**。
+  // 用途：滿版層往下溢出補足 → height: calc(100% + var(--chrome-overscan))。
+  // 完整理由見 ~/utils/viewport-height 的 chromeOverscan()。
+  --chrome-overscan: 0px;
+
   // hero 開場「舞台」的尺寸上限：影片層（01.hero/HeroVideo）、載入層（HeroLoader）、
   // start 閘門（HeroStart）三層共用同一個上限並各自置中 —— 三者靠「同一個中心」串起
   //「載入層中央留白格 → start cube → 影片裡的橘核心」這條交棒鏈，上限各寫一份就會漂掉。
@@ -31,6 +53,24 @@
     --hero-stage-max-w: 2560px;
     --hero-stage-max-h: 1440px;
   }
+}
+
+// 逃生門：這棵子樹放棄補償、維持 in-app 的放大字（例如刻意要跟隨使用者字級偏好的長文）。
+.tz-off {
+  --tz: 1;
+}
+
+body {
+  // 明寫預設字級，值與瀏覽器預設相同 → 現行渲染完全不變。
+  //
+  // ⚠️ 這條的唯一目的是讓 --tz 補償能觸及「整條祖先鏈都沒宣告 font-size」的文字
+  //    （例如 .subpage-anchor__text）—— PostCSS 只能改寫存在的宣告，沒有宣告就補償不到，
+  //    那些文字在 in-app 會是唯一還被放大的一群。
+  //
+  // ⚠️ 必須下在 body、不可下在 html：`rem` 讀的是 root 的 specified 字級，
+  //    改寫 html 的字級會讓全站 73 處 rem 一起縮小 13%（rem 沒有補償）。
+  //    下在 body 則 root 不動 → rem 維持設計值，而所有內容都在 body 底下，一樣涵蓋得到。
+  font-size: 16px;
 }
 
 html,

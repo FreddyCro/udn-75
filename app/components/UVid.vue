@@ -4,9 +4,17 @@
  *
  * 依目前裝置解析度（mob / pad / pc）從 src 物件挑對應來源，輸出單一 <video>。
  * 路徑會被 runtimeConfig 的 APP_ASSETS_PATH 前綴（dev/prod 為空字串），
- * 並自動補上副檔名：影片 .mp4、poster .jpg。預設 autoplay + loop，
- * 靜音預設跟隨全站音效開關（見 muted prop）。
+ * 並自動補上副檔名：影片 .mp4、poster .jpg。預設 autoplay + loop。
  * autoplay 是**反應式**的播放開關，不只是初始屬性（見 autoplay prop）。
+ *
+ * ⚠️ **一律靜音，沒有開關**（原本有個 muted prop 預設跟隨全站音效開關，已移除）。
+ *    全站只有 hero 影片可以有聲 —— 它的 play() 綁在 start 按鈕那一下點擊上，在使用者
+ *    手勢之內，過得了瀏覽器的自動播放政策。本元件的播放一律由捲動／可見性驅動，
+ *    **捲動不算手勢**，非靜音的 play() 必被擋（NotAllowedError），而且是靜默失敗：
+ *    rejection 被吞掉、下方的 watcher 只在值變化時才跑 ⇒ 沒有重試，一次被擋就整段黑掉。
+ *    實測 /visual（390×844、Chrome 的 document-user-activation-required 政策）：
+ *    媒體拍已啟動、readyState 4，但 paused: true / currentTime: 0。
+ *    這條不變式由 test/video-muted.spec.ts 守著。
  *
  * 使用範例（對應本專案 public/img，完整清單見 pages/resources.vue）：
  *
@@ -51,30 +59,30 @@ interface Props {
    * 用途是把播放權交給呼叫端的可見性判斷 —— 例如 SubpageIntroMedia 用
    * IntersectionObserver ＋ active 兩道閘。原生 autoplay 屬性是一 mount 就播，
    * 瀏覽器雖然對 muted 影片有「看不見就不播」的節流慣例，但那是各家自訂的啟發式、
-   * 且全站音效一開（muted 變 false）就不適用 —— 不能當機制依賴。
+   * 各家的判準與時機都不同 —— 不能當機制依賴。
    */
   autoplay?: boolean;
   loop?: boolean;
-  /**
-   * 未指定時跟隨全站音效開關（useAppSound）：使用者在 hero 的 start 閘門開啟音效後，
-   * 後續所有影片一併不 muted。明確傳入 :muted 的呼叫端優先（例如純裝飾的背景影片）。
-   */
-  muted?: boolean;
   preload?: string;
   classname?: string;
   ariaLabel?: string;
+  /**
+   * pc 素材的下界（含）。不傳 ＝ 沿用 ~/utils/get-device 的預設 1024。
+   *
+   * 為什麼要能覆寫：**素材的界線由那組影片當初照什麼尺寸剪的決定**，不是全站一個數字。
+   * hero 影片是照 768 / 1024 剪的（見 HeroVideo.vue），子頁引言媒體要與版型的 pc 斷點
+   * 對齊 ⇒ 傳 PC_BREAKPOINTS（1280）、pad 涵蓋 768–1279（見 SubpageIntroMedia）。
+   * ⚠️ 只動 pad/pc 的分界，mob 的 767 界線不受影響。
+   */
+  pcFrom?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   autoplay: true,
   loop: true,
-  muted: undefined,
   preload: 'auto',
   ariaLabel: 'Udn newmeida center',
 });
-
-const { soundOn } = useAppSound();
-const isMuted = computed(() => props.muted ?? !soundOn.value);
 
 // 與 UPic 一致：改用 Nuxt runtimeConfig（本專案是 NUXT_PUBLIC_APP_ASSETS_PATH，
 // 而非 Vite 的 VITE_ASSETS_PATH）。
@@ -97,15 +105,23 @@ watch(
       el.pause();
       return;
     }
-    // 非 muted 的影片在沒有使用者手勢時會被瀏覽器擋掉 —— 吞掉 rejection，不要噴 console
+    // 下指令前把 muted 再確認一次。template 上的靜態 muted 已經夠，這一行是為了讓
+    // 「靜音」在**呼叫 play() 的那一刻**成立而不依賴任何外部狀態 —— 非靜音的影片在
+    // 沒有使用者手勢時會被擋（NotAllowedError），而下面的 catch 會讓它靜默失敗。
+    el.muted = true;
+    // 仍然吞掉 rejection：AbortError（play 被隨後的 pause 打斷）是正常流程的一部分，
+    // 不該噴 console。靜音之後 NotAllowedError 不會再出現。
     void el.play().catch(() => {});
   },
   { flush: 'post' },
 );
 
 function onResize() {
-  deviceType.value = getDeviceTypeByResolution();
+  deviceType.value = getDeviceTypeByResolution(props.pcFrom);
 }
+
+// pcFrom 改變（RWD 用不到，但父層可以是 computed）時要重新解一次，否則會沿用舊界線。
+watch(() => props.pcFrom, onResize);
 
 onMounted(() => {
   onResize();
@@ -128,7 +144,7 @@ onUnmounted(() => {
     playsinline
     :autoplay="autoplay"
     :loop="loop"
-    :muted="isMuted"
+    muted
     :preload="preload"
     :aria-label="ariaLabel"
   />

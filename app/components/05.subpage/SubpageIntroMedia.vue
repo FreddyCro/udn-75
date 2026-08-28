@@ -29,6 +29,8 @@
  *     }"
  *   />
  */
+import { PC_BREAKPOINTS } from '@/utils/constants';
+
 /** Ken Burns 位移種類；未指定時依張數循環套用（見 DEFAULT_EFFECTS） */
 export type IntroMediaEffect = 'zoom-in' | 'zoom-out' | 'pan-left' | 'pan-right' | 'none';
 
@@ -55,6 +57,26 @@ export interface IntroMediaImage extends IntroMediaPicOptions {
 export interface IntroMediaVideo {
   /** 三個裝置尺寸的影片路徑（不含副檔名），同一支就三個 key 給同一個值 */
   src: { mob: string; pad: string; pc: string };
+  /**
+   * 首幀 poster（不含副檔名，UVid 會補 .jpg）。**不要省略。**
+   *
+   * 沒有 poster 時 <video> 在解出第一格畫面之前什麼都不畫 —— 露出的是
+   * `.intro-media__viewport` 的黑底。這一拍是滿屏的，等於整個畫面是純黑，而且
+   * preload="metadata" 讓抓資料延到「輪到它演」才開始，那段等待完全落在使用者眼前
+   * （dev 環境 readyState 0→4 約 3 秒，行動網路更久）。萬一影片整支載入失敗，
+   * 有 poster 才會優雅降級成一張靜圖，而不是一片黑。
+   *
+   * 命名與存放沿用 GlitchImage 那組作品影片的慣例：
+   *   影片   public/img/<section>/<name>.mp4
+   *   poster public/img/<section>/poster/<name>_preview.jpg
+   * 三個裝置各一張 —— 三支剪輯的畫面比例不同（mob 720×1280、pad 1024×1364、
+   * pc 1920×1080），共用一張會裁錯。
+   *
+   * ⚠️ 一律抽**第 0 秒**：poster 與影片的第一格不同的話，開始播的瞬間會跳一下。
+   *    換剪輯時要一起重做，否則 poster 會是上一版的畫面（同 hero-video-config.ts 的提醒）。
+   *    有 ffmpeg 的環境：
+   *      ffmpeg -v error -y -i <clip>.mp4 -frames:v 1 -q:v 6 poster/<name>_preview.jpg
+   */
   poster?: { mob: string; pad: string; pc: string };
   caption?: string;
   ariaLabel?: string;
@@ -214,6 +236,15 @@ onBeforeUnmount(() => {
   >
     <div class="intro-media__viewport">
       <!-- 影片模式：單支影片填滿 16:9 框 -->
+      <!--
+        pc-from：pc 素材從 1280 起（＝ PC_BREAKPOINTS，與版型的 pc 斷點同一個數字），
+        故 pad 涵蓋 768–1279。
+        ⚠️ UVid 不傳這個時預設 1024（hero 影片的三支變體是照那條線剪的，見 get-device）
+           —— 那條界線與本區塊的版型不一致：768–1279 明明還在 pad 版型裡，卻會去抓 pc 那支
+           1920×1080 的影片（比 pad 版大 1.5 倍的檔）。這裡對齊之後兩者同一把尺。
+        ⚠️ 傳的是常數不是字面值 1280：SCSS 的 $breakpoints('pc') 也是 PC_BREAKPOINTS，
+           兩邊由同一個來源出，不會有一天只改到一邊。
+      -->
       <UVid
         v-if="isVideo && video"
         :src="video.src"
@@ -221,6 +252,7 @@ onBeforeUnmount(() => {
         classname="intro-media__video"
         :aria-label="video.ariaLabel"
         :autoplay="isInPlay"
+        :pc-from="PC_BREAKPOINTS"
         preload="metadata"
       />
 
@@ -273,24 +305,32 @@ onBeforeUnmount(() => {
   &--fill {
     height: 100%;
 
-    // 疊在 AppHeader（z-index 1000）之上 —— 滿屏媒體要蓋掉常駐頂條。
-    // 1100 沿用本專案的疊層約定：> header(1000)，仍低於 HeroStart(1500) 與 HeroLoader(2000)。
-    // figure 預設 static，只給 z-index 不會進疊層比較 → 必須配 position: relative。
-    //
-    // ⚠️ 只給 --fill，**不給常態的 16:9 內文區塊** —— 內文那種會隨頁面捲到 header 底下，
-    //    抬上去就變成內文圖蓋住頂條。要蓋掉 header 的只有「滿屏那一拍」。
-    // ⚠️ 這裡的值**只在 Subpage 的降級版型（no-JS／reduced-motion）直接生效** ——
-    //    那時舞台是文件流，一路到 body 都沒有堆疊脈絡，1100 直接和 header 比。
-    //    pin 版型下祖先會把它關住：`.subpage__stage--pinned` 被 ScrollTrigger 設成
-    //    position: fixed ⇒ 自成堆疊脈絡，而它自己 z-index: auto，裡面再高也出不去。
-    //    那條路徑改由 `.subpage__stage--media` 抬整層，見 Subpage.vue
-    //    （兩處要一起改，數字刻意寫死好 grep）。
-    // ⚠️ 抬過 header 就要配 pointer-events: none，否則這一屏蓋住的頂條全部點不到
-    //    （理由與 Subpage.vue 的 .subpage__stage--media 相同，兩處一起改）。
-    //    本元件沒有可互動元素，整層放行不犧牲功能；捲動不受 pointer-events 影響。
+    // z-index: auto ＋ static 都不會進疊層比較，但本層的 `--fill` 在 ≥768 要抬過 header，
+    // 故基底就給 relative（z-index 為 auto 時它**不**建立疊層脈絡，flow 版型不受影響）。
     position: relative;
-    z-index: 1100;
-    pointer-events: none;
+
+    // ── 抬過 header：**只給 ≥768** ────────────────────────────────────────────
+    // 疊在 AppHeader（z-index 1000）之上 —— pin 版型的滿屏媒體要蓋掉常駐頂條。
+    // 1100 沿用本專案的疊層約定：> header(1000)，仍低於 HeroStart(1500) 與 HeroLoader(2000)。
+    // 抬過 header 就要配 pointer-events: none，否則這一屏蓋住的頂條全部點不到
+    //（理由與 Subpage.vue 的 .subpage__stage--media 相同，數字兩處要一起改）。
+    // 本元件沒有可互動元素，整層放行不犧牲功能；捲動不受 pointer-events 影響。
+    //
+    // ⚠️ **為什麼一定要關在 tablet 以上**：<768 的手機版走 flow 版型（見 Subpage.vue 的
+    //    shouldRunStage），那時舞台是文件流、一路到 body 都沒有疊層脈絡把 1100 關住 ⇒
+    //    這一屏會**跟著捲動經過** header（不像 pin 那樣停在原地），症狀是「照片捲過頂條時
+    //    頂條與底部錨點列消失約一屏、之後再回來」。手機版不要這個行為（設計確認），
+    //    所以整組只給 ≥768。
+    // ⚠️ 只給 --fill，**不給常態的 16:9 內文區塊** —— 內文那種會隨頁面捲到 header 底下，
+    //    抬上去就變成內文圖蓋住頂條。要蓋掉 header 的只有 pin 版型的「滿屏那一拍」。
+    // ⚠️ pin 版型下祖先其實會把它關住：`.subpage__stage--pinned` 被 ScrollTrigger 設成
+    //    position: fixed ⇒ 自成疊層脈絡，而它自己 z-index: auto，裡面再高也出不去。
+    //    那條路徑改由 `.subpage__stage--media` 抬整層，見 Subpage.vue。
+    //    這裡的 1100 因此只在 ≥768 的降級（no-JS／reduced-motion，舞台仍是文件流）生效。
+    @include rwd-min('tablet') {
+      z-index: 1100;
+      pointer-events: none;
+    }
 
     .intro-media__viewport {
       height: 100%;
