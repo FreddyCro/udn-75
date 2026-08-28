@@ -216,7 +216,14 @@
         "speakers": [
           {
             "role": "台積電執行副總經理\n暨共同營運長",
-            "name": "米玉傑",
+            "name": {
+              "text": "米玉傑",
+              "art": {
+                "pc": { "src": "/img/forum/forum2-name-pc-1.svg", "w": 201.176, "h": 54.1141 },
+                "pad": { "src": "/img/forum/forum2-name-pad-1.svg", "w": 190, "h": 51 },
+                "mob": { "src": "/img/forum/forum2-name-mob-1.svg", "w": 111, "h": 30 }
+              }
+            },
             "photoNo": "02",
             "photo": "/img/udn75_pic01_12",
             "bio": []
@@ -350,7 +357,14 @@
       "speakers": [
         {
           "role": "台積電執行副總經理\n暨共同營運長",
-          "name": "秦永沛",
+          "name": {
+            "text": "秦永沛",
+            "art": {
+              "pc": { "src": "/img/forum/forum4-name-pc-1.svg", "w": 199.059, "h": 53.9774 },
+              "pad": { "src": "/img/forum/forum4-name-pad-1.svg", "w": 188, "h": 51 },
+              "mob": { "src": "/img/forum/forum4-name-mob-1.svg", "w": 110, "h": 30 }
+            }
+          },
           "photoNo": "03",
           "photo": "/img/udn75_pic01_03",
           "bio": []
