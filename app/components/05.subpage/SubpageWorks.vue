@@ -32,8 +32,9 @@ const props = defineProps<{ works: SubpageWorkItem[] }>();
 // 否則部署到子路徑／CDN 時瀏覽器會解析到 origin 根目錄而 404。
 const assetUrl = useAssetUrl();
 
-// 列的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
-// 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
+// 列的觸發音效（hover／滾動自動浮出／click 共用）。useSfx() 一定要在 setup 期間取
+// （它此刻要讀 runtimeConfig，見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，
+// 聲音開關關著時 play() 靜默。
 const { play } = useSfx();
 
 /* ── 懸浮縮圖狀態（觸發區＝得獎作品清單的每一列）── */
@@ -53,6 +54,22 @@ const thumb = reactive({
 
 const THUMB_GAP = 24; // 縮圖與列的垂直間距（px）
 const PC_BREAKPOINT = 1280;
+const SFX_MIN_GAP = 150; // 縮圖出聲的最小間隔（ms）
+const SFX_MUTE_MS = 400; // setupMobile() 起手的靜音窗（ms）
+
+// 縮圖浮出的音效。hover 與 <1280 的滾動自動浮出共用（兩條路徑都經過 activate()）。
+// ・節流：快速滑動會連續掃過好幾列，不節流會糊成機關槍。
+// ・靜音窗：落地與跨 1280 斷點時 setupMobile() 會主動掃一次、把當下那列浮出來，
+//   那不是使用者滾出來的，不該出聲。用時間窗而不是一次性旗標——量過：版面重排
+//   （切斷點／字體圖片載入）緊接著還會補送 scroll，換到別列一樣會響。
+let lastSfxAt = 0;
+let sfxMuteUntil = 0;
+function playRowSfx() {
+  const now = performance.now();
+  if (now < sfxMuteUntil || now - lastSfxAt < SFX_MIN_GAP) return;
+  lastSfxAt = now;
+  play('sfx01Short');
+}
 
 let hoverMode = false; // ≥1280 = hover 觸發；<1280 = 滾動觸發
 // 觸發中的列：避免重複觸發（滾動模式每 frame 進來）；
@@ -72,6 +89,7 @@ async function activate(i: number, rowEl: HTMLElement) {
   const images = w.thumbs?.length ? w.thumbs : w.thumb ? [w.thumb] : [];
   if (!images.length) return;
   if (i === activeIdx.value && thumb.visible) return;
+  playRowSfx(); // 守衛之後＝這列真的要浮出（滾動模式每 frame 進來，同列只響一次）
   const prevIdx = activeIdx.value; // 換列瞬間還在收合中的上一列（下方量測時要補償）
   activeIdx.value = i;
 
@@ -136,8 +154,7 @@ function deactivate() {
 /* ≥1280：hover 列觸發；離開整個清單才收起 */
 function onEnter(i: number, e: Event) {
   if (!hoverMode) return;
-  play('sfx01Short'); // <1280 的滾動觸發不出聲，只有真的 hover 才播
-  activate(i, e.currentTarget as HTMLElement);
+  activate(i, e.currentTarget as HTMLElement); // 出聲在 activate() 內，與滾動觸發共用
 }
 function onLeaveWrap() {
   if (!hoverMode) return;
@@ -172,6 +189,8 @@ function setupMobile() {
     activate(best, items[best]!);
   };
   window.addEventListener('scroll', onScroll, { passive: true });
+  // 起手這一掃（以及隨後重排補送的 scroll）不是使用者滾出來的 → 靜音窗擋掉。
+  sfxMuteUntil = performance.now() + SFX_MUTE_MS;
   onScroll();
 }
 

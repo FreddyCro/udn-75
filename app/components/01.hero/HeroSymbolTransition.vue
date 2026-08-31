@@ -35,7 +35,7 @@ const props = defineProps<{
 const fieldRef = ref<HTMLElement | null>(null);
 const stageRef = ref<HTMLElement | null>(null);
 
-const { growY, colorSpan, faceIn, dark, barSfxAt } = SYMBOL_TRANSITION;
+const { growY, colorSpan, faceIn, dark } = SYMBOL_TRANSITION;
 const { orange } = CORE;
 
 // 開窗的座標交給 header：窗內那一段 header 反白（設計稿 2065:142710 的 `Mask group` 裡
@@ -54,21 +54,21 @@ watch(active, (on) => syncHeaderCanvasBehind(on), { immediate: true });
 // 方塊遮罩轉場的起手音（設計標註「方塊遮罩轉場音效」）。
 // 觸發點取 p 由 0 翻正的那一刻 ＝ 橘方塊開始長大；整段 scrub 只響這一次。
 // 往回捲不響（規則見 ~/composables/useSfxCue）。
+//
+// 2026-08-31 由 aiFaceText 改成 aiFaceBg（設計師指定）。原本那支的檔名是
+// `udn75_sfx_ai_face_text.mp3`，同時還掛在符號段的 intro 文字亂碼上 —— 一支音兼
+// 「文字」與「轉場」兩種語意；改用 aiFaceBg 後這兩件事各自有音。
 const { cueOn } = useSfxCue();
-cueOn(() => props.progress > 0, 'aiFaceText');
+cueOn(() => props.progress > 0, 'aiFaceBg');
 
-// 黑色窄長條站定的那一聲（設計師 2026-08-28 以 dashboard 位址 `hero.transition.32%`
-// ＋截圖指定）。門檻讀 barSfxAt 而不是寫死 0.32 —— 那是聽覺上挑的點、預期會再微調，
-// 旋鈕放 orange-core-config 與 growY 那些擺在一起（見該檔 SYMBOL_TRANSITION）。
-//
-// 與 media 拍 1 結束那根 28px 橘色長條共用 sfx01：同一個視覺母題的兩次出現
-// （本層的長條寬 ＝ CORE.dotSize 26px），見 ~/utils/sfx-cue 的 MEDIA_BEAT_SFX。
-//
-// ⚠️ 這一聲會**切斷**上面那支起手音 aiFaceText —— 兩支都在 LONG_SFX_KEYS 互斥組內，
-//    而它們相距 barSfxAt × TRANSITION_VH ＝ 38vh（閱讀捲速下約 1.5s），短於
-//    aiFaceText 的 2.3s。這是設計選擇不是缺陷（長條站定那一聲是主音），
-//    完整取捨見 ~/utils/sfx-cue 檔頭 LONG_SFX_KEYS 的說明。
-cueOn(() => props.progress >= barSfxAt, 'sfx01');
+// 註：**本層只有上面這一聲**。原本 p≥0.32（黑色窄長條站定）還有一聲 sfx01
+// （設計師 2026-08-28 以 dashboard 位址 `hero.transition.32%` ＋截圖指定），
+// 2026-08-31 由設計師指定拿掉 —— 連同它的門檻旋鈕 SYMBOL_TRANSITION.barSfxAt。
+// 副作用是上面那支 aiFaceBg 不再被切斷（原本相距 38vh、約 1.5s 就被蓋掉），
+// 現在 2.8s 會整支播完。
+// 要復原：把 barSfxAt 加回 SYMBOL_TRANSITION，這裡再補一行
+//        `cueOn(() => props.progress >= barSfxAt, 'sfx01')`
+//        （完整原文與當時的取捨註解：git show bffcec1:app/components/01.hero/HeroSymbolTransition.vue）
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);

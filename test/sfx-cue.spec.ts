@@ -35,8 +35,8 @@ describe('MEDIA_BEAT_SFX', () => {
   // 表的長度＝ useMediaIntroMotion 交給 crossedForward 的 marks 數量。
   // 兩邊對不上時多出來的拍會靜靜地不出聲（play 端遇到 undefined 直接跳過），
   // 畫面上不會有任何東西壞掉喊出來 —— 故擋在測試。
-  it('三拍：直條站定、text 展開、quotes 展開', () => {
-    expect(MEDIA_BEAT_SFX).toHaveLength(3);
+  it('四拍：直條站定、text 展開、quotes 展開、「新」展開', () => {
+    expect(MEDIA_BEAT_SFX).toHaveLength(4);
   });
 
   // 打錯字或音效檔被移出 manifest 時編譯期就該報錯，但 as const 之外還有
@@ -58,6 +58,11 @@ describe('MEDIA_BEAT_SFX', () => {
   it('text／quotes 兩拍仍在等音檔', () => {
     expect(MEDIA_BEAT_SFX[1]).toBeNull();
     expect(MEDIA_BEAT_SFX[2]).toBeNull();
+  });
+
+  // 「新」淡入 —— 設計師 2026-08-31 指定 udn75_sfx01_01.mp3，與拍 ⓪ 同一支。
+  it('第四拍（「新」展開）是 sfx01', () => {
+    expect(MEDIA_BEAT_SFX[3]).toBe('sfx01');
   });
 });
 

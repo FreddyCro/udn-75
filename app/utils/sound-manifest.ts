@@ -11,11 +11,17 @@
 // 清單與 public/sounds/ 的實際檔案由 test/sound-manifest.spec.ts 雙向對照 ——
 // 檔名打錯、或丟了檔卻忘了登記，都會被測試擋下來。
 export const SOUND_MANIFEST = {
-  /** 2.11s：**窄長條站定**的那一聲。兩個呼叫端，都是同一個視覺母題的兩次出現 ——
-   *  一根約 28px 寬的長條站在空白畫面中央：
-   *    ・hero → symbol 轉場的黑色長條（HeroSymbolTransition，寬 ＝ CORE.dotSize 26px）
-   *    ・media 拍 1 結束的橘色長條（useMediaIntroMotion，寬 ＝ 28px）
-   *  兩處的門檻分別見 SYMBOL_TRANSITION.barSfxAt 與 ~/utils/sfx-cue 的 MEDIA_BEAT_SFX。
+  /** 2.11s：**窄長條站定**的那一聲 —— media 拍 1 結束的橘色長條
+   *  （useMediaIntroMotion，寬 28px，站在空白畫面中央），門檻見
+   *  ~/utils/sfx-cue 的 MEDIA_BEAT_SFX。
+   *
+   *  ⚠️ 同一個視覺母題原本還有第二次出現：hero → symbol 轉場的黑色長條
+   *  （HeroSymbolTransition，寬 ＝ CORE.dotSize 26px，門檻 SYMBOL_TRANSITION.barSfxAt）。
+   *  設計師 2026-08-31 指定拿掉那一聲，門檻旋鈕也一併移除；hero 轉場現在只剩起手音
+   *  aiFaceBg。要復原見 orange-core-config 末尾那則 git 取回註記。
+   *
+   *  另一個呼叫端不屬於那個母題，是設計師 2026-08-31 另外指定的：media 標題組字的
+   *  最後一件 —— 引號之間的「新」淡入（MEDIA_BEAT_SFX 的拍 ③）。
    *
    *  歷史（同一天內來回過，別被舊註解誤導）：2026-08-28 先依設計師指定把它原本三個
    *  時機全數退掉（「小飛機進入橘色」→ aiFaceBg、「orange core 變身紙飛機」與
@@ -44,10 +50,18 @@ export const SOUND_MANIFEST = {
    *  重播（見 useSfx）：2.11s 的音會被下一次觸發從頭打斷，糊成一團；0.27s 每一下都
    *  播得完。 */
   sfx01Short: 'udn75_sfx01_01_short.mp3',
-  /** 2.8s：符號段粒子收攏（converge）、小飛機進入橘色（Blessing）、
-   *  橘色遮罩轉場到新媒體（Blessing）—— 三處由設計師指定共用同一支。 */
+  /** 2.8s：hero → symbol 的方塊遮罩轉場起手音（HeroSymbolTransition，p>0）、
+   *  符號段粒子集合成人臉（SymbolScene，112vh／33.53%；2026-08-31 由 converge 搬來）、
+   *  小飛機進入橘色（Blessing）、
+   *  橘色遮罩轉場到新媒體（Blessing）—— 四處由設計師指定共用同一支。
+   *
+   *  轉場起手音那一處是 2026-08-31 由 aiFaceText 改過來的（設計師指定）：那支的檔名
+   *  是 `..._ai_face_text`，卻同時掛著「文字亂碼」與「方塊遮罩轉場」兩種語意，
+   *  換完之後兩件事各自有音。同日設計師又把 p≥0.32 那一聲（sfx01）拿掉，
+   *  所以這支在 hero 轉場不再被切斷、2.8s 會整支播完。 */
   aiFaceBg: 'udn75_sfx_ai_face_bg.mp3',
-  /** 2.3s：符號段的文字亂碼跳動與方塊遮罩轉場。 */
+  /** 2.3s：符號段的文字亂碼跳動（SymbolIntro 起跑、SymbolFace 點／滑到某張臉）。
+   *  ⚠️ 2026-08-31 之前也掛在 hero 的方塊遮罩轉場起手音上，該處已改用 aiFaceBg。 */
   aiFaceText: 'udn75_sfx_ai_face_text.mp3',
   /** 2.3s：永續祝福的階梯線逐格進場。 */
   benedictionLine: 'udn75_sfx_benediction_line.mp3',

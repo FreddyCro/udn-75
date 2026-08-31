@@ -19,15 +19,13 @@ import type { SoundKey } from './sound-manifest';
  * sfx01（2.11s）於 2026-08-28 入組（設計師指定）。它的歷史是：2026-08-25 的
  * `efc4b81` 把音檔由 0.27s 換成 2.11s（檔名沒變，見 sound-manifest），本段原本
  * 寫的「sfx01（0.4s）」因此失效；同月 26／28 兩次改動把它的舊呼叫端全部換掉，
- * 一度歸零；28 日再以兩個新時機重新啟用（見 MEDIA_BEAT_SFX 與 SYMBOL_TRANSITION
- * 的 barSfxAt）。
+ * 一度歸零；28 日再以兩個新時機重新啟用（media 拍 ⓪ 與 hero 轉場的黑色長條）。
+ * 後者已於 08-31 由設計師拿掉，現存掛點只剩 MEDIA_BEAT_SFX 的拍 ⓪ 與拍 ③。
  *
- * ⚠️ 入組的**已知代價**：hero 轉場的兩聲會互相切斷。起手音 aiFaceText（2.3s）在
- *    transition 軌 p>0 響，sfx01 在 p≥0.32 響 —— 相距 0.32 × 120vh ＝ 38vh，
- *    閱讀捲速下約 1.5s，短於 2.3s，所以 aiFaceText 每一次都會被切掉尾巴。
- *    這是選擇的結果而不是缺陷：長條站定那一聲是設計師要的主音，該由它蓋過去。
- *    不想切就把 sfx01 移出本組（兩支會改成疊著播），或把 barSfxAt 往後調。
- *    另一個掛點（media 拍 1 結束）距前一支 aiFaceBg 約一個視窗高，正常捲速下播得完。
+ * 註：2026-08-31 之前 hero 轉場有兩聲（起手音＋p≥0.32 的黑色窄長條 sfx01），兩支同組、
+ *    只相距 38vh（約 1.5s），起手音每次都被切掉尾巴 —— 那是當時的取捨（長條那聲是主音）。
+ *    設計師已把長條那一聲拿掉，本組在 hero 轉場不再有互切；起手音 aiFaceBg 會整支播完。
+ *    sfx01 現存的掛點（media 拍 ⓪ 與拍 ③）相距約 2.45 timeline 單位，也不會互切。
  */
 export const LONG_SFX_KEYS: readonly SoundKey[] = [
   'sfx01',
@@ -85,12 +83,13 @@ export function crossedForward(
 }
 
 /**
- * media 開場 motion 的三個音效拍，各播哪一支。
+ * media 開場 motion 的四個音效拍，各播哪一支。
  *
  * 索引與 useMediaIntroMotion 交給 crossedForward 的 marks **一一對應**，順序即時序：
  *   ⓪ 拍 1 結束 —— 橘色色塊左右收成 28px 直條，站在空白畫面中央
  *   ① 'text'    —— 短棒縮成點、「智慧」「媒體」由中線滑開到中停
  *   ② 'quotes'  —— 直線分裂成兩個引號、文字同拍撐開到定位
+ *   ③ 'newchar' —— 引號之間的「新」淡入（＝ 'quotes'+0.6，標題組字的最後一件）
  *
  * ⚠️ 改長度時兩邊要一起改。marks 多一個而本表沒跟上，那一拍會靜靜地不出聲
  *    （play 端讀到 undefined 直接跳過），畫面上不會有任何東西壞掉喊出來。
@@ -99,8 +98,13 @@ export function crossedForward(
  * ⓪ 用 sfx01：設計師 2026-08-28 附截圖指定（dashboard 位址讀作 blessing.outro.100%
  *    —— 那是位址飽和的假象，media 不在 SEQUENCE 裡，整段 media motion 都讀成 100%；
  *    真正的時刻由截圖裡那根 28px 橘色長條釘住，也就是拍 1 結束）。
- *    同一支音也掛在 hero 轉場的黑色窄長條上（見 SYMBOL_TRANSITION 的 barSfxAt）——
- *    兩處是同一個視覺母題的兩次出現：一根約 28px 寬的長條站在空白中央。
+ *    ⚠️ 這支音原本也掛在 hero 轉場的黑色窄長條上 —— 兩處是同一個視覺母題的兩次出現
+ *    （一根約 28px 寬的長條站在空白中央）。hero 那一處 2026-08-31 由設計師拿掉，
+ *    母題只剩這裡出聲。
+ *
+ * ③ 也用 sfx01：設計師 2026-08-31 指定 udn75_sfx01_01.mp3（＝ sfx01，同 ⓪ 那支）。
+ *    與 ⓪ 相距 timeline 上約 2.45（≈ 一千多 px 捲動），正常捲速下前一聲早已播完，
+ *    不會像 hero 轉場那樣互切（見上方 LONG_SFX_KEYS 的已知代價）。
  *
  * ⚠️ ① ② 的 null ＝ **音檔還沒到**。設計師（2026-08-26）指定了這兩個時機，但沒有
  *    附檔案，所以觸發點先接好、鑰匙留空 —— play 端遇到 null 直接跳過，不會有靜默的
@@ -114,4 +118,5 @@ export const MEDIA_BEAT_SFX: readonly (SoundKey | null)[] = [
   'sfx01',
   null,
   null,
+  'sfx01',
 ];
