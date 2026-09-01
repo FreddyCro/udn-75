@@ -1532,8 +1532,7 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 // padding-top，見該處說明）。卡片版式改排在頭銜之後（設計稿是頭銜在上）。
 .forum-event__speaker-name {
   // 稿字形素材的寬度基準（見 <UArtLine>）：無單位，恆等於同一區塊的 font-size。
-  // 只有論壇一有姓名素材，且**逐斷點各一份**（見下方 --quote）—— 論壇二／四沒有素材，
-  // 這個變數在它們身上是空轉的。
+  // 四場姓名都有素材，且**逐斷點各一份**（論壇一見下方 --quote、論壇二／四見 --stair）。
   --art-base: 42;
 
   display: flex;
@@ -1579,46 +1578,59 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
   }
 
-  // 論壇二／四：稿把姓名 outline 掉了，只留字面框（pc 201.18×54.11、pad 190×51、
-  // mob 111×30）。字級與字距是拿**實際渲染的字面**回推的（Noto Sans TC Light，
-  // 用 canvas actualBoundingBox 量到 CJK 字面 ＝ 0.92em 高、每字 advance 1em、
-  // 三字字面寬 2.92em）：
+  // 論壇二／四：稿把姓名 outline 掉了，2026-08-28 起接上素材（單行，共六檔
+  // `forum2|4-name-<斷點>-1.svg`）。素材原生尺寸就是稿的字面框：pc 201.176×54.1141、
+  // pad 190×51、mob 111×30；墨跡左緣 ＝ 文字欄左緣，故水平不必再對齊。
+  //
+  // 字級（＝ --art-base，素材寬的基準）與字距是拿**實際渲染的字面**回推的
+  // （Noto Sans TC Light，canvas actualBoundingBox 量到 CJK 字面 ＝ 0.92em 高、
+  // 每字 advance 1em、三字字面寬 2.92em）：
   //     字級 ＝ 字面高 ÷ 0.92          → 58.8 / 55.4 / 32.6 → 59 / 55 / 33
   //     字距 ＝ (字面寬 − 2.92×字級) ÷ 2 → 14.7 / 14.1 / 7.9 → 三個斷點都 ≈ 0.25em
-  //   還原後的字面框 201.8×54.3／188.1×50.6／112.9×30.4，與稿差 ≤ 1.9px。
-  //
+  //   ⇒ 素材寬 ÷ 字級 ＝ 稿的字面框寬，接上素材後字級變成純粹的縮放基準。
   // ⚠️ 不要只用字面**寬**反推 —— 稿的字距有 0.25em，只看寬會推出 69px（差 10px）。
   //
-  // margin-top 把行盒擺到「字面落在稿的位置」（pc 187 / pad 165 / mob 128，相對照片頂）：
-  //     字面頂在行盒內的位移 ＝ (行高 − 1.45×字級) ÷ 2 + 0.32×字級
-  //     （1.45em ＝ fontBoundingBox 的 ascent 1.16 ＋ descent 0.29）
-  //   pc  行高 80 → 位移 16.1，行盒頂 170.9，頭銜行盒下緣 167 → 4
-  //   pad 行高 74 → 位移 14.7，行盒頂 150.3，頭銜下緣 145      → 5
-  //   mob 行高 45 → 位移  9.1，行盒頂 118.9，頭銜下緣 116      → 3
+  // margin-top 把行盒擺到「墨跡落在稿的位置」（pc 187 / pad 165 / mob 128，相對照片頂）。
+  // <UArtLine> 把墨跡置中於行盒 ⇒ 墨跡頂 ＝ 頭銜行盒下緣 ＋ margin ＋ (行高 − 素材高) ÷ 2：
+  //   pc  頭銜下緣 167、行高 80、素材高 54.1141 → 7
+  //   pad 頭銜下緣 145、行高 74、素材高 51      → 8.5
+  //   mob 頭銜下緣 116、行高 45、素材高 30      → 4.5
+  // 這比活文字時的 4 / 5 / 3 各多 3 / 3.5 / 1.5 —— 不影響設計線：文字欄總高
+  // （padding-top ＋ 頭銜 ＋ 本層）仍低於 `.forum-event__speaker` 的 min-height
+  // 280 / 233 / 180，講者組的 rect 照舊等於照片框。
   //
   // order 2 讓它排在頭銜之後（稿是頭銜在上，DOM 是姓名在上）。
-  // ⚠️ nowrap 是必要的，不是保險。稿的文字欄寬是照**頭銜**自動長出來的（論壇二 pc 212、
-  //    pad 192），比帶 0.25em 字距的三字姓名還窄（221.3／206.3）—— 姓名會折成兩行，
-  //    講者組因此比照片高 51／65，而 `.forum-event__speakers` 的高度正是設計線
-  //    Q8~Q10／P8~P10 的錨點（見 architecture/forum-node-path.md）。
-  //    稿上姓名是 outline 的 vector、本來就溢出那個框，folding 不是設計意圖。
+  // ⚠️ nowrap 與字距只在**素材缺檔退回活文字**時才有作用，但不可刪。稿的文字欄寬是照
+  //    **頭銜**自動長出來的（論壇二 pc 212、pad 192），比帶 0.25em 字距的三字姓名還窄
+  //    （221.3／206.3）—— 姓名會折成兩行，講者組因此比照片高 51／65，而
+  //    `.forum-event__speakers` 的高度正是設計線 Q8~Q10／P8~P10 的錨點
+  //    （見 architecture/forum-node-path.md）。
+  //
+  // 視窗 375–381（mob 稿是 414）：文字欄只剩 104～110，<UArtLine> 的 max-width: 100%
+  // 會把素材等比縮到 ≥93.7%（活文字時代是直接溢出文字欄 20px）。稿沒有這個尺寸，不對稿。
   .forum-event--stair &,
   .forum-event--youth & {
+    --art-base: 59;
+
     order: 2;
-    margin-top: 4px;
+    margin-top: 7px;
     font-size: 59px;
     line-height: 80px;
     letter-spacing: 0.25em;
     white-space: nowrap;
 
     @include rwd-max('pc') {
-      margin-top: 5px;
+      --art-base: 55;
+
+      margin-top: 8.5px;
       font-size: 55px;
       line-height: 74px;
     }
 
     @include rwd-max('tablet') {
-      margin-top: 3px;
+      --art-base: 33;
+
+      margin-top: 4.5px;
       font-size: 33px;
       line-height: 45px;
     }
@@ -1651,6 +1663,38 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 
     @include rwd-max('pc') {
       order: 4;
+    }
+  }
+
+  // 論壇二／四的窄機：文字欄 ＝ 可用寬 − 26×2 − 204（後者是 __speaker 的 padding-left），
+  // 而頭銜最長那行「台積電執行副總經理」9 字帶 0.05em 字距 ＝ 9 × 1.05em ＝ 151.2px
+  // —— 414 稿寬還有 158 塞得下，**407.2 以下就折成三行**（實測 407 → colW 151）。
+  // 門檻因此不是 'mobile'(414) 而是 407.2，字級改成跟著欄寬流動：
+  //     407 → 15.6、390 → 13.8、375 → 12.2，兩行的文案結構不動。
+  //
+  // ⚠️ 真正卡在 407.2 的是 min() 的 16px 上限，**不是媒體查詢**：欄寬夠時本式算出 >16
+  //    就被夾回 16，等於沒作用。上界仍寫 424 是為了吸收桌機捲軸 —— 媒體查詢的 width
+  //    與 `vw` 都**含**捲軸（實測 innerWidth 422 → 內容寬 407），故有捲軸時整個 MQ
+  //    區間會往上位移一個捲軸寬（Windows 15~17px），寫死 408 就會在 408~422 漏掉。
+  // ⚠️ 反過來，算式裡一定要扣 --scrollbar-width：元素的 padding 吃的是「不含捲軸」的
+  //    內容寬（__speaker 那條「實測 320 寬 → 48.7」註解就是這個落差）。
+  //    行動裝置是 overlay 捲軸 → 該變數為 0，此式自然退化成 100vw − 260。
+  //    260 ＝ 256 ＋ 4 的安全邊（字面量測的四捨五入）。
+  // ⚠️ 下界 375 不可省：374.98 以下 __speaker 已退回直排、文字吃滿內容欄（268 起），
+  //    16px 本來就不折，而本式在 320 會一路算到 6.3px。
+  // ⚠️ line-height 固定 24px、**不可跟著字級走** —— 講者組的高度必須維持 __speaker 的
+  //    min-height 180（＝照片高），mob 的 T5／P10 掛的正是它的**下緣**
+  //    （見 forum-node-path）。兩行 48 ＋ padding-top 68 ＋ 姓名 48 ＝ 164 < 180
+  //    ⇒ 設計線零改動。反之折成三行時是 188，T5／P10 會被往下推 8px（本次順帶修掉）。
+  .forum-event--stair &,
+  .forum-event--youth & {
+    @include rwd-min(375px) {
+      @include rwd-max(424px) {
+        font-size: min(
+          calc((100vw - var(--scrollbar-width) - 260px) / 9.45),
+          16px
+        );
+      }
     }
   }
 }

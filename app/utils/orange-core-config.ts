@@ -48,6 +48,10 @@ export const SYMBOL_TRANSITION = {
   dark: [0, 0, 0] as [number, number, number],
 };
 
+// 註：barSfxAt（0.32）已於 2026-08-31 隨「黑色窄長條站定那一聲」一併移除 ——
+// 那個旋鈕只服務那一拍的觸發點，音效拿掉後沒有其他消費者。
+// 取回：git show bffcec1:app/utils/orange-core-config.ts
+
 // 註：以下常數已於 2026-08-03 隨 date 段 / pinST / 星空斜角轉場一併移除，需要時從 git 取回：
 //   MOVE_VH   — 相對速度旋鈕：在 trigger 區間**內**墊一個空 div 拉長 scrub 距離，同一段動畫要
 //               捲更多才走完 → 看起來變慢。與 ease 正交（ease 只改同一段距離內的節奏分佈）。

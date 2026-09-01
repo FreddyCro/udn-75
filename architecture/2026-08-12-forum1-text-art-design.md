@@ -271,6 +271,12 @@ export type ForumLine = string | ForumTextArt;
 論壇一的 pc 改成稿字形後，同一頁的論壇二三四、以及論壇一自己的 pad／mob 仍是 Noto Sans TC。
 這是刻意的分批：機制（型別、元件、命名、匯出流程、量測探針）做成可複用，素材到位就接上。
 
+**後續已接上的批次**（都照第六節流程，此節其餘敘述以本表為準）：
+論壇一 pad／mob（2026-08-25）、四場的日期大字（見
+`architecture/2026-08-13-forum-date-text-art-design.md`）、
+論壇二／四的講者姓名（2026-08-28，`forum2|4-name-<斷點>-1.svg`；
+垂直位移的重推見 `ForumEvent.vue` 的 `.forum-event__speaker-name`）。
+
 ### 待辦：pad／mob 素材
 
 需要 pad／mob 稿的 node id 才能匯出。到位後要做的事只有三件：

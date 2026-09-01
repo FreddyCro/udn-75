@@ -19,15 +19,23 @@ const {
   symbolTarget,
   setSymbolProgress,
   symbolLayerDone,
-  symbolConvergeAmount, // ← 新增（F4 的驅動源，見 useOrangeCoreProgress:181）
+  symbolDisperseAmount, // ← 集合窗口的驅動源（1 ＝ 完全散開、0 ＝ 臉已組好）
   symbolConvergeLight,
   symbolHeaderTint,
 } = useOrangeCoreProgress();
 
-// 粒子收攏（converge）起手的音效。掛在本元件而非 SymbolFace：後者只負責畫，
-// 不知道自己是被捲動驅動還是被父層直接切 mode。本元件是正式站的捲動驅動端。
+// 粒子**集合成人臉**（face 那一拍的開頭）起手的音效。掛在本元件而非 SymbolFace：
+// 後者只負責畫，不知道自己是被捲動驅動還是被父層直接切 mode。本元件是正式站的捲動驅動端。
+//
+// 門檻取 disperseAmount 由 1 翻小的那一刻 ＝ 集合窗口起點（112vh／33.53%，見
+// FACE_GATHER_VH）。不寫成 `symbolProgress >= SYMBOL_STOPS[0].until`，是為了與驅動畫面的
+// 用同一個量 —— 窗口的兩端動了音也跟著動，不會出現「音響了但粒子還沒開始飛」。
+//
+// ⚠️ 2026-08-31 由設計師指定從 converge（248vh／74.25%，粒子收攏成一顆點）搬到這裡：
+//    在那之前這一聲響在「臉散掉」的那一拍，不是「臉出現」的那一拍。
+//    要搬回去：把來源換成 `symbolConvergeAmount.value > 0`。
 const { cueOn } = useSfxCue();
-cueOn(() => symbolConvergeAmount.value > 0, 'aiFaceBg');
+cueOn(() => symbolDisperseAmount.value < 1, 'aiFaceBg');
 
 // 段落高度 ＝ SYMBOL_VH × 視窗高（見 ~/utils/orange-core-config）。
 // ⚠️ 它**不等於捲動尺的長度** —— 尺比段落長 50vh（見下方 end 與 SYMBOL_HOVER_VH）。

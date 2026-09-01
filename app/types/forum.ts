@@ -6,7 +6,7 @@ import type { ForumBp } from '~/utils/forum-path-events';
 
 export type ForumSpeaker = {
   role: string;
-  /** 姓名。論壇一在稿上是 outline 過的 vector，故可帶素材（見 ForumTextArt） */
+  /** 姓名。稿上四場都是 outline 過的 vector，故都帶素材（見 ForumTextArt） */
   name: ForumLine;
   /** 中文全名（Dr. Mario García 有中譯名，台積電講者無） */
   nameZh?: ForumLine;

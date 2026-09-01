@@ -54,8 +54,21 @@ watch(active, (on) => syncHeaderCanvasBehind(on), { immediate: true });
 // 方塊遮罩轉場的起手音（設計標註「方塊遮罩轉場音效」）。
 // 觸發點取 p 由 0 翻正的那一刻 ＝ 橘方塊開始長大；整段 scrub 只響這一次。
 // 往回捲不響（規則見 ~/composables/useSfxCue）。
+//
+// 2026-08-31 由 aiFaceText 改成 aiFaceBg（設計師指定）。原本那支的檔名是
+// `udn75_sfx_ai_face_text.mp3`，同時還掛在符號段的 intro 文字亂碼上 —— 一支音兼
+// 「文字」與「轉場」兩種語意；改用 aiFaceBg 後這兩件事各自有音。
 const { cueOn } = useSfxCue();
-cueOn(() => props.progress > 0, 'aiFaceText');
+cueOn(() => props.progress > 0, 'aiFaceBg');
+
+// 註：**本層只有上面這一聲**。原本 p≥0.32（黑色窄長條站定）還有一聲 sfx01
+// （設計師 2026-08-28 以 dashboard 位址 `hero.transition.32%` ＋截圖指定），
+// 2026-08-31 由設計師指定拿掉 —— 連同它的門檻旋鈕 SYMBOL_TRANSITION.barSfxAt。
+// 副作用是上面那支 aiFaceBg 不再被切斷（原本相距 38vh、約 1.5s 就被蓋掉），
+// 現在 2.8s 會整支播完。
+// 要復原：把 barSfxAt 加回 SYMBOL_TRANSITION，這裡再補一行
+//        `cueOn(() => props.progress >= barSfxAt, 'sfx01')`
+//        （完整原文與當時的取捨註解：git show bffcec1:app/components/01.hero/HeroSymbolTransition.vue）
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);

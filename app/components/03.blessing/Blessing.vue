@@ -74,7 +74,13 @@ cueOn(() => blessingFrame.value >= 1, 'benedictionSmile');
 // 把「機鼻碰到接縫」與「coverProgress 抵達 COVER_CONTACT」兩條路合成一個真值
 // （見 useOrangeCoreProgress 的 coverOrange）。從這裡出聲＝與底色藍→橘、白方塊現身
 // 同一刻，音與畫面因此不可能脫鉤 —— 同 ForumCorePath 把撞擊音與擠壓綁在同一個判定的理由。
-cueOn(() => coverOrange.value > 0, 'sfx01');
+//
+// ⚠️ 2026-08-28 設計師改指定 aiFaceBg（原本是 sfx01）。它在 LONG_SFX_KEYS 互斥組內，
+//    因此接下來的逐格笑臉音（benedictionSmile）會把這支 2.8s 的音切掉 —— 快捲時本來
+//    就該讓後面那一段的音蓋過來，這是互斥組要的行為，不是缺陷。
+//    同段稍後的「橘色遮罩轉場到新媒體」（見下）用的也是 aiFaceBg：同 key 再播一次
+//    ＝ currentTime 歸零重播（見 useSfx），不會疊音。
+cueOn(() => coverOrange.value > 0, 'aiFaceBg');
 
 // 橘色遮罩開始轉場到智慧新媒體（設計標註「橘色遮罩轉場到新媒體」）。
 //
@@ -83,9 +89,10 @@ cueOn(() => coverOrange.value > 0, 'sfx01');
 // 且已經帶著 mediaMotionArmed 的閘門 —— reduced-motion／no-JS 不建 timeline 時
 // 恆為 0，那條降級路徑上沒有這段轉場，也就不該出聲。
 //
-// ⚠️ 與 SymbolScene 的粒子收攏共用 aiFaceBg（設計師指定同一支）。兩者同在
-//    LONG_SFX_KEYS 互斥組內、共用同一顆 Audio，故不可能疊在一起；而兩段相距
-//    01a → 03/04 三個 section，實務上也不會互相切斷。
+// ⚠️ 與 SymbolScene 的粒子收攏、以及上方「小飛機進入橘色」共用 aiFaceBg
+//    （設計師指定同一支）。三者同在 LONG_SFX_KEYS 互斥組內、共用同一顆 Audio，
+//    故不可能疊在一起；SymbolScene 那段相距 01a → 03/04 三個 section，實務上
+//    也不會互相切斷，而同段的「小飛機進入橘色」隔著整段 blessing。
 cueOn(() => outroWhite.value > 0, 'aiFaceBg');
 
 // 夥伴清單整塊的現身時機。

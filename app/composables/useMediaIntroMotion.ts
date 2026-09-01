@@ -2,7 +2,7 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { Ref } from 'vue';
 import { killScrollTriggers } from '~/utils/scroll-trigger';
-import { MEDIA_EXPAND_SFX, crossedForward } from '~/utils/sfx-cue';
+import { MEDIA_BEAT_SFX, crossedForward } from '~/utils/sfx-cue';
 
 /** MediaTitle 分件元素（getEls() 回傳；任一缺件時為 null，motion 降級不播） */
 export interface MediaTitleEls {
@@ -288,8 +288,12 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
         { scaleX: 1, autoAlpha: 1, duration: 0.3, ease: 'power2.out' },
         'quotes+=0.5',
       )
-      // 7. 「新」淡入
-      .to(newChar, { autoAlpha: 1, duration: 0.4 }, 'quotes+=0.6')
+      // 7. 「新」淡入。時刻釘成 label：音效拍 ③ 由它推導（見下方 beatTimes），
+      //    調位置只改這一行、音跟著走。
+      //    ⚠️ addLabel 不算 timeline 的 child，不影響 duration()，故下一行 settle
+      //       的 '+=0.35'（相對 timeline 尾端）不受影響。
+      .addLabel('newchar', 'quotes+=0.6')
+      .to(newChar, { autoAlpha: 1, duration: 0.4 }, 'newchar')
       // 8. settle：標題縮回定位、內容依序淡入
       .addLabel('settle', '+=0.35')
       .to(
@@ -406,12 +410,23 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
       //    寬，整個拍 1 的收窄被它遮住。
       .set(veil, { autoAlpha: 0 }, NARROW_DUR);
 
-    // ── 兩次「展開」的音效地標 ────────────────────────────────────────────
-    // 由 label 推導、不寫死時刻：上面 shiftChildren(NARROW_DUR, true) 已把 label 連同
-    // 每一拍右移，所以這裡讀到的就是插入拍 0 之後的值；日後加減拍數也不必回來改。
+    // ── 四個音效地標 ──────────────────────────────────────────────────────
+    // 順序即時序，索引與 MEDIA_BEAT_SFX 一一對應（改長度時兩邊要一起改）。
+    //
+    // ⓪ 拍 1 結束 ＝ 橘色色塊收成 28px 直條。與 header 翻 light 讀的是同一個時刻
+    //    （見下方 st 的 onUpdate），故兩處都寫 NARROW_DUR + BEAT1_DUR、不寫死數字。
+    // ①②③ 由 label 推導、不寫死時刻：上面 shiftChildren(NARROW_DUR, true) 已把 label
+    //    連同每一拍右移，所以這裡讀到的就是插入拍 0 之後的值；日後加減拍數也不必回來改。
     // ⚠️ 必須在 shiftChildren 之後讀。移到它前面會拿到少了 NARROW_DUR 的舊時刻，
-    //    症狀是兩聲都提早響（而畫面上看不出是音效錯了，只覺得「怪」）。
-    const expandTimes = [tl.labels.text ?? 0, tl.labels.quotes ?? 0];
+    //    症狀是每一聲都提早響（而畫面上看不出是音效錯了，只覺得「怪」）。
+    // ⚠️ 陣列必須依時刻遞增排列 —— crossedForward 回的是**索引**，而 MEDIA_BEAT_SFX
+    //    照索引查表。newchar ＝ quotes+0.6，排在 quotes 之後是對的。
+    const beatTimes = [
+      NARROW_DUR + BEAT1_DUR,
+      tl.labels.text ?? 0,
+      tl.labels.quotes ?? 0,
+      tl.labels.newchar ?? 0,
+    ];
     // 上一幀播放頭的位置（timeline 時刻）。null ＝ 尚未定錨，下一次 onUpdate 只記位置、
     // 不出聲 —— 同 ForumCorePath 的 lastTurnLen。
     let lastBeatTime: number | null = null;
@@ -497,16 +512,16 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
         const next = lightPhase || bandLeft > 1 ? 'light' : 'orange';
         if (section.dataset.headerTheme !== next) section.dataset.headerTheme = next;
 
-        // ── 兩次「展開」的音效（設計標註「新媒體第一次／第二次展開」）────────
+        // ── 四個音效拍（直條站定／文字第一次、第二次展開／「新」展開）────────
         // 播放頭時刻同樣由 self.progress 換算，不讀 tl.time()：理由同上面的 lightPhase。
         // 判定與撞擊音共用同一條規則（見 ~/utils/sfx-cue 的 crossedForward）——
         // 前進才響、倒退靜音、來回捲會再響。
         const dur = tl?.duration() ?? 0;
         if (dur > 0) {
           const nowTime = self.progress * dur;
-          crossedForward(lastBeatTime, nowTime, expandTimes).forEach((i) => {
-            const key = MEDIA_EXPAND_SFX[i];
-            if (key) play(key); // null ＝ 音檔還沒到，見 MEDIA_EXPAND_SFX
+          crossedForward(lastBeatTime, nowTime, beatTimes).forEach((i) => {
+            const key = MEDIA_BEAT_SFX[i];
+            if (key) play(key); // null ＝ 音檔還沒到，見 MEDIA_BEAT_SFX
           });
           lastBeatTime = nowTime;
         }
