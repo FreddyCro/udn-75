@@ -3,14 +3,16 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "nuxt build",
+    "build": "node scripts/check-font-subset.mjs && nuxt build",
     "dev": "nuxt dev",
-    "generate": "nuxt generate",
+    "generate": "node scripts/check-font-subset.mjs && nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "test": "vitest run",
     "test:watch": "vitest",
-    "assets:sprites": "node scripts/build-svg-sprites.mjs"
+    "assets:sprites": "node scripts/build-svg-sprites.mjs",
+    "assets:fonts": "node scripts/build-font-subset.mjs",
+    "check:fonts": "node scripts/check-font-subset.mjs"
   },
   "dependencies": {
     "@udn-digital-center/common-components": "^0.3.4",

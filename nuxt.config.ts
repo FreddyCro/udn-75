@@ -45,39 +45,37 @@ export default defineNuxtConfig({
 
   modules: ['@nuxt/fonts'],
 
-  // Figma 規格：300 / 400 / 500。
-  // @nuxt/fonts 在 build 時把字體檔下載到本地自架，不依賴外部 CDN，
-  // 並自動產生帶 unicode-range 的分段 @font-face。
+  // Figma 規格：300 / 400 / 500，主字體 Noto Sans TC、英數用西文版 Noto Sans。
   //
-  // 兩份都要宣告：CSS fallback 是「逐字符」比對，第一順位有該碼位的 glyph 才輪不到第二順位。
-  // 英數走西文版 Noto Sans、中文落到 Noto Sans TC（見 assets/styles/base.scss 的 html 字體堆疊）。
-  // ⚠️ 兩邊 weights 必須一致 —— 缺哪個字重，該字重的英數會被瀏覽器合成或退到鄰近字重，
-  //    中英就會看起來不同粗。
+  // 三個家族全部 `provider: 'none'`（＝不要用任何 provider 去解析），也就是
+  // **@nuxt/fonts 一支 @font-face 都不產、一支 woff2 都不下載**。字型改由
+  // scripts/build-font-subset.mjs 產的站台子集提供（`pnpm assets:fonts`，
+  // @font-face 在 assets/styles/generated/font-subset.css，字體堆疊在 base.scss）。
   //
-  // weights 寫成 `'300 500'`（**一個含空白的字串**）＝ 跟 Google 要一支涵蓋 300–500 的
-  // 可變字型，而不是三支靜態字重。機制：unifont 的 prepareWeights 看到 weight 含空白、
-  // 且該家族有 wght 軸，就轉成 css2 的 `wght@300..500`，回傳 `font-weight: 300 500`。
-  // ⚠️ 一定要是「一個含空白的字串」。寫成 ['300', '500'] 會被當成兩個靜態字重，
-  //    而且悄悄少掉 400。
+  // 為什麼不留 @nuxt/fonts 當保底：
+  //   ・它把 Google 原本切好的 105 片 unicode-range 切片全部自架，一位訪客實測會抓
+  //     35–44 片（約 1.6 MB）；而全站實際只用到 2,094 個字元，子集 4 支共 684 KB。
+  //   ・試過「子集在前、切片在後」的雙層寫法（方案二）：即使頁面上沒有任何元素的
+  //     computed font-family 引用 'Noto Sans TC'，切片**仍然**被抓 24 片（CDP 網路層
+  //     確認是真請求）。排除過階層順序、CSS 內聯時機、@media 規則、漏字與堆疊引用，
+  //     成因未明。既然保底沒有生效卻固定多 24 個 request、1.4 MB，就不留。
+  //   ・漏字的守門改由 test/font-subset.spec.ts 負責：站上出現、子集卻沒收的字會讓
+  //     測試變紅並指名是哪個字。
   //
-  // ⚠️ 這一項省的是 **bytes，不是 request 次數**。原本以為靜態字重是「切片數 × 字重數」、
-  //    可變字型能把字型 request 除以三 —— 實測推翻了：舊設定下 300/400/500 的 105 個
-  //    切片 URL 完全相同（@nuxt/fonts 本來就只下載一份可變字型、宣告三次），瀏覽器對
-  //    同一個 URL 只發一次 request。新舊各量一次，首頁字型 request 都是 36、抓到的檔案
-  //    交集也是 36。實際收穫：產物 CSS 676 KB → 350 KB，其中每頁都載、會阻塞繪製的
-  //    default.css 是 516 KB → 199 KB。完整量測見
-  //    architecture/2026-09-04-request-reduction-design.md §7.x。
+  // ⚠️ 模組本身**不能**從 modules 移除。@nuxt/fonts 會掃 CSS 裡的 font-family 並自動
+  //    去 Google 解析沒宣告過的家族；留著模組 ＋ 三個 'none' 才是「明確關掉」，
+  //    直接拿掉模組雖然也不會下載，卻少了這份把「別再自動去解析」寫下來的宣告。
   //
-  // Noto Serif TC 用 `provider: 'none'`（＝不要用任何 provider 解析這個家族）：
-  // 它來自 common-components 的 CSS，@nuxt/fonts 掃到 font-family 就自動去 Google 解析、
-  // 注入 108 條 @font-face 並下載 108 支 woff2；但真正引用它的三個 class
-  // （.nmd-header / .nmd-menu / .nmd-service-title）在本站渲染出來的 HTML 裡一次都沒出現。
-  // 它本來就不佔 request（沒被使用的家族瀏覽器不會下載），拿掉是為了省 CSS 體積與
-  // 108 支永遠用不到的部署產物。_fonts 從 227 支降到 119 支全部來自這一項。
+  // ⚠️ Noto Serif TC 同樣是 'none'，理由不同：它來自 common-components 的 CSS，
+  //    但真正引用它的三個 class（.nmd-header / .nmd-menu / .nmd-service-title）在本站
+  //    渲染出來的 HTML 裡一次都沒出現，過去只是白白多 108 支永遠用不到的部署產物。
+  //
+  // 舊設定（google ＋ `weights: ['300 500']`）的量測與可變字型的來龍去脈，
+  // 見 architecture/2026-09-04-request-reduction-design.md §7.x。
   fonts: {
     families: [
-      { name: 'Noto Sans', provider: 'google', weights: ['300 500'] },
-      { name: 'Noto Sans TC', provider: 'google', weights: ['300 500'] },
+      { name: 'Noto Sans', provider: 'none' },
+      { name: 'Noto Sans TC', provider: 'none' },
       { name: 'Noto Serif TC', provider: 'none' },
     ],
   },
@@ -179,6 +177,10 @@ export default defineNuxtConfig({
   },
 
   css: [
+    // 站台字型子集的 @font-face（scripts/build-font-subset.mjs 產生，`pnpm assets:fonts`）。
+    // 家族名與 @nuxt/fonts 的不同（'Noto Sans TC Subset' vs 'Noto Sans TC'），靠 base.scss
+    // 的字體堆疊逐字符銜接，所以放在這裡的順序不影響正確性——排最前面只是為了好讀。
+    '~/assets/styles/generated/font-subset.css',
     '~/assets/styles/tailwind.css',
     '~/assets/styles/base.scss',
     '~/assets/styles/subpage.scss',

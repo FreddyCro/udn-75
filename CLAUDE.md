@@ -38,6 +38,34 @@
 
 目的是把中文文案與排版分離，方便編輯校稿。
 
+## 字型子集（產物要 commit，改文案要重跑）
+
+站上不再自架 Google 的 105 片 unicode-range 切片（`nuxt.config.ts` 的 `fonts.families`
+三個家族全是 `provider: 'none'`）。字型改由「只含站上真的出現過的 2,094 個字元」的子集提供：
+`app/assets/fonts/*.woff2` 共 4 支、684 KB，`@font-face` 在
+`app/assets/styles/generated/font-subset.css`，兩者**都已納入版控**。
+實測一位訪客的字型 request 從 28–44 降到 4、字型流量 1.5–1.96 MB 降到 684 KB。
+
+- **改了任何文案（`app/locales/*.json`、元件裡的字面文字）之後，必須跑
+  `pnpm assets:fonts` 並把 `app/assets/fonts/` 與 `generated/font-subset.css` 一起 commit**
+  —— build 不會自動跑（它要連外網跟 Google 要子集）。
+- 忘記跑也沒關係，**`pnpm generate` / `pnpm build` 會先擋下來**
+  （`scripts/check-font-subset.mjs`，純本機對帳、不連外網、毫秒級），訊息會指名是哪個字。
+  部署路徑 `deploy-gh.sh` → `pnpm generate` 因此也擋得到。`test/font-subset.spec.ts` 是
+  CI 那一道，兩邊共用 `coverageReport()`。
+  漏字的實際表現是「該字掉到系統字型」：看得見、但粗細字寬跟正文對不上，**沒有任何錯誤訊號**，
+  所以這兩道守門是唯一的訊號來源。
+- 字元來源由 `scripts/lib/collect-glyphs.mjs` 掃出：`app/**/*.{vue,ts,json}` ＋
+  common-components 的 dist JS。新素材若把文字放到別的地方（例如新的第三方套件 CSS 的
+  `content:`），要記得擴充那支掃描。
+- ⚠️ Google css2 的 `text=` 單批上限是 **800 字**，超過**不會回錯誤** —— 它靜默忽略
+  `text=`、改回傳完整的 105 片切片清單。`scripts/build-font-subset.mjs` 會驗「回來的 CSS
+  只有一個 `url()`」擋掉這種靜默錯誤；調 `BATCH_MAX` 前先看那段註解。
+- ⚠️ `base.scss` 的字體堆疊順序不能動：`*Subset` 必須排在同名的非 Subset 之前
+  （後者現在指的是使用者本機安裝的字型，是零成本的次要保底）。common-components 有 12 條
+  自己宣告 `font-family` 的規則會蓋掉 html 的堆疊，`base.scss` 末端有對應的覆寫區塊，
+  名單同樣由 `test/font-subset.spec.ts` 跟套件的 dist CSS 對帳。
+
 ## SVG sprite（產物要 commit）
 
 正式站對 `_nuxt/*`、`img/*` 依**時間窗內的 request 次數**限流（429），不是 bytes

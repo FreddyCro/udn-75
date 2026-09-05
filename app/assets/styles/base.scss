@@ -90,7 +90,10 @@ html {
   // Noto Sans 沒有這些碼位）自然掉到 Noto Sans TC。
   // ⚠️ 這也把 — – ' ' " " … 這類 General Punctuation 一併交給西文版了：
   //    中文段落裡的破折號／引號／刪節號會改用半形字幅，比 TC 版窄。這是刻意的取捨。
-  // 字體來源見 nuxt.config.ts 的 fonts.families（@nuxt/fonts 本地自架）。
+  // 字體來源：這兩個家族的 @font-face 是「只含站上真的出現過的 2,094 字」的站台子集
+  // （scripts/build-font-subset.mjs 產生，宣告在 assets/styles/generated/font-subset.css）。
+  // 家族名刻意沿用原名，所以這條堆疊與全站其他 font-family 宣告都不必為了子集而改動。
+  // 改文案後要跑 `pnpm assets:fonts`，忘記的話 `pnpm generate` 會擋下來（見 CLAUDE.md）。
   font-family: 'Noto Sans', 'Noto Sans TC', sans-serif;
   font-style: normal;
   line-height: 150%;
