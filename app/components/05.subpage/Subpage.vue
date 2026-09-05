@@ -795,6 +795,24 @@ onBeforeUnmount(() => {
 //（320 稿 20、414 稿 26），pad 起改 vw 等比欄寬（654/768），pc 與 ultra
 // 稿恰為同一比例（1040/1280 = 1560/1920 = 81.25vw），一條規則吃兩檔，
 // ≥1920 錨定回 1560 定寬（與 hero 的 ultra 錨定同思路）。
+// 錨點 rail（SubpageAnchor，≥1280 才出現）是 `position: fixed; right: 24px`、寬 151
+// （標題 75 ＋ 數字 18 ＋ 間隔 8 ＋ 尾線 50），固定吃掉視窗右側 175px。引言欄是置中的
+// max-width，**側邊留白 < 175 就與 rail 水平重疊** —— 實測 1280 重疊 62.5、1920 重疊
+// 2.5，要到 1925 以上才自然分開，也就是整個 pc 區間都疊著。
+//
+// 平常看不出來是因為還要垂直撞上：引言靠下對齊、rail 垂直中心固定在 25%，視窗越矮、
+// 引言越長才會頂上去。實測（最長的 health 引言，7 行）：
+//   1280×720  垂直剛好相切、1920×1080 差 20px —— 兩者都逃過
+//   1920×950（1080p 視窗含瀏覽器介面）垂直重疊 63、1920×900 重疊 95 —— 撞上
+// 這就是「只有部分解析度會重疊」的成因。
+//
+// 解法：右側留一塊 rail 保留區，只收右邊、左內緣不動（padding 加在置中的框上，
+// border-box ⇒ 框的位置與左內緣都不變）。夾 max(0px, …) 是為了「只在不夠時才收」——
+// ≥1925 本來就夠寬，算出來是 0，那一段維持稿的 1560 定寬、完全不動。
+// 生效時引言與 rail 的間距恆為 40。
+// ⚠️ 改 rail 的寬度／right 或這裡的欄寬時，$anchor-reserve 要跟著重算。
+$anchor-reserve: 215px; // 151（rail 寬）＋ 24（距視窗右緣）＋ 40（呼吸）
+
 .subpage__col--wide {
   @include rwd-min('mobile') {
     padding: 0 26px;
@@ -805,11 +823,14 @@ onBeforeUnmount(() => {
   }
   @include rwd-min('pc') {
     max-width: calc(1040 / 1280 * 100vw); // = 1560/1920，pc 與 ultra 同比例
+    // 100% ＝ 父層 .subpage__intro 的內容寬（不含捲軸），(100% − 欄寬)/2 即現在的側留白。
+    padding-right: max(0px, calc(#{$anchor-reserve} - (100% - (1040 / 1280 * 100vw)) / 2));
   }
   // ⚠️ 這個 1560 同時是 hero 欄 ≥1920 的左邊界基準（見 .subpage__col--hero 的 ultra
   //    區塊）—— 兩者的可視左緣靠它切齊，改這裡要一起改那裡。
   @include rwd-min('ultra') {
     max-width: 1560px;
+    padding-right: max(0px, calc(#{$anchor-reserve} - (100% - 1560px) / 2));
   }
 }
 
