@@ -22,9 +22,11 @@ import { detectInAppBrowser } from '~/utils/in-app-browser';
 
 const { groups } = str.agenda;
 
-// 標題存成陣列＝設計稿指定的強制折行點（目前只有 14:00 那列：斷在「》」之後，
-// 自然折行會斷在「發布」之後）。段與段之間插一個 <br class="agenda__title-break">，
-// 該 <br> 只在 pc／pad 生效 —— mob 欄寬不同、稿上沒有這個要求（見 SCSS）。
+// 標題存成陣列＝設計稿指定的強制折行點（目前只有 14:00 那列：斷在「發布」之後）。
+// 段與段之間插一個 <br class="agenda__title-break">，該 <br> 只在 pc／pad 生效 ——
+// mob 欄寬不同、稿上沒有這個要求（見 SCSS）。
+// ⚠️ 第一段結尾那個半形空格是刻意的：pc／pad 折行時行尾空白本來就會被收掉、不影響
+// 排版；mob 把 <br> 藏掉後兩段接回同一行，就靠它分隔「發布」與「勾勒」。
 // 單行標題仍是字串，不必為了這一列全部改寫成陣列。
 const titleLines = (title: string | string[]) =>
   Array.isArray(title) ? title : [title];
