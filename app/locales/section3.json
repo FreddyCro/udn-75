@@ -33,7 +33,7 @@
             "url": "https://www.tsholdings.com.tw/tsh/"
           },
           {
-            "name": "蝦皮購物平台",
+            "name": "蝦皮購物",
             "quote": "ＡI守護安心交易 共築永續美好未來",
             "logo": "/img/blessing/partner-shopee.svg",
             "gaTerm": "shopee",
@@ -52,16 +52,16 @@
             "url": "https://www.scsb.com.tw"
           },
           {
-            "name": "日月光、日月光投控",
-            "quote": "低碳使命、循環再生、價值共創、社會共融",
+            "name": "日月光投控",
+            "quote": "低碳使命、循環再生、社會共融、價值共創",
             "logo": "/img/blessing/partner-aseglobal.svg",
             "gaTerm": "aseglobal",
             "url": "https://www.aseglobal.com/ch/csr/"
           },
           {
             "name": "日立永大電梯",
-            "quote": "日立永大電梯，乘載城市向上而行",
-            "logo": "/img/blessing/partner-yungtay.png",
+            "quote": "日立永大電梯，60年承載城市向上",
+            "logo": "/img/blessing/partner-yungtay.svg",
             "gaTerm": "yungtay",
             "url": "https://www.hitachi-yungtay.com.tw/"
           },
@@ -85,8 +85,8 @@
         "label": "倡議夥伴",
         "partners": [
           {
-            "name": "紳裝",
-            "quote": "聯合七五傳初心，紳裝四十耀未來",
+            "name": "紳裝西服",
+            "quote": "聯合七五傳初心紳裝四十耀未來",
             "logo": "/img/blessing/partner-gentlemen.svg",
             "gaTerm": "gentlemen",
             "url": "https://www.gentlemen.com.tw/"
@@ -111,7 +111,7 @@
             "url": "https://www.acer.com/50-years/tw-zh/"
           },
           {
-            "name": "Happy GO",
+            "name": "HAPPY GO",
             "quote": "點數串聯智慧生活，陪伴每一個更好的選擇",
             "logo": "/img/blessing/partner-happygo.svg",
             "gaTerm": "happygo",
@@ -133,7 +133,8 @@
           },
           {
             "name": "中租控股",
-            "quote": "打造綠能價值鏈，低碳轉型邁向永續",
+            "quote": "打造綠能價值鏈，<br/>低碳轉型邁向永續",
+            "quoteBreak": "mob",
             "logo": "/img/blessing/partner-chailease.svg",
             "gaTerm": "chailease",
             "url": "https://www.chaileaseholding.com/CSR/OperatorTalk"
@@ -160,8 +161,8 @@
             "url": "https://www.dragonsteel.com.tw/"
           },
           {
-            "name": "元培科大",
-            "quote": "元培深耕醫事教育，攜手聯合共創健康永續",
+            "name": "元培醫事科大",
+            "quote": "元培深耕醫事教育攜手聯合共創健康永續",
             "logo": "/img/blessing/partner-ypu.png",
             "gaTerm": "ypu",
             "url": "https://www.ypu.edu.tw/"
@@ -175,7 +176,7 @@
           },
           {
             "name": "台北市電器商業同業公會",
-            "quote": "世貿電器展&圓山音響展共享美好新生活",
+            "quote": "台北電器展＆國際音響展 共創美好新生活",
             "logo": "/img/blessing/partner-teca.svg",
             "gaTerm": "teca",
             "url": "https://teca.org.tw/"
@@ -186,13 +187,6 @@
             "logo": "/img/blessing/partner-yagitsu.svg",
             "gaTerm": "yagitsu",
             "url": "https://www.yagitsu.co.jp"
-          },
-          {
-            "name": "育達科大",
-            "quote": "培育達人就在育達 聯合攜手永續家園",
-            "logo": "/img/blessing/partner-ydu.svg",
-            "gaTerm": "ydu",
-            "url": "https://www1.ydu.edu.tw/?locale=zh_tw"
           },
           {
             "name": "台灣房屋",
@@ -217,7 +211,7 @@
           },
           {
             "name": "味丹企業",
-            "quote": "實踐價值轉型，邁向永續未來",
+            "quote": "實踐價值轉型<br/>邁向永續未來",
             "logo": "/img/blessing/partner-vedan.svg",
             "gaTerm": "vedan",
             "url": "https://www.vedan.com.tw/"
@@ -237,7 +231,7 @@
             "url": "https://www.di-jing.com.tw/"
           },
           {
-            "name": "長春藤",
+            "name": "長春藤預防醫學健康管理",
             "quote": "健康永續來自預防，環境永續你我共創",
             "logo": "/img/blessing/partner-icareyou.svg",
             "gaTerm": "icareyou",
@@ -245,7 +239,7 @@
           },
           {
             "name": "唯賀國際餐飲股份有限公司",
-            "quote": "與聯合同行，讓溫暖延續",
+            "quote": "與聯合同行<br/>讓溫暖延續",
             "logo": "/img/blessing/partner-nupasta.svg",
             "gaTerm": "nupasta",
             "url": "https://www.nu-pasta.com.tw/"
@@ -259,7 +253,7 @@
           },
           {
             "name": "陸府建設",
-            "quote": "都會核心<br/>回歸自然 打造永續生機建築",
+            "quote": "都會核心回歸自然<br/>打造永續生機建築",
             "logo": "/img/blessing/partner-liveforever.svg",
             "gaTerm": "liveforever",
             "url": "https://www.live-forever.com.tw/"
@@ -273,14 +267,14 @@
           },
           {
             "name": "富宇建設",
-            "quote": "聯合傳動大時代，建築生活新美學",
+            "quote": "聯合傳動大時代<br/>建築生活新美學",
             "logo": "/img/blessing/partner-fuyu.svg",
             "gaTerm": "fuyu",
-            "url": "https://www.fu-yu.com/project/?id=154"
+            "url": "https://www.inhouse-web.com/fuyudoublestar"
           },
           {
             "name": "崴正營造",
-            "quote": "崴信築夢前行，正心共創永續",
+            "quote": "崴信築夢前行，<br/>正心共創永續",
             "logo": "/img/blessing/partner-weizheng.svg",
             "gaTerm": "weizheng",
             "url": "https://www.weizheng.com.tw/"
@@ -343,10 +337,17 @@
           },
           {
             "name": "榮成紙業",
-            "quote": "榮成低碳造紙 0.68，共創淨零未來",
+            "quote": "榮成低碳紙箱0.68<br/>共創淨零未來",
             "logo": "/img/blessing/partner-longchenpaper.svg",
             "gaTerm": "longchenpaper",
             "url": "https://www.longchenpaper.com/main_index_ch.asp"
+          },
+          {
+            "name": "育達科大",
+            "quote": "培育達人就在育達 聯合攜手永續家園",
+            "logo": "/img/blessing/partner-ydu.svg",
+            "gaTerm": "ydu",
+            "url": "https://www1.ydu.edu.tw/?locale=zh_tw"
           },
           {
             "name": "精銳建設",
@@ -408,6 +409,7 @@
             "name": "寶璽建築機構",
             "quote": "聯合建築美學 創新城市地表",
             "logo": "/img/blessing/partner-signet.svg",
+            "logoScale": 1.15,
             "gaTerm": "signet",
             "url": "http://www.signet.tw/"
           }

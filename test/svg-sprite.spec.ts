@@ -57,7 +57,7 @@ describe('spriteSymbolId / isSvgPath', () => {
     expect(spriteSymbolId('/img/forum/forum1-title-pc-1.svg')).toBe('forum1-title-pc-1');
   });
   it('png 不進 sprite', () => {
-    expect(isSvgPath('/img/blessing/partner-yungtay.png')).toBe(false);
+    expect(isSvgPath('/img/blessing/partner-ctbc.png')).toBe(false);
     expect(isSvgPath('/img/blessing/partner-shopee.svg')).toBe(true);
   });
 });

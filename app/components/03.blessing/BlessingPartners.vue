@@ -6,14 +6,23 @@
 // 列的排列：pc / pad 是「logo 左 ＋ 語錄右對齊」，mob 改成「logo 上 / 語錄下」，
 // 文字框置中但**框內**語錄靠左、企業名置中（見 __text / __name 的 tablet 段）。
 //
-// logo 放 public/img/blessing/partner-*.svg，一律是設計稿的 232×64 框（紳裝那張稿上是
-// 232×80，靠 __logo 的 object-fit: contain 等比縮進 64 的框，不變形）。含點陣圖、或路徑
-// 太碎以致 SVG 反而比點陣大的那 8 張（yungtay／dijing／fuyuland／just／ctbc／tcbbank／
-// ypu／darmo）改存 .png，尺寸取 4 倍（928×256）以應付高解析螢幕。
+// logo 放 public/img/blessing/partner-*.svg，一律是設計稿的 232×64 框（2026-09-06 之前
+// 紳裝那張稿上是 232×80，靠 __logo 的 object-fit: contain 等比縮進 64 的框；換新版 logo
+// 之後全部統一成 232×64，contain 仍留著當防護）。含點陣圖、或路徑
+// 太碎以致 SVG 反而比點陣大的那 7 張（dijing／fuyuland／just／ctbc／tcbbank／ypu／darmo）
+// 改存 .png，尺寸取 4 倍（928×256）以應付高解析螢幕。
+// ⚠️ yungtay 原本也在這一列，2026-09-06 換上設計師的新版 .svg 後移出——但那支是「JPEG 包
+//    一層 SVG 外殼」（紅底是 5928×3335 的內嵌 JPEG，只有白字是向量），進 sprite 讓
+//    partners.svg 從 553 KB 長到 771 KB。換來的是少一個 request 與白字在高解析下的銳利度。
+//    若日後拿得到純向量版（紅底其實只是帶斜向漸層的矩形），換掉可直接省回這 217 KB。
 //
 // url／quote 皆可為空字串（客戶尚未提供）：空 url 該列就渲染成 <div> 而非 <a>，
-// 空 quote 整行不輸出——空的 <p> 會佔掉一行行高、把該列撐高。欄位一律保留而不省略，
-// 是為了讓 JSON 的每一列型別一致（TS 從 JSON import 推型別，缺欄位會讓 item.url 報錯）。
+// 空 quote 整行不輸出——空的 <p> 會佔掉一行行高、把該列撐高。這兩欄一律保留而不省略。
+//
+// ⚠️ 2026-09-06 之前這條「欄位一律保留」的理由是「TS 從 JSON import 推型別，缺欄位會讓
+//    item.url 報錯」。那個理由現在由下面的 Partner 型別承擔了：**只有部分列會有的例外欄位
+//    （quoteBreak／logoScale）宣告成 optional 即可，不必為了型別去補 52 筆空值**。
+//    必填欄位仍然一列都不能少——少了型別對不上，一樣會炸。
 import str from '@/locales/section3.json';
 import { gaClickButton } from '~/utils/tracking-event';
 import { isSvgPath, spriteSymbolId } from '~/utils/svg-sprite-ref';
@@ -24,7 +33,25 @@ defineProps<{ near: boolean }>();
 
 const assetUrl = useAssetUrl();
 
-const { partner } = str;
+/**
+ * 一列夥伴。必填欄位是 JSON 每一列都有的；後兩個是**逐筆的例外開關**，只有稿上有特別
+ * 要求的那幾筆才寫，其餘省略：
+ *   quoteBreak: 'mob' — 語錄裡的 <br/> 只在 mob 生效（目前只有中租控股）
+ *   logoScale        — logo 的靜止倍率，稿上要求放大的才給（目前只有寶璽建築機構 1.15）
+ * 宣告成 optional 是為了讓 JSON 保持乾淨——沒有它，TS 會從 JSON 推出聯集型別，
+ * 存取這兩欄就會報錯，只能反過來去補 52 筆空值。
+ */
+type Partner = {
+  name: string;
+  quote: string;
+  logo: string;
+  gaTerm: string;
+  url: string;
+  quoteBreak?: string;
+  logoScale?: number;
+};
+
+const partner = str.partner as { tiers: { label: string; partners: Partner[] }[] };
 
 // 每列企業祝福詞的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀
 // runtimeConfig，見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，開關關著時靜默。
@@ -47,10 +74,13 @@ const spriteHref = (logo: string) => `${SPRITE}#${spriteSymbolId(logo)}`;
     <ul class="blessing-partners__list">
       <template v-for="(tier, tierIndex) in partner.tiers" :key="tierIndex">
         <li class="blessing-partners__tier">{{ tier.label }}</li>
+        <!-- --logo-scale 掛在 <li>：logo 有三種渲染分支（sprite／png／佔位框），
+             掛在祖先讓三者共用同一個值，不必逐分支重複 :style。 -->
         <li
           v-for="(item, i) in tier.partners"
           :key="`${tierIndex}-${i}`"
           class="blessing-partners__item"
+          :style="item.logoScale ? { '--logo-scale': item.logoScale } : undefined"
         >
           <!-- 版面（flex／內距／分隔線）掛在內層而非 <li>：有官網的夥伴整列要可點，
                <a> 得自己當 flex 容器；沒官網的退回 <div>，兩者版面完全一致。 -->
@@ -86,10 +116,14 @@ const spriteHref = (logo: string) => `${SPRITE}#${spriteSymbolId(logo)}`;
             <div class="blessing-partners__text">
               <!-- 語錄的斷行是設計稿手動排的（不是自然折行），故由文案自己帶 <br/>、
                    以 v-html 輸出 —— 同 subpage 各頁 sp-p／AgendaReport cta 的既有慣例。
-                   設計稿三個斷點的斷點位置一致，故單一 <br/> 即可，不必逐斷點分文案。 -->
+                   絕大多數的斷點位置三個斷點一致，故單一 <br/> 即可，不必逐斷點分文案。
+                   例外走 quoteBreak：目前只有中租控股，稿上 mob 才斷、pc／pad 不斷 ——
+                   文案照樣只寫一個 <br/>，由下面的 modifier 決定它在哪些斷點生效
+                   （同 Subpage 的 introBreakFrom，開關放資料、不把 class 塞進文案）。 -->
               <p
                 v-if="item.quote"
                 class="blessing-partners__quote"
+                :class="{ 'blessing-partners__quote--break-mob': item.quoteBreak === 'mob' }"
                 v-html="item.quote"
               />
               <!-- 名字前面那個破折號是**歸屬記號**，不是名字的一部分，且逐斷點不同
@@ -229,12 +263,17 @@ const spriteHref = (logo: string) => `${SPRITE}#${spriteSymbolId(logo)}`;
   width: 232px;
   height: 64px;
   object-fit: contain;
+  // 逐筆的靜止倍率（資料的 logoScale，由 <li> 掛成 --logo-scale）。預設 1 ＝ 照原尺寸；
+  // 稿上要求放大的那幾筆才不是 1（目前只有寶璽建築機構 1.15）。
+  transform: scale(var(--logo-scale, 1));
   transition: transform 0.3s ease;
 
   // 滑過整列就放大 logo。與 __name 變橘那條不同，這裡不限定 [href] ——
   // 沒官網的列（<div>）一樣要有回饋。
+  // ⚠️ 乘上 --logo-scale 而不是寫死 1.2：hover 的意義是「在自己的尺寸上再放大一個檔次」，
+  //    寫死會讓有放大倍率的那筆 hover 時反而縮回去（1.15 → 1.2 幾乎沒動）。
   .blessing-partners__item:hover & {
-    transform: scale(1.2);
+    transform: scale(calc(var(--logo-scale, 1) * 1.2));
   }
 
   @include rwd-max('pc') {
@@ -292,6 +331,17 @@ const spriteHref = (logo: string) => `${SPRITE}#${spriteSymbolId(logo)}`;
   @include rwd-max('tablet') {
     font-size: 17px;
     line-height: 28px;
+  }
+
+  // 只有 mob 斷行的那幾筆（資料的 quoteBreak: 'mob'）：文案裡的 <br/> 在 ≥768 收掉，
+  // 兩段接回同一行、交給瀏覽器自然折 —— 與 Agenda 的 __title-break 同一套做法，方向相反。
+  // 需要 :deep()：語錄走 v-html，那個 <br> 拿不到 scoped 的屬性選擇器。
+  &--break-mob {
+    @include rwd-min('tablet') {
+      :deep(br) {
+        display: none;
+      }
+    }
   }
 }
 
