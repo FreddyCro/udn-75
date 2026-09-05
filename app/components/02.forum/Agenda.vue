@@ -419,11 +419,12 @@ onBeforeUnmount(() => {
     padding-left: 12px;
   }
 
+  // mob 完全不畫線：豎線本來就沒有，收尾的下緣線也拿掉 —— 每一列自己帶
+  // border-top（見 .agenda__row 的同斷點區塊），組與組相鄰處會與這條下緣線疊成雙線。
+  // 沒有任何邊框要變色，故連 transition: border-color 一起移除。
   @include rwd-max('tablet') {
     padding-left: 0;
     border-left: 0;
-    border-bottom: 1px solid var(--agenda-line);
-    transition: border-color 0.3s ease;
   }
 }
 
