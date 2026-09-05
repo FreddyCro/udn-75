@@ -298,12 +298,12 @@ const { play } = useSfx();
 
   &::before {
     background: var(--color-gray);
-    mask: url('/img/udn75_arrow_circle.svg') no-repeat center / contain;
-    -webkit-mask: url('/img/udn75_arrow_circle.svg') no-repeat center / contain;
+    mask: url('../../assets/img/udn75_arrow_circle.svg') no-repeat center / contain;
+    -webkit-mask: url('../../assets/img/udn75_arrow_circle.svg') no-repeat center / contain;
   }
 
   &::after {
-    background: url('/img/udn75_arrow_circle_hover.svg') no-repeat center /
+    background: url('../../assets/img/udn75_arrow_circle_hover.svg') no-repeat center /
       contain;
     opacity: 0;
   }

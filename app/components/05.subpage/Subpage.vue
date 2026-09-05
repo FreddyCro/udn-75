@@ -24,6 +24,7 @@ import {
   type StageBlockState,
 } from '@/utils/subpage-stage-beats';
 import { gaSectionViewOnce } from '@/utils/tracking-event';
+import { SUBPAGE_STREAM_KEY, shouldEagerHero } from '@/utils/subpage-eager';
 import type { IntroMediaImage, IntroMediaVideo } from './SubpageIntroMedia.vue';
 
 export interface SubpageNavData {
@@ -77,6 +78,12 @@ export interface SubpageContent {
 }
 
 const props = defineProps<{ content: SubpageContent }>();
+
+// 連續閱讀頁會 provide；單篇子頁沒有 provide ⇒ inject 不到，回傳這裡給的 default（null）⇒ eager。
+// 一定要傳 default：SUBPAGE_STREAM_KEY 的型別含 null 就是為了讓這裡能傳（見 utils/subpage-eager），
+// 不傳的話 Vue 在 dev 模式會對六支單篇子頁都印一次 injection not found 的警告。
+const stream = inject(SUBPAGE_STREAM_KEY, null);
+const eagerHero = computed(() => shouldEagerHero(stream, props.content.slug));
 
 /**
  * 過濾掉「結構在、內容還沒填」的情形（locales 先留了空殼給編輯填）：
@@ -620,7 +627,7 @@ onBeforeUnmount(() => {
             :use-prefix="false"
             :use2x="false"
             :webp="false"
-            loading="eager"
+            :loading="eagerHero ? 'eager' : 'lazy'"
             alt=""
           />
         </div>
@@ -654,6 +661,7 @@ onBeforeUnmount(() => {
           :active="mediaActive"
           :images="introMedia.images"
           :video="introMedia.video"
+          :eager="eagerHero"
         />
       </div>
     </div>

@@ -8,7 +8,7 @@
  *   play('sfx01Short');
  *
  * 為什麼要有這一層、而不是讓 useSfx() 自己 lazy 建 Audio：
- *   ・預載時機 —— 掛載時就把音效抓下來，第一次 play() 不必等下載。
+ *   ・預載時機 —— 音效被打開的那一下才抓（見下方說明）。
  *   ・解鎖時機 —— iOS 需要借使用者手勢啟動音訊（見 useSfx 的 unlock）。
  *   ・卸載時機 —— 換頁時要停掉並釋放，否則音效會跟著殘留。
  * 這三件事都需要一個明確的「這頁有音效」掛載點，composable 自己沒有。
@@ -19,13 +19,22 @@
 const { prime, unlock, stopAll, release } = useSfx();
 const { soundOn } = useAppSound();
 
-onMounted(() => {
+// 預抓延後到「音效真的被打開」：soundOn 預設 false，關著時 play() 本來就靜默，
+// 6 支 mp3（約 320 KB、6 個 request）在首屏白抓。打開音效的那一下同時是使用者手勢，
+// 正好可以 prime（建 Audio、開始下載）＋ unlock（借手勢解鎖）。
+// useSfx 的 play() 在 pool 沒有該音效時會自己 ensure()，所以延後 prime 不影響正確性，
+// 只影響第一聲的延遲 —— 開啟音效後到第一次互動之間通常已下載完。
+const primeAndUnlock = () => {
   prime();
-  // 已經是開的（例如從子頁切回來）就直接解鎖，不必等下一次切換。
-  if (soundOn.value) unlock();
+  unlock();
+};
+
+onMounted(() => {
+  // 已經是開的（例如從子頁切回來）就直接抓＋解鎖。
+  if (soundOn.value) primeAndUnlock();
 });
 
-watch(soundOn, (on) => (on ? unlock() : stopAll()));
+watch(soundOn, (on) => (on ? primeAndUnlock() : stopAll()));
 
 onBeforeUnmount(release);
 </script>

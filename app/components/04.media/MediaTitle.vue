@@ -2,6 +2,7 @@
 /** 智慧媒體標題藝術字：完成態 media_title.svg ＋ 開場 motion 分件層 */
 import type { MediaTitleEls } from '@/composables/useMediaIntroMotion';
 import str from '@/locales/section4.json';
+import { mediaArt } from '~/utils/media-art';
 
 const { newmedia } = str;
 
@@ -49,7 +50,7 @@ defineExpose({ getEls });
     <img
       ref="titleFinalRef"
       class="media__title-final"
-      src="/img/media/media_title.svg"
+      :src="mediaArt('media_title.svg')"
       width="518"
       height="66"
       alt=""
@@ -64,7 +65,7 @@ defineExpose({ getEls });
       <img
         ref="partLRef"
         class="media__title-part media__title-part--wisdom"
-        src="/img/media/wisdom.svg"
+        :src="mediaArt('wisdom.svg')"
         width="239"
         height="95"
         alt=""
@@ -76,7 +77,7 @@ defineExpose({ getEls });
         <img
           ref="quoteORef"
           class="media__quote media__quote--open"
-          src="/img/media/quote_open.svg"
+          :src="mediaArt('quote_open.svg')"
           width="38"
           height="82"
           alt=""
@@ -84,7 +85,7 @@ defineExpose({ getEls });
         <img
           ref="newCharRef"
           class="media__newchar"
-          src="/img/media/newchar.svg"
+          :src="mediaArt('newchar.svg')"
           width="113"
           height="95"
           alt=""
@@ -92,7 +93,7 @@ defineExpose({ getEls });
         <img
           ref="quoteCRef"
           class="media__quote media__quote--close"
-          src="/img/media/quote_close.svg"
+          :src="mediaArt('quote_close.svg')"
           width="38"
           height="82"
           alt=""
@@ -101,7 +102,7 @@ defineExpose({ getEls });
       <img
         ref="partRRef"
         class="media__title-part media__title-part--media"
-        src="/img/media/media.svg"
+        :src="mediaArt('media.svg')"
         width="238"
         height="95"
         alt=""

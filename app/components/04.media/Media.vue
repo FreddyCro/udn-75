@@ -5,6 +5,7 @@
  */
 import str from '@/locales/section4.json';
 import { PC_BREAKPOINTS, TABLET_BREAKPOINTS } from '~/utils/constants';
+import { mediaArt } from '~/utils/media-art';
 import MediaTitle from './MediaTitle.vue';
 import MediaList from './MediaList.vue';
 
@@ -162,7 +163,7 @@ useMediaIntroMotion({
         <img
           ref="barLRef"
           class="media__bar"
-          src="/img/media/bar.svg"
+          :src="mediaArt('bar.svg')"
           width="12"
           height="82"
           alt=""
@@ -170,7 +171,7 @@ useMediaIntroMotion({
         <img
           ref="barRRef"
           class="media__bar"
-          src="/img/media/bar.svg"
+          :src="mediaArt('bar.svg')"
           width="12"
           height="82"
           alt=""

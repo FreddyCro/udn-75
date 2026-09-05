@@ -16,6 +16,11 @@
 // 是為了讓 JSON 的每一列型別一致（TS 從 JSON import 推型別，缺欄位會讓 item.url 報錯）。
 import str from '@/locales/section3.json';
 import { gaClickButton } from '~/utils/tracking-event';
+import { isSvgPath, spriteSymbolId } from '~/utils/svg-sprite-ref';
+
+// near：父層（Blessing.vue）用文件流內的軌道量出「清單一屏內」才翻 true。
+// false 時不渲染任何圖（連 <img> 也不渲染），避免 pin 的 fixed 瞬間把整份清單抓下來。
+defineProps<{ near: boolean }>();
 
 const assetUrl = useAssetUrl();
 
@@ -24,6 +29,12 @@ const { partner } = str;
 // 每列企業祝福詞的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀
 // runtimeConfig，見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，開關關著時靜默。
 const { play } = useSfx();
+
+// 45 支 svg logo 合成一支 sprite（見 scripts/build-svg-sprites.mjs）：一個 request 取代 45 個。
+// 8 支 png logo 不進 sprite，維持 <img>。
+// ⚠️ 外部 <use href> 必須同源：四個部署目標的 APP_ASSETS_PATH 都與頁面同 host。
+const SPRITE = assetUrl('/img/sprites/partners.svg');
+const spriteHref = (logo: string) => `${SPRITE}#${spriteSymbolId(logo)}`;
 </script>
 
 <template>
@@ -53,12 +64,24 @@ const { play } = useSfx();
             @click="play('sfx01Short'); item.gaTerm && gaClickButton('partner', item.gaTerm)"
           >
             <!-- 外框尺寸固定為設計稿的 logo 框，圖以 contain 內縮，換不同比例的 logo 也不變形 -->
+            <!-- 圖片載入閘：near 之前只放一個同尺寸的空框（版面不動），near 之後
+                 svg logo 走 sprite（<use>，整份清單共 1 個 request）、png 走 <img>。 -->
+            <svg
+              v-if="near && isSvgPath(item.logo)"
+              class="blessing-partners__logo"
+              role="img"
+              :aria-label="item.name"
+            >
+              <use :href="spriteHref(item.logo)" />
+            </svg>
             <img
+              v-else-if="near"
               class="blessing-partners__logo"
               :src="assetUrl(item.logo)"
               :alt="item.name"
               loading="lazy"
             />
+            <span v-else class="blessing-partners__logo" aria-hidden="true" />
 
             <div class="blessing-partners__text">
               <!-- 語錄的斷行是設計稿手動排的（不是自然折行），故由文案自己帶 <br/>、

@@ -20,6 +20,10 @@ import {
   killScrollTriggers,
   refreshScrollTriggers,
 } from '@/utils/scroll-trigger';
+import {
+  articleSpriteHref,
+  articleSpriteViewBox,
+} from '@/utils/article-sprite';
 
 export interface FormulaItem {
   /** 藝術字標題圖（SVG 路徑；無圖時 fallback 為 title 文字） */
@@ -45,6 +49,7 @@ withDefaults(
 
 // 藝術字路徑由呼叫端從 locales/*.json 傳入（純字串）→ 須自行補資產前綴
 const assetUrl = useAssetUrl();
+const artHref = (src: string) => articleSpriteHref(src, assetUrl);
 
 const POS = ['tl', 'tr', 'bl', 'br'] as const;
 // 分支方向：tl/br「\」、tr/bl 鏡射「/」；push＝收合方向（朝中央塊，視覺座標、與 flip 無關）
@@ -351,12 +356,18 @@ onBeforeUnmount(() => {
         }"
       >
         <div class="formula__center">
-          <img
+          <!-- 走 article sprite（見 utils/article-sprite.ts）。版位保留仍由
+               .formula__center-logo 的 aspect-ratio 負責（test/subpage-image-space-reservation.spec.ts
+               對帳的是 CSS 與素材 viewBox，不看這裡用什麼標籤）。 -->
+          <svg
             v-if="center.img"
             class="formula__center-logo"
-            :src="assetUrl(center.img)"
-            :alt="center.eyebrow ?? ''"
-          />
+            role="img"
+            :aria-label="center.eyebrow ?? ''"
+            :viewBox="articleSpriteViewBox(center.img)"
+          >
+            <use :href="artHref(center.img)" />
+          </svg>
           <p v-else-if="center.eyebrow" class="formula__center-eyebrow">
             {{ center.eyebrow }}
           </p>
@@ -398,12 +409,19 @@ onBeforeUnmount(() => {
           :style="boxStyle(i)"
         >
           <p class="formula__box-head">
-            <img
+            <!-- 走 article sprite（見 utils/article-sprite.ts）：news 篇這五支標題
+                 素材原本各占一個 request。viewBox 必填 —— .formula__box-logo 是
+                 `width: auto`，寬度靠比例長出來，而外部 <use> 的 viewBox 在
+                 <symbol> 上，外層 svg 沒有內在尺寸。 -->
+            <svg
               v-if="b.titleImg"
               class="formula__box-logo"
-              :src="assetUrl(b.titleImg)"
-              :alt="b.title ?? ''"
-            />
+              role="img"
+              :aria-label="b.title ?? ''"
+              :viewBox="articleSpriteViewBox(b.titleImg)"
+            >
+              <use :href="artHref(b.titleImg)" />
+            </svg>
             <span v-else>{{ b.title }}</span>
           </p>
           <ul class="formula__box-list">

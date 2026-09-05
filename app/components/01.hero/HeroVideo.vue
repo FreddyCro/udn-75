@@ -95,6 +95,12 @@ const ASSETS_PATH = runtime.public.APP_ASSETS_PATH;
 // SSR 安全：先以 'pc' 為預設（與初次 client render 一致，避免 hydration mismatch），
 // 掛載後再依實際解析度校正並監聽 resize（同 UVid）。
 const device = ref<HeroVideoDevice>('pc');
+// SSR 與 hydration 首次渲染都不寫 src / poster：裝置只有 client 知道，SSR 一律當 pc，
+// 寫在標記裡手機就會先抓 pc 版 metadata 與 pc poster（實測多 2 個 request，對限流照算）。
+// onMounted 先 onResize() 校正 device、再翻 mounted，nextTick 後 DOM 才有正確來源 ——
+// promotePreload() 本來就等 nextTick，順序剛好。載入層（HeroLoader）在 hydration 前
+// 蓋著整個 hero，看不到 poster 晚一拍出現。
+const mounted = ref(false);
 const videoEl = ref<HTMLVideoElement | null>(null);
 const heroEl = ref<HTMLElement | null>(null);
 const stageEl = ref<HTMLElement | null>(null);
@@ -563,6 +569,7 @@ function promotePreload() {
 
 onMounted(() => {
   onResize();
+  mounted.value = true;
   window.addEventListener('resize', onResize);
 
   gsap.registerPlugin(ScrollTrigger);
@@ -637,7 +644,8 @@ onBeforeUnmount(() => {
     <div ref="stageEl" class="sec1__hero-stage">
       <!-- 影片層：滿版。
            ⚠️ preload 是 "metadata" 而非 "auto"：這裡是 SSR 吐出的標記，auto 會在 HTML 解析階段
-           就開始拉整支影片、拖慢 hydration（理由與升級時機見 script 的 promotePreload）。 -->
+           就開始拉整支影片、拖慢 hydration（理由與升級時機見 script 的 promotePreload）。
+           src / poster 也不在 SSR 標記裡（見 script 的 mounted）。 -->
       <div
         class="sec1__hero-video"
         :class="{ 'is-loading': !elementReady }"
@@ -646,8 +654,8 @@ onBeforeUnmount(() => {
         <video
           ref="videoEl"
           class="sec1__hero-video-el"
-          :src="videoSrc"
-          :poster="videoPoster"
+          :src="mounted ? videoSrc : undefined"
+          :poster="mounted ? videoPoster : undefined"
           muted
           playsinline
           preload="metadata"

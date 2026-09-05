@@ -11,6 +11,10 @@ import {
   killScrollTriggers,
   refreshScrollTriggers,
 } from '@/utils/scroll-trigger';
+import {
+  articleSpriteHref,
+  articleSpriteViewBox,
+} from '@/utils/article-sprite';
 
 export interface TimelineAward {
   /** 獎項機構 */
@@ -43,6 +47,13 @@ const props = withDefaults(
 // 年份圖是 runtime 才組出來的路徑，Vite 編譯期無法改寫成 base 感知的 URL，
 // 得自己補 APP_ASSETS_PATH（同 useAssetUrl.ts 的說明）。
 const assetUrl = useAssetUrl();
+
+// 歷程線／箭頭／年份數字都走 article sprite（見 utils/article-sprite.ts）：
+// 原本 7 個 request（線 1、箭頭 1、年份 5），現在與其他內文素材共用同一支、共 1 個。
+const LINE_SRC = '/img/news/udn75_news_timeline_line.svg';
+const ARROW_SRC = '/img/news/udn75_news_timeline_arrow.svg';
+const yearSrc = (year: string) => `/img/news/${year}.svg`;
+const artHref = (src: string) => articleSpriteHref(src, assetUrl);
 
 const rootRef = ref<HTMLElement | null>(null);
 const stageRef = ref<HTMLElement | null>(null);
@@ -184,19 +195,32 @@ onBeforeUnmount(() => {
       <div ref="trackRef" class="award-timeline__track">
         <!-- 歷程線（藍，靜態鋪滿）+ 橘色軌跡（箭頭走過的段落）+ 橘色像素箭頭（隨捲動沿線右移） -->
         <div class="award-timeline__head" aria-hidden="true">
-          <img
-            ref="lineRef"
-            class="award-timeline__line"
-            src="/img/news/udn75_news_timeline_line.svg"
-            alt=""
-          />
+          <!-- ⚠️ ref 掛在 <span> 而不是 <svg>：build() 用 line.offsetWidth /
+               arrow.offsetWidth 做幾何量測，而 offsetWidth 是 HTMLElement 的屬性，
+               SVGElement 沒有。外層 span 沿用原本的 class（本來就是 display:block
+               ＋ 定死尺寸），幾何與改動前完全相同。 -->
+          <span ref="lineRef" class="award-timeline__line">
+            <!-- preserveAspectRatio="none"：原本是 <img width:100% height:4px>＝
+                 拉伸，而 svg 預設會依 viewBox（1064×4）等比留白 -->
+            <svg
+              class="award-timeline__head-svg"
+              :viewBox="articleSpriteViewBox(LINE_SRC)"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <use :href="artHref(LINE_SRC)" />
+            </svg>
+          </span>
           <span ref="trailRef" class="award-timeline__trail" />
-          <img
-            ref="arrowRef"
-            class="award-timeline__arrow"
-            src="/img/news/udn75_news_timeline_arrow.svg"
-            alt=""
-          />
+          <span ref="arrowRef" class="award-timeline__arrow">
+            <svg
+              class="award-timeline__head-svg"
+              :viewBox="articleSpriteViewBox(ARROW_SRC)"
+              aria-hidden="true"
+            >
+              <use :href="artHref(ARROW_SRC)" />
+            </svg>
+          </span>
         </div>
 
         <ol class="award-timeline__list">
@@ -208,11 +232,17 @@ onBeforeUnmount(() => {
             :class="{ 'award-timeline__item--passed': i <= activeIdx }"
             :style="{ '--w': item.width ?? 277 }"
           >
-            <img
+            <!-- viewBox 必填：.award-timeline__year 只定 height、寬度靠比例長出來，
+                 而年份 2022–2026 的原始寬高各不相同（76×24 / 78×24 / 73×22…）。
+                 外部 <use> 的 viewBox 在 <symbol> 上，外層 svg 沒有內在尺寸。 -->
+            <svg
               class="award-timeline__year"
-              :src="assetUrl(`/img/news/${item.year}.svg`)"
-              :alt="item.year"
-            />
+              role="img"
+              :aria-label="item.year"
+              :viewBox="articleSpriteViewBox(yearSrc(item.year))"
+            >
+              <use :href="artHref(yearSrc(item.year))" />
+            </svg>
             <div
               v-for="(a, j) in item.awards"
               :key="j"
@@ -336,6 +366,14 @@ onBeforeUnmount(() => {
   }
 }
 
+// 線與箭頭的 sprite <svg>：撐滿外層 span（尺寸由 __line / __arrow 定），
+// 外層 span 才是 GSAP 量測與位移的對象
+.award-timeline__head-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 // 對稿：三斷點同欄寬（--w）與 gap 48，pad/mob 靠軌道平移看完整排
 .award-timeline__list {
   display: flex;
@@ -370,6 +408,8 @@ onBeforeUnmount(() => {
 // 年份數字：對稿向量字（/img/news/{year}.svg）
 .award-timeline__year {
   display: block;
+  // width 交給 viewBox 的比例算（各年份原始寬度不同），與原本 <img> 的行為一致
+  width: auto;
   height: 23px;
   margin: 0 0 8px;
 

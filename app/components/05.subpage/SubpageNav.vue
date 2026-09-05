@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 /** SubpageNav — 子頁最下方的「返回 / 下一篇」導覽。 */
 import { gaClickButton } from '~/utils/tracking-event';
+// <img> 與 CSS mask 抓取模式不同、快取 key 不同，build 時內嵌成 data URI 免掉重複 request
+import navNextUrl from '@/assets/img/udn75_nav_next.svg';
 
 // 兩顆導覽鈕的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
 // 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
@@ -74,7 +76,7 @@ const gaNav = (dir: 'back' | 'next') => {
           </svg>
           <img
             class="subpage-nav__icon subpage-nav__icon--next"
-            src="/img/udn75_nav_next.svg"
+            :src="navNextUrl"
             alt=""
             aria-hidden="true"
           />

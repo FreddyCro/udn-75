@@ -108,6 +108,8 @@ const props = withDefaults(
      * 預設對應本區塊素材的實況：三個裝置各一張（_pc/_pad/_mob）、沒有 @2x。
      */
     pic?: IntroMediaPicOptions;
+    /** 第一幀是否 eager。連續閱讀頁只有第一篇為 true（見 utils/subpage-eager）。 */
+    eager?: boolean;
   }>(),
   {
     images: () => [],
@@ -115,6 +117,7 @@ const props = withDefaults(
     active: true,
     interval: 2500,
     fade: 750,
+    eager: true,
     pic: () => ({
       usePrefix: true,
       srcset: ['pc', 'pad', 'mob'],
@@ -175,6 +178,11 @@ const inView = ref(false);
 let timer: ReturnType<typeof setInterval> | null = null;
 let observer: IntersectionObserver | null = null;
 
+// 影片元素只在「一屏內」才掛載：11 支引言影片各 preload="metadata"，捲過去每支都發一個
+// request；沒捲到的不該抓。near 一旦 true 不翻回（<video> 掛上就留著，拆掉會丟播放進度）。
+const near = ref(false);
+let nearObserver: IntersectionObserver | null = null;
+
 /**
  * 播放閘：在視窗內（IO）且輪到它演（外部 active）。圖片與影片共吃這一個判斷 ——
  * 影片交給 UVid 的反應式 autoplay，Ken Burns 交給 .intro-media--playing。
@@ -210,6 +218,7 @@ watch(shouldPlay, (play) => {
 onMounted(() => {
   if (!('IntersectionObserver' in window)) {
     inView.value = true;
+    near.value = true;
     return;
   }
 
@@ -218,12 +227,25 @@ onMounted(() => {
     { threshold: 0.1 },
   );
   if (rootRef.value) observer.observe(rootRef.value);
+
+  nearObserver = new IntersectionObserver(
+    (entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      near.value = true;
+      nearObserver?.disconnect();
+      nearObserver = null;
+    },
+    { rootMargin: '100% 0px', threshold: 0 },
+  );
+  if (rootRef.value) nearObserver.observe(rootRef.value);
 });
 
 onBeforeUnmount(() => {
   stop();
   observer?.disconnect();
   observer = null;
+  nearObserver?.disconnect();
+  nearObserver = null;
 });
 </script>
 
@@ -246,7 +268,7 @@ onBeforeUnmount(() => {
            兩邊由同一個來源出，不會有一天只改到一邊。
       -->
       <UVid
-        v-if="isVideo && video"
+        v-if="isVideo && video && near"
         :src="video.src"
         :poster="video.poster"
         classname="intro-media__video"
@@ -276,7 +298,7 @@ onBeforeUnmount(() => {
             :ext="slide.pic.ext"
             :use2x="slide.pic.use2x"
             :webp="slide.pic.webp"
-            :loading="i === 0 ? 'eager' : 'lazy'"
+            :loading="i === 0 && eager ? 'eager' : 'lazy'"
           />
         </div>
       </template>

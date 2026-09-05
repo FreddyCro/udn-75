@@ -9,7 +9,8 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "assets:sprites": "node scripts/build-svg-sprites.mjs"
   },
   "dependencies": {
     "@udn-digital-center/common-components": "^0.3.4",
@@ -27,6 +28,7 @@
     "@types/three": "^0.184.1",
     "sass": "^1.100.0",
     "sass-embedded": "^1.100.0",
+    "svgo": "^4.1.0",
     "tailwindcss": "^4.3.2",
     "vitest": "^4.1.10"
   }

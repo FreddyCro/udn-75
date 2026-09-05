@@ -221,6 +221,14 @@ const syncPartnersHeld = () => {
  * `.section3` 的總高一格未變，下游 media 的 pin 起點因此零位移
  * （算式與等價性見 blessingUnitTrackHeight，由 test/blessing-unit-track.spec.ts 守著）。
  */
+// 夥伴清單的圖片載入閘。觀察的是**軌道**（.section3__unit-track，永遠在文件流裡），
+// 不是剛體（.section3__unit）—— 剛體在 is-pin-face / is-pin-list 會變 position: fixed，
+// 實測啟動期間只要有一個 frame 是 fixed，瀏覽器就把整份清單當成在視窗內、53 張 logo
+// 全部下載（<img loading="lazy"> 因此失效，見 architecture/2026-09-04-request-reduction-design.md §2.1）。
+// rootMargin 一個視窗高：捲到前一屏就開始抓，到位時多半已到。一旦 true 不再翻回。
+const partnersNear = ref(false);
+let nearIO: IntersectionObserver | null = null;
+
 const unitH = ref(0);
 const syncUnitHeight = () => {
   const el = unitRef.value;
@@ -459,6 +467,21 @@ onMounted(() => {
   //
   // onRefresh 一定要重量：--vh、斷點、字體到齊都會改變 pinHoldTop 與 pinPark，
   // 而它們是 fixed 的錨點 —— 過期的話定格會定在錯的地方。
+  if (unitTrackRef.value && 'IntersectionObserver' in window) {
+    nearIO = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        partnersNear.value = true;
+        nearIO?.disconnect();
+        nearIO = null;
+      },
+      { rootMargin: '100% 0px', threshold: 0 },
+    );
+    nearIO.observe(unitTrackRef.value);
+  } else {
+    partnersNear.value = true; // 沒有 IO 的環境直接放行
+  }
+
   if (unitTrackRef.value) {
     pinST = ScrollTrigger.create({
       trigger: unitTrackRef.value,
@@ -477,6 +500,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  nearIO?.disconnect();
+  nearIO = null;
   window.removeEventListener('resize', syncPartnersHeld);
   partnersRO?.disconnect();
   partnersRO = null;
@@ -628,7 +653,7 @@ onBeforeUnmount(() => {
             class="section3__partners-panel"
             :class="{ 'is-in': panelIn }"
           >
-            <BlessingPartners />
+            <BlessingPartners :near="partnersNear" />
           </div>
         </div>
       </div>

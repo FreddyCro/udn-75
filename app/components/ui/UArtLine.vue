@@ -13,10 +13,8 @@
      沒填的斷點退回活文字。要加斷點就是：資料多一筆 ＋ 下方 SCSS 的對應 media
      區塊填上，兩處都做才會生效。
 
-  ⚠️ 素材是 CSS **背景**，不是 <img>。這一點不是風格選擇，是必須的：
-     <img> 版本會讓瀏覽器把三個斷點的素材**全部**抓下來（display: none 照樣抓，
-     實測每個斷點都請求 46 個檔、pc 共 968 KB，其中 617 KB 用不到）。
-     背景圖只在符合的 media query 內被引用，因此只會抓到當下斷點那一份。
+  ⚠️ 素材走 sprite 的 `<svg><use>`，斷點由 client 端決定、只抓當下斷點那一支 sprite
+     （見 utils/art-sprite.ts）。不要改回 `<img>`：那會讓三個斷點的素材全部下載。
 
   ⚠️ 消費端要在祖先掛**無單位**的 --art-base（＝該組在該斷點的字級，見 ForumEvent.vue
      的各群組與 Blessing.vue 的 .section3__title）。
@@ -27,6 +25,7 @@
 //    （在 ~/utils/forum-path-events）都是論壇段先定義的。把那三個一起改成中性名稱
 //    會擴散到 forum.ts、ForumEvent.vue 與 spec，屬於另一次改名，本次刻意不做。
 import type { ForumLine, ForumTextArt } from '~/types/forum';
+import { artSpriteHref } from '~/utils/art-sprite';
 
 const props = defineProps<{ line: ForumLine }>();
 
@@ -48,18 +47,34 @@ const artClasses = computed(() =>
 );
 
 /**
- * 逐斷點的 CSS 變數：路徑、原生寬、原生高。
- * url() 寫在變數裡、只在對應 media query 內被引用 —— 未命中的斷點不會產生請求。
+ * 逐斷點的 CSS 變數：原生寬、原生高。行盒幾何（寬、::before 的 ZWSP）與掛載前後
+ * 完全不變，靠的就是這組變數 SSR 就照樣輸出 —— 換成 sprite 之後不再需要 --art-url-*
+ * （素材本體改由下方的 <svg><use> 負責，路徑走 spriteHref）。
  */
 const artVars = computed(() =>
   Object.fromEntries(
     Object.entries(art.value?.art ?? {}).flatMap(([bp, src]) => [
-      [`--art-url-${bp}`, `url("${assetUrl(src.src)}")`],
       [`--art-w-${bp}`, src.w],
       [`--art-h-${bp}`, src.h],
     ]),
   ),
 );
+
+// 素材改走 sprite（見 art-sprite.ts）。斷點只有 client 知道 → SSR 不渲染 <svg>，
+// 但 artClasses 照樣輸出：行盒幾何（寬、::before 的 ZWSP、真文字 visually-hidden）
+// 全部由 SCSS 撐住，ScrollTrigger 量到的高度在掛載前後不變；掛載後只是把圖補進去。
+// 這些行都在摺線下 5,000 px 以外，補上的那一瞬間看不到。
+const bp = useArtBreakpoint();
+const spriteHref = computed(() => {
+  const current = bp.value;
+  const src = current ? art.value?.art[current] : undefined;
+  return current && src ? artSpriteHref(src.src, current, assetUrl) : null;
+});
+const spriteViewBox = computed(() => {
+  const current = bp.value;
+  const src = current ? art.value?.art[current] : undefined;
+  return src ? `0 0 ${src.w} ${src.h}` : undefined;
+});
 </script>
 
 <template>
@@ -67,6 +82,17 @@ const artVars = computed(() =>
     <!-- 真文字只有這一份：素材斷點下由 SCSS 轉成 visually-hidden（仍在無障礙樹與 SEO 內），
          沒有素材的斷點就是畫面上的字。不做第二份 SR 複本 —— 那會在活文字斷點被唸兩次。 -->
     <span class="u-art-line__text">{{ text }}</span>
+    <!-- 素材本體：sprite 內的 symbol。SSR 不渲染（斷點未知），掛載後補上。
+         位置與尺寸由 SCSS 的 .u-art-line__svg 給（＝原本 ::after 的那組規則）。 -->
+    <svg
+      v-if="spriteHref"
+      class="u-art-line__svg"
+      :viewBox="spriteViewBox"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <use :href="spriteHref" />
+    </svg>
   </span>
 </template>
 
@@ -97,21 +123,21 @@ const artVars = computed(() =>
     content: '\200B';
   }
 
-  // 素材本體。垂直置中即對稿：活文字的字面上緣偏移 15.17、置中是 14.31，
-  // 差 0.86px，不值得為此引入一組逐行的垂直常數（推導見設計文件第四節）。
-  // background-size: 100% 100% 不會變形 —— 盒子的寬高比恆等於素材原生的寬高比。
+  // 素材本體（原本是 ::after 的 background，改成 <svg><use> 後規則照搬）。
+  // preserveAspectRatio="none" ＋ 盒子的寬高比恆等於素材原生比例 ⇒ 等價 background-size 100% 100%。
+  //
+  // 垂直置中即對稿：活文字的字面上緣偏移 15.17、置中是 14.31，差 0.86px，
+  // 不值得為此引入一組逐行的垂直常數（推導見設計文件第四節）。
   //
   // ⚠️ 高度走 aspect-ratio 而非 `--art-h / --art-base * 1em`，是為了讓上面那個
   //    max-width 夾住寬度時高度跟著等比縮（寫死高度會壓扁素材）。
   //    沒被夾住時兩者**完全等值**：(W/base em) × (H/W) ＝ H/base em，故是零回歸的改法。
-  &::after {
-    content: '';
+  .u-art-line__svg {
     position: absolute;
     top: 50%;
     left: 0;
     width: 100%;
     aspect-ratio: var(--art-w-#{$bp}) / var(--art-h-#{$bp});
-    background: var(--art-url-#{$bp}) no-repeat 0 0 / 100% 100%;
     transform: translateY(-50%);
   }
 

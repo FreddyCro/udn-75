@@ -132,10 +132,10 @@ pad 的 `.forum-event` 是 `padding: 32px 80px` 的**流排版**：768 時內容
 
 ## 五、驗證
 
-> ⏳ 2026-08-12 的實作尚未取得瀏覽器實測值（該輪環境無瀏覽器工具，見
-> `.superpowers/sdd/2026-08-12-forum-pad-container-plan/progress.md` 的 Setup 記錄）。
-> 下列六項逐項標示現況；量測方式見 `temp/2026-08-12-forum-pad-container-plan.md` 的
-> 「共用量測片段」（片段 A／B／C）與 Task 5 brief 的 Step 4b（核心對位抽樣片段）。
+> ⏳ 2026-08-12 的實作尚未取得瀏覽器實測值（該輪環境無瀏覽器工具，記錄於當時的工作
+> ledger，未進版控，故此處僅保留結論）。
+> 下列六項逐項標示現況；量測方式（共用量測片段 A／B／C、Task 5 的核心對位抽樣片段
+> Step 4b）記錄於當時的工作計畫與 brief，皆未進版控。
 
 1. **`?pathdebug`**：768 / 1024 / 1279 三個寬度，確認每個 waypoint 的實測座標與稿座標
    相符（前半段誤差應 ≤2px，縱向除外 —— 縱向本來就跟著實際版面走）。
@@ -149,8 +149,7 @@ pad 的 `.forum-event` 是 `padding: 32px 80px` 的**流排版**：768 時內容
    段落上／中／下三處各跑一次）。
 5. **既有測試**：`test/forum-node-path.spec.ts` 的黃金樣本 —— `Q10` 已改並同步更新 fixture、
    移除 `PAD_TOL.Q10` 的容差豁免（回落到預設 1px）。
-   **✅ 已完成**：全套 321 passed（Task 4，見
-   `.superpowers/sdd/2026-08-12-forum-pad-container-plan/task-4-report.md`）。這一項是 vitest
+   **✅ 已完成**：全套 321 passed（Task 4，記錄於當時的工作 ledger，未進版控）。這一項是 vitest
    純函式測試，不需要瀏覽器，故與上面四項狀態不同。
 6. **mob 不受影響**：414 / 375 兩個寬度目視無變化。
    **⏳ 待實測**（本次改動未觸及 mob 的樣式規則，`rwd-max('tablet')` 已把 `max-width` 寫回

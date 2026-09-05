@@ -3,6 +3,14 @@
  * AiImageQuiz — 「哪一張是AI生成圖?」二選一測驗（visual 頁）。
  * 作答後展開解說、非 AI 的照片蓋上遮罩；可重複改選另一個選項，解說隨之切換。
  */
+// <img> 與 CSS mask 抓取模式不同、快取 key 不同，build 時內嵌成 data URI 免掉重複 request
+import navPrevUrl from '../assets/img/udn75_nav_prev.svg';
+import navPrevHoverUrl from '../assets/img/udn75_nav_prev_hover.svg';
+import {
+  articleSpriteHref,
+  articleSpriteViewBox,
+} from '@/utils/article-sprite';
+
 export interface QuizOption {
   /** UPic 圖片路徑（不含副檔名與裝置後綴） */
   src: string;
@@ -54,6 +62,14 @@ const { play } = useSfx();
 const picked = ref(-1); // 使用者選的 index；-1 = 未作答
 const answered = computed(() => picked.value >= 0);
 const isCorrect = computed(() => props.options[picked.value]?.isAi === true);
+
+// 作答結果圖示走 article sprite（見 utils/article-sprite.ts）
+const badgeSrc = computed(() =>
+  isCorrect.value
+    ? '/img/visual/udn75_quiz_correct.svg'
+    : '/img/visual/udn75_quiz_wrong.svg',
+);
+const artHref = (src: string) => articleSpriteHref(src, assetUrl);
 const explain = computed(() => props.options[picked.value]?.explain ?? '');
 
 function pick(i: number) {
@@ -97,10 +113,10 @@ function pick(i: number) {
       >
         <!-- 圓鈕：hover 版（橘底白箭頭）疊在預設版上淡入，橘底不透明所以不必藏底下那張 -->
         <span v-if="i === 0" class="ai-quiz__btn-circle" aria-hidden="true">
-          <img class="ai-quiz__btn-icon" src="/img/udn75_nav_prev.svg" alt="" />
+          <img class="ai-quiz__btn-icon" :src="navPrevUrl" alt="" />
           <img
             class="ai-quiz__btn-icon ai-quiz__btn-icon--hover"
-            src="/img/udn75_nav_prev_hover.svg"
+            :src="navPrevHoverUrl"
             alt=""
           />
         </span>
@@ -120,10 +136,10 @@ function pick(i: number) {
           class="ai-quiz__btn-circle ai-quiz__btn-circle--flip"
           aria-hidden="true"
         >
-          <img class="ai-quiz__btn-icon" src="/img/udn75_nav_prev.svg" alt="" />
+          <img class="ai-quiz__btn-icon" :src="navPrevUrl" alt="" />
           <img
             class="ai-quiz__btn-icon ai-quiz__btn-icon--hover"
-            src="/img/udn75_nav_prev_hover.svg"
+            :src="navPrevHoverUrl"
             alt=""
           />
         </span>
@@ -137,17 +153,17 @@ function pick(i: number) {
           <p class="ai-quiz__hint">說明：</p>
           <!-- 對稿只有圖示不帶文字；對錯文字保留在 alt 供 aria-live 朗讀 -->
           <p class="ai-quiz__badge" aria-live="polite">
-            <img
+            <!-- 走 article sprite（見 utils/article-sprite.ts）：對錯兩張與其他內文
+                 素材共用一支，不再各占一個 request。
+                 role/aria-label 取代原本 <img> 的 alt，維持 aria-live 朗讀。 -->
+            <svg
               class="ai-quiz__badge-icon"
-              :src="
-                assetUrl(
-                  isCorrect
-                    ? '/img/visual/udn75_quiz_correct.svg'
-                    : '/img/visual/udn75_quiz_wrong.svg',
-                )
-              "
-              :alt="isCorrect ? correctLabel : wrongLabel"
-            />
+              role="img"
+              :aria-label="isCorrect ? correctLabel : wrongLabel"
+              :viewBox="articleSpriteViewBox(badgeSrc)"
+            >
+              <use :href="artHref(badgeSrc)" />
+            </svg>
           </p>
           <!-- 不加 v-if：作答當下才插入的節點沒有起始樣式可過渡，淡入會被跳過 -->
           <p class="ai-quiz__explain">{{ explain }}</p>
@@ -310,8 +326,8 @@ function pick(i: number) {
   width: 22px;
   height: 12px;
   background: var(--color-gray-light); // 同素材原色
-  mask: url('/img/udn75_arrow_pixel.svg') no-repeat center / contain;
-  -webkit-mask: url('/img/udn75_arrow_pixel.svg') no-repeat center / contain;
+  mask: url('../assets/img/udn75_arrow_pixel.svg') no-repeat center / contain;
+  -webkit-mask: url('../assets/img/udn75_arrow_pixel.svg') no-repeat center / contain;
   transition: background-color 0.25s ease;
 
   // 選中：橘底盒上的白箭頭（對稿 click 態）

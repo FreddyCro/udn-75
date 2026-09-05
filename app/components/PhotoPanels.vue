@@ -30,6 +30,26 @@ const rootRef = ref<HTMLElement | null>(null);
 const stageRef = ref<HTMLElement | null>(null);
 const trackRef = ref<HTMLElement | null>(null);
 
+/**
+ * 近視窗才把 <UPic> 掛上去（＝才發出圖片請求）。在此之前渲染同尺寸的佔位方塊。
+ *
+ * 為什麼需要：連續閱讀頁（pages/subpage.vue，<768 專用）把六篇串成一份 55,000 px 的
+ * 文件，而本元件在 news（第 1 篇）與 health（第 6 篇）各有一組。實測第一屏就下載
+ * 全部 9 張，其中 health 那 5 張在 45,000 px 之外。正式站對 request 次數限流，
+ * 進子頁那一刻的尖峰是 62 個／秒，這 9 張是其中最容易拿掉的一塊。
+ *
+ * ⚠️ **只在 <768 開閘門，≥768 一律立即掛載。** 下方 eager 那條註解說的防掉幀理由
+ *    （pin + scrub 的水平軌道、pin 期間 position: fixed 使原生 lazy 失效）只在
+ *    ≥768 成立 —— build() 的 mq 就是 `min-width: TABLET_BREAKPOINTS`，<768 根本不 pin、
+ *    是 CSS 直排圖列。所以在真正會掉幀的斷點上，行為與改動前完全相同。
+ *
+ * 佔位方塊的 aspect-ratio 用 480/320 ＝ <UPic> 的 width/height 屬性，也就是瀏覽器在
+ * 圖片載入完成前本來就會保留的比例 —— 換上真圖時盒子不變，build() 量到的
+ * track.scrollWidth 也不變（軌道寬度由 CSS 的 .photo-panels__item 決定，不靠圖片）。
+ */
+const near = ref(false);
+let nearObserver: IntersectionObserver | null = null;
+
 let tl: gsap.core.Timeline | null = null;
 let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -88,14 +108,41 @@ function onResize() {
 // mob（<768）為 CSS 直排圖列，不建 pin；跨斷點時拆掉／重建
 let mq: MediaQueryList | null = null;
 const onMqChange = (e: MediaQueryListEvent) => {
+  // 跨到 ≥768 就直接開閘：那個斷點有 pin + scrub，不該再等 observer
+  if (e.matches) openGate();
   teardown();
   if (e.matches) build();
   // 拆掉／重建都改變佔位與隊列順序 → 走共用 sort+refresh 讓下方 pin 重算
   refreshScrollTriggers();
 };
 
+/** 開閘：掛上真圖，並收掉 observer（near 一旦 true 不再翻回） */
+function openGate() {
+  near.value = true;
+  nearObserver?.disconnect();
+  nearObserver = null;
+}
+
 onMounted(() => {
   gsap.registerPlugin(ScrollTrigger);
+
+  // ≥768 立即開閘（那裡有 pin + scrub，見 near 的註解）；<768 才等 observer。
+  // 沒有 IntersectionObserver 的環境一律當作已在視窗內 —— 寧可多抓也不要不顯示。
+  const wide = window.matchMedia(`(min-width: ${TABLET_BREAKPOINTS}px)`).matches;
+  if (wide || !('IntersectionObserver' in window)) {
+    openGate();
+  } else {
+    nearObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) openGate();
+      },
+      // 1.5 個視窗的提前量（390×844 約 1,266 px）：<768 沒有 pin／scrub，
+      // 只要在使用者捲到之前開始抓就夠，不需要 scrub 那種等級的提前量。
+      { rootMargin: '150% 0px', threshold: 0 },
+    );
+    if (rootRef.value) nearObserver.observe(rootRef.value);
+  }
+
   // 降級：不 pin，交給 CSS 原生橫向捲動（.photo-panels--static）
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     rootRef.value?.classList.add('photo-panels--static');
@@ -111,6 +158,8 @@ onBeforeUnmount(() => {
   if (resizeTimer) clearTimeout(resizeTimer);
   window.removeEventListener('resize', onResize);
   mq?.removeEventListener('change', onMqChange);
+  nearObserver?.disconnect();
+  nearObserver = null;
   teardown(true);
 });
 </script>
@@ -121,7 +170,12 @@ onBeforeUnmount(() => {
       <div ref="trackRef" class="photo-panels__track">
         <figure v-for="(p, i) in photos" :key="i" class="photo-panels__item">
           <!-- eager：軌道是水平平移進場，lazy 圖會在 scrub 途中才解碼、造成掉幀 -->
+          <!-- 這裡刻意不用 lazy：此軌道為 pin + scrub 的水平平移，若 lazy 會在 scrub
+               途中才解碼造成掉幀；且 pin 期間元素為 position: fixed，Chrome 在該狀態下
+               本來就會忽略 loading="lazy"（實測見 architecture/2026-09-04-request-reduction-design.md §2.1）。
+               省下的至多 9 個請求，不值得換已知的體驗問題 -->
           <UPic
+            v-if="near"
             classname="photo-panels__img"
             :src="p.src"
             :use-prefix="false"
@@ -131,6 +185,9 @@ onBeforeUnmount(() => {
             loading="eager"
             :alt="p.alt ?? ''"
           />
+          <!-- 佔位：與 <UPic> 載入前同尺寸（480/320 ＝ 上面的 width/height），
+               所以開閘前後 track.scrollWidth 不變。見 near 的註解 -->
+          <div v-else class="photo-panels__placeholder" aria-hidden="true" />
           <!-- 圖說可含 <a> 外連結（文案為本地靜態檔，非使用者輸入） -->
           <figcaption
             v-if="p.caption"
@@ -195,6 +252,13 @@ onBeforeUnmount(() => {
   display: block;
   width: 100%;
   height: auto;
+}
+
+// 開閘前的佔位：比例與 <UPic> 的 width/height 一致，換上真圖時盒子不變
+.photo-panels__placeholder {
+  display: block;
+  width: 100%;
+  aspect-ratio: 480 / 320;
 }
 
 .photo-panels__caption {
