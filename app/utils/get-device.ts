@@ -1,17 +1,21 @@
+import { PC_BREAKPOINTS } from './constants';
+
 /**
  * 依視窗寬度判斷該取哪一組裝置素材（mob / pad / pc）。
  *
- * ⚠️ 這裡的界線與 SCSS 的 `$breakpoints`（mixins.scss）**不是同一組**，是刻意的：
- *    版型的 pc 斷點是 1280（PC_BREAKPOINTS），而**素材**的界線由那組素材當初是照什麼
- *    尺寸剪的決定。hero 影片三支變體就是照 768 / 1024 剪的（見 HeroVideo.vue 的
- *    「pad 只涵蓋 768–1023」與 hero-video-config.ts），所以預設留在 1024。
+ * 界線與 SCSS 的 `$breakpoints`（mixins.scss）一致：pc ≥1280、pad 768–1279、mob ≤767。
+ * 設計師裁決**純寬度切**，不看 orientation。
  *
- * @param pcFrom pc 的下界（含），預設 1024 ＝ 專案原本的界線。
- *        素材是照別的界線剪的時候才傳 —— 例如子頁引言媒體要與版型的 pc 斷點對齊，
- *        傳 PC_BREAKPOINTS（1280）⇒ pad 涵蓋 768–1279（見 SubpageIntroMedia）。
+ * ⚠️ 已知並接受的代價：1024–1279 不只有 iPad 直式（Pro 12.9" 1024×1366），也含所有
+ *    iPad 橫式（mini 1133×744、Air 1180×820、Pro 11" 1194×834）。後者拿到的是 pad 的
+ *    1024×1364 直片 ＋ `object-fit: contain` ⇒ 左右各留 250–280px 白邊
+ *    （露出的是 .sec1 白底，見 HeroVideo.vue）。
+ *
+ * @param pcFrom pc 的下界（含），預設 PC_BREAKPOINTS（1280）＝ 版型的 pc 斷點。
+ *        素材是照別的界線剪的時候才傳。
  *        ⚠️ 傳值只影響 pad/pc 的分界，mob 的 767 界線不動（三組素材的 mob 都同一條線）。
  */
-function getDeviceTypeByResolution(pcFrom = 1024) {
+function getDeviceTypeByResolution(pcFrom: number = PC_BREAKPOINTS) {
   if (window.matchMedia('(max-width: 767px)').matches) return 'mob';
   if (window.matchMedia(`(max-width: ${pcFrom - 1}px)`).matches) return 'pad';
   return 'pc';

@@ -68,11 +68,10 @@ interface Props {
   classname?: string;
   ariaLabel?: string;
   /**
-   * pc 素材的下界（含）。不傳 ＝ 沿用 ~/utils/get-device 的預設 1024。
+   * pc 素材的下界（含）。不傳 ＝ 沿用 ~/utils/get-device 的預設 PC_BREAKPOINTS（1280）。
    *
-   * 為什麼要能覆寫：**素材的界線由那組影片當初照什麼尺寸剪的決定**，不是全站一個數字。
-   * hero 影片是照 768 / 1024 剪的（見 HeroVideo.vue），子頁引言媒體要與版型的 pc 斷點
-   * 對齊 ⇒ 傳 PC_BREAKPOINTS（1280）、pad 涵蓋 768–1279（見 SubpageIntroMedia）。
+   * 為什麼留著這個覆寫口：**素材的界線由那組影片當初照什麼尺寸剪的決定**，不保證永遠
+   * 等於版型斷點。目前全站兩者同值，日後有照別的尺寸剪的素材時從這裡傳。
    * ⚠️ 只動 pad/pc 的分界，mob 的 767 界線不受影響。
    */
   pcFrom?: number;

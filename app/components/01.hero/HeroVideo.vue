@@ -837,12 +837,11 @@ onBeforeUnmount(() => {
 // 仍會把畫面邊緣裁掉，故這兩個斷點改 contain（設計師指定）。留白露出的是 .sec1 的白底，
 // 與 gone 之後淡出露出的同一個顏色，銜接不會有落差。
 //
-// ⚠️ 斷點刻意**不用** rwd-max('pc')（≤1279.98）而是 1024px（≤1023.98）：影片「來源」的
-//    裝置界線是 ~/utils/get-device 的 getDeviceTypeByResolution —— pad 只涵蓋 768–1023，
-//    1024 以上載入的已經是 pc 那支 1920×1080（橫式）。照 'pc' 斷點寫的話，1024–1279.98
-//    這一段會拿橫式剪輯去套 contain ⇒ 上下兩條大白邊。這裡要對齊的是**來源**的斷點，
-//    不是版面的斷點；換 HERO_VIDEO_SRC 的裝置界線時，這個值要跟著改。
-//    （get-device 用整數 px、本 mixin 是 ±0.02px，1023–1024 之間的小數寬度會有一格
+// ⚠️ 這條斷點必須與影片「來源」的裝置界線同步 —— 那條線是 ~/utils/get-device 的
+//    getDeviceTypeByResolution，pad 涵蓋 768–1279。兩邊一旦錯開就會拿錯方向的剪輯去套：
+//    直片 cover ⇒ 左右被裁掉、橫片 contain ⇒ 上下兩條大白邊。換 HERO_VIDEO_SRC 的
+//    裝置界線時，這個值要跟著改。
+//    （get-device 用整數 px、本 mixin 是 ±0.02px，1279–1280 之間的小數寬度會有一格
 //    落差；那是既有的量測慣例差異，非本規則獨有。）
 //
 // ⚠️ 改 object-position 要一起改退場交棒的換算：coverAnchorToScreen 預設以 center 分配
@@ -865,8 +864,8 @@ onBeforeUnmount(() => {
   object-position: center;
   pointer-events: none;
 
-  @include rwd-max(1024px) {
-    object-position: center; // pad（直式剪輯，768–1023 ＝ pad 來源的範圍）
+  @include rwd-max('pc') {
+    object-position: center; // pad（直式剪輯，768–1279 ＝ pad 來源的範圍）
     object-fit: contain;
   }
   // mob 與 pad 目前同值，仍各寫一次 —— 日後把 pad 改回 cover 時 mob 不會跟著被改掉。
