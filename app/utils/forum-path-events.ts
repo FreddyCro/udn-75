@@ -118,9 +118,10 @@ export const FORUM_PATH_EVENTS: readonly ForumPathEvent[] = [
   {
     key: 'probeSlashSpot',
     label: '探針：09/15 那一撇的進入端',
-    // pad／mob 掛撇的右上角本身（那兩點就錨在撇上，見 forum-node-path 的 SLASH_SEL）；
-    // 2026-08-22 之前 pad 掛 Q7（撇上方 56px）、mob 是 null（那時 mob 的線不經過撇）。
-    at: { pc: 'W13', pad: 'Q7a', mob: 'P7a' },
+    // 三個斷點都掛撇的右上角本身（那些點就錨在撇上，見 forum-node-path 的 SLASH_SEL）；
+    // 2026-08-22 之前 pad 掛 Q7（撇上方 56px）、mob 是 null（那時 mob 的線不經過撇）；
+    // 2026-09-06 之前 pc 掛 W13 —— 那是撇上方 174px 的節點，探針位置本來就不準。
+    at: { pc: 'W13a', pad: 'Q7a', mob: 'P7a' },
   },
   {
     key: 'probeAgendaTop',

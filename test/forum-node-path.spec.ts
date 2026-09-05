@@ -244,13 +244,15 @@ describe('完整路徑（前半段 ＋ 後半段）', () => {
     const sels = FORUM_PATH_NODES[bp]!.filter((n) => n.optional).map(
       (n) => n.anchor.sel,
     );
-    const slash = bp === 'pc' ? [] : ['.forum-event__date-coreslash'];
-    expect(sels.sort()).toEqual(['.highlights__item', ...slash, ...slash].sort());
+    // 2026-09-06 起 pc 也把撇的兩端錨在撇本身（原本只有 pad／mob 有），三個斷點一致。
+    const slash = '.forum-event__date-coreslash';
+    expect(sels.sort()).toEqual(['.highlights__item', slash, slash].sort());
   });
 
   // 撇的兩端必須**相鄰**且以直線相連 —— 那一段就是撇本身，而撇是直線。
   // 中間插進別的節點，或把 join 改成曲線，核心就會沿著一條不是撇的線畫出那一撇。
-  it.each(['pad', 'mob'] as const)('%s 的撇是一條直線（兩端相鄰、join 為 line）', (bp) => {
+  // pc 於 2026-09-06 加入（在此之前它只有「長直線剛好穿過撇附近」，差 1.23°）。
+  it.each(['pc', 'pad', 'mob'] as const)('%s 的撇是一條直線（兩端相鄰、join 為 line）', (bp) => {
     const nodes = FORUM_PATH_NODES[bp]!;
     const i = nodes.findIndex(
       (n) =>
