@@ -5,6 +5,8 @@
  * 兩種端面切法對稿兩份素材（同一支階梯，只差端面與步數）：
  *   bevel＝pc 分支線 1837:73149（44×44、9 步，起點錯開成 45° 斜切）
  *   flat ＝pad 斜帶 udn75_news_formula_link_*（76×60、15 步，三條齊步平切）
+ *         —— 該組素材已從 public/ 移除（線由本元件 CSS 畫出、不發 request），
+ *            要對稿請從 git 歷史取 public/img/news/udn75_news_formula_link_{tl,tr,bl,br}.svg
  * progress（0..1）換算已現身格數；order 依 from 決定從哪端長出（四條都要自中央塊往外）。
  */
 const props = withDefaults(

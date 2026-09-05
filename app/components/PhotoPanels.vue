@@ -11,7 +11,7 @@ import {
 } from '@/utils/scroll-trigger';
 
 export interface PanelPhoto {
-  /** UPic 圖片路徑（不含副檔名與裝置後綴，如 /img/news/udn75_pic04_01） */
+  /** UPic 圖片路徑（不含副檔名與裝置後綴，如 /img/news/udn75_pic04_02） */
   src: string;
   alt?: string;
   caption?: string;
