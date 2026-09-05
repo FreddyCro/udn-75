@@ -196,20 +196,23 @@
           {
             "text": "集思台大會議中心",
             "art": {
-              "pc": { "src": "/img/forum/forum2-venue-pc-1.svg", "w": 413.547, "h": 42.9096 }
+              "pc": { "src": "/img/forum/forum2-venue-pc-1.svg", "w": 413.547, "h": 42.9096 },
+              "mob": { "src": "/img/forum/forum2-venue-mob-1.svg", "w": 135, "h": 69.1944 }
             }
           },
           {
             "text": "B1 國際會議廳",
             "art": {
-              "pc": { "src": "/img/forum/forum2-venue-pc-2.svg", "w": 413.547, "h": 43.1794 }
+              "pc": { "src": "/img/forum/forum2-venue-pc-2.svg", "w": 413.547, "h": 43.1794 },
+              "mob": { "src": "/img/forum/forum2-venue-mob-2.svg", "w": 135, "h": 17.0735 }
             }
           }
         ],
         "time": {
           "text": "2:00–4:00PM",
           "art": {
-            "pc": { "src": "/img/forum/forum2-time-pc-1.svg", "w": 413.547, "h": 40.0605 }
+            "pc": { "src": "/img/forum/forum2-time-pc-1.svg", "w": 413.547, "h": 40.0605 },
+            "mob": { "src": "/img/forum/forum2-time-mob-1.svg", "w": 135, "h": 16 }
           }
         },
         "speakerLabel": "講者介紹",
@@ -278,13 +281,15 @@
           {
             "text": "集思台大會議中心",
             "art": {
-              "pc": { "src": "/img/forum/forum3-venue-pc-1.svg", "w": 409, "h": 41.7615 }
+              "pc": { "src": "/img/forum/forum3-venue-pc-1.svg", "w": 409, "h": 41.7615 },
+              "mob": { "src": "/img/forum/forum3-venue-mob-1.svg", "w": 133, "h": 65.4257 }
             }
           },
           {
             "text": "B1 蘇格拉底廳",
             "art": {
-              "pc": { "src": "/img/forum/forum3-venue-pc-2.svg", "w": 409, "h": 41.0474 }
+              "pc": { "src": "/img/forum/forum3-venue-pc-2.svg", "w": 409, "h": 41.0474 },
+              "mob": { "src": "/img/forum/forum3-venue-mob-2.svg", "w": 133, "h": 16.5862 }
             }
           }
         ],

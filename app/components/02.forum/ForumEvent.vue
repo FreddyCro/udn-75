@@ -1122,9 +1122,32 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       text-align: right;
     }
 
+    // mob 稿是「場地名兩行大字 ＋ 廳名／時間一組小字」，與 pc 的兩行同字級不同版式。
+    // 素材照 DOM 的行數切：場地名那兩行是**同一支**（venue[0] 只有一行文字，稿上折成兩行），
+    // 廳名與時間各一支；三支共用同一張畫布寬 135，右切齊自然對上。
+    //
+    // 行盒（＝素材垂直置中的容器）由稿的墨跡中心距反推，公式同 --youth ——
+    // 相鄰兩列的墨跡中心距 ＝（前一列行盒 ＋ 後一列行盒）/ 2：
+    //   場地名 81 ＝ 2 × 40.5（稿的大字列距；素材兩行併一支，故取兩倍）
+    //   廳名   (81 + H) / 2 = 57.48（稿的墨跡中心 34.56 → 92.05）⇒ H = 33.96 → 34
+    //   時間   (34 + H) / 2 = 28.95（稿的墨跡中心 92.05 → 121.0 ）⇒ H = 23.91 → 24（見 __time）
+    //
+    // 兩種字級 ⇒ --art-base 也要兩份（素材寬 ＝ w / --art-base × 1em，base 等於 font-size
+    // 時就是素材原生寬 135）。字級由稿反推：大字 135 / 4 字 ＝ 33.75 → 34；
+    // 小字用同一張稿的墨跡高比例回推（17.07 / 0.847）≈ 20。
     @include rwd-max('tablet') {
-      font-size: 28px;
-      line-height: 39px;
+      --art-base: 20;
+
+      font-size: 20px;
+      line-height: 34px;
+
+      // 場地名那一列 ＝ venue[0]，是 <UArtLine> 的根元素（scoped 樣式吃得到子元件根節點）。
+      > .u-art-line:first-child {
+        --art-base: 34;
+
+        font-size: 34px;
+        line-height: 81px;
+      }
     }
 
     // 窄機（320–374.98）：稿的「地點釘右上、日期階梯在左下」交錯版式在這個寬度撞在
@@ -1157,14 +1180,27 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
 
     // mob 稿與論壇二同款交錯：地點釘在右上角，日期在它左下方。
+    // mob 稿與論壇二同款：場地名兩行大字 ＋ 廳名一列小字（本場沒有時間，time 是空字串）。
+    // 行盒推導同 --stair：場地名 75 ＝ 2 × 37.5（稿的大字列距）；
+    // 廳名 (75 + H) / 2 = 53.15（稿的墨跡中心 32.68 → 85.84）⇒ H = 31.31 → 31。
+    // 字級：大字 133 / 4 字 ＝ 33.25 → 33；小字同樣由墨跡高回推 ≈ 20。
     @include rwd-max('tablet') {
+      --art-base: 20;
+
       position: absolute;
       top: 0;
       right: 0;
       max-width: 8.2em;
       margin: 0;
-      font-size: 28px;
-      line-height: 39px;
+      font-size: 20px;
+      line-height: 31px;
+
+      > .u-art-line:first-child {
+        --art-base: 33;
+
+        font-size: 33px;
+        line-height: 75px;
+      }
     }
   }
 
@@ -1214,7 +1250,18 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   }
 }
 
-// 時間一律排在地點之下 ＝ DOM 順序，故本層不需要任何規則。
+// 時間一律排在地點之下 ＝ DOM 順序，故位置本身不需要任何規則。
+//
+// 唯一的例外是論壇二的 mob：那個斷點的稿把「廳名／時間」收成一組小字，時間列的行盒
+// 比廳名列窄（24 對 34，推導見 __venue 的 --stair）。--art-base 沿用 __venue 的 20。
+.forum-event__time {
+  .forum-event--stair & {
+    @include rwd-max('tablet') {
+      line-height: 24px;
+    }
+  }
+}
+
 //
 // ⚠️ 2026-08-25 之前這裡有一條 `.forum-event--youth & { @include rwd-min('tablet')
 //    { order: -1 } }`，把論壇四 pc／pad 的時間提到地點之上（當時的 pc 稿如此、mob 稿相反）。
