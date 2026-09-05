@@ -62,6 +62,10 @@
   也會重算來源檔的 sha256 與 `sources.json` 對帳，內容換了但忘記重跑一樣會紅。
 - 規則只有一條、兩邊共用：symbol id ＝ 檔名去副檔名（`app/utils/svg-sprite-ref.ts`），
   改元件消費的路徑或加新素材時想一下這條規則有沒有被打破。
+- 來源檔看到 Figma 連畫布一起匯出的深灰底板（`<rect fill="#515151">` 那一整疊）**不用手動清**：
+  `stripCanvasBackdrop()`（`scripts/lib/svg-sprite.mjs`）在進 sprite 前會剪掉整版不透明
+  底板以下的內容。不清會在 `transform: scale()` 時從小數點像素的邊緣透出一圈黑邊
+  （夥伴 logo hover 放大就踩到過）。守門條件不成立的素材原樣放行，不會剪錯。
 
 ## 新增一支小 SVG 時走哪一條
 

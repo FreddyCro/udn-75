@@ -57,13 +57,133 @@ const innerOf = (svg) => {
   return svg.slice(open + 1, close).trim();
 };
 
+/**
+ * Figma 匯出的畫布底板：剪掉「被蓋住、卻會在縮放時從邊緣透出來」的那幾層。
+ *
+ * 夥伴 logo 45 支的共同形狀（Figma 把畫布連同 logo 一起匯出來了）：
+ *
+ *   <rect 整版 fill="#515151"/>                       ← 畫布深灰
+ *   <g><path 巨大 fill="#888888"/>                     ← 畫布灰、10% 黑陰影、又一層 #6E6E6E…
+ *     <g><g clip-path="url(#clip0)">
+ *       <path d="M232 0H0V64H232V0Z" fill="white"/>   ← 不透明白底，把上面那些全蓋掉
+ *       …真正的 logo…
+ *
+ * 靜止時看不出來（白底 100% 蓋住深灰），但 BlessingPartners 的 hover 會
+ * `transform: scale(1.2)`：232×64 變 278.4×76.8，四個邊界落在小數點裝置像素上，
+ * 邊界那一排像素每一層都只拿到部分覆蓋率，白底蓋不滿，底下的深灰就從縫裡透出來
+ * ——就是回報的「hover 後 logo 出現一圈黑邊」。小數點像素只是觸發條件，成因是這些底板。
+ *
+ * 為什麼刪得掉：整版不透明底板「以下」的內容在數學上就是看不見的，移除可證明無損
+ * （實測 45 支在 scale(1) 下與原檔像素一致）。守門條件見下面三個 helper，任何一條
+ * 不成立就整支原樣放行——寧可留著也不要剪錯圖。
+ *
+ * 為什麼放在 build 而不是直接清 45 支來源檔：來源保持 Figma 匯出原樣，日後設計重匯出
+ * 一樣會被清掉，不會又長回來；sources.json 記的是原始檔內容的 sha256，也不受影響。
+ */
+
+// 掃描時要跳過的容器：裡面的 <rect>／<path> 是定義（clipPath 的裁切框、漸層的色標），
+// 不是畫在畫面上的東西。partner SVG 的 clipPath 裡正好有一塊和 viewBox 同尺寸的 rect，
+// 誤判成切點會把整張圖剪光。
+const DEFS_TAGS = /^(defs|clipPath|mask|pattern|marker|symbol|filter|linearGradient|radialGradient)$/;
+
+// 帶這些屬性就不算「整版不透明底板」：它們都會讓這一塊不再是 100% 覆蓋。
+const NOT_OPAQUE = /\s(fill-opacity|opacity|mask|filter|clip-path|style|transform)\s*=/;
+
+const numAttr = (tag, name, dflt) => {
+  const m = tag.match(new RegExp(String.raw`\s${name}="([-\d.]+)`));
+  return m ? Number(m[1]) : dflt;
+};
+
+const attrNamesOf = (tag) => [...tag.matchAll(/\s([:A-Za-z_][-.:\w]*)\s*=/g)].map(([, n]) => n);
+
+/** 這個標籤是不是「鋪滿整個 viewBox 的不透明色塊」 */
+const isFullBleedCover = (tag, w, h) => {
+  const fill = tag.match(/\sfill="([^"]*)"/);
+  if (!fill || /^(none|transparent)$/i.test(fill[1].trim())) return false;
+  if (NOT_OPAQUE.test(tag)) return false;
+  if (/^<rect\b/.test(tag)) {
+    return numAttr(tag, 'x', 0) === 0 && numAttr(tag, 'y', 0) === 0
+      && numAttr(tag, 'width', -1) >= w && numAttr(tag, 'height', -1) >= h;
+  }
+  // Figma 匯出的整版色塊是 path，不是 rect：從右上角順時針繞一圈。
+  if (/^<path\b/.test(tag)) {
+    const d = tag.match(/\sd="([^"]*)"/);
+    return !!d && d[1].replace(/\s+/g, ' ').trim() === `M${w} 0H0V${h}H${w}V0Z`;
+  }
+  return false;
+};
+
+/**
+ * 祖先 <g> 只准帶 id，以及「不會縮小覆蓋範圍」的 clip-path。
+ * 底板是靠「蓋滿整個 viewBox」證明下層看不見的：祖先只要有 opacity／mask／transform，
+ * 或一個把底板裁小的 clip-path，這個證明就不成立，整支放行不動。
+ */
+const ancestorIsTransparent = (tag, svg, w, h) =>
+  attrNamesOf(tag).every((name) => {
+    if (name === 'id') return true;
+    if (name !== 'clip-path') return false;
+    const ref = tag.match(/\sclip-path="url\(#([^)]+)\)"/);
+    if (!ref) return false;
+    const def = svg.match(new RegExp(String.raw`<clipPath\s[^>]*id="${ref[1]}"[^>]*>([\s\S]*?)</clipPath>`));
+    if (!def || /\s(transform|clipPathUnits)\s*=/.test(def[0].slice(0, def[0].indexOf('>')))) return false;
+    const children = [...def[1].matchAll(/<[A-Za-z][-\w:]*[^>]*>/g)];
+    if (children.length !== 1) return false;
+    const rect = children[0][0];
+    return /^<rect\b/.test(rect)
+      && numAttr(rect, 'x', 0) === 0 && numAttr(rect, 'y', 0) === 0
+      && numAttr(rect, 'width', -1) >= w && numAttr(rect, 'height', -1) >= h;
+  });
+
+export const stripCanvasBackdrop = (svg, id) => {
+  const vb = viewBoxOf(svg, id).split(/[\s,]+/).map(Number);
+  if (vb.length !== 4 || vb[0] !== 0 || vb[1] !== 0) return svg;
+  const [, , w, h] = vb;
+
+  const headEnd = svg.indexOf('>', svg.indexOf('<svg')) + 1;
+  const stack = [];   // 目前開著的 <g>（open tag 原文）
+  let skip = 0;       // >0 ＝ 正在 defs 之類的容器裡
+  let painted = 0;    // 掃過幾個會畫到畫面上的元素
+  let cut = null;     // 最後一個整版底板
+
+  for (const m of svg.slice(headEnd).matchAll(/<\/?[A-Za-z][-\w:]*[^>]*>/g)) {
+    const tag = m[0];
+    const name = tag.match(/^<\/?([A-Za-z][-\w:]*)/)[1];
+    const closing = tag.startsWith('</');
+    const selfClosing = tag.endsWith('/>');
+    if (skip > 0) {
+      if (!selfClosing) skip += closing ? -1 : 1;
+      continue;
+    }
+    if (DEFS_TAGS.test(name)) {
+      if (!closing && !selfClosing) skip = 1;
+      continue;
+    }
+    if (name === 'g') {
+      if (closing) stack.pop();
+      else if (!selfClosing) stack.push(tag);
+      continue;
+    }
+    if (closing) continue;
+    painted += 1;
+    if (isFullBleedCover(tag, w, h)) cut = { at: headEnd + m.index, ancestors: [...stack], order: painted };
+  }
+
+  // 沒有底板，或底板本身就是第一個可見元素（前面沒東西可剪）→ 原樣
+  if (!cut || cut.order === 1) return svg;
+  if (!cut.ancestors.every((tag) => ancestorIsTransparent(tag, svg, w, h))) return svg;
+
+  // 從底板切開：根 <svg> 的屬性、祖先 <g> 的 open tag 都補回去，
+  // 切點之後的原文已經帶著對應的 </g>、<defs> 與 </svg>。
+  return svg.slice(0, headEnd) + cut.ancestors.join('') + svg.slice(cut.at);
+};
+
 export async function buildSprite(items) {
   const seen = new Set();
   const symbols = [];
   for (const { id, svg } of items) {
     if (seen.has(id)) throw new Error(`[svg-sprite] symbol id 重複：${id}`);
     seen.add(id);
-    const { data } = optimize(svg, {
+    const { data } = optimize(stripCanvasBackdrop(svg, id), {
       multipass: true,
       plugins: [
         // ⚠️ 這個 svgo（4.1.0）的 preset-default 已經不含 removeViewBox 這個 plugin
