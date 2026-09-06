@@ -8,9 +8,12 @@ describe('artSpriteHref', () => {
     expect(artSpriteHref('/img/forum/forum1-title-pc-1.svg', 'pc', id)).toBe('/img/sprites/art-pc.svg#forum1-title-pc-1');
     expect(artSpriteHref('/img/blessing/blessing-title-mob.svg', 'mob', id)).toBe('/img/sprites/art-mob.svg#blessing-title-mob');
   });
-  it('資產前綴套在 sprite 路徑上', () => {
-    expect(artSpriteHref('/img/forum/x-pad-2.svg', 'pad', (p) => `https://vip.udn.com/newmedia/2026/udn75${p}`))
-      .toBe('https://vip.udn.com/newmedia/2026/udn75/img/sprites/art-pad.svg#x-pad-2');
+  // 前綴來自 useSpriteUrl()（app.baseURL 的純路徑），子路徑部署才指得到 sprite。
+  // ⚠️ 這裡刻意不吃 useAssetUrl()／APP_ASSETS_PATH：那可能是別的 origin，而跨源的
+  //    <use> 會靜默失效（見 test/sprite-same-origin-href.spec.ts 的事故說明）。
+  it('部署前綴（baseURL）套在 sprite 路徑上', () => {
+    expect(artSpriteHref('/img/forum/x-pad-2.svg', 'pad', (p) => `/newmedia/2026/udn75${p}`))
+      .toBe('/newmedia/2026/udn75/img/sprites/art-pad.svg#x-pad-2');
   });
 });
 

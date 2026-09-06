@@ -31,7 +31,10 @@ import { isSvgPath, spriteSymbolId } from '~/utils/svg-sprite-ref';
 // false 時不渲染任何圖（連 <img> 也不渲染），避免 pin 的 fixed 瞬間把整份清單抓下來。
 defineProps<{ near: boolean }>();
 
+// assetUrl：png logo 的 <img src>（跨源無妨）。spriteUrl：sprite 的 <use href>，
+// 只吃 app.baseURL ＝ 一定同源，理由見 utils/svg-sprite-ref 的 spriteBase。
 const assetUrl = useAssetUrl();
+const spriteUrl = useSpriteUrl();
 
 /**
  * 一列夥伴。必填欄位是 JSON 每一列都有的；後兩個是**逐筆的例外開關**，只有稿上有特別
@@ -59,8 +62,8 @@ const { play } = useSfx();
 
 // 45 支 svg logo 合成一支 sprite（見 scripts/build-svg-sprites.mjs）：一個 request 取代 45 個。
 // 8 支 png logo 不進 sprite，維持 <img>。
-// ⚠️ 外部 <use href> 必須同源：四個部署目標的 APP_ASSETS_PATH 都與頁面同 host。
-const SPRITE = assetUrl('/img/sprites/partners.svg');
+// ⚠️ 外部 <use href> 必須同源，所以走 spriteUrl（baseURL）而非 assetUrl（ASSETS_PATH）。
+const SPRITE = spriteUrl('/img/sprites/partners.svg');
 const spriteHref = (logo: string) => `${SPRITE}#${spriteSymbolId(logo)}`;
 </script>
 

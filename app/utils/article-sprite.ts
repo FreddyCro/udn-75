@@ -10,8 +10,10 @@ import { spriteSymbolId } from './svg-sprite-ref';
  * 收進 sprite 的 19 支（明確名單見 scripts/lib/sprite-sources.mjs）合起來只剩 1 個 request。
  *
  * ⚠️ 外部 `<use href>` 必須同源。跨源的 `<use>` 會被瀏覽器**靜默**擋下 —— 沒有 console
- * error、沒有網路錯誤、圖就是不見。同樣的警告見 art-sprite.ts 與 BlessingPartners.vue，
- * 由 test/asset-host-same-origin.spec.ts 守著。
+ * error、沒有網路錯誤、圖就是不見。故 `assetUrl` 這個參數**只能收 `useSpriteUrl()`**
+ * （app.baseURL ＝ 純路徑、天然同源），不可以收 `useAssetUrl()`（APP_ASSETS_PATH 可能
+ * 是別的 origin）。同樣的警告見 art-sprite.ts 與 BlessingPartners.vue，由
+ * test/sprite-same-origin-href.spec.ts 守著。
  */
 export const articleSpriteHref = (
   src: string,

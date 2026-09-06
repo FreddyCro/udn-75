@@ -24,8 +24,10 @@ import {
 const ICON_SEARCH = '/img/data/udn75_data_ai_search.svg';
 const ICON_VIP = '/img/data/udn75_data_icon_udnvip.svg';
 const ICON_NEWS = '/img/data/udn75_data_icon_udnnews.svg';
-const assetUrl = useAssetUrl();
-const artHref = (src: string) => articleSpriteHref(src, assetUrl);
+// sprite 的 href 只吃 app.baseURL（＝一定同源）；跨源的 <use> 會被靜默擋下，
+// 脈絡見 utils/svg-sprite-ref 的 spriteBase。
+const spriteUrl = useSpriteUrl();
+const artHref = (src: string) => articleSpriteHref(src, spriteUrl);
 
 export interface AiKeyword {
   term: string;

@@ -44,16 +44,17 @@ const props = withDefaults(
   },
 );
 
-// 年份圖是 runtime 才組出來的路徑，Vite 編譯期無法改寫成 base 感知的 URL，
-// 得自己補 APP_ASSETS_PATH（同 useAssetUrl.ts 的說明）。
-const assetUrl = useAssetUrl();
+// 年份圖是 runtime 才組出來的路徑，Vite 編譯期無法改寫成 base 感知的 URL，得自己補前綴。
+// sprite 的 href 只吃 app.baseURL（＝一定同源）；跨源的 <use> 會被靜默擋下，
+// 脈絡見 utils/svg-sprite-ref 的 spriteBase。
+const spriteUrl = useSpriteUrl();
 
 // 歷程線／箭頭／年份數字都走 article sprite（見 utils/article-sprite.ts）：
 // 原本 7 個 request（線 1、箭頭 1、年份 5），現在與其他內文素材共用同一支、共 1 個。
 const LINE_SRC = '/img/news/udn75_news_timeline_line.svg';
 const ARROW_SRC = '/img/news/udn75_news_timeline_arrow.svg';
 const yearSrc = (year: string) => `/img/news/${year}.svg`;
-const artHref = (src: string) => articleSpriteHref(src, assetUrl);
+const artHref = (src: string) => articleSpriteHref(src, spriteUrl);
 
 const rootRef = ref<HTMLElement | null>(null);
 const stageRef = ref<HTMLElement | null>(null);

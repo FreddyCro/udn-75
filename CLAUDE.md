@@ -94,6 +94,14 @@
   這份 defs 內聯後 WebKit 在引用端就查得到，Chromium 完全不受影響（實測 46 支 logo 前後零差異）。
   ⚠️ 新素材帶了漸層／新的 clipPath 就一定要重跑，否則只在 iOS 上壞 ——
   `test/sprite-coverage.spec.ts` 有一組專門對帳這件事。
+- ⚠️ sprite 的 `<use href>` 一律走 `useSpriteUrl()`（只吃 `app.baseURL` ＝ 純路徑
+  ＝ 一定同源），**不可以走 `useAssetUrl()`／`APP_ASSETS_PATH`** —— 後者是為了
+  「圖片可能放 CDN」而存在的絕對 URL，而跨源的 `<use>` 會被瀏覽器**靜默**擋下
+  （沒有 console error、沒有網路錯誤，圖就是不見）。2026-09-06 正式站踩過：
+  udn75.udn.com 那份 build 吃到 vip 的 ASSETS_PATH，/subpage 16 支、/news 12 支、
+  首頁 39 支藝術字與夥伴 logo 全部消失。界線由 `test/sprite-same-origin-href.spec.ts`
+  守著（`test/asset-host-same-origin.spec.ts` 只看得到 committed 的 `.env.*.example`，
+  真正 build 吃的 `.env` 不在版控裡，選錯檔案它一個字都看不到）。
 - ⚠️ 只有「用 `<img src>` 消費」的素材能進 sprite。走 CSS `mask-image: url(...)` 的
   （子頁 hero 標題／副標）不能 —— 瀏覽器對外部 SVG 的 fragment 參照支援不一致。
 - 沒跑的話 `test/sprite-coverage.spec.ts` 會失敗：它不只驗 symbol id 存不存在，

@@ -29,9 +29,11 @@ import { artSpriteHref } from '~/utils/art-sprite';
 
 const props = defineProps<{ line: ForumLine }>();
 
-// locales JSON 的路徑是「站台根目錄」寫法（/img/...），塞進 url() 前必須補上
-// APP_ASSETS_PATH，否則子路徑部署（GitHub Pages 的 /udn-75/）會解析到 origin 根而 404。
-const assetUrl = useAssetUrl();
+// locales JSON 的路徑是「站台根目錄」寫法（/img/...），子路徑部署（GitHub Pages 的
+// /udn-75/）會解析到 origin 根而 404，故須補前綴。
+// sprite 的 href 只吃 app.baseURL（＝一定同源）；跨源的 <use> 會被靜默擋下，
+// 脈絡見 utils/svg-sprite-ref 的 spriteBase。
+const spriteUrl = useSpriteUrl();
 
 // 物件才是素材；字串一律當活文字。
 const art = computed<ForumTextArt | null>(() =>
@@ -68,7 +70,7 @@ const bp = useArtBreakpoint();
 const spriteHref = computed(() => {
   const current = bp.value;
   const src = current ? art.value?.art[current] : undefined;
-  return current && src ? artSpriteHref(src.src, current, assetUrl) : null;
+  return current && src ? artSpriteHref(src.src, current, spriteUrl) : null;
 });
 const spriteViewBox = computed(() => {
   const current = bp.value;

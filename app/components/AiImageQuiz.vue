@@ -52,8 +52,9 @@ const FIG_SIZE = [
   { w: 235, h: 313 },
 ];
 
-// 對錯圖示為 runtime 組出的動態路徑，須自行補資產前綴
-const assetUrl = useAssetUrl();
+// sprite 的 href 只吃 app.baseURL（＝一定同源）；跨源的 <use> 會被靜默擋下，
+// 脈絡見 utils/svg-sprite-ref 的 spriteBase。
+const spriteUrl = useSpriteUrl();
 
 // 兩顆作答鈕的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
 // 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
@@ -69,7 +70,7 @@ const badgeSrc = computed(() =>
     ? '/img/visual/udn75_quiz_correct.svg'
     : '/img/visual/udn75_quiz_wrong.svg',
 );
-const artHref = (src: string) => articleSpriteHref(src, assetUrl);
+const artHref = (src: string) => articleSpriteHref(src, spriteUrl);
 const explain = computed(() => props.options[picked.value]?.explain ?? '');
 
 function pick(i: number) {

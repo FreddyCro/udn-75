@@ -47,9 +47,11 @@ withDefaults(
   },
 );
 
-// 藝術字路徑由呼叫端從 locales/*.json 傳入（純字串）→ 須自行補資產前綴
-const assetUrl = useAssetUrl();
-const artHref = (src: string) => articleSpriteHref(src, assetUrl);
+// 藝術字路徑由呼叫端從 locales/*.json 傳入（純字串）→ 須自行補前綴。
+// sprite 的 href 只吃 app.baseURL（＝一定同源）；跨源的 <use> 會被靜默擋下，
+// 脈絡見 utils/svg-sprite-ref 的 spriteBase。
+const spriteUrl = useSpriteUrl();
+const artHref = (src: string) => articleSpriteHref(src, spriteUrl);
 
 const POS = ['tl', 'tr', 'bl', 'br'] as const;
 // 分支方向：tl/br「\」、tr/bl 鏡射「/」；push＝收合方向（朝中央塊，視覺座標、與 flip 無關）

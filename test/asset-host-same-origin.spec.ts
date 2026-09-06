@@ -2,12 +2,16 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// 為什麼要這支測試：app/utils/art-sprite.ts 與 BlessingPartners.vue 都用
-// `<svg><use href="...">` 引用外部 sprite（見兩處的「⚠️ 外部 <use href> 必須同源」
-// 註解）。跨源的 `<use>` 會被瀏覽器**靜默**擋下——沒有 console error、沒有 build 失敗、
-// 沒有測試失敗，104 個 symbol、跨三支 sprite 的藝術字與 45 支夥伴 logo 會無聲消失。
-// 這支測試守的就是「四個部署目標的 NUXT_PUBLIC_APP_ASSETS_PATH 與 NUXT_URL 同源」這個
-// 前提——一旦有人為了同一個 429 問題改用 app.cdnURL 把資產搬去別的 host，這裡要先紅。
+// 為什麼要這支測試：這是資產同源的**第二道**防線。
+//
+// 第一道是 test/sprite-same-origin-href.spec.ts —— sprite 的 `<use href>` 只吃
+// app.baseURL（純路徑、天然同源），不管 APP_ASSETS_PATH 設成什麼都不受影響。那是根治，
+// 因為 2026-09-06 正式站的事故正是「build 吃到別的部署目標的 .env」，而真正 build 時
+// 吃的 .env 不在版控裡，這支測試看不到。
+//
+// 這一道守的是「四個部署目標的 NUXT_PUBLIC_APP_ASSETS_PATH 與 NUXT_URL 同源」這個前提，
+// 保護的是其餘吃 ASSETS_PATH 的素材（<img src>、CSS url()／mask-image）—— 它們跨源雖然
+// 能載入，但把資產搬去別的 host 這件事本身就該是明確的決定，不該無聲發生。
 //
 // 判斷「同源」不能只比較兩邊的 host：同 host 不同 scheme（例如資產是 http://，頁面是
 // https://）對 <use> 來說仍是跨源，必須比對完整的 origin（scheme + host + port）。
