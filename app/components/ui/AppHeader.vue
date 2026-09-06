@@ -8,6 +8,7 @@ import {
   type ThemeSpan,
 } from '@/utils/header-theme';
 import { pickActiveAnchor } from '@/utils/anchor-spy';
+import { getHeaderOffset, invalidateHeaderOffset } from '@/utils/header-offset';
 import { nextHeaderShown } from '@/utils/header-autohide';
 import { anchorLanding, anchorOffsetVh } from '@/utils/anchor-landing';
 import { requestHomeRestart, resolveHomeIntent } from '@/utils/home-intent';
@@ -245,20 +246,9 @@ onBeforeUnmount(() => {
   docObserver?.disconnect();
 });
 
-// 頂部固定列的高度（用於錨點捲動時的偏移補償），從 CSS variable --header-height 取得。
-//
-// 快取：getComputedStyle() 會強制 style flush，而這支原本每個捲動幀都被 updateTheme
-// 呼叫一次。--header-height 只隨斷點變（媒體查詢），捲動中是常數 → 失效點只有 resize。
-let headerOffsetPx: number | null = null;
-function getHeaderOffset() {
-  if (headerOffsetPx === null) {
-    const raw = getComputedStyle(document.documentElement).getPropertyValue(
-      '--header-height',
-    );
-    headerOffsetPx = parseFloat(raw) || 0;
-  }
-  return headerOffsetPx;
-}
+// 頂部固定列的高度（用於錨點捲動時的偏移補償）搬到 ~/utils/header-offset 了：
+// 反白窗的閘門也要問同一個數字（見該檔檔頭），快取與失效時機必須只有一份。
+// 本元件仍是唯一的失效呼叫端 —— 見下方 onResize。
 
 // 可捲動總距離。scrollHeight 是**強制整份文件 layout** 的讀取，同樣不該每幀來一次；
 // 它只在版面真的變高變矮時才變 → 交給下方的 ResizeObserver 與 resize 標記失效。
@@ -357,7 +347,7 @@ function onScroll() {
 
 // resize 走自己的入口：斷點可能換了（--header-height）、視窗高也變了（scrollTotal）
 function onResize() {
-  headerOffsetPx = null;
+  invalidateHeaderOffset();
   invalidateDocMetrics();
   onScroll();
 }
@@ -709,7 +699,13 @@ const layers = computed<HeaderLayer[]>(() => {
   z-index: 3;
   pointer-events: none;
   --hd-bg: transparent;
-  clip-path: inset(0 calc(100% - var(--hd-band-r, 0px)) 0 var(--hd-band-l, 0px));
+  // 上緣吃 --hd-band-t：窗還沒蓋滿這一列時（色柱正從畫面中央往上長、或正往下收），
+  // 反白只能畫在色柱真的蓋到的那一截，否則上半會反白在 hero 白底上。
+  // clip-path 是二維的，這根軸不像 base 的遮罩那樣需要另外補一層。
+  clip-path: inset(
+    var(--hd-band-t, 0px) calc(100% - var(--hd-band-r, 0px)) 0
+      var(--hd-band-l, 0px)
+  );
 
   // 底色都透明了還糊一層 blur，只會把窗內的粒子糊掉
   .app-header__bar-wrap {
@@ -722,8 +718,10 @@ const layers = computed<HeaderLayer[]>(() => {
    變成一條灰霧帶（見 temp/poc-off-085.png 的對照）。
    ⚠️ 用 mask 而非 clip-path：一條直立缺口會把亮列切成左右**兩塊不連續**的區域，
       clip-path 的單一多邊形表達不了；linear-gradient 遮罩天生就能。
-      代價是它只有水平資訊 —— 窗還沒蓋滿 header 那一列時不可以挖，那條閘門收在
-      useHeaderBand 的 syncHeaderBand（top > 0 就不開窗）。
+      代價是那條 gradient 只有水平資訊 —— 補法是第二層 --hd-band-cap（見下方），
+      不是把整個窗擋掉。2026-09-06 之前這裡沒有第二層，於是閘門只好收在
+      「窗蓋滿整列（top <= 0）才開」，色柱從畫面中央往上長進這一列、還沒到視窗頂的
+      那 112px 捲動就整段沒挖 ⇒ 灰霧帶（見 ~/utils/header-band-window 的檔頭）。
 
    遮罩鋪成**兩層相加**（mask-composite 的初始值就是 add）：
      ① 只鋪主列那一列（高 --header-height）：窗內挖掉 —— 就是上面說的那件事。
@@ -747,6 +745,28 @@ const layers = computed<HeaderLayer[]>(() => {
     transparent var(--hd-band-l, 0px) var(--hd-band-r, 0px),
     #000 var(--hd-band-r, 0px) 100%
   );
+  /* --hd-band-t 是**視窗**座標，遮罩卻以各自元素的框為原點 → 各自扣掉自己的上緣。
+     水平那條不必這樣做（兩個元素都從 x: 0 起算），垂直這條才需要。
+     3px ＝ .app-header__progress 的高（同 .app-header__bar 的 calc 用的那個數）。
+     ⚠️ max(0px, …) 不可省：bar-wrap 的 -3px 會讓 gradient 出現遞減的 stop，
+        雖然規範會 fix-up 成 0，但寫明白比依賴 fix-up 可靠。
+     ⚠️ 已知的 1px 殘留：t 落在 0..3 之間時，邊界剛好在進度條**內部**，base 與 band
+        兩份進度條在那一列混色（實測 03 → 04 是 #ff7f00 旁邊一列 #e89d4e ——
+        兩邊都是橘，差別在飽和度）。發生範圍是 28px 寬的窗 × 約 4px 捲動，
+        且它取代的是「整條 83px 灰霧帶 × 112px 捲動」。
+        要真的抹掉得用 round(up, var(--hd-band-t), 1px) 把邊界對到像素格，
+        但那是 Chrome 125+／Safari 15.4+ 才有的函式 —— 為這個量級付相容性成本不值得。
+        ⚠️ 不可以「乾脆讓進度條吃 bar-wrap 那條邊界」來躲：t < 3 時它會變成 0，
+           base 整條被挖、band 又只畫得到 t 以下 ⇒ 進度條頂端開一個 t px 的洞
+           透出 hero 白底，比現在明顯得多。 */
+  .app-header__progress {
+    --hd-band-cap-y: var(--hd-band-t, 0px);
+  }
+
+  .app-header__bar-wrap {
+    --hd-band-cap-y: max(0px, calc(var(--hd-band-t, 0px) - 3px));
+  }
+
   // ⚠️ 遮罩掛在**真正會畫東西的那兩個元素**上，不掛在 layer 上。
   //    掛 layer 看起來對，但 .app-header__bar-wrap 為了滑入動畫帶著 transform ⇒ 被提升成
   //    合成層 ⇒ 在 Chrome 會**逃出祖先的遮罩**：窗內 header 那一列殘留一條比周圍淺的橫帶
@@ -767,8 +787,31 @@ const layers = computed<HeaderLayer[]>(() => {
   // ⚠️ mask-clip 必須寫在 mask／-webkit-mask **之後**：shorthand 會把它重設回 border-box。
   .app-header__progress,
   .app-header__bar-wrap {
-    -webkit-mask: var(--hd-band-mask) 0 0 / 100% 100% repeat;
-    mask: var(--hd-band-mask) 0 0 / 100% 100% repeat;
+    /* 垂直那一層（2026-09-06 新增）：--hd-band-cap-y 以上整片不透明，與上面那條
+       **相加**（mask-composite 的初始值就是 add）⇒ 缺口只存在於窗的上緣以下。
+       色柱只蓋到這一列的一半時，另一半的 base 因此原封不動留著，不會穿幫成 hero 白底。
+       ⚠️ 必須宣告在**用它的那兩個元素**上，不能提到 layer 去（--hd-band-mask 就在
+          那裡，看起來該作伴）：自訂屬性裡的 var() 是在「宣告它的那個元素」上就地
+          代換完才往下繼承的 —— 放在 layer 上，裡面的 var(--hd-band-cap-y) 會拿
+          layer 自己的值（沒有 ⇒ fallback 0px），兩個子元素於是拿到同一份「上緣 0」
+          的漸層，這一層等於不存在。--hd-band-mask 沒這個問題是因為它讀的
+          --hd-band-l/r 是從 [data-header-vars] 繼承下來的，在 layer 上就有值。
+       ⚠️ 必須 no-repeat：它靠「盒外沒有東西可加」表達「窗的上緣以下不補」，
+          repeat 會把不透明那一段一路往下鋪，等於缺口整個被填回去。
+       ⚠️ --hd-band-t 為 0（窗滿高）時這一層整片透明，相加等於沒有這一層 ——
+          改動前後在那一檔是**像素級相同**的，這是刻意的：舊行為只有那一種情形，
+          新增的都在 top > 0 的區間，回歸面因此收在那一段。 */
+    --hd-band-cap: linear-gradient(
+      to bottom,
+      #000 0 var(--hd-band-cap-y, 0px),
+      transparent var(--hd-band-cap-y, 0px) 100%
+    );
+    -webkit-mask:
+      var(--hd-band-mask) 0 0 / 100% 100% repeat,
+      var(--hd-band-cap) 0 0 / 100% 100% no-repeat;
+    mask:
+      var(--hd-band-mask) 0 0 / 100% 100% repeat,
+      var(--hd-band-cap) 0 0 / 100% 100% no-repeat;
     mask-clip: no-clip;
   }
 }

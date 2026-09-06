@@ -478,32 +478,41 @@ export function useMediaIntroMotion(targets: MediaIntroMotionTargets) {
         );
 
         // ── header 跟著橘塊收窄：窗內橘、窗外白 ────────────────────────
-        // 橘塊還在（尚未收成 28px 細條）時，把它的左右緣交給 header 當反白窗；
-        // 之後（lightPhase）收掉，整條 header 就是白的。
+        // 把橘塊的左右緣交給 header 當反白窗，窗外翻白（lightPhase）。
+        // 窗什麼時候收由 header 端依幾何決定 —— 橘柱的上緣離開 header 那一列的那一刻，
+        // 不是拍 1 結束的那一幀（見下方第二個 ⚠️）。
         //
         // ⚠️ 量 morph 而不是 veil，且**整段都量 morph**：拍 0 的構造保證兩者同寬
         //    （見上方那段 ⚠️「veil 與 morph 的寬度基準由 CSS 保證同一個值」），
         //    而 veil 在 NARROW_DUR 就交棒消失了，morph 則一路活到拍 1 結束 ——
         //    用同一個元素就不必在交棒點做分支，也不可能在那一幀讀到已隱藏的那個。
-        // ⚠️ top 固定傳 0，不用 morph 自己的 rect.top：morph 只塗得到接縫**以下**
-        //    （morph 上緣 ≡ .media 上緣 ≡ 接縫），接縫以上那塊橘是 veil 畫的。
+        // ⚠️ 拍 0／拍 1 期間 top 固定傳 0，不用 morph 自己的 rect.top：morph 只塗得到
+        //    接縫**以下**（morph 上緣 ≡ .media 上緣 ≡ 接縫），接縫以上那塊橘是 veil 畫的。
         //    畫面上這塊橘在整個拍 0／拍 1 都是**滿高**的，只是由兩個元素接力畫 ——
         //    照 morph 的 top 傳，會在接縫還沒抵達視窗頂那段被 header 的閘門擋掉
-        //    （那個閘門要的是「窗有沒有蓋滿 header 那一列」，見 useHeaderBand）。
+        //    （那個閘門要的是「窗有沒有碰到 header 那一列」，見 useHeaderBand）。
         //    ⚠️ 這條**反向依賴 veil 真的存在**：2026-08-21 實測讓 veil 直接消失，接縫
         //       以上就沒有橘了，而這裡照樣開橘窗、窗內用白字 → 「論壇」「永續祝福」
         //       兩個 nav 項目變成白字疊白底、整個消失。要動 veil 就得同時改這裡。
+        // ⚠️ 拍 1 之後（lightPhase）反過來：veil 早就退場，橘柱開始**垂直收縮**，
+        //    它真正的上緣才是窗的上緣。2026-09-06 之前這裡是在 lightPhase 那一幀直接
+        //    syncHeaderBand(null) 硬收，但那一刻橘柱還是滿高的 28px 細條 —— 之後
+        //    還有約 85px 捲動（1440×900 實測 scrollY 18920–19005）柱頂仍蓋在 header
+        //    底下，base 的 70% 白 + blur 就糊在那截橘柱上。改交出真正的 top 之後，
+        //    窗跟著柱頂一起離開那一列；越過之後 headerBandOpen 自己會收，不必再判一次。
         // ⚠️ 每幀一次 getBoundingClientRect ＝ 一次強制 reflow。這裡接受它：morph 的
         //    transform 由 GSAP 逐幀寫、後面的拍還會加上 x/xPercent，用 scaleX 反推
         //    版位會在改拍數時靜靜失準，而這一段只有約一個視窗高的跑道。
-        let bandLeft = 0;
-        if (lightPhase) {
-          syncHeaderBand(null);
-        } else {
-          const r = morph.getBoundingClientRect();
-          bandLeft = r.left;
-          syncHeaderBand({ theme: 'orange', left: r.left, right: r.right, top: 0 });
-        }
+        //    （lightPhase 之後也要量，成本因此擴到整條 timeline —— 換來的是收窗的時機
+        //    由畫面決定而不是由拍數猜，且倒著捲回來時對稱。）
+        const r = morph.getBoundingClientRect();
+        const bandLeft = r.left;
+        syncHeaderBand({
+          theme: 'orange',
+          left: r.left,
+          right: r.right,
+          top: lightPhase ? r.top : 0,
+        });
 
         // 底層（窗外）的主題。橘塊還滿版時整條 header 都被窗蓋住，底層畫什麼都看不到，
         // 但**不能**先翻白 —— 反白層是 v-if 掛上去的（下一個 tick 才有 DOM），

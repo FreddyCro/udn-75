@@ -10,10 +10,12 @@ import { describe, expect, it } from 'vitest';
 //
 // 成因是一條**正的**次像素殘留：HeroSymbolTransition 的 apply() 把窗的上緣算成
 // `Math.max(0, cy - h / 2)`（cy ＝ 量到的 core 中心）。拉長段跑完之後 h ＝ vh，
-// 這條式子只有在 core 像素級正中時才給 0；而 header 反白的閘門是 `top <= 0`
-// （見 ~/composables/useHeaderBand：亮列用水平 gradient 挖洞、表達不了垂直邊界，
-// 故窗還沒蓋滿 header 那一列就一律不反白）—— 差 0.2px 就整段不反白。
-// `Math.max(0, …)` 擋不住：它擋的是負值。
+// 這條式子只有在 core 像素級正中時才給 0；而當時 header 反白的閘門是 `top <= 0`
+// —— 差 0.2px 就整段不反白。`Math.max(0, …)` 擋不住：它擋的是負值。
+//
+// 2026-09-06 更新：閘門改問「窗有沒有碰到 header 那一列」（~/utils/header-band-window），
+// 這 0.2px 不再讓整段不反白，但仍會讓缺口比色柱矮 0.2px。下面那組守門因此保留，
+// 只是它守的後果從「整條灰霧帶」降級成「一條 0.2px 的白線」。
 //
 // 實測（Chromium、pad 斷點 1160×875，DPR 縮放讓視窗高帶小數）：
 //   field.height 875.3333740234375 → vh / 2 ＝ 437.66668701171875
@@ -49,9 +51,20 @@ describe('hero → symbol 轉場：反白窗的垂直邊界', () => {
     expect(derived).toBeCloseTo(0.2, 3);
   });
 
-  it('閘門對那 0.2px 是零容忍 —— 故驅動端必須交出精確的 0', () => {
-    // useHeaderBand 的判定：top > 0 一律不開窗（水平 gradient 表達不了垂直邊界）
-    expect(read(BAND)).toMatch(/\(rect\.top \?\? 0\) <= 0/);
+  it('閘門本身已經不再對那 0.2px 零容忍（2026-09-06）', () => {
+    // 判定搬到 ~/utils/header-band-window 並改問「窗有沒有碰到 header 那一列」，
+    // 那 0.2px 落在那一列內 → 照開，缺口由 --hd-band-t 精確地從 0.2px 起算。
+    // 判定的真值表見 test/header-band-window.spec.ts；這裡只釘「composable 有委派過去」。
+    const src = read(BAND);
+    expect(src).toMatch(/headerBandOpen\(rect, getHeaderOffset\(\)\)/);
+    expect(src).not.toMatch(/\(rect\.top \?\? 0\) <= 0/);
+  });
+
+  it('但驅動端仍要交出精確的 0 —— 0.2px 會變成 0.2px 的 base 殘留', () => {
+    // 閘門放寬之後這條殘留不再是「整段不反白」，而是缺口比色柱矮 0.2px：
+    // 色柱頂端壓著一條 0.2px 的 70% 白。比灰霧帶輕，但一樣是靜默的錯位，
+    // 故下面那組「寫死 0」的守門原封不動保留。
+    expect(read(TRANSITION)).toMatch(/const vFull = pY >= 1;/);
   });
 
   it('展開段（pY ＝ 1）的上下緣寫死 0，不由 cy 反推', () => {
