@@ -59,6 +59,36 @@ describe('art-{pc,pad,mob}.svg 涵蓋 section2 / section3 的每個藝術字素�
   });
 });
 
+/**
+ * 每支 sprite 內的 url(#…) 參照，都要在 app/assets/generated/sprite-defs.svg 找得到同 id 的定義。
+ *
+ * ⚠️ WebKit 解析外部 `<use href="sprite.svg#id">` 內的 url(#…) 時是拿**引用端文件**查 id
+ * （Chromium／Gecko 在外部文件查，兩者都對）。查不到就靜默壞掉：桌機 WebKit 把漸層退成
+ * 黑色、iOS 整塊不繪製，沒有任何錯誤訊號——2026-09-06 設計師回報「金格／長春藤／麗寶的
+ * logo 在 iPhone 不見了」即是。app.vue 因此內聯這份 defs 讓引用端也查得到。
+ *
+ * 這一組就是那個修法的守門：新素材帶了新的漸層／clipPath、或改了既有素材讓 id 變動，
+ * 只要忘記重跑 `pnpm assets:sprites`，這裡會紅——否則畫面只在 iOS 上壞，本機測不出來。
+ */
+describe('sprite-defs.svg 涵蓋每支 sprite 的 url(#…) 參照', () => {
+  const root = join(__dirname, '..');
+  const defs = readFileSync(join(root, 'app/assets/generated/sprite-defs.svg'), 'utf8');
+  const defIds = new Set([...defs.matchAll(/<[A-Za-z][-\w:]*\s[^>]*\bid="([^"]+)"/g)].map((m) => m[1]));
+  const SPRITES = ['partners.svg', 'article.svg', 'art-pc.svg', 'art-pad.svg', 'art-mob.svg'];
+  const RERUN_HINT = '請重跑 `pnpm assets:sprites` 並把 app/assets/generated/sprite-defs.svg 一起 commit。';
+
+  it('至少收錄 20 個 def（避免抽取邏輯壞掉讓測試空轉）', () => {
+    expect(defIds.size).toBeGreaterThanOrEqual(20);
+  });
+
+  it.each(SPRITES)('%s 參照到的 id 都在 defs 裡', (name) => {
+    const svg = readFileSync(join(root, 'public/img/sprites', name), 'utf8');
+    const refs = new Set([...svg.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]));
+    expect(refs.size, `${name} 一個 url(#…) 都沒有，抽取規則可能已失效`).toBeGreaterThan(0);
+    for (const id of refs) expect(defIds.has(id), `${name} 參照的 #${id} 不在 defs 裡。${RERUN_HINT}`).toBe(true);
+  });
+});
+
 // sprite-coverage 只驗「symbol id 存不存在」，抓不到「檔名沒變、內容換了」——
 // 把某支 logo 的圖換掉但忘了重跑 `pnpm assets:sprites`，上面兩組測試依然全線通過，
 // 網站卻繼續顯示舊圖。這裡用 sources.json 記的 sha256 對帳每一支來源檔的實際內容，

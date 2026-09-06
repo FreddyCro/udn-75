@@ -21,7 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { buildSprite } from './lib/svg-sprite.mjs';
+import { buildSprite, collectSpriteDefs } from './lib/svg-sprite.mjs';
 import { listSpriteSources } from './lib/sprite-sources.mjs';
 
 const ROOT = process.cwd();
@@ -42,11 +42,21 @@ const readItems = (list) =>
     return { id, svg };
   });
 
+// 每支 sprite 內被 url(#…) 參照到的 def，最後合成一份給頁面內聯（見檔尾）。
+const spriteDefs = new Map();
+
 const write = async (name, list) => {
   const items = readItems(list);
   const out = await buildSprite(items);
   const file = path.join(OUT_DIR, name);
   fs.writeFileSync(file, out);
+  for (const { id, markup } of collectSpriteDefs(out)) {
+    const prev = spriteDefs.get(id);
+    // id 由 svgo 的 prefixIds 前綴成 symbol id，symbol id 又是全站唯一的檔名——
+    // 撞號代表那條前提破了，內聯後會互相指錯，寧可停在這裡。
+    if (prev && prev.markup !== markup) throw new Error(`[svg-sprite] def id 跨 sprite 撞號：${id}（${prev.from} vs ${name}）`);
+    spriteDefs.set(id, { markup, from: name });
+  }
   console.log(`${name}: ${items.length} symbols, ${(out.length / 1024).toFixed(0)} KB`);
 };
 
@@ -85,3 +95,22 @@ for (const bp of ['pc', 'pad', 'mob']) {
 const sourcesFile = path.join(OUT_DIR, 'sources.json');
 fs.writeFileSync(sourcesFile, `${JSON.stringify(sources, null, 2)}\n`);
 console.log(`sources.json: ${Object.keys(sources).length} 個來源檔`);
+
+/**
+ * 五支 sprite 內被 url(#…) 參照到的 def（漸層、clipPath），合成一份給 app.vue 內聯。
+ *
+ * ⚠️ WebKit 解析外部 `<use href="sprite.svg#id">` 內的 `url(#…)` 時是拿**引用端文件**
+ * 查 id，不是 sprite 那份外部文件（Chromium／Gecko 則是在外部文件查，都正常）。
+ * 查不到就沒有任何錯誤訊號：桌機 WebKit 把漸層退成黑色、iOS 整塊不繪製 ——
+ * 2026-09-06 設計師回報「金格／長春藤／麗寶的 logo 在 iPhone 不見了」就是這個。
+ * 這份 defs 內聯進頁面後，WebKit 在引用端就查得到同 id 的定義；Chromium 不受影響。
+ * 完整的成因與實測見 scripts/lib/svg-sprite.mjs 的 collectSpriteDefs()。
+ *
+ * 放 app/assets/ 而不是 public/：它要被內聯進 HTML，不是拿來下載的資產——放 public/
+ * 等於多一個 request，正好與 sprite 的目的相反（同 article-sprite-viewbox.json 的理由）。
+ */
+const defsFile = path.join(ROOT, 'app/assets/generated/sprite-defs.svg');
+fs.mkdirSync(path.dirname(defsFile), { recursive: true });
+const defs = [...spriteDefs.values()].map(({ markup }) => markup).join('');
+fs.writeFileSync(defsFile, `<defs>${defs}</defs>\n`);
+console.log(`sprite-defs.svg: ${spriteDefs.size} 個 def, ${(defs.length / 1024).toFixed(1)} KB`);

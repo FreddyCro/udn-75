@@ -177,6 +177,53 @@ export const stripCanvasBackdrop = (svg, id) => {
   return svg.slice(0, headEnd) + cut.ancestors.join('') + svg.slice(cut.at);
 };
 
+/**
+ * 把 sprite 裡被 `url(#…)` 參照到的 def 元素（漸層、clipPath…）整段挖出來。
+ *
+ * 為什麼需要這個：**WebKit 解析外部 `<use href="sprite.svg#id">` 內的 `url(#…)` 時，
+ * 是拿「引用端文件」去查 id，不是拿 sprite 那份外部文件。** 查不到的下場依版本而異
+ * ——桌機 WebKit 18.2 把漸層退成黑色，iOS 上是整塊不繪製；兩者都沒有任何錯誤訊號。
+ * 實測（2026-09-06，四支帶漸層的夥伴 logo：king／icareyou／lihpao／dragonsteel）：
+ * Chromium 正常、WebKit 全壞，把同 id 的 def 複製一份到頁面本身之後 WebKit 就對了，
+ * 且 Chromium 不受影響（它仍在外部文件解析，重複 id 不干擾）。
+ *
+ * 所以 build 另外產一份 defs，由 app.vue 內聯進每一頁；sprite 本身與 `<use>` 都不用動。
+ *
+ * 只挖「真的被參照到的」而不是全部 defs：範圍自我收斂，sprite 內沒人用的定義不會被搬進 HTML。
+ * 參照可以是遞移的（漸層用 href 指向另一個漸層），故做到收斂為止。
+ */
+export const collectSpriteDefs = (sprite) => {
+  // <tag … id="ID" …>…</tag> 整段原文。def 元素之間不會同名巢狀，往後掃到對應收尾即可。
+  const outerById = (id) => {
+    const at = sprite.search(new RegExp(String.raw`<[A-Za-z][-\w:]*\s[^>]*\bid="${id}"`));
+    if (at < 0) return null;
+    const tag = sprite.slice(at).match(/^<([A-Za-z][-\w:]*)/)[1];
+    const openEnd = sprite.indexOf('>', at) + 1;
+    if (sprite[openEnd - 2] === '/') return sprite.slice(at, openEnd);
+    const close = sprite.indexOf(`</${tag}>`, openEnd);
+    if (close < 0) throw new Error(`[svg-sprite] def #${id} 的 <${tag}> 沒有收尾`);
+    return sprite.slice(at, close + tag.length + 3);
+  };
+
+  const refsIn = (text) => [
+    ...[...text.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]),
+    ...[...text.matchAll(/\bhref="#([^"]+)"/g)].map((m) => m[1]),
+  ];
+
+  const out = new Map();
+  const queue = refsIn(sprite);
+  while (queue.length) {
+    const id = queue.shift();
+    if (out.has(id)) continue;
+    const markup = outerById(id);
+    // 參照得到 <symbol> 自己（`<use href="#id">` 形式）不算 def，跳過
+    if (!markup || /^<symbol\b/.test(markup)) continue;
+    out.set(id, markup);
+    queue.push(...refsIn(markup));
+  }
+  return [...out].map(([id, markup]) => ({ id, markup }));
+};
+
 export async function buildSprite(items) {
   const seen = new Set();
   const symbols = [];

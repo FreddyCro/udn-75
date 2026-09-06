@@ -84,6 +84,16 @@
 - `article.svg` 還會多產一份 `app/utils/article-sprite-viewbox.json`（symbol id → viewBox），
   **同樣要 commit**。外部 `<use>` 的 viewBox 在 `<symbol>` 上、外層 `<svg>` 沒有內在尺寸，
   消費端只要有一邊尺寸是 auto（如 `.award-timeline__year` 只定 height）就得靠它算比例。
+- ⚠️ 還會多產一份 `app/assets/generated/sprite-defs.svg`（五支 sprite 內被 `url(#…)` 參照到的
+  漸層與 clipPath，74 個、16.9 KB／gzip 1.8 KB），由 `app.vue` 內聯進每一頁，**同樣要 commit**。
+  **WebKit 解析外部 `<use href="sprite.svg#id">` 內的 `url(#…)` 時，是拿「引用端文件」查 id，
+  不是 sprite 那份外部文件**（Chromium／Gecko 在外部文件查，兩者都正常）。查不到就靜默壞掉：
+  桌機 Safari 把漸層退成黑色、iOS 整塊不繪製，**沒有任何錯誤訊號，本機 Chrome 的裝置模擬
+  也測不出來**（引擎還是 Blink）。2026-09-06 設計師回報「金格／長春藤／麗寶的 logo 在 iPhone
+  不見了」就是這個；當時 46 支夥伴 logo 有 5 支帶漸層，四支肉眼可見地壞掉。
+  這份 defs 內聯後 WebKit 在引用端就查得到，Chromium 完全不受影響（實測 46 支 logo 前後零差異）。
+  ⚠️ 新素材帶了漸層／新的 clipPath 就一定要重跑，否則只在 iOS 上壞 ——
+  `test/sprite-coverage.spec.ts` 有一組專門對帳這件事。
 - ⚠️ 只有「用 `<img src>` 消費」的素材能進 sprite。走 CSS `mask-image: url(...)` 的
   （子頁 hero 標題／副標）不能 —— 瀏覽器對外部 SVG 的 fragment 參照支援不一致。
 - 沒跑的話 `test/sprite-coverage.spec.ts` 會失敗：它不只驗 symbol id 存不存在，
