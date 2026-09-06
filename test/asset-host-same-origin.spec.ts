@@ -6,8 +6,9 @@ import { describe, expect, it } from 'vitest';
 //
 // 第一道是 test/sprite-same-origin-href.spec.ts —— sprite 的 `<use href>` 只吃
 // app.baseURL（純路徑、天然同源），不管 APP_ASSETS_PATH 設成什麼都不受影響。那是根治，
-// 因為 2026-09-06 正式站的事故正是「build 吃到別的部署目標的 .env」，而真正 build 時
-// 吃的 .env 不在版控裡，這支測試看不到。
+// 因為 2026-09-06 正式站的事故不是 env 設錯：`.env.production` 一直是對的，是 udn75.udn.com
+// 這個代理前台讓頁面 origin 與 ASSETS_PATH 的 origin 分了家（詳見那支測試的說明），
+// 而這種「同一份 build 被掛在第二個 host 上」是這支測試看不到的。
 //
 // 這一道守的是「四個部署目標的 NUXT_PUBLIC_APP_ASSETS_PATH 與 NUXT_URL 同源」這個前提，
 // 保護的是其餘吃 ASSETS_PATH 的素材（<img src>、CSS url()／mask-image）—— 它們跨源雖然

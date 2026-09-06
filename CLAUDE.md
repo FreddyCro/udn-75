@@ -97,11 +97,15 @@
 - ⚠️ sprite 的 `<use href>` 一律走 `useSpriteUrl()`（只吃 `app.baseURL` ＝ 純路徑
   ＝ 一定同源），**不可以走 `useAssetUrl()`／`APP_ASSETS_PATH`** —— 後者是為了
   「圖片可能放 CDN」而存在的絕對 URL，而跨源的 `<use>` 會被瀏覽器**靜默**擋下
-  （沒有 console error、沒有網路錯誤，圖就是不見）。2026-09-06 正式站踩過：
-  udn75.udn.com 那份 build 吃到 vip 的 ASSETS_PATH，/subpage 16 支、/news 12 支、
-  首頁 39 支藝術字與夥伴 logo 全部消失。界線由 `test/sprite-same-origin-href.spec.ts`
-  守著（`test/asset-host-same-origin.spec.ts` 只看得到 committed 的 `.env.*.example`，
-  真正 build 吃的 `.env` 不在版控裡，選錯檔案它一個字都看不到）。
+  （沒有 console error、沒有網路錯誤，圖就是不見），而且**這是瀏覽器自己的規則、CORS
+  標頭解不開**，無法靠調 server 修。2026-09-06 正式站踩過：站台只有一份 build（部署在
+  vip.udn.com/newmedia/2026/udn75），而 udn75.udn.com 是把它代理出去的前台 —— 前台會把
+  HTML 裡的相對路徑前綴改寫成 `/`，卻改不到 `APP_ASSETS_PATH` 組出來的絕對 URL，於是
+  頁面 origin 是 udn75、sprite href 卻指向 vip，/subpage 16 支、/news 12 支、首頁 39 支
+  藝術字與 46 支夥伴 logo 全部消失。界線由 `test/sprite-same-origin-href.spec.ts` 守著。
+- ⚠️ 反過來說 `APP_ASSETS_PATH` **要維持絕對 URL** —— `app.vue` 的 og:image 靠它組出
+  可分享的完整網址，改成相對路徑會讓社群爬蟲抓不到縮圖。「素材前綴」與「sprite 前綴」
+  是兩件事，不要為了省一個變數合併。
 - ⚠️ 只有「用 `<img src>` 消費」的素材能進 sprite。走 CSS `mask-image: url(...)` 的
   （子頁 hero 標題／副標）不能 —— 瀏覽器對外部 SVG 的 fragment 參照支援不一致。
 - 沒跑的話 `test/sprite-coverage.spec.ts` 會失敗：它不只驗 symbol id 存不存在，
