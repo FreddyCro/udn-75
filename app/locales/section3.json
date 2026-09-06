@@ -210,6 +210,13 @@
             "url": "https://www.24tms.com.tw/"
           },
           {
+            "name": "育達科大",
+            "quote": "培育達人就在育達 聯合攜手永續家園",
+            "logo": "/img/blessing/partner-ydu.svg",
+            "gaTerm": "ydu",
+            "url": "https://www1.ydu.edu.tw/?locale=zh_tw"
+          },
+          {
             "name": "味丹企業",
             "quote": "實踐價值轉型<br/>邁向永續未來",
             "logo": "/img/blessing/partner-vedan.svg",
@@ -341,13 +348,6 @@
             "logo": "/img/blessing/partner-longchenpaper.svg",
             "gaTerm": "longchenpaper",
             "url": "https://www.longchenpaper.com/main_index_ch.asp"
-          },
-          {
-            "name": "育達科大",
-            "quote": "培育達人就在育達 聯合攜手永續家園",
-            "logo": "/img/blessing/partner-ydu.svg",
-            "gaTerm": "ydu",
-            "url": "https://www1.ydu.edu.tw/?locale=zh_tw"
           },
           {
             "name": "精銳建設",

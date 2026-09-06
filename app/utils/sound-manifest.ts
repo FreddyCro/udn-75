@@ -52,8 +52,13 @@ export const SOUND_MANIFEST = {
   sfx01Short: 'udn75_sfx01_01_short.mp3',
   /** 2.8s：hero → symbol 的方塊遮罩轉場起手音（HeroSymbolTransition，p>0）、
    *  符號段粒子集合成人臉（SymbolScene，112vh／33.53%；2026-08-31 由 converge 搬來）、
+   *  符號段人臉聚合成白方塊（SymbolScene，248vh／74.25%）、
    *  小飛機進入橘色（Blessing）、
-   *  橘色遮罩轉場到新媒體（Blessing）—— 四處由設計師指定共用同一支。
+   *  橘色遮罩轉場到新媒體（Blessing）—— 五處由設計師指定共用同一支。
+   *
+   *  ⚠️ 符號段那兩處是**同一支在同一段裡響兩次**：2026-08-31 設計師把它從 converge
+   *  （248vh）搬到集合成人臉（112vh），2026-09-06 又指定 converge 那一拍也要有音，
+   *  於是變成兩處都響。相隔 136vh（約 5.4s）＞ 本檔 2.8s，不會互切。
    *
    *  轉場起手音那一處是 2026-08-31 由 aiFaceText 改過來的（設計師指定）：那支的檔名
    *  是 `..._ai_face_text`，卻同時掛著「文字亂碼」與「方塊遮罩轉場」兩種語意，

@@ -20,6 +20,7 @@ const {
   setSymbolProgress,
   symbolLayerDone,
   symbolDisperseAmount, // ← 集合窗口的驅動源（1 ＝ 完全散開、0 ＝ 臉已組好）
+  symbolConvergeAmount, // ← 收攏窗口的驅動源（0 ＝ 臉還在、1 ＝ 已收成一顆方塊）
   symbolConvergeLight,
   symbolHeaderTint,
 } = useOrangeCoreProgress();
@@ -31,11 +32,21 @@ const {
 // FACE_GATHER_VH）。不寫成 `symbolProgress >= SYMBOL_STOPS[0].until`，是為了與驅動畫面的
 // 用同一個量 —— 窗口的兩端動了音也跟著動，不會出現「音響了但粒子還沒開始飛」。
 //
-// ⚠️ 2026-08-31 由設計師指定從 converge（248vh／74.25%，粒子收攏成一顆點）搬到這裡：
-//    在那之前這一聲響在「臉散掉」的那一拍，不是「臉出現」的那一拍。
-//    要搬回去：把來源換成 `symbolConvergeAmount.value > 0`。
+// ⚠️ 2026-08-31 由設計師指定從 converge（248vh／74.25%）搬到這裡：在那之前這一聲響在
+//    「臉散掉」的那一拍，不是「臉出現」的那一拍。2026-09-06 設計師又指定 converge 那一拍
+//    也要有音（見下），故現在**兩處都響**、共用同一支 —— 這一行不是那一行的舊址。
 const { cueOn } = useSfxCue();
 cueOn(() => symbolDisperseAmount.value < 1, 'aiFaceBg');
+
+// 人臉**聚合成白方塊**（converge 那一拍的開頭）的音效，設計師 2026-09-06 指定 ——
+// 與上面那一聲同支（aiFaceBg），相隔 136vh（約 5.4s，見 ASSUMED_READING_VH_PER_S），
+// 不會互相切斷。
+//
+// 門檻取 convergeAmount 由 0 翻正的那一刻 ＝ 收攏窗口起點（248vh／74.25%，見
+// SYMBOL_BEAT_VH 與 convergeAmountAt）：那一幀已組好的臉開始往中央收，凝成一顆**白**
+// 方塊（轉橘要再等 20vh 的 CORE_WARM_VH）。同樣不寫成 `symbolProgress >= coreIn` 之類的
+// 百分比，理由同上面那則 —— 與驅動畫面的用同一個量。
+cueOn(() => symbolConvergeAmount.value > 0, 'aiFaceBg');
 
 // 段落高度 ＝ SYMBOL_VH × 視窗高（見 ~/utils/orange-core-config）。
 // ⚠️ 它**不等於捲動尺的長度** —— 尺比段落長 50vh（見下方 end 與 SYMBOL_HOVER_VH）。
