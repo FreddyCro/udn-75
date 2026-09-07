@@ -2,6 +2,7 @@
 /** 智慧媒體 01–04 子頁清單（common.json subpageAnchors 驅動） */
 import common from '@/locales/common.json';
 import { TABLET_BREAKPOINTS } from '~/utils/constants';
+import { inlineArtUrl } from '~/utils/inline-art';
 import { anchorSlug } from '~/utils/subpage-stream';
 import { gaClickAnchor } from '~/utils/tracking-event';
 
@@ -28,6 +29,8 @@ onBeforeUnmount(() => mq?.removeEventListener('change', syncBreakpoint));
 const linkFor = (url: string) => (toStream.value ? `/subpage#${anchorSlug(url)}` : url);
 // 編號藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
 const assetUrl = useAssetUrl();
+// 編號藝術字 build 時內嵌（見 utils/inline-art），查不到才退回資產路徑
+const numUrl = (path: string) => inlineArtUrl(path) ?? assetUrl(path);
 
 // 列的 hover／click 音效。useSfx() 一定要在 setup 期間取（它此刻要讀 runtimeConfig，
 // 見 useSfx.ts）；音效池由 app.vue 的 <AppSfx> 持有，聲音開關關著時 play() 靜默。
@@ -62,7 +65,7 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
           <!-- 編號藝術字（同 SubpageAnchor：mask 上色，資料共用 numImg） -->
           <span
             class="media__num"
-            :style="{ '--mask': `url('${assetUrl(a.numImg)}')` }"
+            :style="{ '--mask': `url('${numUrl(a.numImg)}')` }"
             aria-hidden="true"
           />
           <span class="media__row-title"
@@ -206,12 +209,12 @@ defineExpose({ getRows: () => rowEls.filter(Boolean) });
 
   &::before {
     background: var(--color-gray);
-    mask: url('/img/udn75_arrow_circle.svg') no-repeat center / contain;
-    -webkit-mask: url('/img/udn75_arrow_circle.svg') no-repeat center / contain;
+    mask: url('../../assets/img/udn75_arrow_circle.svg') no-repeat center / contain;
+    -webkit-mask: url('../../assets/img/udn75_arrow_circle.svg') no-repeat center / contain;
   }
 
   &::after {
-    background: url('/img/udn75_arrow_circle_hover.svg') no-repeat center /
+    background: url('../../assets/img/udn75_arrow_circle_hover.svg') no-repeat center /
       contain;
     opacity: 0;
   }

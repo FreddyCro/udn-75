@@ -7,17 +7,19 @@ import { PC_BREAKPOINTS, TABLET_BREAKPOINTS } from '../app/utils/constants';
 /**
  * 「該抓哪一支影片／哪一張 poster」的界線守門。
  *
- * 這裡有**兩條不同的界線**，而它們長得很像，正是需要測試的理由：
- *   ・素材界線（~/utils/get-device）—— 預設 pad 768–1023、pc ≥1024。hero 影片的三支
- *     變體就是照這條剪的（見 HeroVideo.vue 的「pad 只涵蓋 768–1023」）。
- *   ・版型界線（constants / mixins.scss 的 $breakpoints）—— pc ≥1280。
+ * 素材界線與版型界線（constants / mixins.scss 的 $breakpoints）同為 pc ≥1280、
+ * pad 768–1279。同值不代表可以不測 —— 有三件事會靜默壞掉：
+ *   ① 有人把 get-device 的預設挪到別的數字 ⇒ iPad Pro 12.9" 直式（1024×1366）會抓到
+ *      pc 的 1920×1080 橫片，再被 `object-fit: cover` 左右各裁掉約六成。
+ *   ② 有人拿掉子頁那個 pc-from ⇒ 現在剛好同值看不出來，但它表達的是「對齊版型斷點」
+ *      這個獨立理由；哪天 hero 影片換剪輯又把預設挪走，子頁會被連帶拖走。
+ *   ③ HeroVideo 的 `object-fit: contain` 斷點與來源界線錯開 ⇒ 1024–1279 拿直片去 cover
+ *      （左右被裁）或拿橫片去 contain（上下大白邊）。兩邊必須同時是 1280。
  *
- * 子頁引言媒體要吃**版型**那條（2026-08-28 設計師要求：1280 以上才用 pc 版，
- * 768–1279 都用 pad 版），所以它傳 pc-from。兩件事都可能靜默壞掉：
- *   ① 有人為了子頁去改 get-device 的預設 ⇒ hero 影片跟著換界線，1024–1279 的
- *      平板橫向會抓到 pc 那支，而 hero 的 core 定位錨點是按素材尺寸標的。
- *   ② 有人拿掉子頁那個 pc-from ⇒ 768–1279 明明還在 pad 版型裡，卻去抓 pc 那支
- *      1920×1080（service 實測 2.2MB vs pad 1.4MB），而且 poster 也跟著錯。
+ * ⚠️ 設計師裁決**純寬度切**，不看 orientation。已知並接受的代價：1024–1279 不只有
+ *    iPad 直式，也含所有 iPad 橫式（mini 1133×744、Air 1180×820、Pro 11" 1194×834），
+ *    後者拿到 pad 的 1024×1364 直片 ＋ contain ⇒ 左右各留 250–280px 白邊
+ *    （露出的是 .sec1 白底）。
  */
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
@@ -38,26 +40,32 @@ afterEach(() => {
 });
 
 describe('getDeviceTypeByResolution 的預設界線（hero 影片吃這條）', () => {
-  // 預設不能動：hero 的三支變體是照 768 / 1024 剪的。
   it.each([
     [320, 'mob'],
     [767, 'mob'],
     [768, 'pad'],
     [1023, 'pad'],
-    [1024, 'pc'],
+    [1024, 'pad'], // ← iPad Pro 12.9" 直式（1024×1366）剛好落在這一格
+    [1279, 'pad'],
+    [1280, 'pc'],
     [1920, 'pc'],
   ])('%ipx → %s', (width, expected) => {
     withWidth(width);
     expect(getDeviceTypeByResolution()).toBe(expected);
   });
+
+  it('預設值就是版型的 pc 斷點，不是另外寫死的字面值', () => {
+    const src = read('app/utils/get-device.ts');
+    expect(src).toMatch(/pcFrom: number = PC_BREAKPOINTS/);
+    expect(src).toMatch(/import \{ PC_BREAKPOINTS \} from '\.\/constants'/);
+  });
 });
 
 describe('傳 PC_BREAKPOINTS 時的界線（子頁引言媒體吃這條）', () => {
-  // 設計師要求：1280 以上才用 pc 版，768–1279 都用 pad 版。
+  // 目前與預設同值；仍獨立測，因為 pcFrom 的管線壞掉時預設那組測試看不出來。
   it.each([
     [767, 'mob'],
     [768, 'pad'],
-    [1023, 'pad'], // ← 與預設界線的差別就從這裡開始
     [1279, 'pad'],
     [1280, 'pc'],
     [1920, 'pc'],
@@ -70,10 +78,12 @@ describe('傳 PC_BREAKPOINTS 時的界線（子頁引言媒體吃這條）', () 
   it('只動 pad/pc 的分界，mob 的 767 界線不受影響', () => {
     for (const width of [320, 767]) {
       withWidth(width);
-      expect(getDeviceTypeByResolution(PC_BREAKPOINTS)).toBe('mob');
+      expect(getDeviceTypeByResolution(1024)).toBe('mob');
     }
     withWidth(TABLET_BREAKPOINTS);
-    expect(getDeviceTypeByResolution(PC_BREAKPOINTS)).toBe('pad');
+    expect(getDeviceTypeByResolution(1024)).toBe('pad');
+    withWidth(1024);
+    expect(getDeviceTypeByResolution(1024)).toBe('pc');
   });
 });
 
@@ -90,9 +100,18 @@ describe('子頁引言媒體確實把界線交出去', () => {
     // 只有一處解析裝置 ⇒ 掛載與 resize 不會用到不同界線
     expect(src.match(/getDeviceTypeByResolution\(/g) ?? []).toHaveLength(1);
   });
+});
 
-  it('hero 影片沒有傳 pc-from（維持預設 1024 的素材界線）', () => {
-    const src = read('app/components/01.hero/HeroVideo.vue');
-    expect(src).not.toMatch(/pc-from/);
+describe('hero 影片的來源界線與版面界線同步', () => {
+  const src = () => read('app/components/01.hero/HeroVideo.vue');
+
+  it('HeroVideo 不傳 pc-from（沿用 get-device 的預設）', () => {
+    expect(src()).not.toMatch(/pc-from/);
+  });
+
+  it("contain 的斷點用 rwd-max('pc')，與來源界線同一條線", () => {
+    // 錯開的話 1024–1279 會拿 pad 的直片去 cover ⇒ 左右被裁掉。
+    expect(src()).toMatch(/@include rwd-max\('pc'\) \{/);
+    expect(src()).not.toMatch(/@include rwd-max\(1024px\)/);
   });
 });

@@ -196,20 +196,23 @@
           {
             "text": "集思台大會議中心",
             "art": {
-              "pc": { "src": "/img/forum/forum2-venue-pc-1.svg", "w": 413.547, "h": 42.9096 }
+              "pc": { "src": "/img/forum/forum2-venue-pc-1.svg", "w": 413.547, "h": 42.9096 },
+              "mob": { "src": "/img/forum/forum2-venue-mob-1.svg", "w": 135, "h": 69.1944 }
             }
           },
           {
             "text": "B1 國際會議廳",
             "art": {
-              "pc": { "src": "/img/forum/forum2-venue-pc-2.svg", "w": 413.547, "h": 43.1794 }
+              "pc": { "src": "/img/forum/forum2-venue-pc-2.svg", "w": 413.547, "h": 43.1794 },
+              "mob": { "src": "/img/forum/forum2-venue-mob-2.svg", "w": 135, "h": 17.0735 }
             }
           }
         ],
         "time": {
           "text": "2:00–4:00PM",
           "art": {
-            "pc": { "src": "/img/forum/forum2-time-pc-1.svg", "w": 413.547, "h": 40.0605 }
+            "pc": { "src": "/img/forum/forum2-time-pc-1.svg", "w": 413.547, "h": 40.0605 },
+            "mob": { "src": "/img/forum/forum2-time-mob-1.svg", "w": 135, "h": 16 }
           }
         },
         "speakerLabel": "講者介紹",
@@ -278,13 +281,15 @@
           {
             "text": "集思台大會議中心",
             "art": {
-              "pc": { "src": "/img/forum/forum3-venue-pc-1.svg", "w": 409, "h": 41.7615 }
+              "pc": { "src": "/img/forum/forum3-venue-pc-1.svg", "w": 409, "h": 41.7615 },
+              "mob": { "src": "/img/forum/forum3-venue-mob-1.svg", "w": 133, "h": 65.4257 }
             }
           },
           {
             "text": "B1 蘇格拉底廳",
             "art": {
-              "pc": { "src": "/img/forum/forum3-venue-pc-2.svg", "w": 409, "h": 41.0474 }
+              "pc": { "src": "/img/forum/forum3-venue-pc-2.svg", "w": 409, "h": 41.0474 },
+              "mob": { "src": "/img/forum/forum3-venue-mob-2.svg", "w": 133, "h": 16.5862 }
             }
           }
         ],
@@ -400,12 +405,12 @@
             "time": "13:40",
             "title": "貴賓致詞：AI驅動永續轉型 打造氣候韌性台灣",
             "notes": [
-              "環境部 彭啟明部長"
+              "環境部 彭啓明部長"
             ]
           },
           {
             "time": "14:00",
-            "title": ["《AI時代 跨世代永續與未來生活大調查》", "發布 勾勒未來行動藍圖"],
+            "title": ["《AI時代 跨世代永續與未來生活大調查》發布 ", "勾勒未來行動藍圖"],
             "notes": [
               "聯合線上 官振萱總經理、Kantar凱度台灣 胡傳玉首席研究總監"
             ]
@@ -484,11 +489,6 @@
             "notes": [
               "臺北市立關渡醫院院長 陳亮恭"
             ]
-          },
-          {
-            "time": "16:30",
-            "title": "AI打造跨世代共好 全齡友善生活",
-            "notes": []
           }
         ]
       },
@@ -496,7 +496,7 @@
         "category": "跨界對談",
         "rows": [
           {
-            "time": "16:45",
+            "time": "16:30",
             "title": "AI時代 跨世代教育與高齡好生活",
             "notes": [
               "主持人：聯合報 王茂臻總編輯",

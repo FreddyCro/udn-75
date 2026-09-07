@@ -2,6 +2,9 @@
 /** SubpageWork — 「得獎作品」清單的單一列；有 url 時整列為連結。
  *  active = 觸發中的列（pc hover／<1280 滾至畫面中央），<1280 據此展開說明與連結。
  *  dimmed = 其他列展開中 → 本列退為半透明，凸顯作用中的列。 */
+// <img> 與 CSS mask 抓取模式不同、快取 key 不同，build 時內嵌成 data URI 免掉重複 request
+import navPrevUrl from '@/assets/img/udn75_nav_prev.svg';
+
 withDefaults(
   defineProps<{
     title?: string;
@@ -34,7 +37,7 @@ withDefaults(
       <span class="award-work__label">點擊看專題</span>
       <img
         class="award-work__arrow"
-        src="/img/udn75_nav_prev.svg"
+        :src="navPrevUrl"
         alt=""
         aria-hidden="true"
       />

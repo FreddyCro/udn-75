@@ -3,6 +3,8 @@
  * PixelRail — 4px 像素棋盤格的「直下再右轉」連接線（FormulaBlocks 的 mob 版）。
  * 對稿素材 udn75_news_formula_rail_01／02（44 寬、132／180 高）：垂直段為 12 寬棋盤格
  * （偶列 x=0,8、奇列 x=4），末端 4 列轉角後往右接到議題框。
+ * ⚠️ 那兩支素材已從 public/ 移除（線是這支元件用 CSS 畫的，從來不發 request）；
+ *    要回頭對稿的話從 git 歷史取 public/img/news/udn75_news_formula_rail_0{1,2}.svg。
  * progress（0..1）換算已現身列數，自上（中央塊側）往下逐列畫。
  */
 const props = withDefaults(

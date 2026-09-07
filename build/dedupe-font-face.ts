@@ -15,6 +15,13 @@ import type { Plugin } from 'vite';
  *   ─────────────────────────────────────────────────────────────────────
  *   實測 AppFooter.css：3,172 條 → 相異 436 條，3,327,444 B → 約 480 KB
  *
+ * ⚠️ 上面那組數字是 2026-09-04 的現況，**已經不是現在的產物**。2026-09-05 改了
+ *    nuxt.config 的 fonts 設定後：Noto Sans TC 的三個靜態字重併成一支可變字型
+ *    （315 → 105 條），Noto Serif TC 整個不解析（108 → 0 條）。全站產物 CSS 的相異
+ *    @font-face 從 483 條降到 129 條，總體積 676 KB → 350 KB。
+ *    本外掛仍然有用 ——「每個 font-family 宣告點各注入一整組」這個行為沒變，
+ *    AppFooter.css 裡的 9 個宣告點還是會把那 105 條複製 9 份。
+ *
  * 而那支 CSS 被 Nuxt 掛成**每一頁 `<head>` 裡的 render-blocking `<link>`**，
  * gzip 後仍有 1.28 MB —— 是整個首頁 JS（gzip ~305 KB）的四倍。在效能差的手機上
  * 這筆下載會跟 hero 影片搶頻寬，是「跑完 loading 影片出不來」那條連鎖的第一環。
@@ -29,8 +36,8 @@ import type { Plugin } from 'vite';
  * 3. 掃描時會跳過**字串常值與註解** —— `url("...{...}")` 裡的大括號、以及 `/*!` 開頭的
  *    法律聲明註解裡的引號與大括號，都不該參與 brace 深度計數（見 stringEnd／commentEnd）。
  *
- * ⚠️ 這裡**不碰字體檔案本身**。227 支 woff2 靠 unicode-range 分片，瀏覽器只會抓用到的
- *    片段，那部分本來就是對的。壞的一直只有「宣告它們的 CSS」。
+ * ⚠️ 這裡**不碰字體檔案本身**。woff2（現為 119 支）靠 unicode-range 分片，瀏覽器只會抓
+ *    用到的片段（首頁實測 36 支），那部分本來就是對的。壞的一直只有「宣告它們的 CSS」。
  */
 const BACKSLASH = String.fromCharCode(92);
 const AT = '@font-face';

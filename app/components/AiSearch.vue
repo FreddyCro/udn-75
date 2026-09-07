@@ -15,6 +15,19 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { gaClickButton } from '~/utils/tracking-event';
 import { refreshScrollTriggers } from '@/utils/scroll-trigger';
+import {
+  articleSpriteHref,
+  articleSpriteViewBox,
+} from '@/utils/article-sprite';
+
+// 三支 icon 走 article sprite：原本各 1 個 request，現在與其他內文素材共用同一支。
+const ICON_SEARCH = '/img/data/udn75_data_ai_search.svg';
+const ICON_VIP = '/img/data/udn75_data_icon_udnvip.svg';
+const ICON_NEWS = '/img/data/udn75_data_icon_udnnews.svg';
+// sprite 的 href 只吃 app.baseURL（＝一定同源）；跨源的 <use> 會被靜默擋下，
+// 脈絡見 utils/svg-sprite-ref 的 spriteBase。
+const spriteUrl = useSpriteUrl();
+const artHref = (src: string) => articleSpriteHref(src, spriteUrl);
 
 export interface AiKeyword {
   term: string;
@@ -199,12 +212,17 @@ onBeforeUnmount(() => {
           </span>
         </Transition>
       </span>
-      <img
+      <!-- 三支 icon 走 article sprite（見 utils/article-sprite.ts）。
+           preserveAspectRatio="none"：CSS 定死 18×21 而素材是 18×20.31，
+           原本 <img> 就是拉伸，svg 預設會依 viewBox 等比留白 -->
+      <svg
         class="ai-search__bar-icon"
-        src="/img/data/udn75_data_ai_search.svg"
-        alt=""
+        :viewBox="articleSpriteViewBox(ICON_SEARCH)"
+        preserveAspectRatio="none"
         aria-hidden="true"
-      />
+      >
+        <use :href="artHref(ICON_SEARCH)" />
+      </svg>
     </button>
 
     <!-- AI 摘要面板：標題列常駐，內文向下展開、逐字出現 -->
@@ -252,18 +270,20 @@ onBeforeUnmount(() => {
           <div class="ai-search__meta" :class="{ 'ai-search__meta--show': done }">
             <p class="ai-search__sources">
               資料來源：
-              <img
+              <svg
                 class="ai-search__source-icon"
-                src="/img/data/udn75_data_icon_udnvip.svg"
-                alt=""
+                :viewBox="articleSpriteViewBox(ICON_VIP)"
                 aria-hidden="true"
-              />聯合報數位版、
-              <img
+              >
+                <use :href="artHref(ICON_VIP)" />
+              </svg>聯合報數位版、
+              <svg
                 class="ai-search__source-icon"
-                src="/img/data/udn75_data_icon_udnnews.svg"
-                alt=""
+                :viewBox="articleSpriteViewBox(ICON_NEWS)"
                 aria-hidden="true"
-              />聯合新聞網
+              >
+                <use :href="artHref(ICON_NEWS)" />
+              </svg>聯合新聞網
             </p>
             <hr class="ai-search__divider" />
             <p class="ai-search__note">
@@ -404,8 +424,8 @@ onBeforeUnmount(() => {
   width: 14px;
   height: 15px;
   background: #ce252c; // 同素材原色
-  mask: url('/img/data/udn75_data_ai_spark.svg') no-repeat center / contain;
-  -webkit-mask: url('/img/data/udn75_data_ai_spark.svg') no-repeat center / contain;
+  mask: url('../assets/img/udn75_data_ai_spark.svg') no-repeat center / contain;
+  -webkit-mask: url('../assets/img/udn75_data_ai_spark.svg') no-repeat center / contain;
 }
 
 // 注意事項的星芒：貼在第一行行首，改灰

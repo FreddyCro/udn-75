@@ -30,3 +30,6 @@ temp/
 
 # Claude Code local overrides（個人設定，不進版控）
 .claude/settings.local.json
+
+# Superpowers SDD 工作區（ledger 等暫存，不進版控）
+.superpowers/

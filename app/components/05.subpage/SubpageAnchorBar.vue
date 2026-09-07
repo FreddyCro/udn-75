@@ -20,6 +20,10 @@ const { subpageAnchors } = str;
 const route = useRoute();
 // 藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
 const assetUrl = useAssetUrl();
+// hero 標題（titleImg）刻意不內嵌（本元件只用到 titleImg，沒有 numImg）：
+// 已嘗試（獨立模組）並撤回——首頁的 JS 請求數從 5 變 6、那 122 KB 因靜態 import
+// 照樣被抓，淨效果比不做還糟。完整推理與實測數字見
+// architecture/2026-09-04-request-reduction-design.md §7「hero 標題不內嵌」。
 
 // route / scroll 兩種模式的差異全收在這三個小函式裡（見 useSubpageAnchor）
 const { mode, activeSlug, jumpToSlug } = useSubpageAnchor();

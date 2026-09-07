@@ -35,6 +35,7 @@
  *    <UVid :src="{ ... }" :autoplay="isInPlay" preload="metadata" />
  *
  * 命名規則：src 傳「不含副檔名」的路徑，元件會補 .mp4；poster 補 .jpg。
+ * src / poster 掛載後才寫入（mounted），SSR 標記不帶來源。
  */
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { getDeviceTypeByResolution } from '@/utils/get-device';
@@ -67,11 +68,10 @@ interface Props {
   classname?: string;
   ariaLabel?: string;
   /**
-   * pc 素材的下界（含）。不傳 ＝ 沿用 ~/utils/get-device 的預設 1024。
+   * pc 素材的下界（含）。不傳 ＝ 沿用 ~/utils/get-device 的預設 PC_BREAKPOINTS（1280）。
    *
-   * 為什麼要能覆寫：**素材的界線由那組影片當初照什麼尺寸剪的決定**，不是全站一個數字。
-   * hero 影片是照 768 / 1024 剪的（見 HeroVideo.vue），子頁引言媒體要與版型的 pc 斷點
-   * 對齊 ⇒ 傳 PC_BREAKPOINTS（1280）、pad 涵蓋 768–1279（見 SubpageIntroMedia）。
+   * 為什麼留著這個覆寫口：**素材的界線由那組影片當初照什麼尺寸剪的決定**，不保證永遠
+   * 等於版型斷點。目前全站兩者同值，日後有照別的尺寸剪的素材時從這裡傳。
    * ⚠️ 只動 pad/pc 的分界，mob 的 767 界線不受影響。
    */
   pcFrom?: number;
@@ -92,6 +92,9 @@ const ASSETS_PATH = config.public.APP_ASSETS_PATH;
 // SSR 安全：伺服器端沒有 window，先以 'pc' 為預設（與初次 client render 一致，
 // 避免 hydration mismatch），掛載後再依實際解析度校正並掛上 resize 監聽。
 const deviceType = ref<DeviceType>('pc');
+// SSR 與 hydration 首次渲染都不寫 src / poster（理由同 HeroVideo）：deviceType 在 SSR 一律是 pc，
+// 寫在標記裡手機就會先抓 pc 版 metadata 與 pc poster —— 子頁兩支引言影片實測白抓 4 個 request。
+const mounted = ref(false);
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 
@@ -125,6 +128,7 @@ watch(() => props.pcFrom, onResize);
 
 onMounted(() => {
   onResize();
+  mounted.value = true;
   window.addEventListener('resize', onResize);
 });
 
@@ -138,9 +142,9 @@ onUnmounted(() => {
     ref="videoRef"
     class="u-vid"
     :class="classname || ''"
-    :src="`${ASSETS_PATH}${src[deviceType]}.mp4`"
+    :src="mounted ? `${ASSETS_PATH}${src[deviceType]}.mp4` : undefined"
     type="video/mp4"
-    :poster="poster ? `${ASSETS_PATH}${poster[deviceType]}.jpg` : ''"
+    :poster="mounted && poster ? `${ASSETS_PATH}${poster[deviceType]}.jpg` : undefined"
     playsinline
     :autoplay="autoplay"
     :loop="loop"

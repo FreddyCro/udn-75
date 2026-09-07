@@ -252,15 +252,25 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
 
   // 論壇二那一撇的外框（見 .forum-event__date-coreslash）。與 --stair-* 同類：
   // 稿的絕對值、逐斷點各一組 —— 它**不是** --date-size 的固定倍率
-  // （實測 h ÷ --date-size：pc 1.963、pad 1.623、mob 1.247，設計師逐斷點手調）。
-  // 角度倒是三個斷點一致（w/h ＝ 0.502 / 0.497 / 0.499 → 26.6°），故 rotate 寫死。
-  // x / y 是外框左上角相對 .forum-event__date 左上角的位移。
-  --coreslash-w: 103px;
+  // （實測 h ÷ --date-size：pad 1.623、mob 1.247，設計師逐斷點手調）。
+  //
+  // ⚠️ **w / h 必須等於 tan(26.7°) ＝ 0.503**（脊線的 rotate 寫死 26.7°，見下方 `i`）。
+  //    外框的右上／左下兩角就是脊線的兩端，而 ForumCorePath 讀外框的 rect 推觸發窗口 ——
+  //    比例不合的話「核心走的弧長」會比「脊線的長度」長，核心就跑在畫出頭前面。
+  //    2026-09-06 修：pc 原本是 103×175 ＝ 0.589（30.5°），外框比脊線實際畫到的範圍
+  //    寬 15px；實測核心在撇畫完那一刻已超前 3.9px，draw 飽和後隨即跳開 21.9px。
+  //    w 改 88（＝175 × 0.503）、x 同步 +15 讓外框右緣不動 → 可見的撇一格都沒移。
+  //    對照 pad 0.4964、mob 0.4995（差 0.73 / 0.34px，在次像素內，不動）。
+  //    由 test/forum-slash-box-ratio.spec.ts 對帳。
+  --coreslash-w: 88px;
   --coreslash-h: 175px;
   // x/y 的 pc 起手值（257/139）是從 pad 等比推的估計值（無 pc 稿 node id 可查）；
-  // 目視微調到 255/195：貼近放大檢查才看得出的細節 —— 上端要清開「9」的墨跡
-  // （肉眼平視看起來已經很接近，但貼緊放大會看到蹭到筆畫），下端落在「15」左方偏下。
-  --coreslash-x: 248px;
+  // 目視微調過：上端要清開「9」的墨跡（肉眼平視看起來已經很接近，但貼緊放大會看到蹭到
+  // 筆畫），下端落在「15」左方偏下。
+  // ⚠️ **x 是左緣，而脊線錨在右緣（`i` 的 right: 0）** —— 決定撇的位置的是 x + w ＝ 351。
+  //    改 w 就要反向補 x，否則撇會整條平移。2026-09-06 把 w 從 103 收到 88 時
+  //    x 就是這樣從 248 補到 263 的。
+  --coreslash-x: 263px;
   --coreslash-y: 166px;
 
   position: relative;
@@ -1112,9 +1122,32 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
       text-align: right;
     }
 
+    // mob 稿是「場地名兩行大字 ＋ 廳名／時間一組小字」，與 pc 的兩行同字級不同版式。
+    // 素材照 DOM 的行數切：場地名那兩行是**同一支**（venue[0] 只有一行文字，稿上折成兩行），
+    // 廳名與時間各一支；三支共用同一張畫布寬 135，右切齊自然對上。
+    //
+    // 行盒（＝素材垂直置中的容器）由稿的墨跡中心距反推，公式同 --youth ——
+    // 相鄰兩列的墨跡中心距 ＝（前一列行盒 ＋ 後一列行盒）/ 2：
+    //   場地名 81 ＝ 2 × 40.5（稿的大字列距；素材兩行併一支，故取兩倍）
+    //   廳名   (81 + H) / 2 = 57.48（稿的墨跡中心 34.56 → 92.05）⇒ H = 33.96 → 34
+    //   時間   (34 + H) / 2 = 28.95（稿的墨跡中心 92.05 → 121.0 ）⇒ H = 23.91 → 24（見 __time）
+    //
+    // 兩種字級 ⇒ --art-base 也要兩份（素材寬 ＝ w / --art-base × 1em，base 等於 font-size
+    // 時就是素材原生寬 135）。字級由稿反推：大字 135 / 4 字 ＝ 33.75 → 34；
+    // 小字用同一張稿的墨跡高比例回推（17.07 / 0.847）≈ 20。
     @include rwd-max('tablet') {
-      font-size: 28px;
-      line-height: 39px;
+      --art-base: 20;
+
+      font-size: 20px;
+      line-height: 34px;
+
+      // 場地名那一列 ＝ venue[0]，是 <UArtLine> 的根元素（scoped 樣式吃得到子元件根節點）。
+      > .u-art-line:first-child {
+        --art-base: 34;
+
+        font-size: 34px;
+        line-height: 81px;
+      }
     }
 
     // 窄機（320–374.98）：稿的「地點釘右上、日期階梯在左下」交錯版式在這個寬度撞在
@@ -1147,14 +1180,27 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
     }
 
     // mob 稿與論壇二同款交錯：地點釘在右上角，日期在它左下方。
+    // mob 稿與論壇二同款：場地名兩行大字 ＋ 廳名一列小字（本場沒有時間，time 是空字串）。
+    // 行盒推導同 --stair：場地名 75 ＝ 2 × 37.5（稿的大字列距）；
+    // 廳名 (75 + H) / 2 = 53.15（稿的墨跡中心 32.68 → 85.84）⇒ H = 31.31 → 31。
+    // 字級：大字 133 / 4 字 ＝ 33.25 → 33；小字同樣由墨跡高回推 ≈ 20。
     @include rwd-max('tablet') {
+      --art-base: 20;
+
       position: absolute;
       top: 0;
       right: 0;
       max-width: 8.2em;
       margin: 0;
-      font-size: 28px;
-      line-height: 39px;
+      font-size: 20px;
+      line-height: 31px;
+
+      > .u-art-line:first-child {
+        --art-base: 33;
+
+        font-size: 33px;
+        line-height: 75px;
+      }
     }
   }
 
@@ -1204,7 +1250,18 @@ const lineText = (line: ForumLine) => (typeof line === 'string' ? line : line.te
   }
 }
 
-// 時間一律排在地點之下 ＝ DOM 順序，故本層不需要任何規則。
+// 時間一律排在地點之下 ＝ DOM 順序，故位置本身不需要任何規則。
+//
+// 唯一的例外是論壇二的 mob：那個斷點的稿把「廳名／時間」收成一組小字，時間列的行盒
+// 比廳名列窄（24 對 34，推導見 __venue 的 --stair）。--art-base 沿用 __venue 的 20。
+.forum-event__time {
+  .forum-event--stair & {
+    @include rwd-max('tablet') {
+      line-height: 24px;
+    }
+  }
+}
+
 //
 // ⚠️ 2026-08-25 之前這裡有一條 `.forum-event--youth & { @include rwd-min('tablet')
 //    { order: -1 } }`，把論壇四 pc／pad 的時間提到地點之上（當時的 pc 稿如此、mob 稿相反）。

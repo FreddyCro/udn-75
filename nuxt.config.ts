@@ -3,6 +3,8 @@ import tailwindcss from '@tailwindcss/vite';
 import { dedupeFontFace } from './build/dedupe-font-face';
 import { aliasDemotedPageChunks } from './build/preload-page-chunks';
 import { textZoomNormalize } from './build/text-zoom-normalize';
+import { stripImagePrefetch } from './build/strip-image-prefetch';
+import { shouldInlineAsset } from './build/inline-svg-assets';
 
 /**
  * 量測 in-app 瀏覽器的 text zoom 倍率 s，寫進 `--tz-measured`。
@@ -43,18 +45,38 @@ export default defineNuxtConfig({
 
   modules: ['@nuxt/fonts'],
 
-  // Figma 規格：300 / 400 / 500。
-  // @nuxt/fonts 在 build 時把字體檔下載到本地自架，不依賴外部 CDN，
-  // 並自動產生帶 unicode-range 的分段 @font-face。
+  // Figma 規格：300 / 400 / 500，主字體 Noto Sans TC、英數用西文版 Noto Sans。
   //
-  // 兩份都要宣告：CSS fallback 是「逐字符」比對，第一順位有該碼位的 glyph 才輪不到第二順位。
-  // 英數走西文版 Noto Sans、中文落到 Noto Sans TC（見 assets/styles/base.scss 的 html 字體堆疊）。
-  // ⚠️ 兩邊 weights 必須一致 —— 缺哪個字重，該字重的英數會被瀏覽器合成或退到鄰近字重，
-  //    中英就會看起來不同粗。
+  // 三個家族全部 `provider: 'none'`（＝不要用任何 provider 去解析），也就是
+  // **@nuxt/fonts 一支 @font-face 都不產、一支 woff2 都不下載**。字型改由
+  // scripts/build-font-subset.mjs 產的站台子集提供（`pnpm assets:fonts`，
+  // @font-face 在 assets/styles/generated/font-subset.css，字體堆疊在 base.scss）。
+  //
+  // 為什麼不留 @nuxt/fonts 當保底：
+  //   ・它把 Google 原本切好的 105 片 unicode-range 切片全部自架，一位訪客實測會抓
+  //     35–44 片（約 1.6 MB）；而全站實際只用到 2,094 個字元，子集 4 支共 684 KB。
+  //   ・試過「子集在前、切片在後」的雙層寫法（方案二）：即使頁面上沒有任何元素的
+  //     computed font-family 引用 'Noto Sans TC'，切片**仍然**被抓 24 片（CDP 網路層
+  //     確認是真請求）。排除過階層順序、CSS 內聯時機、@media 規則、漏字與堆疊引用，
+  //     成因未明。既然保底沒有生效卻固定多 24 個 request、1.4 MB，就不留。
+  //   ・漏字的守門改由 test/font-subset.spec.ts 負責：站上出現、子集卻沒收的字會讓
+  //     測試變紅並指名是哪個字。
+  //
+  // ⚠️ 模組本身**不能**從 modules 移除。@nuxt/fonts 會掃 CSS 裡的 font-family 並自動
+  //    去 Google 解析沒宣告過的家族；留著模組 ＋ 三個 'none' 才是「明確關掉」，
+  //    直接拿掉模組雖然也不會下載，卻少了這份把「別再自動去解析」寫下來的宣告。
+  //
+  // ⚠️ Noto Serif TC 同樣是 'none'，理由不同：它來自 common-components 的 CSS，
+  //    但真正引用它的三個 class（.nmd-header / .nmd-menu / .nmd-service-title）在本站
+  //    渲染出來的 HTML 裡一次都沒出現，過去只是白白多 108 支永遠用不到的部署產物。
+  //
+  // 舊設定（google ＋ `weights: ['300 500']`）的量測與可變字型的來龍去脈，
+  // 見 architecture/2026-09-04-request-reduction-design.md §7.x。
   fonts: {
     families: [
-      { name: 'Noto Sans', provider: 'google', weights: [300, 400, 500] },
-      { name: 'Noto Sans TC', provider: 'google', weights: [300, 400, 500] },
+      { name: 'Noto Sans', provider: 'none' },
+      { name: 'Noto Sans TC', provider: 'none' },
+      { name: 'Noto Serif TC', provider: 'none' },
     ],
   },
 
@@ -65,6 +87,25 @@ export default defineNuxtConfig({
   // },
 
   ssr: true,
+
+  // ── 減少每位訪客打到 origin 的 request（正式站有限流，見 architecture/2026-09-04-request-reduction-design.md）
+  experimental: {
+    // /_nuxt/builds/meta/<id>.json：純靜態站用不到（沒有 route rules、不需要偵測新版）。
+    // 而且它用 ofetch 抓，預設對 429 會立刻重試一次，被限流時等於自己再補一刀。
+    appManifest: false,
+    // _payload.json：全站沒有 useAsyncData / useFetch，檔案只有 69 bytes，純多一個 request
+    // （連帶那條 <link rel="preload" as="fetch">）。連續閱讀頁還會因六個 #hash 連結抓同一份 3 次。
+    payloadExtraction: false,
+    // chunk 抓不到時不要自動整頁 reload（429 連鎖），交給 plugins/chunk-error.client.ts 節流。
+    emitRouteChunkError: 'manual',
+    defaults: {
+      nuxtLink: {
+        // 預設是連結一進視窗就 prefetch 目標頁的 JS + CSS（+ payload）。header 選單 7 個連結
+        // 一載入就多 34 個 request。改成 hover / touchstart 才抓。
+        prefetchOn: { visibility: false, interaction: true },
+      },
+    },
+  },
 
   // section 元件用「數字前綴資料夾排序 + 語意檔名」：資料夾 01./02./… 直接放在
   // components/ 下（無 sections/ 包一層），故在檔案總管會排在最前面、依序排列。
@@ -136,6 +177,10 @@ export default defineNuxtConfig({
   },
 
   css: [
+    // 站台字型子集的 @font-face（scripts/build-font-subset.mjs 產生，`pnpm assets:fonts`）。
+    // 家族名與 @nuxt/fonts 的不同（'Noto Sans TC Subset' vs 'Noto Sans TC'），靠 base.scss
+    // 的字體堆疊逐字符銜接，所以放在這裡的順序不影響正確性——排最前面只是為了好讀。
+    '~/assets/styles/generated/font-subset.css',
     '~/assets/styles/tailwind.css',
     '~/assets/styles/base.scss',
     '~/assets/styles/subpage.scss',
@@ -172,6 +217,10 @@ export default defineNuxtConfig({
     },
 
     'build:manifest': (manifest) => {
+      const removed = stripImagePrefetch(
+        manifest as unknown as Record<string, { assets?: string[] }>,
+      );
+      if (removed) console.info(`[strip-image-prefetch] 移除 ${removed} 筆圖片 prefetch hint`);
       aliasDemotedPageChunks(
         manifest as unknown as Parameters<typeof aliasDemotedPageChunks>[0],
         { log: (msg) => console.info(msg), pageNames },
@@ -184,10 +233,17 @@ export default defineNuxtConfig({
     // 看到的是所有 CSS 處理（含 @nuxt/fonts 注入與 minify）都跑完的最終產物。
     plugins: [tailwindcss(), dedupeFontFace()],
     build: {
-      // 關掉小資源 inline（預設 4096 bytes 以下會被轉成 data URI 內嵌進 JS/CSS）。
+      // 只內嵌白名單的小 SVG（logo、箭頭、AI spark），其餘一律輸出實體檔 ——
       // 本專案圖片多半靠 runtimeConfig 的 APP_ASSETS_PATH 在 runtime 組路徑（見 UPic/UVid），
-      // 需要實體檔案存在；設 0 可確保 assets 內的小圖（如 SVG）一律輸出成獨立靜態檔。
-      assetsInlineLimit: 0,
+      // 需要實體檔案存在。白名單與理由見 build/inline-svg-assets.ts。
+      assetsInlineLimit: (filePath) => shouldInlineAsset(filePath),
+      rollupOptions: {
+        output: {
+          // 首頁 11 支 modulepreload 有 8 支小於 6 KB（最小 91 bytes），每支都是一個 request。
+          // 讓 rollup 把小於 20 KB 的 chunk 併進引用者。只影響切割，不影響 preload-page-chunks 的別名邏輯。
+          experimentalMinChunkSize: 20_000,
+        },
+      },
     },
     optimizeDeps: {
       // 預先 pre-bundle，避免 dev 期間「runtime 才發現依賴」觸發整頁 reload。

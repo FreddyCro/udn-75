@@ -22,6 +22,7 @@ import {
   refreshScrollTriggers,
 } from '~/utils/scroll-trigger';
 import { anchorSlug, streamTargetSlug } from '~/utils/subpage-stream';
+import { SUBPAGE_STREAM_KEY } from '~/utils/subpage-eager';
 import NewsArticle from '~/components/05.subpage/articles/NewsArticle.vue';
 import VisualArticle from '~/components/05.subpage/articles/VisualArticle.vue';
 import ServiceArticle from '~/components/05.subpage/articles/ServiceArticle.vue';
@@ -59,6 +60,12 @@ const SLUGS = common.subpageAnchors
     }
     return false;
   });
+
+// 六篇裡只有第一篇的 hero 在首屏；其餘篇的 hero 底圖／引言首幀改 lazy（見 utils/subpage-eager）。
+// SLUGS 是從 common.json 過濾出來的，理論上可能濾成空陣列；那種情況下不 provide，
+// 每一篇 <Subpage> 的 inject 都拿不到 stream ⇒ 全部退回 eager —— 那正是單篇子頁的語意，安全。
+const firstSlug = SLUGS[0];
+if (firstSlug) provide(SUBPAGE_STREAM_KEY, { firstSlug });
 
 // 錨點列切到「頁內捲動 ＋ scroll-spy」語意。**在 setup 就設**（不是 onMounted）：
 // 這樣 prerender 出來的 HTML 裡錨點連結已經是 hash 形式，hydration 不會對不上。

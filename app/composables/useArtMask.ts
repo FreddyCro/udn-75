@@ -1,4 +1,5 @@
 import type { ForumTextArtSrc } from '~/types/forum';
+import { inlineArtUrl } from '~/utils/inline-art';
 
 /**
  * 稿字形素材 → 「mask ＋ currentColor」用的 inline style。
@@ -18,8 +19,9 @@ export function useArtMask() {
   // 否則子路徑部署（GitHub Pages 的 /udn-75/）會解析到 origin 根而 404。
   const assetUrl = useAssetUrl();
 
+  // 內嵌表有的就用 data URI（沒有 request、也沒有重複抓取），沒有的退回資產路徑。
   return (src: ForumTextArtSrc) => ({
-    '--art': `url("${assetUrl(src.src)}")`,
+    '--art': `url("${inlineArtUrl(src.src) ?? assetUrl(src.src)}")`,
     width: `${src.w}px`,
     height: `${src.h}px`,
   });

@@ -12,6 +12,7 @@
  * （.sp-full，950）刻意蓋得過它 —— 滿版就要滿版。疊層總表見 subpage.scss 的 .sp-full。
  */
 import str from '~/locales/common.json';
+import { inlineArtUrl } from '~/utils/inline-art';
 import { anchorSlug } from '~/utils/subpage-stream';
 import { gaClickAnchor } from '~/utils/tracking-event';
 
@@ -53,6 +54,12 @@ function onClick(e: MouseEvent, url: string) {
 }
 // 藝術字路徑來自 common.json，inline url() 是 runtime 才組出來的 → 須自行補資產前綴
 const assetUrl = useAssetUrl();
+// hero 標題（titleImg）刻意不內嵌：已嘗試（獨立模組）並撤回——首頁的 JS 請求數
+// 從 5 變 6、那 122 KB 因靜態 import 照樣被抓，淨效果比不做還糟。完整推理與實測
+// 數字見 architecture/2026-09-04-request-reduction-design.md §7「hero 標題不內嵌」。
+// numImg（編號 01–06）不同：首頁的 MediaList 本來就共用同一份 inline-art
+// 內嵌表，內嵌不會多付任何首頁成本，維持走 inlineArtUrl。
+const numUrl = (path: string) => inlineArtUrl(path) ?? assetUrl(path);
 
 // 收尾區判定：得獎作品清單（.subpage-works）或返回導覽（.subpage-nav__inner）的頂端
 // 越過 rail 下緣 → rail 淡出讓位；之後（footer）保持隱藏，回捲上來才復現。
@@ -118,7 +125,7 @@ onBeforeUnmount(() => {
             />
             <span
               class="subpage-anchor__num"
-              :style="{ '--mask': `url('${assetUrl(a.numImg)}')` }"
+              :style="{ '--mask': `url('${numUrl(a.numImg)}')` }"
             />
           </span>
           <span class="subpage-anchor__text">{{ a.title }}</span>

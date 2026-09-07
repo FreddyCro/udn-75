@@ -131,6 +131,22 @@
 後來為了「只抓當下斷點那一份」改成 `::after` 的 `background-image`（見第三節末的補記與
 `UArtLine.vue`）。垂直置中與行盒的邏輯不變，只有承載素材的節點換了。
 
+⚠️ **（2026-09-04 補記）`--art-url-*` 與 `background-size: 100% 100%` 也已經不存在了。**
+第二次機制變更：素材改由**每斷點一支 sprite** 的 `<symbol>` 提供，元件渲染
+`<svg><use href="sprite.svg#id">`，`background-image` 那一版整段作廢。
+為什麼：正式站對 `_nuxt/*`、`img/*` 依 request 次數限流（見
+`architecture/2026-09-04-request-reduction-design.md`），論壇藝術字每斷點 39 支各自
+一個 request；合成一支 sprite 後同一斷點只剩 1 個 request。
+哪些不變：`artClasses`、`--art-w-*` / `--art-h-*`、`::before` 的 ZWSP 行盒、真文字
+visually-hidden 這一整組**刻意保持 byte-identical**——行盒幾何是 ScrollTrigger 設計線
+（`forum-node-path.ts`）量測的支點，機制換了幾次，這組幾何都不能動。
+斷點由 client 端 `useArtBreakpoint` 決定（`matchMedia`／resize），SSR 不知道斷點、
+故不渲染 `<svg>`，掛載後才補上——這些行都在摺線下 5,000 px 以外，補上的那一瞬間看不到，
+失敗方向與第七節「素材缺檔時的失敗方向」同一套原則：是「圖晚一拍出現」而不是「跑版」。
+現在的實作位置：`app/utils/art-sprite.ts`（symbol href 組字串）、
+`app/composables/useArtBreakpoint.ts`（斷點偵測）、`scripts/build-svg-sprites.mjs`
+（sprite 產生腳本，產物需 commit，見 `CLAUDE.md`「SVG sprite」一節）。
+
 ### ① 只有一份真文字，不做第二份 SR 複本
 
 `.u-art-line__text` 恆存在：**有素材的斷點**把它變成 visually-hidden（仍在無障礙樹與 SEO 內），

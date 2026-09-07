@@ -576,9 +576,8 @@ const MOB_NODES: ForumPathNode[] = [
 // W0 是交棒零跳點、釘 `.sec2__path` 頂端。
 //
 // ⚠ 容器座標註解是 1440 寬的實測值，只作對照用；實際位置一律由錨點即時量測。
-// ⚠ W13 → W14 的 'line' 就是原本 seg1 / seg2 之間那條動態連接段（＝ 09/15 的那一撇）。
-//   那一撇的「隨核心畫出」已隨本次改動移除（它在加了後半段 waypoint 之後就沒在跑了），
-//   之後要做會改成用 SEQUENCE 的地址表示觸發時機，見 architecture/forum-node-path.md。
+// ⚠ 09/15 那一撇＝ W13a → W14 的 'line'，兩端都錨在撇本身（2026-09-06 補，見該處註解）。
+//   在此之前是「W13 → W14 這條長直線剛好穿過撇附近」，兩者各自獨立、差 1.23°。
 const PC_FRONT_NODES: ForumPathNode[] = [
   // ── 論壇一 → 論壇二（原 FORUM_PATH.pc[0]）──
   {
@@ -690,14 +689,33 @@ const PC_FRONT_NODES: ForumPathNode[] = [
     id: 'W13', // 容器 (735, 3680)＝原 seg1 末端
     x: 0.574,
     anchor: { event: '論壇二', sel: '.forum-event__venue', edge: 'fraction', t: 0.3844 },
-    note: '到 W14 的直線＝原本 seg1／seg2 之間的動態連接段（09/15 的那一撇）',
+    note: '撇的前一段：到 W13a 的直線（W13a→W14 才是撇本身）',
     join: 'line',
+  },
+  // ── 09/15 那一撇（見 SLASH_SEL 那一段）──────────────────────────────
+  // 2026-09-06：pc 補上與 pad／mob 相同的錨定。在此之前 pc 只有「W13→W14 這條長直線
+  // 剛好從撇附近穿過」—— 兩者都是各自從 Figma 抽出來的獨立座標，沒有任何機制保證重合。
+  // 實測驅動線 27.93°、撇 26.70°，差 1.23°：撇畫到中段時核心已偏離筆尖 2.6px；
+  // 而且撇的下端落在 W14 之後 15px（弧長 5857.7 vs 5843），已經進到 W14→W15 的彎裡。
+  //
+  // 修法同 pad 的 Q7a/Q7b：把兩端錨在撇本身，中間 'line'。**W14 一併改錨到撇的左下角**
+  // ——它原本是「原 seg2 起點」(569, 3994)，離撇的下端 15px；不改的話插進來的兩點會與它
+  // 前後折返。移動量 15px，對 W14→W15 的折角影響 13.3° → 12.5°，看不出來。
+  // 撇怎麼動線就跟著動：改文案、改字級、改 --coreslash-* 都不用重算。
+  // ⚠ 不要把撇的座標抄一份到這裡，那就變成兩份真值了（見 SLASH_SEL 的說明）。
+  {
+    id: 'W13a', // 撇的右上角；容器 1280 下 x ≈ 652
+    x: slashEnterX(0.5094),
+    anchor: SLASH_ENTER_Y,
+    optional: true,
+    join: 'line', // ⚠ 這一段就是撇本身，必須是直線
   },
   // ── 論壇二 → 論壇三（原 FORUM_PATH.pc[1]）──
   {
-    id: 'W14', // 容器 (569, 3994)＝原 seg2 起點
-    x: 0.444,
-    anchor: { event: '論壇二', sel: '.forum-event__date', edge: 'fraction', t: 0.8943 },
+    id: 'W14', // 撇的左下角；容器 1280 下 x ≈ 564（原 seg2 起點 (569, 3994) 往下 15px）
+    x: slashExitX(0.4406),
+    anchor: SLASH_EXIT_Y,
+    optional: true,
     join: 'line',
   },
   {

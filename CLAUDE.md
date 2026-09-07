@@ -38,6 +38,99 @@
 
 目的是把中文文案與排版分離，方便編輯校稿。
 
+## 字型子集（產物要 commit，改文案要重跑）
+
+站上不再自架 Google 的 105 片 unicode-range 切片（`nuxt.config.ts` 的 `fonts.families`
+三個家族全是 `provider: 'none'`）。字型改由「只含站上真的出現過的 2,094 個字元」的子集提供：
+`app/assets/fonts/*.woff2` 共 4 支、684 KB，`@font-face` 在
+`app/assets/styles/generated/font-subset.css`，兩者**都已納入版控**。
+實測一位訪客的字型 request 從 28–44 降到 4、字型流量 1.5–1.96 MB 降到 684 KB。
+
+- **改了任何文案（`app/locales/*.json`、元件裡的字面文字）之後，必須跑
+  `pnpm assets:fonts` 並把 `app/assets/fonts/` 與 `generated/font-subset.css` 一起 commit**
+  —— build 不會自動跑（它要連外網跟 Google 要子集）。
+- 忘記跑也沒關係，**`pnpm generate` / `pnpm build` 會先擋下來**
+  （`scripts/check-font-subset.mjs`，純本機對帳、不連外網、毫秒級），訊息會指名是哪個字。
+  部署路徑 `deploy-gh.sh` → `pnpm generate` 因此也擋得到。`test/font-subset.spec.ts` 是
+  CI 那一道，兩邊共用 `coverageReport()`。
+  漏字的實際表現是「該字掉到系統字型」：看得見、但粗細字寬跟正文對不上，**沒有任何錯誤訊號**，
+  所以這兩道守門是唯一的訊號來源。
+- 字元來源由 `scripts/lib/collect-glyphs.mjs` 掃出：`app/**/*.{vue,ts,json}` ＋
+  common-components 的 dist JS。新素材若把文字放到別的地方（例如新的第三方套件 CSS 的
+  `content:`），要記得擴充那支掃描。
+- ⚠️ Google css2 的 `text=` 單批上限是 **800 字**，超過**不會回錯誤** —— 它靜默忽略
+  `text=`、改回傳完整的 105 片切片清單。`scripts/build-font-subset.mjs` 會驗「回來的 CSS
+  只有一個 `url()`」擋掉這種靜默錯誤；調 `BATCH_MAX` 前先看那段註解。
+- ⚠️ `base.scss` 的字體堆疊順序不能動：`*Subset` 必須排在同名的非 Subset 之前
+  （後者現在指的是使用者本機安裝的字型，是零成本的次要保底）。common-components 有 12 條
+  自己宣告 `font-family` 的規則會蓋掉 html 的堆疊，`base.scss` 末端有對應的覆寫區塊，
+  名單同樣由 `test/font-subset.spec.ts` 跟套件的 dist CSS 對帳。
+
+## SVG sprite（產物要 commit）
+
+正式站對 `_nuxt/*`、`img/*` 依**時間窗內的 request 次數**限流（429），不是 bytes
+（詳見 `architecture/2026-09-04-request-reduction-design.md`）。夥伴 logo（`section3.json`
+的 partner 清單）、論壇／祝福藝術字（`UArtLine.vue` 消費的逐行素材）與**六篇子頁的內文
+素材**因此走 sprite：一組幾十支 SVG 合成一支 `<svg><symbol>`，元件用
+`<svg><use href="sprite.svg#id">` 引用，一組只剩 1 個 request。產物在
+`public/img/sprites/`（`partners.svg`、`article.svg`、`art-pc.svg`、`art-pad.svg`、
+`art-mob.svg`、對帳用的 `sources.json`），**已納入版控**。
+
+- 改了任何 `public/img/blessing/partner-*.svg`、
+  `public/img/{forum,blessing}/*-{pc,pad,mob}*.svg`，或 `article.svg` 收錄的內文素材
+  （名單在 `scripts/lib/sprite-sources.mjs` 的 `ARTICLE_ART`）之後，**必須跑
+  `pnpm assets:sprites` 並把 `public/img/sprites/` 下的產物一起 commit** ——
+  build 不會自動重跑這支腳本。
+- `article.svg` 還會多產一份 `app/utils/article-sprite-viewbox.json`（symbol id → viewBox），
+  **同樣要 commit**。外部 `<use>` 的 viewBox 在 `<symbol>` 上、外層 `<svg>` 沒有內在尺寸，
+  消費端只要有一邊尺寸是 auto（如 `.award-timeline__year` 只定 height）就得靠它算比例。
+- ⚠️ 還會多產一份 `app/assets/generated/sprite-defs.svg`（五支 sprite 內被 `url(#…)` 參照到的
+  漸層與 clipPath，74 個、16.9 KB／gzip 1.8 KB），由 `app.vue` 內聯進每一頁，**同樣要 commit**。
+  **WebKit 解析外部 `<use href="sprite.svg#id">` 內的 `url(#…)` 時，是拿「引用端文件」查 id，
+  不是 sprite 那份外部文件**（Chromium／Gecko 在外部文件查，兩者都正常）。查不到就靜默壞掉：
+  桌機 Safari 把漸層退成黑色、iOS 整塊不繪製，**沒有任何錯誤訊號，本機 Chrome 的裝置模擬
+  也測不出來**（引擎還是 Blink）。2026-09-06 設計師回報「金格／長春藤／麗寶的 logo 在 iPhone
+  不見了」就是這個；當時 46 支夥伴 logo 有 5 支帶漸層，四支肉眼可見地壞掉。
+  這份 defs 內聯後 WebKit 在引用端就查得到，Chromium 完全不受影響（實測 46 支 logo 前後零差異）。
+  ⚠️ 新素材帶了漸層／新的 clipPath 就一定要重跑，否則只在 iOS 上壞 ——
+  `test/sprite-coverage.spec.ts` 有一組專門對帳這件事。
+- ⚠️ sprite 的 `<use href>` 一律走 `useSpriteUrl()`（只吃 `app.baseURL` ＝ 純路徑
+  ＝ 一定同源），**不可以走 `useAssetUrl()`／`APP_ASSETS_PATH`** —— 後者是為了
+  「圖片可能放 CDN」而存在的絕對 URL，而跨源的 `<use>` 會被瀏覽器**靜默**擋下
+  （沒有 console error、沒有網路錯誤，圖就是不見），而且**這是瀏覽器自己的規則、CORS
+  標頭解不開**，無法靠調 server 修。2026-09-06 正式站踩過：站台只有一份 build（部署在
+  vip.udn.com/newmedia/2026/udn75），而 udn75.udn.com 是把它代理出去的前台 —— 前台會把
+  HTML 裡的相對路徑前綴改寫成 `/`，卻改不到 `APP_ASSETS_PATH` 組出來的絕對 URL，於是
+  頁面 origin 是 udn75、sprite href 卻指向 vip，/subpage 16 支、/news 12 支、首頁 39 支
+  藝術字與 46 支夥伴 logo 全部消失。界線由 `test/sprite-same-origin-href.spec.ts` 守著。
+- ⚠️ 反過來說 `APP_ASSETS_PATH` **要維持絕對 URL** —— `app.vue` 的 og:image 靠它組出
+  可分享的完整網址，改成相對路徑會讓社群爬蟲抓不到縮圖。「素材前綴」與「sprite 前綴」
+  是兩件事，不要為了省一個變數合併。
+- ⚠️ 只有「用 `<img src>` 消費」的素材能進 sprite。走 CSS `mask-image: url(...)` 的
+  （子頁 hero 標題／副標）不能 —— 瀏覽器對外部 SVG 的 fragment 參照支援不一致。
+- 沒跑的話 `test/sprite-coverage.spec.ts` 會失敗：它不只驗 symbol id 存不存在，
+  也會重算來源檔的 sha256 與 `sources.json` 對帳，內容換了但忘記重跑一樣會紅。
+- 規則只有一條、兩邊共用：symbol id ＝ 檔名去副檔名（`app/utils/svg-sprite-ref.ts`），
+  改元件消費的路徑或加新素材時想一下這條規則有沒有被打破。
+- 來源檔看到 Figma 連畫布一起匯出的深灰底板（`<rect fill="#515151">` 那一整疊）**不用手動清**：
+  `stripCanvasBackdrop()`（`scripts/lib/svg-sprite.mjs`）在進 sprite 前會剪掉整版不透明
+  底板以下的內容。不清會在 `transform: scale()` 時從小數點像素的邊緣透出一圈黑邊
+  （夥伴 logo hover 放大就踩到過）。守門條件不成立的素材原樣放行，不會剪錯。
+
+## 新增一支小 SVG 時走哪一條
+
+避免多一個 SVG request 有三種機制並存，加新素材前先對照這張表，不要憑感覺選：
+
+| 機制 | 檔案放哪 | 怎麼引用 | 程式在哪 | 為什麼是這條界線 |
+|---|---|---|---|---|
+| Vite `assetsInlineLimit` 白名單 | `app/assets/img/` | `import x from '@/assets/…'` 或 SCSS `url('../assets/…')` | `build/inline-svg-assets.ts` | build 期的靜態 import／`url()` 就能決定要不要內嵌，服務「路徑在 build 時就固定」的素材，最單純。 |
+| `?raw` glob ＋ `svgDataUri` | `public/img/` | runtime 用 locales JSON 存的站台根目錄路徑字串查表 | `app/utils/inline-art.ts`、`app/utils/media-art.ts` | locales JSON 存的是站台根目錄路徑字串、要到 runtime 才解析出實際素材，機制 1 的 build-time import 服務不到。 |
+| sprite ＋ `<use>` | `public/img/{forum,blessing}/`（來源），產物在 `public/img/sprites/` | `<svg><use href="sprite.svg#id">` | `app/utils/art-sprite.ts`、`app/utils/svg-sprite-ref.ts` | 素材數量多、合計體積大（夥伴 logo 1.08 MB、論壇藝術字 1.61 MB）；全部內嵌進 HTML 實測過並否決（HTML 會從 528 KB 長到 3.5 MB），改用 sprite 換成一組 1 個 request。 |
+
+新增一支小 SVG（通常幾 KB）：路徑在 build 時就固定 → 機制 1；locales JSON 存路徑、
+要到 runtime 才查 → 機制 2；同一組有幾十支、合計體積大 → 機制 3。不要為了省一個
+request 就自創第四種。
+
 ## SCSS
 
 1. 優先使用 BEM（`block__element--modifier`）命名。
