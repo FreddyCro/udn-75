@@ -60,7 +60,8 @@
           },
           {
             "name": "日立永大電梯",
-            "quote": "日立永大電梯，60年承載城市向上",
+            "quote": "日立永大電梯，<br/>60年承載城市向上",
+            "quoteBreak": "mob",
             "logo": "/img/blessing/partner-yungtay.svg",
             "gaTerm": "yungtay",
             "url": "https://www.hitachi-yungtay.com.tw/"
@@ -86,7 +87,7 @@
         "partners": [
           {
             "name": "紳裝西服",
-            "quote": "聯合七五傳初心紳裝四十耀未來",
+            "quote": "聯合七五傳初心 紳裝四十耀未來",
             "logo": "/img/blessing/partner-gentlemen.svg",
             "gaTerm": "gentlemen",
             "url": "https://www.gentlemen.com.tw/"
@@ -162,7 +163,7 @@
           },
           {
             "name": "元培醫事科大",
-            "quote": "元培深耕醫事教育攜手聯合共創健康永續",
+            "quote": "元培深耕醫事教育 攜手聯合共創健康永續",
             "logo": "/img/blessing/partner-ypu.png",
             "gaTerm": "ypu",
             "url": "https://www.ypu.edu.tw/"
@@ -386,14 +387,15 @@
           },
           {
             "name": "麗晨建設",
-            "quote": "從城市微氣候出發實現家的無限可能",
+            "quote": "從城市微氣候出發<br/>實現家的無限可能",
             "logo": "/img/blessing/partner-livetrue.svg",
             "gaTerm": "livetrue",
             "url": "https://www.livetrue.com.tw/"
           },
           {
             "name": "麗寶集團",
-            "quote": "AI驅動新時代，麗寶建設共築美好未來",
+            "quote": "AI驅動新時代，<br/>麗寶建設共築美好未來",
+            "quoteBreak": "mob",
             "logo": "/img/blessing/partner-lihpao.svg",
             "gaTerm": "lihpao",
             "url": "http://www.lihpao.org.tw/group/index.php"
