@@ -532,14 +532,18 @@ onBeforeUnmount(() => {
        那塊橘由 header 的反白窗負責（useMediaIntroMotion 把它的左右緣交給 useHeaderBand），
        段落這邊就該老實宣告「我的底色是白的」—— 否則窗**外**那段會維持橘主題，
        疊成「白底上一條 70% 橘」的淡橘列，與收窄後應該露白的設計不符。
-       ⚠️ 綁定不影響 SSR：outroWhite 初值 0 → 輸出仍是 orange，屬性本身在 SSR 就存在，
-          符合 AppHeader onMounted 收集 [data-header-theme] 的前提。 -->
+       ⚠️ 橘是 'orange-translucent'（底色 70% 橘）而不是 'orange'（不透明）：本段是設計師
+          2026-09-10 指定要 70% 的那一段，融合拍那段則必須留在不透明的 'orange'。
+          分家的理由見 ~/utils/header-theme 與 AppHeader 的 .--orange 註解，
+          界線由 test/header-orange-opacity.spec.ts 守著。
+       ⚠️ 綁定不影響 SSR：outroWhite 初值 0 → 輸出仍是 orange-translucent，屬性本身在
+          SSR 就存在，符合 AppHeader onMounted 收集 [data-header-theme] 的前提。 -->
   <section
     id="blessing"
     ref="sectionRef"
     class="section3"
     :class="{ 'is-outro': outroWhite }"
-    :data-header-theme="outroWhite ? 'light' : 'orange'"
+    :data-header-theme="outroWhite ? 'light' : 'orange-translucent'"
     :data-anchor-offset-vh="BLESSING_ANCHOR_VH"
     :style="{ '--cover-orange': coverOrange, '--outro-white': outroWhite }"
   >

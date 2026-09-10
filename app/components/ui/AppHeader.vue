@@ -682,15 +682,35 @@ const layers = computed<HeaderLayer[]>(() => {
 //    本來都是實心橘，故這是既有畫面上的**零變化**；`.section3` 還是淺藍的那一段
 //    header 根本還沒進到它上面（接縫升到 header 底緣時 coverProgress ≈ 0.87，
 //    早已越過 COVER_CONTACT 0.5）。
+// ⚠️ 2026-09-10 起這一檔**只剩融合拍在用**（useMediaIntroMotion 的 media 段拍 0/1，
+//    含反白窗那層）。設計師要求永續祝福靜態那段回到 70%，那段改吃下面的
+//    --orange-translucent —— 兩者分家而不是整條改回半透明，就是為了不把上面
+//    那個「露餡」一起放回來。界線由 test/header-orange-opacity.spec.ts 守著。
 .app-header__layer--orange {
   --hd-bg: var(--color-orange);
   --hd-fg: #fff;
   --hd-accent: #fff;
 }
 
+/* 半透明橘：03 永續祝福靜態那段（Blessing.vue），設計師 2026-09-10 指定
+   ——「Header 永續祝福的橘色版**底色**調整透明度 70%」（Figma 面板的 Opacity 70%
+   掛在橘色底板上，不是整個 header group）。
+   ⚠️ 因此是 --hd-bg 吃 color-mix，**不是**在這層寫 `opacity: .7`：後者會把 nav 文字、
+      音量／分享 icon 跟 logo mask 一起淡掉，稿上那些都還是實心白。
+      這也是 --light（70% 白）／--dark（50% 黑）本來就在走的路數，橘是最後一個例外。
+   ⚠️ 色值走 var(--color-orange) 而不是寫死 hex —— test/design-tokens.spec.ts 守著。
+   半透明之後 .app-header__bar-wrap 那條 backdrop-filter: blur(2px) 才真的看得出來：
+   捲過 header 底下的內文與夥伴 logo 會透出一層糊影，那正是稿上要的層次。 */
+.app-header__layer--orange-translucent {
+  --hd-bg: color-mix(in srgb, var(--color-orange) 70%, transparent);
+  --hd-fg: #fff;
+  --hd-accent: #fff;
+}
+
 /* 反白層：疊在 base 之上，clip 成轉場交出來的窗（見 ~/composables/useHeaderBand）。
-   ⚠️ 必須宣告在 --dark / --orange **之後**：band 那層同時帶著兩個 class（例如
-      `--band --dark`），特異度相同 → 靠來源順序決勝，這裡的 --hd-bg 才蓋得掉主題的。
+   ⚠️ 必須宣告在 --dark / --orange / --orange-translucent **之後**：band 那層同時帶著
+      兩個 class（例如 `--band --dark`），特異度相同 → 靠來源順序決勝，這裡的 --hd-bg
+      才蓋得掉主題的。
    ⚠️ --hd-bg 是 transparent 而不是主題底色：窗內的底色**就是**轉場那層色場本身
       （粒子場／橘幕），稿上是直接透出來的（Figma 2065:142822 那份 header 沒有底色）。 */
 .app-header__layer--band {
@@ -949,7 +969,8 @@ const layers = computed<HeaderLayer[]>(() => {
 }
 
 .app-header__layer--dark,
-.app-header__layer--orange {
+.app-header__layer--orange,
+.app-header__layer--orange-translucent {
   .app-header__logo-img {
     display: none;
   }
@@ -975,9 +996,10 @@ const layers = computed<HeaderLayer[]>(() => {
       **完全同色**，coreIn 的交棒因此變成看不出來。base 也一起漸變，是為了萬一窗不是
       滿寬（base 會露出來）時兩層仍然同調。
 
-   ⚠️ 必須宣告在 --dark / --orange / --band **三個地方**之後：上面的色票區塊、band 的
-      覆寫、以及緊接在前面那組 logo 的 display 對調。這也是本區塊為什麼**整包放在
-      這裡**、不按功能拆到各自的鄰居旁邊（拆了就會有一半贏不了）。bg 用兩個 class
+   ⚠️ 必須宣告在 --dark / --orange / --orange-translucent / --band **四個地方**之後：
+      上面的色票區塊、band 的覆寫、以及緊接在前面那組 logo 的 display 對調。
+      這也是本區塊為什麼**整包放在這裡**、不按功能拆到各自的鄰居旁邊
+      （拆了就會有一半贏不了）。bg 用兩個 class
       的選擇器（0,2,0）而不是靠順序，才蓋得掉 --band 的 transparent。
 
    ⚠️ 端點的色值與 --dark / --light / --band 是同一組數字，抄成兩份是刻意的取捨：
