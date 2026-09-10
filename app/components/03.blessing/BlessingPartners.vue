@@ -39,7 +39,9 @@ const spriteUrl = useSpriteUrl();
 /**
  * 一列夥伴。必填欄位是 JSON 每一列都有的；後兩個是**逐筆的例外開關**，只有稿上有特別
  * 要求的那幾筆才寫，其餘省略：
- *   quoteBreak: 'mob' — 語錄裡的 <br/> 只在 mob 生效（目前只有中租控股）
+ *   quoteBreak        — 'mob'：語錄裡的 <br/> 只在 mob 生效
+ *                       'mob-extra'：最後一個 <br/> 是 mob 專用的**額外**斷行，pc／pad 收掉
+ *   quoteJoiner       — <br/> 前的標點只是「兩段接成一行」的接行記號，真的斷行時要收掉
  *   logoScale        — logo 的靜止倍率，稿上要求放大的才給（目前只有寶璽建築機構 1.15）
  * 宣告成 optional 是為了讓 JSON 保持乾淨——沒有它，TS 會從 JSON 推出聯集型別，
  * 存取這兩欄就會報錯，只能反過來去補 52 筆空值。
@@ -51,6 +53,7 @@ type Partner = {
   gaTerm: string;
   url: string;
   quoteBreak?: string;
+  quoteJoiner?: boolean;
   logoScale?: number;
 };
 
@@ -65,6 +68,16 @@ const { play } = useSfx();
 // ⚠️ 外部 <use href> 必須同源，所以走 spriteUrl（baseURL）而非 assetUrl（ASSETS_PATH）。
 const SPRITE = spriteUrl('/img/sprites/partners.svg');
 const spriteHref = (logo: string) => `${SPRITE}#${spriteSymbolId(logo)}`;
+
+// quoteJoiner：語錄 <br/> 前的那個逗號**只是接行用的標點** —— 兩段接成同一行時要有，
+// 真的斷成兩行時（麗寶集團的 mob 稿）稿上沒有。它跟 __name 的破折號同一類：
+// 屬於排版而不是文案，故不逐斷點分兩份文案、也不把 class 塞進 locales，
+// 而是在這裡把那個字包成 <i>，由 --break-mob 決定它在哪些斷點顯示。
+const JOINER = /([，、；：,])(\s*<br\s*\/?>)/;
+const quoteHtml = (item: Partner) =>
+  item.quoteJoiner
+    ? item.quote.replace(JOINER, '<i class="blessing-partners__quote-joiner">$1</i>$2')
+    : item.quote;
 </script>
 
 <template>
@@ -126,8 +139,11 @@ const spriteHref = (logo: string) => `${SPRITE}#${spriteSymbolId(logo)}`;
               <p
                 v-if="item.quote"
                 class="blessing-partners__quote"
-                :class="{ 'blessing-partners__quote--break-mob': item.quoteBreak === 'mob' }"
-                v-html="item.quote"
+                :class="{
+                  'blessing-partners__quote--break-mob': item.quoteBreak === 'mob',
+                  'blessing-partners__quote--break-mob-extra': item.quoteBreak === 'mob-extra',
+                }"
+                v-html="quoteHtml(item)"
               />
               <!-- 名字前面那個破折號是**歸屬記號**，不是名字的一部分，且逐斷點不同
                    （pc／pad 有、mob 沒有）→ 由 CSS 出，見 __name 的 ::before。 -->
@@ -345,6 +361,30 @@ const spriteHref = (logo: string) => `${SPRITE}#${spriteSymbolId(logo)}`;
         display: none;
       }
     }
+
+    // 反過來，br 真的生效的 mob：接行用的那個逗號（quoteJoiner）跟著收掉，
+    // 否則會變成「AI驅動新時代，」孤零零收在行尾 —— 稿上沒有。
+    @include rwd-max('tablet') {
+      :deep(.blessing-partners__quote-joiner) {
+        display: none;
+      }
+    }
+  }
+
+  // mob 比 pc／pad **多斷一行**的那幾筆（資料的 quoteBreak: 'mob-extra'）：文案帶兩個
+  // <br/>，最後一個在 ≥768 收掉、兩段接回同一行。冠德的 mob 稿是三行，若只留一個 <br/>
+  // 就得靠自然折行，會把「與」孤零零留在第二行行尾（2026-09-10 設計師回報）。
+  &--break-mob-extra {
+    @include rwd-min('tablet') {
+      :deep(br:last-of-type) {
+        display: none;
+      }
+    }
+  }
+
+  // <i> 純粹是給 CSS 抓的掛勾，不是強調語氣。
+  :deep(.blessing-partners__quote-joiner) {
+    font-style: normal;
   }
 }
 

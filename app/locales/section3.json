@@ -75,7 +75,8 @@
           },
           {
             "name": "冠德企業集團",
-            "quote": "AI賦能建築未來<br/>KINDOM LIVING與跨世代共好",
+            "quote": "AI賦能建築未來<br/>KINDOM LIVING<br/>與跨世代共好",
+            "quoteBreak": "mob-extra",
             "logo": "/img/blessing/partner-kindom.svg",
             "gaTerm": "kindom",
             "url": "https://www.facebook.com/kindomdevelopment"
@@ -396,6 +397,7 @@
             "name": "麗寶集團",
             "quote": "AI驅動新時代，<br/>麗寶建設共築美好未來",
             "quoteBreak": "mob",
+            "quoteJoiner": true,
             "logo": "/img/blessing/partner-lihpao.svg",
             "gaTerm": "lihpao",
             "url": "http://www.lihpao.org.tw/group/index.php"
